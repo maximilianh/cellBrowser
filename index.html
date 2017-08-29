@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>UCSC T-SNE Plot</title>
+<head>
+
+<!-- <link rel="stylesheet" type="text/css" href="//fonts.googleapis.com/css?family=Roboto"> -->
+<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/spectrum/1.8.0/spectrum.min.css">
+<link rel="stylesheet" href="//swisnl.github.io/jQuery-contextMenu/dist/jquery.contextMenu.css">
+<link rel="stylesheet" href="//cdn.jsdelivr.net/intro.js/2.4.0/introjs.min.css">
+<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<link rel="stylesheet" href="//vsn4ik.github.io/bootstrap-submenu/dist/css/bootstrap-submenu.min.css">
+<link rel="stylesheet" href="//skywalkapps.github.io/bootstrap-dropmenu/stylesheets/bootstrap-dropmenu.min.css">
+<link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/3.2.1/css/font-awesome.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="cellBrowser.css">
+
+<script src="//fastcdn.org/FileSaver.js/1.1.20151003/FileSaver.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="//pixijs.download/release/pixi.min.js"></script>
+<script src="//google.github.io/palette.js/palette.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/spectrum/1.8.0/spectrum.min.js"></script>
+<script src="//swisnl.github.io/jQuery-contextMenu/dist/jquery.contextMenu.js"></script>
+<script src="//swisnl.github.io/jQuery-contextMenu/dist/jquery.ui.position.min.js"></script>
+<script src="//cdn.jsdelivr.net/intro.js/2.4.0/intro.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="//vsn4ik.github.io/bootstrap-submenu/dist/js/bootstrap-submenu.js"></script>
+<script src="//code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/mousetrap/1.6.1/mousetrap.min.js"></script>
+<script src="cellBrowser.js"></script>
+
+</head>
+<body>
+<script>
+// -- MAIN --
+var datasetList = null;
+var opt = {"datasets": datasetList};
+tsnePlot.loadData(opt);
+</script>
+</body>

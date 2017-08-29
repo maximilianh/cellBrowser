@@ -1,0 +1,71 @@
+/* tsneViewer.js class definitions */
+/* * {padding: 0; margin: 0} */ /* important, otherwise precise placement is impossible */ 
+/* body { font-family: Roboto, sans-serif } */
+body { font-family: Arial,Helvetica,sans-serif }
+.tpLegend { font-size:13px; border: 2px solid transparent; cursor:default; word-wrap: break-word; }
+#tpLegendBar { margin-left: 4px; cursor:default}
+.tpLegendSelect { border: 2px solid black !important; border-bottom: 2px solid black}
+.tpLegendLabel { display:inline; }
+.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888}
+
+.ui-helper-reset { text-size: 12px !important}
+.ui-tabs { padding: 0 !important}
+.ui-tabs .ui-tabs-panel { padding: 0 !important}
+.ui-tabs-nav { padding: 0 !important}
+.ui-tabs-anchor { padding: 3px !important}
+.ui-corner-all { border-radius: 0px !important }
+.ui-menu-item { font-size:13px }
+.ui-menu .ui-menu-item-wrapper { padding: 1px 1em 1px .4em; }
+.ui-tooltip { font-size: 13px }
+
+/* .ui-widget-header { background: white !important; border: 0px} */ /* DO NOT !important here. Is used by the progressbar */
+.ui-progressbar { position: relative; }
+.ui-progressbar-value { background-color: #888 }
+
+
+.tpProgressLabel {
+    position: absolute;
+    left: 40%;
+    top: 4px;
+    font-weight: bold;
+}
+
+.context-menu-item { font-size: 13px; padding: 3px }
+.contextmenu-customwidth { width: 200px !important; min-width: 200px !important}
+.tpGeneBarCell { font-size: 12px; width:58px; color: black; padding-left:1px; padding-right:1px; border: 1px solid #AAA; max-width: 80px; background: #DDDDDD; color:#AAAAAA }
+.tpGeneBarCellSelected { outline: 2px solid black}
+#tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
+
+.tpMetaBox { font-size: 13px; cursor:default; border: 2px solid transparent; overflow:hidden }
+.tpMetaLabel { font-weight: bold; padding-left: 2px}
+.tpMetaValue { height: 1.3em; margin-left: 8px; padding-left: 3px; background-color:#EEE }
+.tpMetaSelect { border: 2px solid black }
+
+#tpSelectBox { border: 1px dotted black; }
+
+#tpButtonBar {display: block; }
+.tpButton { font-size: 15px; display: inline-block; background-color: #f6f6f6; border: 1px solid #c5c5c5; margin: 1px 3px 1px 1px; padding: 1px 3px 1px 3px; cursor:default; border-radius: 3px; vertical-align: middle; user-select: none}
+.tpButton:hover { background-color: #EEE; user-select: none }
+.tpButtonInactive { background-color: #EEE; user-select: none; color:#AAA; cursor:default}
+
+.tpMenu { z-index: 999; background: white; display:none; position:absolute}
+
+.sp-replacer { height: 17px; width: 18px; border: none; padding: 0px; margin-right: 5px; background-color: white }
+.sp-preview { height: 17px; width: 18px; border: none }
+.sp-dd { line-height: 11px; display:none }
+
+/* make bootstrap's navbar smaller */
+.navbar-xs { min-height:28px; height: 28px; }
+.navbar-xs .navbar-brand{ padding: 0px 12px;font-size: 16px;line-height: 28px; }
+.navbar-xs .navbar-nav > li > a {  padding-top: 0px; padding-bottom: 0px; line-height: 28px; }
+
+/* make the navbar dividers smaller */
+.half-rule { 
+    margin-left: 0;
+    text-align: left;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* make bootstrap's navbar show menus on mouse hover */
+/* ul.nav li.dropdown:hover > ul.dropdown-menu { display: block; } */
