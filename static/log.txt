@@ -1,0 +1,3 @@
+cp /hive/data/outside/gencode/release_22/transToGene.tab gencode22.ens79-80.tab
+cp /hive/data/outside/gencode/release_23/geneInfo.tab gencode23.ens81-82.tab
+cp /hive/data/outside/gencode/release_24/geneInfo.tab gencode24.ens83-84.tab
