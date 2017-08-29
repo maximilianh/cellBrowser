@@ -73,6 +73,10 @@ def parseArgs():
         dest="symTable",
         action="store", help="use a table (transId, geneId, symbol) to convert transcript or gene identifiers in the expression matrix to symbols, default %default. Specify '-s none' if the input expression file is already using gene symbols.",
         default=join(dataDir, "gencode22.ens79-80.tab"))
+    parser.add_option("", "--skip",
+        dest="skip",
+        action="store_true", help="just skip invalid gene identifiers in matrix, do not stop",
+        default=join(dataDir, "gencode22.ens79-80.tab"))
     #parser.add_option("-g", "--geneIds",
         #dest="geneIds",
         #action="store", help="list of target genes, tab-sep table (symbol, annotationString)")
@@ -210,9 +214,16 @@ def readGeneIds(fname, geneToSym):
             logging.warn("%s appears twice in marker list: %s" % (sym, line))
             continue
         if symToGenes is not None:
-            assert(sym in symToGenes) # sym has to be in geneId -> sym list
-            assert(len(symToGenes[sym])==1) # there must be only one geneId for a target symbol
-            geneId = symToGenes[sym][0]
+            if sym not in symToGenes:
+                logging.warn("The marker symbol %s cannot be mapped to a geneID. Ignoring this gene." % sym)
+                continue
+            if len(symToGenes[sym])!=1:
+                logging.warn("The gene symbol %s from the default marker file is associated with many genes: %s" \
+                        " and ".join(symToGenes[sym]))
+                geneId = symToGenes[sym][0]
+                logging.warn("Using only the first gene: %s" % geneId)
+            else:
+                geneId = symToGenes[sym][0]
         else:
             geneId = sym
         geneToAnnot[geneId] = annot
@@ -313,9 +324,12 @@ def convTabToMarshal(matrixFname, doLog):
         if "." in geneId:
             geneId = geneId.split(".")[0]
         if geneToSym is not None and geneId not in geneToSym:
+            if options.skip:
+                logging.error("Could not find Ensembl geneId '%s' in file %s. Skipping gene." % (geneId, options.symTable))
+                continue
             if not geneId.startswith("ENS"):
                 logging.warn("when reading expression matrix, the gene ID '%s' does not start with 'ENS'. Looks like the gene matrix does not use Ensembl gene identifiers" % geneId)
-            logging.error("Could not find Ensembl geneId '%s' in file %s. Invalid Gencode/Ensembl version? Supply the right file for -s. If this is not an Ensembl Gene ID, but already a symbol, run the script with '-s none'" % (geneId, options.symTable))
+            logging.error("Could not find Ensembl geneId '%s' in file %s. Invalid Gencode/Ensembl version? Supply the right file for -s. If this is not an Ensembl Gene ID, but already a symbol, run the script with '-s none'. If you know that a few genes are invalid (e.g. not primary assembly genes), run the script with --skip" % (geneId, options.symTable))
             sys.exit(1)
 
         for cellName, count in zip(cellNames, fs[1:]):
@@ -1291,48 +1305,62 @@ def makeDir(outDir):
         makedirs(outDir)
         logging.info("Created directory %s" % outDir)
 
+def mustNotBeNull(var, msg):
+    " stop if var is null, output msg "
+    if var is None:
+        logging.error(msg)
+        sys.exit(1)
+
+def findDataDir(outDir, dataName, exprFname):
+    " return the path of the dataset dir: if dataName is None, use the parent dir of exprFname "
+    if dataName is not None:
+        return join(outDir, dataName)
+
+    return join(outDir, basename(dirname(abspath(exprFname))))
+
 def runCommands(args):
     " basic cmd line parsing "
 
     command = args[0]
+    outDir = options.outDir
+
+    if command=="html":
+        copyHtml(outDir)
+        sys.exit(0)
+
     metaFname = options.metaData
     exprFname = options.exprMatrix
-    #inFnames = args[2:-1]
-    #outDir = args[-1]
-    outDir = options.outDir
+
+    mustNotBeNull(outDir, "You need to provide an output directory")
+    mustNotBeNull(exprFname, "You need to provide an expression matrix")
+    mustNotBeNull(metaFname, "You need to provide a meta data file")
 
     makeDir(outDir)
 
+    dataOutDir = findDataDir(outDir, options.datasetName, exprFname)
+
     if command=="coords":
-        #assert(len(inFnames)==4)
-        #exprFname = inFnames[0]
-        #coordFname = inFnames[1]
         coordFname = options.coords
-        #defaultGeneFname = inFnames[2]
         defaultGeneFname = options.genes
-        #clusterLabelField = inFnames[3]
         clusterLabelField = options.clusterLabel
 
         readGeneInfo(defaultGeneFname)
-        dataOutDir = join(outDir, options.datasetName)
+
         makeDir(dataOutDir)
         importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, dataOutDir)
 
     if command=="matrix":
-        assert(len(inFnames)==2)
-        matrixFname = inFnames[0]
-        defaultGeneFname = inFnames[1]
+        defaultGeneFname = options.genes
         readGeneInfo(defaultGeneFname)
-        runOnMatrix(command, metaFname, matrixFname, outDir)
+
+        makeDir(dataOutDir)
+        runOnMatrix(command, metaFname, exprFname, dataOutDir)
 
     if command=="10x":
         readGeneInfo()
         assert(len(inFnames)==1)
         cellRangerDir = inFnames[0]
         runOn10X(command, metaFname, cellRangerDir, outDir)
-
-    if command=="html":
-        copyHtml(outDir)
 
 
 # ----------- main --------------
