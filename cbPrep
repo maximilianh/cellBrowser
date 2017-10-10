@@ -66,7 +66,7 @@ def parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output dir to write .json files to")
     parser.add_option("-c", "--coords", dest="coords", action="store", help="table with cell coordinates")
     parser.add_option("-g", "--genes", dest="genes", action="store", help="default marker genes")
-    parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="column to label the clusters in the meta data table")
+    parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
     parser.add_option("-n", "--name",
         dest="datasetName",
         action="store", help="Human-readable label for dataset. The default is the parent directory name of the matrix file path.")
@@ -795,11 +795,19 @@ def checkDefaultGenes():
     if errCount > 10:
         raise Exception()
 
+def isValidField(meta, fieldName):
+    " make sure that fieldName really exists, stop if not "
+    for cellId, cellMeta in meta.iteritems():
+        if fieldName not in cellMeta:
+            raise Exception("the field %s is not a valid meta data field" % fieldName)
+
 def importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, outDir):
     " parse coordinates and write all json files to outDir "
     exprMatrix = parseMatrix(exprFname, options.doLog)
     meta = parseMeta(metaFname, exprMatrix)
     coords = parseCoords(coordFname)
+
+    isValidField(meta, clusterLabelField)
 
     global geneToSym
     if geneToSym is None:
@@ -1241,10 +1249,15 @@ def writeDownloadFiles(metaFname, outDir):
     logging.info("Copying %s to %s" % (metaFname, metaOutPath))
     shutil.copy(metaFname, metaOutPath)
 
-def runOnMatrix(command, metaFname, matrixFname, outDir):
+def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     " run Seurat and PCA over matrix, write all json to outDir "
     exprMatrix = parseMatrix(matrixFname, options.doLog)
     meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(metaFname, exprMatrix, outDir)
+
+    if clusterLabelField is None:
+        clusterLabelField = "Seurat Cluster"
+    else:
+        isValidField(meta, clusterLabelField)
 
     lines = makeDescLines(metaFname, matrixFname)
     longLabel = "<br>".join(lines)
@@ -1369,9 +1382,10 @@ def runCommands(args):
     if command=="matrix":
         defaultGeneFname = options.genes
         readGeneInfo(defaultGeneFname)
+        clusterLabelField = options.clusterLabel
 
         makeDir(dataOutDir)
-        runOnMatrix(command, metaFname, exprFname, dataOutDir)
+        runOnMatrix(command, metaFname, exprFname, clusterLabelField, dataOutDir)
 
     if command=="10x":
         readGeneInfo()
