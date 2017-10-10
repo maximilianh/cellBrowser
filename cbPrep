@@ -52,6 +52,13 @@ def parseArgs():
 
     - 'html': copy the js/htm/css files to the output directory
       Example: %prog html -o /usr/local/apache/htdocs-max/cellBrowser/dev2
+
+    To install Seurat 1.4:
+        echo 'export R_LIBS_USER=$HOME/R' >> ~/.bashrc
+        source ~/.bashrc
+        mkdir -p $R_LIBS_USER
+        wget https://github.com/satijalab/seurat/archive/v1.4.0.tar.gz
+        R CMD INSTALL v1.4.0.tar.gz -l $R_LIBS_USER
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file")
@@ -1224,7 +1231,7 @@ def runOn10X(command, metaFname, cellRangerDir, outDir):
     lines = makeDescLines(metaFname, matrixFname)
 
     longLabel = "<br>".join(lines)
-    desc = {"label" : basename(dirname(matrixFname)), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
+    desc = {"label" : basename(dirname(abspath(matrixFname))), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
 
     writeJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, outDir)
 
@@ -1241,14 +1248,15 @@ def runOnMatrix(command, metaFname, matrixFname, outDir):
 
     lines = makeDescLines(metaFname, matrixFname)
     longLabel = "<br>".join(lines)
-    desc = {"label" : basename(dirname(matrixFname)), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
+    shortLabel = basename(dirname(abspath(matrixFname)))
+    desc = {"label" : shortLabel, "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
 
     copyMatrixAndIndex(exprMatrix, outDir)
     writeJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, outDir)
     writeDownloadFiles(metaFname, outDir)
 
 def findDatasets(outDir):
-    """ search all subdirs of outDir for dataset.json files and return their contents as a list 
+    """ search all subdirs of outDir for dataset.json files and return their contents as a list
     A dataset description is a list with three members: A label, the base URL and a longer description
     that can contain html.
     """
