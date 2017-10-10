@@ -51,7 +51,7 @@ def parseArgs():
         - If you do not have a meta table, specify "none" instead.
 
     - 'html': copy the js/htm/css files to the output directory
-      Example: %prog html /usr/local/apache/htdocs-max/cellBrowser/dev2
+      Example: %prog html -o /usr/local/apache/htdocs-max/cellBrowser/dev2
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file")
@@ -371,15 +371,24 @@ def parseMatrix(matrixFname, doLog):
     return exprMat
 
 def parseCoords(fname):
-    " parse tsv file in format cellId, x, y and return as list of (cellId, x, y) "
+    """ parse tsv file in format cellId, x, y and return as list of (cellId, x, y) 
+    Flip the y coordinates to make it more look like in R.
+    """
     coords = []
+    maxY = 0
     for row in lineFileNextRow(fname):
         assert(len(row)==3) # coord file has to have three rows (cellId, x, y), we just ignore the headers
         cellId = row[0]
         x = float(row[1])
         y = float(row[2])
+        maxY = max(maxY, y)
         coords.append( (cellId, x, y) )
-    return coords
+
+    newCoords = []
+    for cellId, x, y in coords:
+        newY = maxY - y
+        newCoords.append( (cellId, x, newY) )
+    return newCoords
 
 def parsePca(pcaFname):
     """ parse the scores from a R PCA file and return as a list of tuples (cellId, pc1, pc2, pc3, pc4 ... )
