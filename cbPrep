@@ -225,8 +225,8 @@ def readGeneIds(fname, geneToSym):
                 logging.warn("The marker symbol %s cannot be mapped to a geneID. Ignoring this gene." % sym)
                 continue
             if len(symToGenes[sym])!=1:
-                logging.warn("The gene symbol %s from the default marker file is associated with many genes: %s" \
-                        " and ".join(symToGenes[sym]))
+                logging.warn("The gene symbol %s from the default marker file is associated with more than one gene identifier: %s" % \
+                        (sym, " ".join(symToGenes[sym])))
                 geneId = symToGenes[sym][0]
                 logging.warn("Using only the first gene: %s" % geneId)
             else:
