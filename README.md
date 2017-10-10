@@ -15,3 +15,13 @@ A viewer was created from it with these commands:
     ../../cbPrep matrix -e geneMatrix.tsv --log2 --skip -m meta.tsv -o ~/public_html/cbTest/ -g markerSymbols.txt -l biosample_cell_type
 
     ../../cbPrep html -o ~/public_html/cbTest
+
+Requirements: Seurat 1.4
+
+Installation:
+
+    echo 'export R_LIBS_USER=$HOME/R' >> ~/.bashrc
+    source ~/.bashrc
+    mkdir -p $R_LIBS_USER
+    wget https://github.com/satijalab/seurat/archive/v1.4.0.tar.gz
+    R CMD INSTALL v1.4.0.tar.gz -l $R_LIBS_USER
