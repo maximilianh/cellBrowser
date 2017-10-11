@@ -298,7 +298,7 @@ var tsnePlot = function() {
        htmls.push('<div class="container-fluid">');
 
          htmls.push('<div class="navbar-header">');
-           htmls.push('<a class="navbar-brand" href="#">UCSC Cell Browser</a>');
+           htmls.push('<a class="navbar-brand" href="#">UCSC '+gSampleDesc+' browser</a>');
          htmls.push('</div>');
 
          htmls.push('<ul class="nav navbar-nav">');
@@ -1713,8 +1713,11 @@ var tsnePlot = function() {
         Mousetrap.bind('a', onSelectAllClick);
     }
 
-    function loadData(opt) {
+    function loadData(opt, globalOpts) {
         /* start the JSON data loading, uses first dataset */
+        if (globalOpts!=undefined)
+            if ("sampleType" in globalOpts)
+                gSampleDesc = globalOpts["sampleType"];
         gOptions = opt;
         drawMenuBar();
         drawToolBar();
