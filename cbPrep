@@ -61,11 +61,12 @@ def parseArgs():
         R CMD INSTALL v1.4.0.tar.gz -l $R_LIBS_USER
     """)
 
-    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file")
-    parser.add_option("-m", "--metaData", dest="metaData", action="store", help="meta data table file")
+    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file, .gz is OK")
+    parser.add_option("-m", "--metaData", dest="metaData", action="store", help="meta data table file, .gz is OK")
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output dir to write .json files to")
     parser.add_option("-c", "--coords", dest="coords", action="store", help="table with cell coordinates")
-    parser.add_option("-g", "--genes", dest="genes", action="store", help="default marker genes")
+    parser.add_option("-g", "--genes", dest="genes", action="store",
+            help="default marker genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
     parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
     parser.add_option("-n", "--name",
         dest="datasetName",
@@ -75,7 +76,7 @@ def parseArgs():
     parser.add_option("", "--metaColumn",
         dest="metaColumn", action="store",
         default="meta",
-        help="the name of the column in meta.tab that has the ID of the cell, default %default")
+        help="the name of the column in meta data table that has the ID of the cell. Values have to match the header of the expression matrix. Common values are 'id', 'sampleId', 'cellId', etc. default %default.")
     parser.add_option("-s", "--symTable",
         dest="symTable",
         action="store", help="use a table (transId, geneId, symbol) to convert transcript or gene identifiers in the expression matrix to symbols, default %default. Specify '-s none' if the input expression file is already using gene symbols.",
@@ -84,18 +85,13 @@ def parseArgs():
         dest="skip",
         action="store_true", help="just skip invalid gene identifiers in matrix, do not stop",
         default=join(dataDir, "gencode22.ens79-80.tab"))
-    #parser.add_option("-g", "--geneIds",
-        #dest="geneIds",
-        #action="store", help="list of target genes, tab-sep table (symbol, annotationString)")
-        ##default=getCirmStaticFile("annotation/ensToHugo/genes.hg38"))
     parser.add_option("", "--log2",
         dest="doLog",
         action="store_true", help="only when 'matrix': log2 the matrix before processing it")
     parser.add_option("", "--test",
         dest="test",
         action="store_true", help="run doctests")
-    #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
-    #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
+
     (options, args) = parser.parse_args()
 
     if options.test:
@@ -236,7 +232,11 @@ def readGeneIds(fname, geneToSym):
         geneToAnnot[geneId] = annot
 
     if showNoAnnotWarn:
-        logging.warn("The gene info file %s contains only a single column. No gene marker annotations are available." % fname)
+        logging.info("The gene info file %s contains only a single column. "
+                "This is OK, but note that you can have optional annotation "
+                "text in this file, as a second column. Annotation text can be"
+                "something like 'known cancer marker' or anything else you may"
+                "want to show in the viewer." % fname)
 
     return geneToAnnot
 
@@ -636,8 +636,14 @@ def writeJson(exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdTo
         #geneToSym = fakeGeneMap(exprMatrix)
 
     geneFields = []
+    matrixGeneIds = getNonZeroGenes(exprMatrix)
     if geneIdToAnnot is not None:
         for geneId, annot in geneIdToAnnot.iteritems():
+            if geneId not in matrixGeneIds:
+                logging.warn("gene %s in the default gene list (option -g) is not in the expression matrix. "
+                        "It will be skipped now and will not appearin the gene list" % geneId)
+                continue
+
             if geneToSym:
                 sym = geneToSym[geneId]
             else:
@@ -648,7 +654,7 @@ def writeJson(exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdTo
             geneFields.append( (symbol, "", geneId) )
 
     if len(geneFields)>500:
-        logging.error("More than 500 marker genes have been selected to be shown - are you sure this is intentional?")
+        logging.error("More than 500 marker genes have been selected to be shown by default - are you sure this is intentional? Consider using the -g option")
         sys.exit(1)
 
     geneFields.sort() # sort by gene symbol
@@ -712,7 +718,7 @@ def parseMeta(fname, exprMatrix, mustHaveField=None):
     for row in lineFileNextRow(fname):
         rowDict = row._asdict()
         if idCol not in rowDict:
-            errAbort("The meta data file %s does not have a column named '%s'. Available columns: %s. Use -m to specify a different name" % (fname, idCol, ",".join(row._fields)))
+            errAbort("The meta data file %s does not have a column named '%s'. Available columns: %s. Use --metaColumn to specify a different name" % (fname, idCol, ",".join(row._fields)))
 
         if mustHaveField and mustHaveField not in rowDict:
             errAbort("The meta data file %s does not contain a column named '%s'. Available columns: %s. Specify a different cluster label field and run again." % (fname, mustHaveField, ",".join(row._fields)))

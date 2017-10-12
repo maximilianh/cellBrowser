@@ -78,9 +78,13 @@ var tsnePlot = function() {
     var mouseDownY = null;
 
     // -- CONSTANTS
+    // product name is always a variable, management always has the last word
+    var gTitle = "UCSC Cluster Browser";
+
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a 
     // "sample" or a "cell"
     var gSampleDesc = "cell";
+
     // width of left meta bar in pixels
     var metaBarWidth = 200;
     var metaBarMargin = 5;
@@ -298,7 +302,7 @@ var tsnePlot = function() {
        htmls.push('<div class="container-fluid">');
 
          htmls.push('<div class="navbar-header">');
-           htmls.push('<a class="navbar-brand" href="#">UCSC '+gSampleDesc+' browser</a>');
+           htmls.push('<a class="navbar-brand" href="#">'+gTitle+'</a>');
          htmls.push('</div>');
 
          htmls.push('<ul class="nav navbar-nav">');
@@ -1369,9 +1373,10 @@ var tsnePlot = function() {
         return legend;
     }
 
-    function findCellIdsForLegendId (cellIdToLegendId, legendId) {
+    function findCellIdsForLegendId (cellIdToLegendId, legendId, cellIds) {
     /* given a legendId, return an object with cellIds that are associated to a given class */
-        var cellIds = {};
+        if (cellIds==undefined)
+            cellIds = {};
         for (var cellId in cellIdToLegendId) {
             if (gClasses[cellId] == legendId)
                 cellIds[cellId] = true;
@@ -1715,9 +1720,12 @@ var tsnePlot = function() {
 
     function loadData(opt, globalOpts) {
         /* start the JSON data loading, uses first dataset */
-        if (globalOpts!=undefined)
+        if (globalOpts!=undefined) {
             if ("sampleType" in globalOpts)
                 gSampleDesc = globalOpts["sampleType"];
+            if ("title" in globalOpts)
+                gTitle = globalOpts["title"];
+        }
         gOptions = opt;
         drawMenuBar();
         drawToolBar();
@@ -1846,19 +1854,24 @@ var tsnePlot = function() {
     /* called when user clicks on legend entry. updates gLegend and gSelCellIds */
         var legendId = parseInt(event.target.id.split("_")[1]);
         if (("lastClicked" in gLegend) && gLegend.lastClicked==legendId) {
+            // user clicked the same entry as before: remove all highlights
             gLegend.lastClicked = null;
-            gSelCellIds = {}; // remove highlight
+            gSelCellIds = {};
             $('#tpLegend_'+legendId).removeClass('tpLegendSelect');
             menuBarHide("#tpFilterButton");
             menuBarHide("#tpOnlySelectedButton");
             updateGeneBarColors([]);
         }
         else {
+            var domEvent = event.originalEvent;
+            if (!domEvent.shiftKey && !domEvent.ctrlKey && !domEvent.metaKey) {
+                gSelCellIds = {}; // remove highlight
+                $('.tpLegend').removeClass('tpLegendSelect');
+            }
             var metaVal = gLegend.rows[legendId][4];
-            gSelCellIds = findCellIdsForLegendId(gClasses, legendId);
+            gSelCellIds = findCellIdsForLegendId(gClasses, legendId, gSelCellIds);
             menuBarShow("#tpFilterButton");
             menuBarShow("#tpOnlySelectedButton");
-            $('.tpLegend').removeClass('tpLegendSelect');
             $('#tpLegend_'+legendId).addClass('tpLegendSelect');
             gLegend.lastClicked=legendId;
             updateGeneBarColors(keys(gSelCellIds));
@@ -1942,7 +1955,7 @@ var tsnePlot = function() {
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
         $('.tpLegend').click( onLegendLabelClick );
-        $('.tpLegendLabel').attr( "title", "Click to select samples with this value");
+        $('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
         $('#tpResetColors').click( onResetColorsClick );
 
         // setup the right-click menu
@@ -2020,6 +2033,10 @@ var tsnePlot = function() {
                 if (val != null) {
                     var geneId = geneFields[j][0];
                     var decileRanges = gDeciles[geneId];
+                    if (decileRanges==undefined) {
+                        //console.log("Warning: No decile in json file for "+geneId);
+                        continue;
+                    }
                     var binIdx = findBin(decileRanges, val);
                     intensities[j] += binIdx;
                 }
@@ -2096,7 +2113,7 @@ var tsnePlot = function() {
             return;
         var cellId = event.target.cellId;
         var domEvent = event.data.originalEvent;
-        if (!domEvent.shiftKey && !domEvent.ctrlKey)
+        if (!domEvent.shiftKey && !domEvent.ctrlKey && !domEvent.metaKey)
             gSelCellIds = {};
         gSelCellIds[cellId] = true;
         updateMetaBar(cellId)
