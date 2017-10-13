@@ -12,13 +12,20 @@ A viewer was created from it with these commands:
 
     cd data/quakeBrainGeo1/
 
-    ../../cbPrep matrix -e geneMatrix.tsv --log2 --skip -m meta.tsv -o ~/public_html/cbTest/ -g markerSymbols.txt -l biosample_cell_type
+    ../../cbPrep matrix -n quakeBrainGeo1 -e geneMatrix.tsv --log2 --skip -m meta.tsv -o ~/public_html/cbTest/ -g markerSymbols.txt -l biosample_cell_type
 
     ../../cbPrep html -o ~/public_html/cbTest
 
-To deploy on a webserver, copy all files ~/public_html/cbTest to an empty directory on a webserver.
+To deploy the result onto a webserver, copy all files ~/public_html/cbTest to an empty directory on a webserver.
 Files in ~/public_html/cbTest/build/ are not needed to be copied over, they are
 not used by the viewer and will only speed up future "matrix" runs.
+
+Note that the output directory cbTest contains a directory for this dataset (specified via -n) called "quakeBrainGeo1". The
+file dataset.json in this directory can be modified to change: 
+* long and short labels of this dataset, a description of how the dataset was created
+* the default field to show cluster labels for
+
+A subsequent run of "cbPrep html" will then update the index.html with the information in all <subdirectory>/dataset.json files.
 
 Requirements: Seurat 1.4
 
