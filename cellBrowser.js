@@ -226,11 +226,11 @@ var tsnePlot = function() {
         var name = event.target.id.split("_")[1]; // the name of the dataset
         var baseUrl = gOptions.datasets[gCurrentDatasetIdx].baseUrl;
         if (name==="matrix") {
-            var url = baseUrl+"/geneMatrix.tsv"
+            var url = joinPaths([baseUrl,"geneMatrix.tsv"]);
             document.location.href = url;
         }
         if (name==="meta") {
-            var url = baseUrl+"/meta.tsv"
+            var url = joinPaths([baseUrl,"meta.tsv"]);
             document.location.href = url;
         }
     }
