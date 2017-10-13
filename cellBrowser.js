@@ -35,7 +35,7 @@ var tsnePlot = function() {
     var gDeciles = null; // geneId -> Array of 11 values, the ranges for all deciles of a gene
     var gDecileColors = null; // global to avoid recalculting a palette of 10 colors
 
-    var gLabelMetaIdx = 0; // meta field to use for labels, default is to label on first field
+    var gLabelMetaIdx = null; // meta field to use for labels, default is no label
     var gClusterMids = null; // array of (clusterLabel, x, y), recalculated if null
 
     // only temporarily used to store data while it is loaded in parallel ajax requests
@@ -142,6 +142,9 @@ var tsnePlot = function() {
      $("#tpTrans"+(transparency*100)).addClass("active");
      $("#tpSize"+circleSize).addClass("active");
 
+     // the "hide labels" menu entry is only shown if labels are visible
+     if (gLabelMetaIdx === null)
+         menuBarHide("#tpHideLabels");
     }
 
     function onOpenDatasetLink() {
@@ -348,8 +351,9 @@ var tsnePlot = function() {
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li><a href="#" id="tpOnlySelectedButton">Show only selected</a></li>');
-         htmls.push('<li><a href="#" id="tpFilterButton">Hide selected</a></li>');
-         htmls.push('<li><a href="#" id="tpShowAllButton">Show all</a></li>');
+         htmls.push('<li><a href="#" id="tpFilterButton">Hide selected'+gSampleDesc+'</a></li>');
+         htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
+         htmls.push('<li><a href="#" id="tpHideLabels">Hide cluster labels</a></li>');
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
@@ -402,6 +406,7 @@ var tsnePlot = function() {
        $('#tpOnlySelectedButton').click( onShowOnlySelectedClick );
        $('#tpZoom100Button').click( onZoom100Click );
        $('#tpShowAllButton').click( onShowAllClick );
+       $('#tpHideLabels').click( onHideLabelsClick );
        $('#tpExportIds').click( onExportIdsClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
        $('#tpOpenDatasetLink').click( onOpenDatasetLink );
@@ -742,6 +747,15 @@ var tsnePlot = function() {
         menuBarHide("#tpOnlySelectedButton");
         menuBarHide("#tpShowAllButton");
         gLegend.lastClicked = null;
+        renderer.render(stage);
+    }
+
+    function onHideLabelsClick(ev) {
+    /* user clicked the hide labels button */
+        //gSelCellIds = {};
+        gLabelMetaIdx = null;
+        plotDots();
+        menuBarHide("#tpHideLabels");
         renderer.render(stage);
     }
 
@@ -1577,8 +1591,9 @@ var tsnePlot = function() {
         metaFields = jsonDict["metaFields"];
         geneFields = jsonDict["geneFields"];
         gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
-        if (gLabelMetaIdx==undefined)
-            gLabelMetaIdx = 0;
+        if (gLabelMetaIdx==undefined) {
+            gLabelMetaIdx = null;
+        }
         addInfoBars(metaFields);
         resizeRenderer();
     }
@@ -1622,18 +1637,22 @@ var tsnePlot = function() {
 
         var currDataset = gOptions.datasets[gCurrentDatasetIdx];
         var clusterFieldName = gOptions.datasets[gCurrentDatasetIdx].clusterField;
-        var clusterFieldIdx = metaFields.indexOf(clusterFieldName);
+        if (clusterFieldName!=undefined) {
+            var clusterFieldIdx = metaFields.indexOf(clusterFieldName);
+            //if (clusterFieldIdx===undefined)
+                //console.log("Option clusterField is not defined for dataset "+gCurrentDatasetIdx);
+            if (clusterFieldIdx===undefined)
+                alert("Internal error: labelling field (option 'clusterField') "+clusterFieldName+" is not a valid field");
 
-        //if (clusterFieldIdx===undefined)
-            //console.log("Option clusterField is not defined for dataset "+gCurrentDatasetIdx);
-
-        if (clusterFieldIdx===undefined)
-            alert("Internal error: labelling field (option 'clusterField') "+clusterFieldName+" is not a valid field");
-
-        gLabelMetaIdx = clusterFieldIdx;
-        gClusterMids = null; // force recalc
-
-        colorByMetaField(clusterFieldIdx);
+            gLabelMetaIdx = clusterFieldIdx;
+            gClusterMids = null; // force recalc
+            colorByMetaField(clusterFieldIdx);
+        }
+        else {
+            gLabelMetaIdx = null;
+            gClusterMids = null; // force recalc
+            colorByMetaField(0);
+        }
 
         var introShownBefore = localStorage.getItem("introShown");
         if (introShownBefore==undefined)
@@ -1905,6 +1924,7 @@ var tsnePlot = function() {
         if (key==0) {
             gLabelMetaIdx = metaIdx;
             gClusterMids = null; // force recalc
+            menuBarShow("#tpHideLabels");
             plotDots();
             renderer.render(stage);
         }
@@ -2125,6 +2145,9 @@ var tsnePlot = function() {
 
     function plotClusterLabels (metaFieldIdx) {
     /* plot semi-transparent labels for clusters */
+        if (metaFieldIdx === null)
+            return;
+
         if (gClusterMids === null) {
             // arrange the current coordinates to format cluster -> array of coords
             var clusterCoords = {};

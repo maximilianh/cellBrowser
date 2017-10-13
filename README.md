@@ -16,6 +16,10 @@ A viewer was created from it with these commands:
 
     ../../cbPrep html -o ~/public_html/cbTest
 
+To deploy on a webserver, copy all files ~/public_html/cbTest to an empty directory on a webserver.
+Files in ~/public_html/cbTest/build/ are not needed to be copied over, they are
+not used by the viewer and will only speed up future "matrix" runs.
+
 Requirements: Seurat 1.4
 
 Installation:
