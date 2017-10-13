@@ -1202,6 +1202,17 @@ var tsnePlot = function() {
             onGeneLoadComplete();
     }
 
+    /**
+     from https://stackoverflow.com/questions/29855098/is-there-a-built-in-javascript-function-similar-to-os-path-join:
+     * Joins 2 paths together and makes sure there aren't any duplicate seperators
+     * @param parts the parts of the url to join. eg: ['http://google.com/', '/my-custom/path/']
+     * @param separator The separator for the path, defaults to '/'
+     * @returns {string} The combined path
+     */
+    function joinPaths(parts, separator) {
+      return parts.map(function(part) { return part.trim().replace(/(^[\/]*|[\/]*$)/g, ''); }).join(separator || '/');
+    }
+
     function onGeneDialogOkClick(ev) {
     /* called the user clicks the OK button on the 'paste your genes' dialog box */
         var genes = $('#tpGeneListBox').val().replace(/\r\n/g, "\n").split("\n");
@@ -1211,7 +1222,8 @@ var tsnePlot = function() {
         gLoad_geneExpr = {};
 
         var notFoundGenes = [];
-        var url = gOptions.datasets[gCurrentDatasetIdx].baseUrl+"/geneMatrix.tsv";
+        var baseUrl = gOptions.datasets[gCurrentDatasetIdx].baseUrl;
+        var url = joinPaths([baseUrl, "geneMatrix.tsv"]);
         var validCount = 0; // needed for progressbar later
         for (var i = 0; i < genes.length; i++) {
             var gene = genes[i];
