@@ -21,6 +21,9 @@ geneToSym = None
 # geneId -> annotation (some string)
 geneIdToAnnot = None
 
+# metaVal -> color dict
+colors = None
+
 # reduce precision of JSON floating number encoding
 # http://stackoverflow.com/questions/1447287/format-floats-with-standard-json-module
 from json import encoder
@@ -76,7 +79,12 @@ def parseArgs():
     parser.add_option("", "--metaColumn",
         dest="metaColumn", action="store",
         default="meta",
-        help="the name of the column in meta data table that has the ID of the cell. Values have to match the header of the expression matrix. Common values are 'id', 'sampleId', 'cellId', etc. default %default.")
+        help="the name of the column in meta data table that connects the meta data to the gene expression table. Common values are 'id', 'sampleId', 'cellId', etc. default %default.")
+
+    parser.add_option("", "--colors",
+        dest="colors", action="store",
+        help="a tab-sep file with two columns, a meta value and a color. Can be used e.g. for color assignments to clusters")
+
     parser.add_option("-s", "--symTable",
         dest="symTable",
         action="store", help="use a table (transId, geneId, symbol) to convert transcript or gene identifiers in the expression matrix to symbols, default %default. Specify '-s none' if the input expression file is already using gene symbols.",
@@ -692,6 +700,9 @@ def writeJson(exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdTo
     # save the dataset description
     if options.datasetName is not None:
         desc["label"] = options.datasetName
+
+    if colors is not None:
+        desc["metaColors"] = colors
 
     if isfile(datasetFname):
         logging.info("Not writing dataset description to %s, file already exists" % datasetFname)
@@ -1354,6 +1365,15 @@ def findDataDir(outDir, dataName, exprFname):
 
     return join(outDir, basename(dirname(abspath(exprFname))))
 
+def parseColors(fname):
+    " parse color table and return as dict value -> color "
+    colDict = parseDict(fname)
+    for metaVal, color in colDict:
+        assert(len(color)<=6) # colors can be no more than six hex digits
+        for c in color:
+            assert(c in "0123456789ABCDEF") # color must be a hex number
+    return colDict
+
 def runCommands(args):
     " basic cmd line parsing "
 
@@ -1361,6 +1381,8 @@ def runCommands(args):
     outDir = options.outDir
 
     if command=="html":
+        if options.colors is not None:
+            errAbort("There is no need to specify colors with 'html'. Colors are defined for datasets.")
         copyHtml(outDir)
         sys.exit(0)
 
@@ -1374,6 +1396,8 @@ def runCommands(args):
     makeDir(outDir)
 
     dataOutDir = findDataDir(outDir, options.datasetName, exprFname)
+
+    colors = parseColors(options.colors)
 
     if command=="coords":
         coordFname = options.coords
@@ -1394,7 +1418,7 @@ def runCommands(args):
         runOnMatrix(command, metaFname, exprFname, clusterLabelField, dataOutDir)
 
     if command=="10x":
-        readGeneInfo()
+        readGeneInfo(defaultGeneFname)
         assert(len(inFnames)==1)
         cellRangerDir = inFnames[0]
         runOn10X(command, metaFname, cellRangerDir, outDir)

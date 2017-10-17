@@ -12,8 +12,9 @@ var tsnePlot = function() {
     // - .label (reqd) = label for the dataset shown
     // - .labelField (reqd) = label for the dataset shown
     // - .coordFiles: optional list of (URLOrFilename, label)
+    // - .metaColors: options, dict of metaValue -> hexcolor (six chars)
 
-    var gCurrentDatasetIdx = 0; // index of current dataset
+    var gCurrentDataset = null; // pointer to one of gOptions.datasets
 
     var jsonBaseUrl = null; // current base url, has to end with '/'
 
@@ -28,6 +29,7 @@ var tsnePlot = function() {
 
     var metaFields = null; // array of meta field labels
     var metaData = null;   // dict cellId -> array of meta fields (strings)
+    var gLegendColors = null; // assignment of meta value -> color, specified in config.json
 
     var matrixOffsets = null; // dict gene symbol -> [offset in matrix, line length in matrix]
     var geneFields = null; // array of (geneSym, geneDesc)
@@ -82,7 +84,7 @@ var tsnePlot = function() {
     var gTitle = "UCSC Cluster Browser";
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a 
-    // "sample" or a "cell"
+    // "sample" or a "cell". This will adapt help menus, menus, etc.
     var gSampleDesc = "cell";
 
     // width of left meta bar in pixels
@@ -92,7 +94,7 @@ var tsnePlot = function() {
     var legendBarWidth = 200;
     var legendBarMargin = 10;
     // height of button bar at top
-    var menuBarHeight = undefined; // defined at runtime by div.height
+    var menuBarHeight = null; // defined at runtime by div.height
     // height of toolbar
     var toolBarHeight = 33;
 
@@ -103,7 +105,7 @@ var tsnePlot = function() {
     var transparency = 0.6;
     var circleSize = 4;
     // color for missing value when coloring by expression value
-    var cNullColor = "DDDDDD";
+    var cNullColor = "c7c7c7";
     var cNullForeground = "#AAAAAA";
 
     function _dump(o) {
@@ -134,7 +136,7 @@ var tsnePlot = function() {
      }
      
      // the "show all" menu entry is only shown if some dots are actually hidden
-     if ((pixelCoords!=null && shownCoords!=null) && pixelCoords.length==shownCoords.length)
+     if ((pixelCoords!==null && shownCoords!==null) && pixelCoords.length===shownCoords.length)
          menuBarHide("#tpShowAllButton");
      else
          menuBarShow("#tpShowAllButton");
@@ -154,7 +156,7 @@ var tsnePlot = function() {
         htmls.push("<div class='list-group' style='width:300px'>");
         for (var i = 0; i < gOptions.datasets.length; i++) {
             var dataset = gOptions.datasets[i];
-            var line = "<button type='button' class='list-group-item' data-datasetid='"+i+"'>" // bootstrap seems to remove the id
+            var line = "<button type='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
             if (dataset.sampleCount!=undefined) {
                 line = "<span class='badge'>"+dataset.sampleCount+" cells</span>";
@@ -178,7 +180,7 @@ var tsnePlot = function() {
                 loadDataset(selDatasetIdx);
                 $( this ).dialog( "close" );
             }
-        }
+        };
 
         showDialogBox(htmls, "Open Dataset", {width: 800, height:500, "buttons":buttons});
         $("#tpOpenDialogLabel").html(gOptions.datasets[0].longLabel);
@@ -198,7 +200,7 @@ var tsnePlot = function() {
     function drawLayoutMenu() {
        /* Add the View / Layout menu to the DOM */
       var htmls = [];  
-      var coordFiles = gOptions.datasets[gCurrentDatasetIdx].coordFiles;
+      var coordFiles = gCurrentDataset.coordFiles;
       for (var i=0; i<coordFiles.length; i++) {
             htmls.push('<li><a href="#" class="tpDataset" id="'+i+'">'+coordFiles[i][0]+'</a></li>');
       }
@@ -206,7 +208,7 @@ var tsnePlot = function() {
       $("#tpLayoutMenu").append(htmls.join(""));
     }
 
-    function updateSelection(cellIds) {
+    function updateSelection() {
     /* has to be called each time the selection has been changed */
         plotDots();
         renderer.render(stage);
@@ -224,13 +226,14 @@ var tsnePlot = function() {
     function onDownloadClick() {
     /* user clicks one of the "download data" submenu links: matrix, meta or coords  */
         var name = event.target.id.split("_")[1]; // the name of the dataset
-        var baseUrl = gOptions.datasets[gCurrentDatasetIdx].baseUrl;
+        var baseUrl = gCurrentDataset.baseUrl;
+        var url = none;
         if (name==="matrix") {
-            var url = joinPaths([baseUrl,"geneMatrix.tsv"]);
+            url = joinPaths([baseUrl,"geneMatrix.tsv"]);
             document.location.href = url;
         }
         if (name==="meta") {
-            var url = joinPaths([baseUrl,"meta.tsv"]);
+            url = joinPaths([baseUrl,"meta.tsv"]);
             document.location.href = url;
         }
     }
@@ -253,9 +256,9 @@ var tsnePlot = function() {
 
     function onExportIdsClick() {
         /* Edit - Export cell IDs */
-        var idList = []
+        var idList = [];
         for (var cellId in gSelCellIds) {
-            idList.push(cellId)
+            idList.push(cellId);
         }
 
         var dlgHeight = 500;
@@ -290,7 +293,7 @@ var tsnePlot = function() {
                 document.execCommand('copy');
                 $( this ).dialog( "close" );
             }
-        }
+        };
 
 
         showDialogBox(htmls, "List of "+idList.length+" IDs", {showClose:true, height:dlgHeight, width:400, buttons:buttons});
@@ -351,7 +354,7 @@ var tsnePlot = function() {
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li><a href="#" id="tpOnlySelectedButton">Show only selected</a></li>');
-         htmls.push('<li><a href="#" id="tpFilterButton">Hide selected'+gSampleDesc+'</a></li>');
+         htmls.push('<li><a href="#" id="tpFilterButton">Hide selected '+gSampleDesc+'s</a></li>');
          htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
          htmls.push('<li><a href="#" id="tpHideLabels">Hide cluster labels</a></li>');
          htmls.push('<li><hr class="half-rule"></li>');
@@ -432,9 +435,12 @@ var tsnePlot = function() {
        var doHover = false;
        $(".nav > .dropdown").click( function(){ doHover = true;} );
        $(".nav > .dropdown").hover(
-           function(event){ if (doHover) {  $(".dropdown-submenu").removeClass("open"); $(".dropdown").removeClass("open"); $(this).addClass('open'); } }
-       );
-       $(document).click ( function() { doHover= false });
+           function(event) { 
+               if (doHover) {  
+                   $(".dropdown-submenu").removeClass("open"); $(".dropdown").removeClass("open"); $(this).addClass('open'); 
+               } 
+           });
+       $(document).click ( function() { doHover= false; });
 
        // This version is like the existing genome browser menu hover effect
        // activate mouse hovers for the navbar http://stackoverflow.com/a/21486327/233871
@@ -883,13 +889,23 @@ var tsnePlot = function() {
     }
 
     function loadColors(legendRows) {
-    /* go over the legend lines, use the unique key to find the manually defined colors in localStorage */
+    /* go over the legend lines, use the unique key to find the manually
+     * defined colors in localStorage or in gOptions.metaColors */
+        _dump(gOptions);
+        var legendColors = gCurrentDataset.metaColors;
         for (var i = 0; i < legendRows.length; i++) {
             var legKey = legendRows[i][5];
             var defColor = legendRows[i][1];
+            var legLabel = legendRows[i][2];
+            // first check localstorage
             var color = localStorage.getItem(legKey);
-            if ((color===undefined) || (color===null))
+            if (legendColors !== undefined && ((color===undefined) || (color===null))) {
+                    color = legendColors[legLabel];
+            }
+
+            if (color===undefined || color === null) {
                 color=defColor;
+            }
             legendRows[i][0] = color;
         }
         return legendRows;
@@ -905,15 +921,16 @@ var tsnePlot = function() {
         // build map meta val -> legendId
         var metaToLegend = {};
         var rows = gLegend.rows;
+        var metaVal = null;
         for (var i = 0; i < rows.length; i++) {
-            var metaVal = rows[i][4];
+            metaVal = rows[i][4];
             metaToLegend[metaVal] = i;
         }
 
         var cellIdToLegendId = {};
         for (var j = 0; j < allCoords.length; j++) {
             var cellId = allCoords[j][0];
-            var metaVal = metaData[cellId][metaIdx];
+            metaVal = metaData[cellId][metaIdx];
             cellIdToLegendId[cellId] = metaToLegend[metaVal];
         }
         return cellIdToLegendId;
@@ -975,6 +992,7 @@ var tsnePlot = function() {
                 var binMax = deciles[j+1];
                 var legendId = j+1; // bin 0 is reserved for null, so legendId = binIdx+1
                 var legLabel = binMin.toFixed(2)+' to '+binMax.toFixed(2);
+
                 var defColor = defColors[j];
                 var uniqueKey = geneId+"|"+legLabel;
                 legendRows.push( [ defColor, defColor, legLabel, count, legendId, uniqueKey] );
@@ -1008,7 +1026,7 @@ var tsnePlot = function() {
         var binSize = exprVals.length / 10;
         var binMaxArr = newArray(11, -Number.MAX_VALUE); // 10 bins + bin0 for null values
         var binCounts = newArray(11, 0);
-        for (var i = 0; i < exprVals.length; i++) {
+        for (i = 0; i < exprVals.length; i++) {
             var exprRow = exprVals[i];
             var exprVal = exprRow[0];
             var cellId = exprRow[1];
@@ -1020,7 +1038,7 @@ var tsnePlot = function() {
         }
 
         // add the cellIds with null values
-        for (var i = 0; i < nullIds.length; i++) {
+        for (i = 0; i < nullIds.length; i++) {
             cell2bin[nullIds[i]] = 0;
         }
 
@@ -1031,18 +1049,16 @@ var tsnePlot = function() {
         var legendRows = [];
 
         // bin0 is "no value" 
-        legendRows.push( [ "AAAAAA", "AAAAAA", "No Value", nullIds.length, 0, geneSym+"|null"] );
+        legendRows.push( [ cNullColor, cNullColor, "No Value", nullIds.length, 0, geneSym+"|null"] );
 
         if (exprVals.length>0) {
             var defColors = makeColorPalette(binMaxArr.length, true);
             var lastMax = exprVals[0][0];
-            for (var i = 1; i < binCounts.length; i++) {
+            for (i = 1; i < binCounts.length; i++) {
                 var count = binCounts[i];
                 var binMin = lastMax;
                 var binMax = binMaxArr[i];
                 var binId = i;
-                var legLabel = null;
-                var defColor = null;
                 var legLabel = binMin.toFixed(2)+' to '+binMax.toFixed(2);
                 var defColor = defColors[i];
                 var uniqueKey = geneSym+"|"+legLabel;
@@ -1131,7 +1147,7 @@ var tsnePlot = function() {
         /* called when all gene expression vectors have been loaded */
         console.log("All genes complete");
         // Close the dialog box only if all genes were OK. The user needs to see the list of skipped genes
-        if ( $( "#tpNotFoundGenes" ).length==0 ) {
+        if ( $( "#tpNotFoundGenes" ).length===0 ) {
             $("#tpDialog").dialog("close");
         }
 
@@ -1166,7 +1182,7 @@ var tsnePlot = function() {
             newGeneFields.push( [geneSym, geneId] );
 
             for (var cellI = 0; cellI < cellIdCount; cellI++) {
-                var cellId = cellIds[cellI];
+                cellId = cellIds[cellI];
                 newExprData[cellId][geneI] = geneVec[cellI];
             }
         }
@@ -1222,13 +1238,13 @@ var tsnePlot = function() {
         gLoad_geneExpr = {};
 
         var notFoundGenes = [];
-        var baseUrl = gOptions.datasets[gCurrentDatasetIdx].baseUrl;
+        var baseUrl = gCurrentDataset.baseUrl;
         var url = joinPaths([baseUrl, "geneMatrix.tsv"]);
         var validCount = 0; // needed for progressbar later
         for (var i = 0; i < genes.length; i++) {
             var gene = genes[i];
-            if (gene.length==0) // skip empty lines
-                continue
+            if (gene.length===0) // skip empty lines
+                continue;
             if (!(gene in matrixOffsets))
                 {
                 notFoundGenes.push(gene);
@@ -1386,12 +1402,15 @@ var tsnePlot = function() {
         var defaultColors = makeColorPalette(countListSorted.length, sortResult.isSequence);
 
         var rows = [];
-        for (var i = 0; i < countListSorted.length; i++) {
+        for (i = 0; i < countListSorted.length; i++) {
             var count = countListSorted[i][0];
             var label = countListSorted[i][1];
             var color = defaultColors[i];
             var uniqueKey = fieldName+"|"+label;
             var colorMapKey = label;
+            if (label===null || label.trim()==="" || label==="none" || label==="None" || label==="Unknown" || label==="NaN" || label==="NA")
+                color = cNullColor;
+
             rows.push( [ color, color, label, count, colorMapKey, uniqueKey] );
         }
 
@@ -1437,7 +1456,7 @@ var tsnePlot = function() {
     function drawToolBar () {
     /* add the tool bar with icons of tools */
         $("#tpToolBar").remove();
-        $(document.body).append("<div id='tpToolBar' style='position:absolute;left:0px;top:"+menuBarHeight+"px'></div>")
+        $(document.body).append("<div id='tpToolBar' style='position:absolute;left:0px;top:"+menuBarHeight+"px'></div>");
 
         var htmls = [];
         htmls.push('<button title="Activate zoom" id="tpIconZoom" type="button" class="btn-small btn-outline-primary"><i class="material-icons">zoom_in</i></button>');
@@ -1450,7 +1469,7 @@ var tsnePlot = function() {
     function drawMetaBar () {
     /* add the left sidebar with the meta data fields */
         $("#tpMetaBar").remove();
-        $(document.body).append("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+(menuBarHeight+toolBarHeight)+"px'></div>")
+        $(document.body).append("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+(menuBarHeight+toolBarHeight)+"px'></div>");
 
         var htmls = [];
         for (var i = 0; i < metaFields.length; i++) {
@@ -1600,8 +1619,8 @@ var tsnePlot = function() {
 
     function loadConfig(jsonDict) {
     /* accepts dict with 'metaFields' and 'geneFields', loads into global vars and sets up window */
-        metaFields = jsonDict["metaFields"];
-        geneFields = jsonDict["geneFields"];
+        metaFields = jsonDict.metaFields;
+        geneFields = jsonDict.geneFields;
         gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
         if (gLabelMetaIdx==undefined) {
             gLabelMetaIdx = null;
@@ -1612,7 +1631,7 @@ var tsnePlot = function() {
 
     function loadMeta(jsonDict) {
     /* accepts dict with 'meta', loads into global var 'meta' */
-        metaData = jsonDict["meta"];
+        metaData = jsonDict.meta;
         //if (currDataset.clusterLabelField!==undefined)
             //gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
     }
@@ -1634,9 +1653,9 @@ var tsnePlot = function() {
 
     function keys(o) {
     /* return all keys of object */
-        var keys = [];
-        for(var k in o) keys.push(k);
-        return keys;
+        var allKeys = [];
+        for(var k in o) allKeys.push(k);
+        return allKeys;
     }
 
     function scaleDataAndColorByCluster() {
@@ -1647,8 +1666,7 @@ var tsnePlot = function() {
         shownCoords = allCoords.slice();
         pixelCoords = scaleData(shownCoords);
 
-        var currDataset = gOptions.datasets[gCurrentDatasetIdx];
-        var clusterFieldName = gOptions.datasets[gCurrentDatasetIdx].clusterField;
+        var clusterFieldName = gCurrentDataset.clusterField;
         if (clusterFieldName!=undefined) {
             var clusterFieldIdx = metaFields.indexOf(clusterFieldName);
             //if (clusterFieldIdx===undefined)
@@ -1696,10 +1714,10 @@ var tsnePlot = function() {
     function startLoadJson(path, func, showError) {
     /* load a json file relative to baseUrl and call a function when done */
     var fullUrl = jsonBaseUrl + path;
-    return jQuery.getJSON(fullUrl, function(data){ func(data) } )
+    return jQuery.getJSON(fullUrl, function(data){ func(data); } )
         .fail(function() { 
             if (showError) 
-                alert("Could not load "+fullUrl)
+                alert("Could not load "+fullUrl);
         });
     }
 
@@ -1710,12 +1728,11 @@ var tsnePlot = function() {
         pcaCoords = null;
         seuratCoords = null;
         gLegend = null;
-        gCurrentDatasetIdx = datasetIdx;
 
-        var currDataset = gOptions.datasets[gCurrentDatasetIdx];
-        var coordFiles = currDataset.coordFiles;
+        gCurrentDataset = gOptions.datasets[datasetIdx];
+        var coordFiles = gCurrentDataset.coordFiles;
         if (coordFiles==undefined)
-            currDataset.coordFiles = [
+            gCurrentDataset.coordFiles = [
                 ["Seurat T-SNE", "seuratCoords.json"],
                 ["PCA: PC1 / PC2", "pc12.json"],
                 ["PCA: PC2 / PC3", "pc23.json"],
@@ -1724,7 +1741,7 @@ var tsnePlot = function() {
             ];
        drawLayoutMenu();
 
-        jsonBaseUrl = currDataset.baseUrl;
+        jsonBaseUrl = gCurrentDataset.baseUrl;
         startLoadJson("geneExpr.json", loadGeneExpr, false );
         // make sure that we plot only when both the config, the meta data and the tsne coords
         // have been loaded
@@ -1757,6 +1774,7 @@ var tsnePlot = function() {
             if ("title" in globalOpts)
                 gTitle = globalOpts["title"];
         }
+            
         gOptions = opt;
         drawMenuBar();
         drawToolBar();
@@ -1776,8 +1794,9 @@ var tsnePlot = function() {
         // convert the dict to a list of (count, key)
         var countList = [];
         var numCount = 0;
+        var count = null;
         for (var key in dict) {
-            var count = dict[key];
+            count = dict[key];
             if (!isNaN(key)) // key looks like a number
                 numCount++;
             countList.push( [count, key] );
@@ -1791,7 +1810,7 @@ var tsnePlot = function() {
             // change the keys in the list from strings to floats, if possible
             for (var i = 0; i < countList.length; i++) {
                 var el = countList[i];
-                var count = el[0];
+                count = el[0];
                 var label = el[1];
                 if (!isNaN(label)) // label looks like a number
                     label = parseFloat(label);  // convert to float
@@ -1802,9 +1821,9 @@ var tsnePlot = function() {
 
             // change values back to strings
             var newList2 = [];
-            for (var i = 0; i < newList.length; i++) {
+            for (i = 0; i < newList.length; i++) {
                 var el = newList[i];
-                var count = el[0];
+                count = el[0];
                 var label = el[1].toString();
                 newList2.push( [count, label] );
             }
@@ -1864,7 +1883,7 @@ var tsnePlot = function() {
             var coord = coords[i];
             var cellId = coord[0];
             if (!(cellId in cellIds))
-                newCoords.push(coord)
+                newCoords.push(coord);
         }
         return newCoords;
     }
@@ -1876,7 +1895,7 @@ var tsnePlot = function() {
             var coord = coords[i];
             var cellId = coord[0];
             if (cellId in cellIds)
-                newCoords.push(coord)
+                newCoords.push(coord);
         }
         return newCoords;
     }
@@ -1972,12 +1991,20 @@ var tsnePlot = function() {
             var count = rows[i][3];
 
             colors.push(colorHex); // save for later
-            var classStr = "tpLegend"
-            var line = "<div id='tpLegend_"+i+"' class='"+classStr+"'>";
+            var classStr = "tpLegend";
+            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "'>";
             htmls.push(line);
             htmls.push("<input class='tpColorPicker' id='tpLegendColorPicker_"+i+"' />");
-            htmls.push("<div class='tpLegendLabel' id='tpLegendLabel_"+i+"'>");
-            htmls.push(label.replace(/_/g, " "));
+
+            classStr = "tpLegendLabel";
+            label = label.replace(/_/g, " ");
+            if (label.trim()==="") {
+                label = "(empty)";
+                classStr += " tpGrey";
+            }
+
+            htmls.push("<div class='"+classStr+"' id='tpLegendLabel_"+i+"'>");
+            htmls.push(label);
             htmls.push("<div class='tpLegendCount'>"+count+"</div>");
             htmls.push("</div>");
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");

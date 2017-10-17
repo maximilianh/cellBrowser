@@ -7,6 +7,7 @@ body { font-family: Arial,Helvetica,sans-serif; }
 .tpLegendSelect { border: 2px solid black !important; border-bottom: 2px solid black}
 .tpLegendLabel { display:inline; user-select: none }
 .tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888}
+.tpGrey { color: #bbb }
 
 .ui-helper-reset { text-size: 12px !important}
 .ui-tabs { padding: 0 !important}
