@@ -729,10 +729,10 @@ def parseMeta(fname, exprMatrix, mustHaveField=None):
     for row in lineFileNextRow(fname):
         rowDict = row._asdict()
         if idCol not in rowDict:
-            errAbort("The meta data file %s does not have a column named '%s'. Available columns: %s. Use --metaColumn to specify a different name" % (fname, idCol, ",".join(row._fields)))
+            errAbort("The meta data file %s does not have a column named '%s'. First 50 available columns: %s. Use --metaColumn to specify a different name" % (fname, idCol, ",".join(row._fields[:50])))
 
         if mustHaveField and mustHaveField not in rowDict:
-            errAbort("The meta data file %s does not contain a column named '%s'. Available columns: %s. Specify a different cluster label field and run again." % (fname, mustHaveField, ",".join(row._fields)))
+            errAbort("The meta data file %s does not contain a column named '%s'. First 50 available columns: %s. Specify a different cluster label field and run again." % (fname, mustHaveField, ",".join(row._fields[:50])))
 
         cellId = rowDict[idCol]
         #del rowDict[idCol]
