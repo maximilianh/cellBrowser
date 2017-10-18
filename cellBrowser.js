@@ -695,6 +695,17 @@ var tsnePlot = function() {
         renderer.render(stage);
     }
 
+    function buildLegend(sortBy) {
+    /* build the gLegend and gClasses globals */
+        if (gLegend.type=="meta")
+            {
+            gLegend = buildLegendForMeta(gLegend.metaFieldIdx, sortBy);
+            gClasses = assignCellClasses();
+            }
+        else
+            buildLegendForExprAndClasses(sortBy);
+    }
+
     function filterCoordsAndUpdate(cellIds, mode) {
     /* hide/show currently selected cell IDs or "show all". Rebuild the legend and the coloring. */
         if (mode=="hide")
@@ -706,14 +717,7 @@ var tsnePlot = function() {
 
         pixelCoords = scaleData(shownCoords);
 
-        if (gLegend.type=="meta")
-            {
-            gLegend = buildLegendForMeta(gLegend.metaFieldIdx);
-            gClasses = assignCellClasses();
-            }
-        else
-            buildLegendForExprAndClasses();
-
+        buildLegend();
         drawLegend();
         gSelCellIds = {};
         plotDots();
@@ -740,12 +744,12 @@ var tsnePlot = function() {
     }
 
     function onShowAllClick(ev) {
-    /* user clicked the show all button */
+    /* user clicked the show all menu entry */
         //gSelCellIds = {};
         filterCoordsAndUpdate(gSelCellIds, "showAll");
         shownCoords = allCoords.slice(); // complete copy of list, fastest in Blink
         pixelCoords = scaleData(shownCoords);
-        gLegend = buildLegendForMeta(gLegend.metaFieldIdx);
+        buildLegend();
         drawLegend();
         gClasses = assignCellClasses();
         plotDots();
@@ -1081,7 +1085,7 @@ var tsnePlot = function() {
         gLegend = {};
         gLegend.type = "gene";
         gLegend.geneIdx = geneIdx;
-        buildLegendForExprAndClasses(geneIdx);
+        buildLegend();
         drawLegend();
         plotDots();
         renderer.render(stage);
@@ -1368,7 +1372,13 @@ var tsnePlot = function() {
         });
     }
 
-    function buildLegendForMeta(metaIndex) {
+    function likeEmptyString(label) {
+    /* some special values like "undefined" and empty string get colored in grey  */
+        return (label===null || label.trim()==="" || label==="none" || label==="None" 
+                || label==="Unknown" || label==="NaN" || label==="NA" || label==="undefined" || label=="Na")
+    }
+
+    function buildLegendForMeta(metaIndex, sortBy) {
     /* Build a new gLegend object and return it */
         var legend = {};
         legend.type = "meta";
@@ -1384,22 +1394,24 @@ var tsnePlot = function() {
         }
 
         if (keys(metaCounts).length > 100) {
-            alert("Sorry, cannot color by fields with more than 100 different values");
+            alert("Cannot color on a field that has more than 100 different values");
             return null;
         }
 
         // sort like numbers if the strings are mostly numbers, otherwise sort like strings
-        var sortResult = legendSort(metaCounts);
+        var sortResult = legendSort(metaCounts, sortBy);
         var countListSorted = sortResult.list;
         
-        var fieldName = metaFields[metaIndex];
         if (fieldName!==undefined)
             $("#tpLegendTitle").html(fieldName.replace("_", " "));
-        // force field names that look like "cluster" to a rainbow palette
-        if (fieldName.indexOf("luster") != -1)
-            sortResult.isSequence = false;
 
-        var defaultColors = makeColorPalette(countListSorted.length, sortResult.isSequence);
+        var fieldName = metaFields[metaIndex];
+        // force field names that look like "cluster" to a rainbow palette
+        // even if they look like numbers
+        if (fieldName.indexOf("luster") != -1 && sortBy===undefined)
+            sortBy = "count";
+
+        var defaultColors = makeColorPalette(countListSorted.length, sortResult.useGradient);
 
         var rows = [];
         for (i = 0; i < countListSorted.length; i++) {
@@ -1408,13 +1420,14 @@ var tsnePlot = function() {
             var color = defaultColors[i];
             var uniqueKey = fieldName+"|"+label;
             var colorMapKey = label;
-            if (label===null || label.trim()==="" || label==="none" || label==="None" || label==="Unknown" || label==="NaN" || label==="NA")
+            if (likeEmptyString(label))
                 color = cNullColor;
 
             rows.push( [ color, color, label, count, colorMapKey, uniqueKey] );
         }
 
         legend.rows = loadColors(rows);
+        legend.isSortedByName = sortResult.isSortedByName;
         return legend;
     }
 
@@ -1624,7 +1637,9 @@ var tsnePlot = function() {
         gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
         if (gLabelMetaIdx==undefined) {
             gLabelMetaIdx = null;
-        }
+            menuBarHide("#tpHideLabels");
+        } else
+            menuBarShow("#tpHideLabels");
         addInfoBars(metaFields);
         resizeRenderer();
     }
@@ -1786,7 +1801,7 @@ var tsnePlot = function() {
         menuBarHide("#tpShowAllButton");
     }
 
-    function legendSort(dict) {
+    function legendSort(dict, sortBy) {
     /* return a dictionary as reverse-sorted list (count, fieldValue).
     If there are more than 4 entries and all but one key are numbers, 
     sorts by key instead.
@@ -1795,6 +1810,7 @@ var tsnePlot = function() {
         var countList = [];
         var numCount = 0;
         var count = null;
+        var useGradient = false; // use a rainbow or gradient palette?
         for (var key in dict) {
             count = dict[key];
             if (!isNaN(key)) // key looks like a number
@@ -1802,22 +1818,34 @@ var tsnePlot = function() {
             countList.push( [count, key] );
         }
 
+        // auto-detect: treaet labels as numbers if most values are numbers
+        if ((sortBy===undefined && countList.length >= 4 && numCount >= countList.length-1)) {
+            sortBy = "name";
+            useGradient = true;
+        }
+
         var newList = [];
-        var isSequence = false;
-        if ((countList.length >= 4) && (numCount+1 >= countList.length)) {
-            isSequence = true;
+        var isSortedByName = false;
+
+        if (sortBy==="name") {
+            isSortedByName = true;
             
             // change the keys in the list from strings to floats, if possible
+            // this makes sure that the subsequent sorting is really by number
             for (var i = 0; i < countList.length; i++) {
                 var el = countList[i];
                 count = el[0];
                 var label = el[1];
-                if (!isNaN(label)) // label looks like a number
-                    label = parseFloat(label);  // convert to float
+                if (label!=="" && !isNaN(label)) // label string looks like a number
+                    label = parseFloat(label);  // -> convert label to float
                 newList.push( [count, label] );
             }
 
-            newList.sort(function(a, b){ return a[1] - b[1]; }); // sort by label
+            // sort by name/label
+            newList.sort(function(a, b) { 
+                //return a[1] > b[1];  // this does not work. Why?
+                return a[1].localeCompare(b[1]); 
+            }); 
 
             // change values back to strings
             var newList2 = [];
@@ -1836,7 +1864,8 @@ var tsnePlot = function() {
 
         var ret = {};
         ret.list = newList;
-        ret.isSequence = isSequence;
+        ret.isSortedByName = isSortedByName;
+        ret.useGradient = useGradient;
         return ret;
     }
 
@@ -1948,6 +1977,24 @@ var tsnePlot = function() {
         renderer.render(stage);
     }
 
+    function onSortByClick (ev) {
+    /* flip the current legend sorting */
+        var sortBy = null;
+        var nextSortBy = null;
+        if (gLegend.isSortedByName) {
+            sortBy = "count";
+            nextSortBy = "name";
+        }
+        else {
+            sortBy = "name";
+            nextSortBy = "count";
+        }
+        buildLegend(sortBy);
+        drawLegend();
+        jQuery("#tpSortBy").text("Sort by "+nextSortBy);
+    }
+
+
     function onMetaRightClick (key, options) {
     /* user right-clicks on a meta field */
         var metaIdx = parseInt(options.$trigger[0].id.split("_")[1]);
@@ -1974,8 +2021,10 @@ var tsnePlot = function() {
         filterCoordsAndUpdate(cellIds, mode);
     }
 
-    function drawLegend() {
-    /* draws current legend as specified by gLegend.rows */
+    function drawLegend(sortBy) {
+    /* draws current legend as specified by gLegend.rows 
+     * sortBy can be "name" or "count" or "undefined" (=auto-detect)
+     * */
         if (gLegend.rows==undefined)
             return;
 
@@ -2010,12 +2059,22 @@ var tsnePlot = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
             htmls.push("</div>");
         }
-        htmls.push("<div id='tpResetColors' style='color: #888; cursor:pointer; font-size:13px'>Reset colors</div>");
+        htmls.push("<span id='tpResetColors' style='color: #888; cursor:pointer; font-size:13px'>Reset colors</span>&emsp;");
+
+        // add the "sort by" div
+        var sortLabel = null;
+        if (gLegend.isSortedByName===true)
+            sortLabel = "Sort by count" // add the link to sort by the other possibility
+        else
+            sortLabel = "Sort by name"
+        htmls.push("<span id='tpSortBy' style='color: #888; cursor:pointer; font-size:13px'>"+sortLabel+"</span>");
+
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
         $('.tpLegend').click( onLegendLabelClick );
         $('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
         $('#tpResetColors').click( onResetColorsClick );
+        $('#tpSortBy').click( onSortByClick );
 
         // setup the right-click menu
         var menuItems = [{name: "Hide "+gSampleDesc+"s with this value"}, {name:"Show only "+gSampleDesc+"s with this value"}];
