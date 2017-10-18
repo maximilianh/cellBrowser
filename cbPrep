@@ -1371,7 +1371,7 @@ def parseColors(fname):
     for metaVal, color in colDict.iteritems():
         assert(len(color)<=6) # colors can be no more than six hex digits
         for c in color:
-            assert(c in "0123456789ABCDEF") # color must be a hex number
+            assert(c in "0123456789ABCDEFabcdef") # color must be a hex number
     return colDict
 
 def runCommands(args):
