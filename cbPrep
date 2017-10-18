@@ -1368,7 +1368,7 @@ def findDataDir(outDir, dataName, exprFname):
 def parseColors(fname):
     " parse color table and return as dict value -> color "
     colDict = parseDict(fname)
-    for metaVal, color in colDict:
+    for metaVal, color in colDict.iteritems():
         assert(len(color)<=6) # colors can be no more than six hex digits
         for c in color:
             assert(c in "0123456789ABCDEF") # color must be a hex number
