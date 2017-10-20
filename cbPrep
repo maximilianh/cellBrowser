@@ -33,7 +33,7 @@ encoder.FLOAT_REPR = lambda o: format(o, '.3f')
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] command -m metaData -e exprMatrix -o outDir - "
-    "process single-cell data into a directory of html files to view them
+    "process RNA-seq (single-cell or bulk) expression matrices into a directory of html files to view them
     
     commands:
     - 'coords': import existing coordinates, if you already have (x,y)-coordinates for each cell
@@ -48,6 +48,9 @@ def parseArgs():
         - Matrix has one row per gene and one column per sample.
         - Use --log if the matrix is not in log2 format yet.
         - If you do not have a meta table, specify "none" instead.
+        - if you re-run matrix again, it will read intermediate results from the <outDir>/build directory
+        - this means that you need to clear the output directory if you want a full
+          re-run.
 
     - '10x': like 'matrix' but the input is a directory in 10x CellRanger format
       Example: %prog 10x meta.tsv cellRangerOutputDir/ ~/public_html/cellBrowser/10Sample/
@@ -66,7 +69,7 @@ def parseArgs():
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file, .gz is OK")
     parser.add_option("-m", "--metaData", dest="metaData", action="store", help="meta data table file, .gz is OK")
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output dir to write .json files to")
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output dir to write .json files to. Note that under this directory a subdirectory 'build' will be created. It contains temporary files of the pipelines. You can delete it once you do not plan to re-run the json build again. ")
     parser.add_option("-c", "--coords", dest="coords", action="store", help="table with cell coordinates")
     parser.add_option("-g", "--genes", dest="genes", action="store",
             help="default marker genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
@@ -133,6 +136,20 @@ def errAbort(msg):
     # strange Python trickery to allow something that looks like a struct
     #pass
     
+def writeList(list, fname):
+    " write list to file, one value per line "
+    ofh = open(fname, "w")
+    for l in list:
+        ofh.write("%s\n"%l)
+    ofh.close()
+
+def parseList(fname):
+    " write list to file, one value per line "
+    ofh = open(fname)
+    for l in list:
+        ofh.write("%s\n"%l)
+    ofh.close()
+
 def parseDict(fname):
     """ parse text file in format key<tab>value and return as dict key->val """
     d = {}
@@ -649,7 +666,7 @@ def writeJson(exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdTo
         for geneId, annot in geneIdToAnnot.iteritems():
             if geneId not in matrixGeneIds:
                 logging.warn("gene %s in the default gene list (option -g) is not in the expression matrix. "
-                        "It will be skipped now and will not appearin the gene list" % geneId)
+                        "It will be skipped now and will not appear in the gene list" % geneId)
                 continue
 
             if geneToSym:
@@ -711,14 +728,13 @@ def writeJson(exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdTo
         saveJson(desc, datasetFname, pretty=True)
 
 
-def parseMeta(fname, exprMatrix, mustHaveField=None):
+def parseMeta(fname, cellIds, mustHaveField=None):
     """ parse a tab-sep file where one column is a cellId and the others are attributes for it.  
     returns a dict cellId -> dict with attributes.
     if fname is 'none': create fake meta data by using the headers of the file matrixFname
     """
     if fname.lower()=="none":
-        #cellIds = open(matrixFname).readline().rstrip().split("\t")[1:]
-        cellIds = exprMatrix.keys()
+        #cellIds = exprMatrix.keys()
         meta = {}
         for cellId in cellIds:
             meta[cellId] = {"Sample ID" : cellId}
@@ -821,7 +837,8 @@ def isValidField(meta, fieldName):
 def importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, outDir):
     " parse coordinates and write all json files to outDir "
     exprMatrix = parseMatrix(exprFname, options.doLog)
-    meta = parseMeta(metaFname, exprMatrix)
+    cellIds = exprMatrix.keys()
+    meta = parseMeta(metaFname, cellIds)
     coords = parseCoords(coordFname)
 
     isValidField(meta, clusterLabelField)
@@ -1048,14 +1065,14 @@ def parseTsneToJson(seuratToOrig, tsnePath):
     return coordList
 
 def parseClusters(newToOrigId, clusterPath):
-    """ convert seurat tsne cluster assignment to dict cellId -> cluster """
+    """ convert seurat tsne cluster assignment to dict cellId -> cluster (as a two-digit string) """
     cellToCluster = {}
     for row in lineFileNextRow(clusterPath):
         cellId = row[0].split("_")[-1]
         if cellId not in newToOrigId:
             continue
         origId = newToOrigId[cellId]
-        cellToCluster[origId] = int(row.ident)
+        cellToCluster[origId] = "%02d" % (int(row.ident))
     return cellToCluster
 
 def addToMeta(meta, metaName, newMeta, prefix=""):
@@ -1069,9 +1086,9 @@ def addToMeta(meta, metaName, newMeta, prefix=""):
 
     missingCellIds = allCellIds - doneCellIds
     if missingCellIds!=0:
-        logging.warn("%d cells/samples had got no data for the attribute %s, adding 'NA' now to avoid errors" % (len(missingCellIds), metaName))
+        logging.warn("%d cells/samples has no value for the attribute '%s', setting it to '' now to avoid errors" % (len(missingCellIds), metaName))
         for cellId in missingCellIds:
-                meta[cellId][metaName] = "NA"
+                meta[cellId][metaName] = ""
     return meta
 
 def runSeurat(meta, exprMatrix, tmpDir):
@@ -1166,8 +1183,11 @@ def makeDescLines(metaFname, matrixFname):
 
 def runSeuratPcaPipeline(metaFname, exprMatrix, outDir):
     " run Seurat and PCA and return new meta data "
-    meta = parseMeta(metaFname, exprMatrix)
     tmpDir = makeTmpDirFor(outDir)
+    cellIdFname = join(tmpDir, "cellIds.txt")
+    if isfile(cellIdFname):
+        cellIds = parseMeta
+    meta = parseMeta(metaFname, cellIds)
     meta, seuratCoords = runSeurat(meta, exprMatrix, tmpDir)
     meta, pcaCoords    = runPca(meta, exprMatrix, tmpDir)
     return meta, seuratCoords, pcaCoords
@@ -1397,6 +1417,7 @@ def runCommands(args):
 
     dataOutDir = findDataDir(outDir, options.datasetName, exprFname)
 
+    global colors
     colors = parseColors(options.colors)
 
     if command=="coords":

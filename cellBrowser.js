@@ -22,7 +22,7 @@ var tsnePlot = function() {
     var pcaCoords = null;   // array of [cellId, coord1, coord2, coord3, ... All coords are floats.
 
     var allCoords = null;     // pointer to either seuratCoords or pcaCoords
-    var shownCoords = null;   // currently shown float coords of allCoords
+    var shownCoords = null;   // currently shown float coords of allCoords, hidden cells not included
 
     var coord1Idx = 1; // index of X-axis value in the tuples of allCoords
     var coord2Idx = 2; // index of Y-axis value in the tuples of allCoords
@@ -61,7 +61,7 @@ var tsnePlot = function() {
     var zoomRange = null;   // dict of minX, maxX, minY, maxY -> float
     var zoomFullRange = null; // range to show 100%
 
-    // An object of cellIds that are highlighted/selected
+    // An object of cellIds that are highlighted/selected, cellId -> true
     var gSelCellIds = {};
 
     // the list of cellIds currently used for gene bar coloring
@@ -238,13 +238,29 @@ var tsnePlot = function() {
         }
     }
 
-    function onSelectAllClick() {
-    /* Edit - select all */
-        gSelCellIds = {};
+    function getAllCellIdsAsList() {
+    /* return a list of all cell Ids */
+        var cellIds = [];
         for (var i=0; i<shownCoords.length; i++) {
             var cellId = shownCoords[i][0];
-            gSelCellIds[cellId] = true;
+            cellIds.push(cellId);
         }
+        return cellIds;
+    }
+
+    function getAllCellIdsAsDict() {
+    /* return a list of all cell Ids */
+        var cellIds = {};
+        for (var i=0; i<shownCoords.length; i++) {
+            var cellId = shownCoords[i][0];
+            cellIds[cellId] = true;
+        }
+        return cellIds;
+    }
+
+    function onSelectAllClick() {
+    /* Edit - select all */
+        gSelCellIds = getAllCellIdsAsDict();
         updateSelection();
     }
 
@@ -252,6 +268,44 @@ var tsnePlot = function() {
     /* Edit - Select None */
         gSelCellIds = {};
         updateSelection();
+    }
+
+    function onSelectByIdClick() {
+        /* Edit - select cells by ID */
+        var dlgHeight = 500;
+        var dlgWidth = 500;
+        var htmls = [];
+        var buttons = {
+        "OK" :
+            function() {
+                var idListStr = $("#tpIdList").val();
+                idListStr = idListStr.trim().replace(/\r\n/g,"\n");
+                gSelCellIds = {};
+                if (idListStr!=="") {
+                    var allCellIds = getAllCellIdsAsDict();
+                    var notFoundIds = [];
+                    var idList = idListStr.split("\n");
+                    for (var i = 0; i < idList.length; i++) {
+                        var cellId = idList[i];
+                        if (cellId==="")
+                            continue;
+                        if (cellId in allCellIds)
+                            gSelCellIds[cellId] = true;
+                        else
+                            notFoundIds.push(cellId);
+                    }
+                    if (notFoundIds.length!==0)
+                        alert("Could not find these "+gSampleDesc+" IDs:"+ notFoundIds.join(", "));
+                }
+                $( this ).dialog( "close" );
+                updateSelection();
+            }
+        };
+
+        htmls.push("<textarea id='tpIdList' style='height:320px;width:350px;display:block'>");
+        htmls.push("</textarea>");
+        var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
+        showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
     }
 
     function onExportIdsClick() {
@@ -268,12 +322,12 @@ var tsnePlot = function() {
             {
             //showDialogBox(["Please select cells first, e.g. by clicking into the legend"], "No selection", {showOk:true});
             htmls.push("No cells are selected. Shown below are the identifiers of all cells visible on the screen.<p>");
-            for (var i = 0; i < shownCoords.length; i++)
+            for (var i = 0; i < pixelCoords.length; i++)
                 idList.push(shownCoords[i][0]);
             }
 
         var idListEnc = encodeURIComponent(idList.join("\n"));
-        htmls.push("<textarea style='height:320px;width:250px;display:block'>");
+        htmls.push("<textarea style='height:320px;width:350px;display:block'>");
         htmls.push(idList.join("\n"));
         htmls.push("</textarea>");
         
@@ -334,7 +388,8 @@ var tsnePlot = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all</span><span class="dropmenu-item-content">A</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">N</span></a></li>');
-         htmls.push('<li><a id="tpExportIds" href="#">Export '+gSampleDesc+' IDs</a></li>');
+         htmls.push('<li><a id="tpSelectById" href="#">Select by ID...</a></li>');
+         htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
          htmls.push('</ul>'); // View dropdown
          htmls.push('</li>'); // View dropdown
 
@@ -411,6 +466,7 @@ var tsnePlot = function() {
        $('#tpShowAllButton').click( onShowAllClick );
        $('#tpHideLabels').click( onHideLabelsClick );
        $('#tpExportIds').click( onExportIdsClick );
+       $('#tpSelectById').click( onSelectByIdClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
        $('#tpOpenDatasetLink').click( onOpenDatasetLink );
        $('#tpSaveImage').click( onSaveAsClick );
@@ -1116,7 +1172,7 @@ var tsnePlot = function() {
         if (options.showOk!=undefined)
             dialogOpts["buttons"]["OK"] = function() { $( this ).dialog( "close" ); };
         if (options.showClose!=undefined)
-            dialogOpts["buttons"]["Close"] = function() { $( this ).dialog( "close" ); };
+            dialogOpts["buttons"]["Cancel"] = function() { $( this ).dialog( "close" ); };
         //dialogOpts["position"] = "center";
         //dialogOpts["height"] = "auto";
         //dialogOpts["width"] = "auto";
@@ -1538,8 +1594,9 @@ var tsnePlot = function() {
         
     function scaleData(coords) {
     /* scale coords (x,y float coordinates) to integer pixels on screen and return new list of (cellId, x, y) */
-        var winWidth = winInfo.width;
-        var winHeight = winInfo.height;
+        var borderSize = 5;
+        var winWidth = winInfo.width-(2*borderSize);
+        var winHeight = winInfo.height-(2*borderSize);
         console.log("Starting coordinate scaling");
 
         // var access is faster than object access
@@ -1560,8 +1617,8 @@ var tsnePlot = function() {
             // ignore anything outside of current zoom range. Performance: Quad-tree?
             if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
                 continue;
-            var newX = Math.round(((x-minX)/spanX)*winWidth);
-            var newY = Math.round(((y-minY)/spanY)*winHeight);
+            var newX = Math.round(((x-minX)/spanX)*winWidth)+borderSize;
+            var newY = Math.round(((y-minY)/spanY)*winHeight)+borderSize;
             var newRow = [cellId, newX, newY];
             newCoords.push(newRow);
         }
@@ -2335,10 +2392,13 @@ var tsnePlot = function() {
         var hideCount = allCoords.length - shownCoords.length;
 
         var textLines = [];
-        var line1 = pixelCoords.length + ' '+gSampleDesc+'s';
+
+        textLines.push(gCurrentDataset.label)
+
+        var countLine = pixelCoords.length + ' '+gSampleDesc+'s';
         if (hideCount!=0)
-            line1 += " shown";
-        textLines.push(line1);
+            countLine += " shown";
+        textLines.push(countLine);
 
         if (selCount!=0)
             textLines.push(selCount+" selected");
