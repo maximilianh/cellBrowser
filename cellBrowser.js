@@ -281,29 +281,41 @@ var tsnePlot = function() {
                 var idListStr = $("#tpIdList").val();
                 idListStr = idListStr.trim().replace(/\r\n/g,"\n");
                 gSelCellIds = {};
-                if (idListStr!=="") {
-                    var allCellIds = getAllCellIdsAsDict();
-                    var notFoundIds = [];
-                    var idList = idListStr.split("\n");
+                if (idListStr=="") 
+                    return;
+
+                // first check the IDs
+                var allCellIds = getAllCellIdsAsDict();
+                var notFoundIds = [];
+                var idList = idListStr.split("\n");
+                for (var i = 0; i < idList.length; i++) {
+                    var cellId = idList[i];
+                    if (cellId==="")
+                        continue;
+                    if (!(cellId in allCellIds))
+                        notFoundIds.push(cellId);
+                }
+
+                if (notFoundIds.length!==0) {
+                    //alert("Could not find these "+gSampleDesc+" IDs:"+ notFoundIds.join(", "));
+                    $('#tpNotFoundIds').text("Could not find these IDs: "+notFoundIds.join(", "));
+                    $('#tpNotFoundHint').text("Please fix them and click the OK button to try again.");
+                    }
+                else {
                     for (var i = 0; i < idList.length; i++) {
                         var cellId = idList[i];
                         if (cellId==="")
                             continue;
-                        if (cellId in allCellIds)
-                            gSelCellIds[cellId] = true;
-                        else
-                            notFoundIds.push(cellId);
-                    }
-                    if (notFoundIds.length!==0)
-                        alert("Could not find these "+gSampleDesc+" IDs:"+ notFoundIds.join(", "));
+                        gSelCellIds[cellId] = true;
+                        }
+                    $( this ).dialog( "close" );
+                    updateSelection();
                 }
-                $( this ).dialog( "close" );
-                updateSelection();
             }
         };
 
         htmls.push("<textarea id='tpIdList' style='height:320px;width:350px;display:block'>");
-        htmls.push("</textarea>");
+        htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
         var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
     }
