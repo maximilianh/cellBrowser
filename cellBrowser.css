@@ -2,11 +2,12 @@
 /* * {padding: 0; margin: 0} */ /* important, otherwise precise placement is impossible */ 
 /* body { font-family: Roboto, sans-serif } */
 body { font-family: Arial,Helvetica,sans-serif; }
-.tpLegend { font-size:13px; border: 2px solid transparent; cursor:default; word-wrap: break-word; }
+.tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
 #tpLegendBar { margin-left: 4px; cursor:default}
 .tpLegendSelect { border: 2px solid black !important; border-bottom: 2px solid black}
-.tpLegendLabel { display:inline; user-select: none }
-.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888}
+.tpLegendLabel { display:inline; user-select: none; }
+/*.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888} */
+.tpLegendCount { display:inline-block; float: right; color: #888} 
 .tpGrey { color: #bbb }
 
 .ui-helper-reset { text-size: 12px !important}
