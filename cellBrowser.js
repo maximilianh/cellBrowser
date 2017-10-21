@@ -310,6 +310,7 @@ var tsnePlot = function() {
                         }
                     $( this ).dialog( "close" );
                     updateSelection();
+                    //alert(idList.length+ " " + gSampleDesc+"s are selected");
                 }
             }
         };
@@ -2121,12 +2122,14 @@ var tsnePlot = function() {
                 classStr += " tpGrey";
             }
 
-            htmls.push("<div class='"+classStr+"' id='tpLegendLabel_"+i+"'>");
+            htmls.push("<span class='"+classStr+"' id='tpLegendLabel_"+i+"'>");
             htmls.push(label);
-            htmls.push("<div class='tpLegendCount'>"+count+"</div>");
+            htmls.push("</span>");
+            htmls.push("<span class='tpLegendCount'>"+count+"</div>");
+            htmls.push("</span>");
+
             htmls.push("</div>");
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
-            htmls.push("</div>");
         }
         htmls.push("<span id='tpResetColors' style='color: #888; cursor:pointer; font-size:13px'>Reset colors</span>&emsp;");
 
