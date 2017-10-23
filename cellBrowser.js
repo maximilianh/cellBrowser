@@ -80,7 +80,7 @@ var tsnePlot = function() {
     var mouseDownY = null;
 
     // -- CONSTANTS
-    // product name is always a variable, management always has the last word
+    // product name = variable, management often change their minds
     var gTitle = "UCSC Cluster Browser";
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a 
@@ -111,6 +111,22 @@ var tsnePlot = function() {
     function _dump(o) {
     /* for debugging */
         console.log(JSON.stringify(o));
+    }
+
+    function cartSave(keyType, key, value, defaultValue) {
+    /* save a value in localStorage. If the value is defaultValue, remove it from localStorage */
+        if (value===defaultValue)
+            localStorage.removeItem(keyType+"|"+key);
+        else
+            localStorage.setItem(keyType+"|"+key, value);
+    }
+
+    function cartGet(keyType, key, value, defaultValue) {
+    /* get a value from localStorage or a default */
+        var val = localStorage.getItem(keyType+"|"+key);
+        if (val===null && defaultValue!==undefined)
+            val = defaultValue;
+        return val
     }
 
     function menuBarHide(idStr) {
@@ -1452,6 +1468,7 @@ var tsnePlot = function() {
         var legend = {};
         legend.type = "meta";
         legend.metaFieldIdx = metaIndex;
+        legend.fieldName = metaFields[metaIndex];
 
         // first make a list of all possible meta values and their counts
         var metaCounts = {};
@@ -1466,6 +1483,10 @@ var tsnePlot = function() {
             alert("Cannot color on a field that has more than 100 different values");
             return null;
         }
+
+        var oldSortBy = cartGet("SORT", legend.fieldName);
+        if (sortBy===undefined && oldSortBy!==undefined)
+            sortBy = oldSortBy;
 
         // sort like numbers if the strings are mostly numbers, otherwise sort like strings
         var sortResult = legendSort(metaCounts, sortBy);
@@ -1518,7 +1539,7 @@ var tsnePlot = function() {
             return;
 
         if (metaFields!=null)
-            $('#tpLegendTitle').text(metaFields[fieldId].replace(/_/g, " "));
+            $('#tpLegendTitle').text(legend.fieldName.replace(/_/g, " "));
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('#tpMetaBox_'+fieldId).addClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
@@ -2082,6 +2103,7 @@ var tsnePlot = function() {
             sortBy = "name";
             nextSortBy = "count";
         }
+        cartSave("SORT", gLegend.fieldName, sortBy, gLegend.defaultSortBy);
         buildLegend(sortBy);
         drawLegend();
         jQuery("#tpSortBy").text("Sort by "+nextSortBy);
