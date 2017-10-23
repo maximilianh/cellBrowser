@@ -1472,7 +1472,7 @@ var tsnePlot = function() {
         var countListSorted = sortResult.list;
         
         if (fieldName!==undefined)
-            $("#tpLegendTitle").html(fieldName.replace("_", " "));
+            $("#tpLegendTitle").text(fieldName.replace(/_/g, " "));
 
         var fieldName = metaFields[metaIndex];
         // force field names that look like "cluster" to a rainbow palette
@@ -1517,6 +1517,8 @@ var tsnePlot = function() {
         if (legend==null)
             return;
 
+        if (metaFields!=null)
+            $('#tpLegendTitle').text(metaFields[fieldId].replace(/_/g, " "));
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('#tpMetaBox_'+fieldId).addClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
@@ -1871,6 +1873,53 @@ var tsnePlot = function() {
         menuBarHide("#tpShowAllButton");
     }
 
+    // https://stackoverflow.com/a/33861088/233871
+    function isInt(x) {
+        return (typeof x==='number') && x % 1 == 0;
+    }
+
+    function naturalSort (a, b) {
+    /* copied from https://github.com/Bill4Time/javascript-natural-sort/blob/master/naturalSort.js */
+    "use strict";
+    var re = /(^([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)?$|^0x[0-9a-f]+$|\d+)/gi,
+        sre = /(^[ ]*|[ ]*$)/g,
+        dre = /(^([\w ]+,?[\w ]+)?[\w ]+,?[\w ]+\d+:\d+(:\d+)?[\w ]?|^\d{1,4}[\/\-]\d{1,4}[\/\-]\d{1,4}|^\w+, \w+ \d+, \d{4})/,
+        hre = /^0x[0-9a-f]+$/i,
+        ore = /^0/,
+        i = function(s) { return naturalSort.insensitive && ('' + s).toLowerCase() || '' + s; },
+        // convert all to strings strip whitespace
+        x = i(a).replace(sre, '') || '',
+        y = i(b).replace(sre, '') || '',
+        // chunk/tokenize
+        xN = x.replace(re, '\0$1\0').replace(/\0$/,'').replace(/^\0/,'').split('\0'),
+        yN = y.replace(re, '\0$1\0').replace(/\0$/,'').replace(/^\0/,'').split('\0'),
+        // numeric, hex or date detection
+        xD = parseInt(x.match(hre), 16) || (xN.length !== 1 && x.match(dre) && Date.parse(x)),
+        yD = parseInt(y.match(hre), 16) || xD && y.match(dre) && Date.parse(y) || null,
+        oFxNcL, oFyNcL;
+    // first try and sort Hex codes or Dates
+    if (yD) {
+        if ( xD < yD ) { return -1; }
+        else if ( xD > yD ) { return 1; }
+    }
+    // natural sorting through split numeric strings and default strings
+    for(var cLoc=0, numS=Math.max(xN.length, yN.length); cLoc < numS; cLoc++) {
+        // find floats not starting with '0', string or 0 if not defined (Clint Priest)
+        oFxNcL = !(xN[cLoc] || '').match(ore) && parseFloat(xN[cLoc]) || xN[cLoc] || 0;
+        oFyNcL = !(yN[cLoc] || '').match(ore) && parseFloat(yN[cLoc]) || yN[cLoc] || 0;
+        // handle numeric vs string comparison - number < string - (Kyle Adams)
+        if (isNaN(oFxNcL) !== isNaN(oFyNcL)) { return (isNaN(oFxNcL)) ? 1 : -1; }
+        // rely on string comparison if different types - i.e. '02' < 2 != '02' < '2'
+        else if (typeof oFxNcL !== typeof oFyNcL) {
+            oFxNcL += '';
+            oFyNcL += '';
+        }
+        if (oFxNcL < oFyNcL) { return -1; }
+        if (oFxNcL > oFyNcL) { return 1; }
+    }
+    return 0;
+};
+
     function legendSort(dict, sortBy) {
     /* return a dictionary as reverse-sorted list (count, fieldValue).
     If there are more than 4 entries and all but one key are numbers, 
@@ -1888,52 +1937,26 @@ var tsnePlot = function() {
             countList.push( [count, key] );
         }
 
-        // auto-detect: treaet labels as numbers if most values are numbers
+        // auto-detect: sort list by name if most names are numbers
         if ((sortBy===undefined && countList.length >= 4 && numCount >= countList.length-1)) {
             sortBy = "name";
             useGradient = true;
         }
 
-        var newList = [];
-        var isSortedByName = false;
+        var isSortedByName = null;
 
         if (sortBy==="name") {
+            countList.sort(function(a, b) { return naturalSort(a[1], b[1]); });  // I have a feeling that this is very slow...
             isSortedByName = true;
-            
-            // change the keys in the list from strings to floats, if possible
-            // this makes sure that the subsequent sorting is really by number
-            for (var i = 0; i < countList.length; i++) {
-                var el = countList[i];
-                count = el[0];
-                var label = el[1];
-                if (label!=="" && !isNaN(label)) // label string looks like a number
-                    label = parseFloat(label);  // -> convert label to float
-                newList.push( [count, label] );
-            }
-
-            // sort by name/label
-            newList.sort(function(a, b) { 
-                //return a[1] > b[1];  // this does not work. Why?
-                return a[1].localeCompare(b[1]); 
-            }); 
-
-            // change values back to strings
-            var newList2 = [];
-            for (i = 0; i < newList.length; i++) {
-                var el = newList[i];
-                count = el[0];
-                var label = el[1].toString();
-                newList2.push( [count, label] );
-            }
-            newList = newList2;
         }
         else {
             // sort this list by count
-            newList = countList.sort(function(a, b){ return b[0] - a[0]; }); // reverse-sort by count
+            countList = countList.sort(function(a, b){ return b[0] - a[0]; }); // reverse-sort by count
+            isSortedByName = false;
         }
 
         var ret = {};
-        ret.list = newList;
+        ret.list = countList;
         ret.isSortedByName = isSortedByName;
         ret.useGradient = useGradient;
         return ret;
@@ -2131,7 +2154,6 @@ var tsnePlot = function() {
             htmls.push("</div>");
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
-        htmls.push("<span id='tpResetColors' style='color: #888; cursor:pointer; font-size:13px'>Reset colors</span>&emsp;");
 
         // add the "sort by" div
         var sortLabel = null;
@@ -2139,7 +2161,9 @@ var tsnePlot = function() {
             sortLabel = "Sort by count" // add the link to sort by the other possibility
         else
             sortLabel = "Sort by name"
-        htmls.push("<span id='tpSortBy' style='color: #888; cursor:pointer; font-size:13px'>"+sortLabel+"</span>");
+        htmls.push("<span id='tpSortBy' style='color: #888; cursor:pointer; font-size:13px'>"+sortLabel+"</span>&emsp;");
+
+        htmls.push("<span id='tpResetColors' style='color: #888; cursor:pointer; font-size:13px'>Reset colors</span>");
 
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);

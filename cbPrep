@@ -22,7 +22,7 @@ geneToSym = None
 geneIdToAnnot = None
 
 # metaVal -> color dict
-colors = None
+#colors = None
 
 # name of expression matrix file
 exprFname = None
@@ -33,6 +33,8 @@ exprMatrix = None
 # http://stackoverflow.com/questions/1447287/format-floats-with-standard-json-module
 from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.3f')
+
+DATASETDESCNAME = "description.json"
 
 # ==== functions =====
 def parseArgs():
@@ -628,7 +630,7 @@ def writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, cellInfo, gene
     geneFname   = join(jsonDir, "geneExpr.json") # "geneExpr" -> cellId -> list of floats
     metaFname   = join(jsonDir, "sampleMeta.json") # "sampleMeta" -> cellId -> list of fields
     configFname = join(jsonDir, "config.json") # "metaFields" and "exprFields"
-    datasetFname= join(jsonDir, "dataset.json") # three fields: label, URL and description
+    datasetFname= join(jsonDir, "description.json") # three fields: label, URL and description
 
     logging.info("Writing coord data in JSON format to %s" % seuratFname)
     seuratList = []
@@ -721,8 +723,8 @@ def writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, cellInfo, gene
     if options.datasetName is not None:
         desc["label"] = options.datasetName
 
-    if colors is not None:
-        desc["metaColors"] = colors
+    #if colors is not None:
+        #desc["metaColors"] = colors
 
     if isfile(datasetFname):
         logging.info("Not writing dataset description to %s, file already exists" % datasetFname)
@@ -1326,7 +1328,7 @@ def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     writeDownloadFiles(metaFname, outDir)
 
 def findDatasets(outDir):
-    """ search all subdirs of outDir for dataset.json files and return their contents as a list
+    """ search all subdirs of outDir for description.json files and return their contents as a list
     A dataset description is a list with three members: A label, the base URL and a longer description
     that can contain html.
     """
@@ -1334,12 +1336,18 @@ def findDatasets(outDir):
     for subDir in os.listdir(outDir):
         if not isdir(join(outDir, subDir)):
             continue
-        fname = join(outDir, subDir, "dataset.json")
+        fname = join(outDir, subDir, "description.json")
         if not isfile(fname):
             continue
 
         logging.info("Reading %s" % fname)
         datasetDesc = json.load(open(fname))
+
+        fname = join(outDir, subDir, "colors.tsv")
+        if isfile(fname):
+            colors = parseColors(fname)
+            datasetDesc["metaColors"] = colors
+
         assert("label" in datasetDesc)
         #assert("longLabel" in datasetDesc)
         #if "longLabel" in datasetDesc:
@@ -1414,6 +1422,12 @@ def parseColors(fname):
             assert(c in "0123456789ABCDEFabcdef") # color must be a hex number
     return colDict
 
+def copyColors(fname, dataOutDir):
+    " copy colors to colors.tsv in dataOutDir "
+    logging.debug("Copying %s to %s" % (fname, dataOutDir))
+    parseColors(fname) # check if colors are hex values
+    shutil.copy(fname, join(dataOutDir, "colors.tsv"))
+
 def runCommands(args):
     " basic cmd line parsing "
 
@@ -1437,8 +1451,8 @@ def runCommands(args):
 
     dataOutDir = findDataDir(outDir, options.datasetName, exprFname)
 
-    global colors
-    colors = parseColors(options.colors)
+    #global colors
+    #colors = parseColors(options.colors)
 
     if command=="coords":
         coordFname = options.coords
@@ -1456,6 +1470,7 @@ def runCommands(args):
         clusterLabelField = options.clusterLabel
 
         makeDir(dataOutDir)
+        copyColors(options.colors, dataOutDir)
         runOnMatrix(command, metaFname, exprFname, clusterLabelField, dataOutDir)
 
     if command=="10x":
