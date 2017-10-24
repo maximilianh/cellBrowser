@@ -108,6 +108,18 @@ var tsnePlot = function() {
     var cNullColor = "c7c7c7";
     var cNullForeground = "#AAAAAA";
 
+    function iWantHue(n) {
+        var colList = ["7e4401", "244acd", "afc300", "a144cb", "00a13e",
+            "f064e5", "478700", "727eff", "9ed671", "b6006c", "5fdd90", "f8384b",
+            "00b199", "bb000f", "0052a3", "fcba56", "005989", "c57000", "7a3a78",
+            "ccca76", "ff6591", "265e1c", "ff726c", "7b8550", "923223", "9a7e00",
+            "ffa9ad", "5f5300", "ff9d76", "b3885f"]; 
+        var colList2 = ["cd6a00", "843dc3", "c9cd31", "eda3ff", "854350"];
+        if (n<=5)
+            colList = colList2;
+        return colList.slice(0, n);
+    }
+
     function _dump(o) {
     /* for debugging */
         console.log(JSON.stringify(o));
@@ -1565,7 +1577,8 @@ var tsnePlot = function() {
 
         var htmls = [];
         htmls.push('<button title="Activate zoom" id="tpIconZoom" type="button" class="btn-small btn-outline-primary"><i class="material-icons">zoom_in</i></button>');
-        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">crop_free</i></button>');
+        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out_map</i></button>');
+        htmls.push('<button title="Zoom out" id="tpIconZoomOut" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out</i></button>');
         $("#tpToolBar").append(htmls.join(""));
 
        $('#tpIconZoom100').click( onZoom100Click );
@@ -1747,8 +1760,12 @@ var tsnePlot = function() {
     function makeColorPalette(n, isGradient) {
     /* return an array with n color hex strings */
     // Use Google's palette functions for now, first Paul Tol's colors, if that fails, use the usual HSV rainbow
-    if (!isGradient)
-        return palette(["tol", "rainbow"], n);
+    if (!isGradient) {
+        if (n<30)
+            return iWantHue(n);
+        else
+            return palette(["tol", "rainbow"], n);
+    }
     else
         return palette(["tol-sq"], n);
     }
