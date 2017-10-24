@@ -18,6 +18,8 @@ dataDir = join(dirname(__file__), "static")
 
 # geneId -> symbol
 geneToSym = None
+
+# this is the default list of genes to load and show
 # geneId -> annotation (some string)
 geneIdToAnnot = None
 
@@ -88,8 +90,7 @@ def parseArgs():
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     parser.add_option("", "--metaColumn",
         dest="metaColumn", action="store",
-        default="meta",
-        help="the name of the column in meta data table that connects the meta data to the gene expression table. Common values are 'id', 'sampleId', 'cellId', etc. default %default.")
+        help="the name of the column in meta data table that connects the meta data to the gene expression table. Common values are 'id', 'sampleId', 'cellId', etc. Default is the first column of the meta data table.")
 
     parser.add_option("", "--colors",
         dest="colors", action="store",
@@ -366,7 +367,7 @@ def convTabToMarshal(matrixFname, marshFname, doLog):
             geneId = geneId.split(".")[0]
         if geneToSym is not None and geneId not in geneToSym:
             if options.skip:
-                logging.error("Could not find Ensembl geneId '%s' in file %s. Skipping gene." % (geneId, options.symTable))
+                logging.warn("Could not find Ensembl geneId '%s' in file %s. Skipping gene." % (geneId, options.symTable))
                 continue
             if not geneId.startswith("ENS"):
                 logging.warn("when reading expression matrix, the gene ID '%s' does not start with 'ENS'. Looks like the gene matrix does not use Ensembl gene identifiers" % geneId)
@@ -748,6 +749,10 @@ def parseMeta(fname, cellIds, mustHaveField=None):
     idCol = options.metaColumn
     meta = {}
     for row in lineFileNextRow(fname):
+        if idCol==None:
+            idCol = row._fields[0]
+            logging.info("--metaColumn not specified. Using the first field, '%s', as the sample identifier field" % idCol)
+
         rowDict = row._asdict()
         if idCol not in rowDict:
             errAbort("The meta data file %s does not have a column named '%s'. First 50 available columns: %s. Use --metaColumn to specify a different name" % (fname, idCol, ",".join(row._fields[:50])))
@@ -916,10 +921,12 @@ def sanitizeForR(cellIds):
 def getNonZeroGenes(exprMatrix, buildDir=None, onlyGenes=None):
     " given a matrix with cellId -> geneId -> float, return the sorted list of geneIds that have at least one non-0 data point "
     # first make a list of all genes, remove those that are always 0
-    geneFname = join(buildDir, "nonZeroGenes.txt")
-    if isfile(geneFname):
-        logging.debug("Getting all non-zero genes from file %s" % geneFname)
-        return parseList(geneFname)
+    geneFname = None
+    if buildDir is not None:
+        geneFname = join(buildDir, "nonZeroGenes.txt")
+        if isfile(geneFname):
+            logging.debug("Getting all non-zero genes from file %s" % geneFname)
+            return parseList(geneFname)
 
     logging.debug("Getting all non-zero genes from matrix")
     allGenes = set()
@@ -945,7 +952,10 @@ def getNonZeroGenes(exprMatrix, buildDir=None, onlyGenes=None):
     allGenes.sort()
     logging.debug("Found %d non-zero genes in matrix" % len(allGenes))
     assert(len(allGenes)!=0) # no genes left to write. Probably wrong gene Ids in gene ID table
-    writeList(allGenes, geneFname)
+
+    if geneFname is not None:
+        writeList(allGenes, geneFname)
+
     return allGenes
 
 def dictToGeneMatrix(exprMatrix, onlyGenes=None):
@@ -1305,6 +1315,26 @@ def writeDownloadFiles(metaFname, outDir):
     logging.info("Copying %s to %s" % (metaFname, metaOutPath))
     shutil.copy(metaFname, metaOutPath)
 
+def filterMatrixOnGenes(matrixFname, onlyGenes, outFname):
+    " given a gene-on-rows file, keep only some genes, and write to file "
+    logging.info("filtering %s to %s, keeping only %d genes" % (matrixFname, outFname, len(onlyGenes)))
+    ofh = open(outFname, "w")
+    for line in open(matrixFname):
+        geneId = string.split(line[:100], "\t", 1)[0]
+        if not geneId in onlyGenes:
+            continue
+        ofh.write(line)
+    ofh.close()
+
+def runTete(matrixFname, buildDir):
+    " run T-ete and return the coordinates "
+    logging.info("T-ETE dimensionalty reduction")
+    teteMatrixFname = join(buildDir, "tete.matrix.txt")
+    if isfile(teteMatrixFname):
+        logging.info("not doing gene filtering, found %s" % teteMatrixFname)
+    else:
+        filterMatrixOnGenes(matrixFname, geneIdToAnnot, teteMatrixFname)
+
 def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     " run Seurat and PCA over matrix, write all json to outDir "
     buildDir = makeTmpDirFor(outDir)
@@ -1312,6 +1342,8 @@ def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     matrixGeneIds = getNonZeroGenes(exprMatrix, buildDir)
     
     meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(metaFname, exprMatrix, buildDir)
+
+    teteCoords = runTete(matrixFname, buildDir)
 
     if clusterLabelField is None:
         clusterLabelField = "Seurat Cluster"
@@ -1424,6 +1456,8 @@ def parseColors(fname):
 
 def copyColors(fname, dataOutDir):
     " copy colors to colors.tsv in dataOutDir "
+    if fname==None:
+        return
     logging.debug("Copying %s to %s" % (fname, dataOutDir))
     parseColors(fname) # check if colors are hex values
     shutil.copy(fname, join(dataOutDir, "colors.tsv"))
