@@ -438,7 +438,7 @@ var tsnePlot = function() {
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">View</a>');
          htmls.push('<ul class="dropdown-menu">');
 
-         htmls.push('<li><a href="#" id="tpZoom100Button"><span class="dropmenu-item-label">Zoom to 100%</span><span class="dropmenu-item-content">Z</span></a></li>');
+         htmls.push('<li><a href="#" id="tpZoom100Button"><span class="dropmenu-item-label">Zoom to 100%</span><span class="dropmenu-item-content">z</span></a></li>');
 
 
          htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Layout Method</a>');
@@ -1914,6 +1914,7 @@ var tsnePlot = function() {
         Mousetrap.bind('o', onOpenDatasetLink);
         Mousetrap.bind('z', onZoom100Click);
         Mousetrap.bind('-', onZoomOutClick);
+        Mousetrap.bind('+', onZoomInClick);
         Mousetrap.bind('n', onSelectNoneClick);
         Mousetrap.bind('a', onSelectAllClick);
     }
