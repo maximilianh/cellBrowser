@@ -914,6 +914,30 @@ var tsnePlot = function() {
         ev.preventDefault();
     }
 
+    function zoom(scale) {
+        var xRange = Math.abs(zoomRange.maxX-zoomRange.minX);
+        zoomRange.minX = zoomRange.minX - (xRange*scale);
+        zoomRange.maxX = zoomRange.maxX + (xRange*scale);
+
+        var yRange = Math.abs(zoomRange.maxY-zoomRange.minY);
+        zoomRange.minY = zoomRange.minY - (yRange*scale);
+        zoomRange.maxY = zoomRange.maxY + (yRange*scale);
+       
+        pixelCoords = scaleData(shownCoords);
+        plotDots();
+        renderer.render(stage);
+    }
+
+    function onZoomOutClick(ev) {
+        zoom(0.2);
+        ev.preventDefault();
+    }
+
+    function onZoomInClick(ev) {
+        zoom(-0.2);
+        ev.preventDefault();
+    }
+
     function onResize(ev) {
         /* called when window is resized by user */
         winInfo = resizeRenderer();
@@ -1576,11 +1600,13 @@ var tsnePlot = function() {
         $(document.body).append("<div id='tpToolBar' style='position:absolute;left:0px;top:"+menuBarHeight+"px'></div>");
 
         var htmls = [];
-        htmls.push('<button title="Activate zoom" id="tpIconZoom" type="button" class="btn-small btn-outline-primary"><i class="material-icons">zoom_in</i></button>');
-        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out_map</i></button>');
+        htmls.push('<button title="Activate zoom" id="tpIconZoomIn" type="button" class="btn-small btn-outline-primary"><i class="material-icons">zoom_in</i></button>');
         htmls.push('<button title="Zoom out" id="tpIconZoomOut" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out</i></button>');
+        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out_map</i></button>');
         $("#tpToolBar").append(htmls.join(""));
 
+       $('#tpIconZoomIn').click( onZoomInClick );
+       $('#tpIconZoomOut').click( onZoomOutClick );
        $('#tpIconZoom100').click( onZoom100Click );
     }
 
@@ -1887,6 +1913,7 @@ var tsnePlot = function() {
     /* bind the keyboard shortcut keys */
         Mousetrap.bind('o', onOpenDatasetLink);
         Mousetrap.bind('z', onZoom100Click);
+        Mousetrap.bind('-', onZoomOutClick);
         Mousetrap.bind('n', onSelectNoneClick);
         Mousetrap.bind('a', onSelectAllClick);
     }
