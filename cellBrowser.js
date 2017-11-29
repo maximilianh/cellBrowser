@@ -6,43 +6,62 @@
 "use strict";
 
 var tsnePlot = function() {
-    var gOptions = null; // the whole object given to the loadData function:
-    // .datasets: list of objects, with:
+    var gCurrentDataset = null; // object with these fields
+
+    // configuration provided by user:
     // - .baseUrl (reqd) = URL where files are loaded from
     // - .label (reqd) = label for the dataset shown
-    // - .labelField (reqd) = label for the dataset shown
-    // - .coordFiles: optional list of (URLOrFilename, label)
-    // - .metaColors: options, dict of metaValue -> hexcolor (six chars)
+    // - .clusterField = field name to color on
+    // - .labelField  = field name to use as cluster labels
+    // - .coordFiles: optional, list of dicts, with at least shortLabel and url attributes
+    // - .metaColors: dict of metaValue -> hexcolor (six chars)
+    // not necessary at all:
+    // - .showLabels: optional, bool, whether cluster labels are shown
+    
+    // added by code upon load:
+    // - .matrixOffsets: gene symbol -> [offset, linelen]
+    // - .matrixCellIds: array of cellIds, read from header line of matrix
+    // - .singleExpr: currently selected gene expression vector from combobox
+    //      .symbol = current gene symbol 
+    //      .values = dict cellId -> value
+    // - .metaFields = array of meta field labels
+    // - .metaData   = dict cellId -> array of meta fields (strings)
+    // - .preloadExpr  = preloaded genes (bottom of screen), object
+    //     .genes  = array of [geneSym, geneDesc, geneId (e.g. Ensembl)]
+    //     .cellExpr   = dict of cellId -> array of floats, one per gene
+    //     .deciles = dict of geneId -> array of 11 floats, the decile-bin edges
+    // current zoom range: currently displayed min/max range of allCoords
+    // - zoomRange = null;   // dict of minX, maxX, minY, maxY -> float
+    // - zoomFullRange = null; // range to show 100%
 
-    var gCurrentDataset = null; // pointer to one of gOptions.datasets
+    var gOptions = null; // the whole object given to the loadData function, a list of dataset objects
 
-    var jsonBaseUrl = null; // current base url, has to end with '/'
+    //var pcaCoords = null;   // array of [cellId, coord1, coord2, coord3, ... All coords are floats.
 
-    var seuratCoords = null; // array of [cellId, coord1, coord2]. All coords are floats
-    var pcaCoords = null;   // array of [cellId, coord1, coord2, coord3, ... All coords are floats.
+    var gCurrentCoordName = null; // currently shown coordinates
 
-    var allCoords = null;     // pointer to either seuratCoords or pcaCoords
-    var shownCoords = null;   // currently shown float coords of allCoords, hidden cells not included
+    var allCoords = null;     // raw coords as read from file as a list [cellId, x, y]
+    var shownCoords = null;   // currently shown (=not hidden) float coords of allCoords, hidden cells not included
 
     var coord1Idx = 1; // index of X-axis value in the tuples of allCoords
     var coord2Idx = 2; // index of Y-axis value in the tuples of allCoords
 
-    var metaFields = null; // array of meta field labels
-    var metaData = null;   // dict cellId -> array of meta fields (strings)
-    var gLegendColors = null; // assignment of meta value -> color, specified in config.json
+    //var gMetaFields = null; // array of meta field labels
+    //var metaData = null;   // dict cellId -> array of meta fields (strings)
 
-    var matrixOffsets = null; // dict gene symbol -> [offset in matrix, line length in matrix]
-    var geneFields = null; // array of (geneSym, geneDesc)
-    var geneExpr = null; // dict cellId -> array of gene expr fields (->geneFields, floats)
-    var gDeciles = null; // geneId -> Array of 11 values, the ranges for all deciles of a gene
+    //var geneFields = null; // array of (geneSym, geneDesc)
+    //var geneExpr = null; // dict cellId -> array of gene expr fields (->geneFields, floats)
+    //var deciles = null; // geneId -> Array of 11 values, the ranges for all deciles of a gene
+
     var gDecileColors = null; // global to avoid recalculting a palette of 10 colors
 
-    var gLabelMetaIdx = null; // meta field to use for labels, default is no label
+    //var gLabelMetaIdx = null; // meta field to use for labels, default is no label
+
     var gClusterMids = null; // array of (clusterLabel, x, y), recalculated if null
 
     // only temporarily used to store data while it is loaded in parallel ajax requests
     var gLoad_geneList = []; // list of genes that were pasted into the gene box
-    var gLoad_geneExpr = {}; // map of geneSymbol -> [geneId, array of floats with expression vectors]
+    var gLoad_geneExpr = {}; // map of geneSymbol -> [geneId, array of floats with expression vectors, deciles of float array]
 
     // object with all information needed to map to the legend colors
     var gLegend = null;
@@ -57,9 +76,6 @@ var tsnePlot = function() {
     // dict with cellId -> index of legend in gLegend.rows or -1 if cell is hidden
     var gClasses = null; 
 
-    // current zoom range: currently displayed min/max range of allCoords
-    var zoomRange = null;   // dict of minX, maxX, minY, maxY -> float
-    var zoomFullRange = null; // range to show 100%
 
     // An object of cellIds that are highlighted/selected, cellId -> true
     var gSelCellIds = {};
@@ -71,17 +87,25 @@ var tsnePlot = function() {
 
     var renderer = null; // the PIXI canvas renderer
     var stage = null; // the PIXI stage
-    var winInfo = null; // .width and .height of the PIXI canvas
-
-    // -- coloring-related
+    var gWinInfo = null; // .width and .height of the PIXI canvas
 
     // zooming
     var mouseDownX = null;
     var mouseDownY = null;
 
+    // panning
+    var lastPanX = null;
+    var lastPanY = null;
+    var visibleDots = [];
+
+    // we load the marker image only once and cache the sprites for the markers
+    //var gMarker = null; 
+    var gMarkerSprites = new PIXI.Container(); 
+
     // -- CONSTANTS
     // product name = variable, management often change their minds
     var gTitle = "UCSC Cluster Browser";
+    var defaultCircleSize = 4;
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a 
     // "sample" or a "cell". This will adapt help menus, menus, etc.
@@ -89,40 +113,69 @@ var tsnePlot = function() {
 
     // width of left meta bar in pixels
     var metaBarWidth = 200;
+    // margin between left meta bar and drawing canvas
     var metaBarMargin = 5;
-    // width of legend
+    // width of legend, pixels
     var legendBarWidth = 200;
     var legendBarMargin = 10;
-    // height of button bar at top
+    // width of the metaBar tooltip (histogram)
+    var metaTipWidth = 400;
+    // height of pull-down menu bar at the top, in pixels
     var menuBarHeight = null; // defined at runtime by div.height
-    // height of toolbar
-    var toolBarHeight = 33;
+    // height of the toolbar, in pixels
+    var toolBarHeight = 28;
+    // position of first combobox in toolbar from left, in pixels
+    var toolBarComboLeft = 100;
+    var toolBarComboTop   = 2;
 
     // height of bottom gene bar
     var geneBarHeight = 100;
     var geneBarMargin = 5;
     // current transparency and circle size
     var transparency = 0.6;
-    var circleSize = 4;
+    var circleSize = 4.0;
     // color for missing value when coloring by expression value
     var cNullColor = "c7c7c7";
     var cNullForeground = "#AAAAAA";
 
-    function iWantHue(n) {
-        var colList = ["7e4401", "244acd", "afc300", "a144cb", "00a13e",
-            "f064e5", "478700", "727eff", "9ed671", "b6006c", "5fdd90", "f8384b",
-            "00b199", "bb000f", "0052a3", "fcba56", "005989", "c57000", "7a3a78",
-            "ccca76", "ff6591", "265e1c", "ff726c", "7b8550", "923223", "9a7e00",
-            "ffa9ad", "5f5300", "ff9d76", "b3885f"]; 
-        var colList2 = ["cd6a00", "843dc3", "c9cd31", "eda3ff", "854350"];
-        if (n<=5)
-            colList = colList2;
-        return colList.slice(0, n);
-    }
+    var HIDELABELSNAME = "Hide cluster labels";
+    var SHOWLABELSNAME = "Show cluster labels";
+    var METABOXTITLE   = "Meta data fields";
+
+    // histograms show only the top X values and summarize the rest into "other"
+    var HISTOCOUNT = 12;
+    // the sparkline is a bit shorter
+    var SPARKHISTOCOUNT = 12;
 
     function _dump(o) {
     /* for debugging */
         console.log(JSON.stringify(o));
+    }
+
+    function warn(msg) {
+        alert(msg);
+    }
+
+    function cloneObj(d) {
+    /* returns a copy of an object, wasteful */
+        // see http://stackoverflow.com/questions/122102/what-is-the-most-efficient-way-to-deep-clone-an-object-in-javascript
+        return JSON.parse(JSON.stringify(d));
+    }
+
+    function cloneArray(a) {
+    /* returns a copy of an array */
+        return a.slice();
+    }
+
+    function keys(o) {
+    /* return all keys of object */
+        var allKeys = [];
+        for(var k in o) allKeys.push(k);
+        return allKeys;
+    }
+
+    function capitalize(s) {
+        return s[0].toUpperCase() + s.slice(1);
     }
 
     function cartSave(keyType, key, value, defaultValue) {
@@ -141,6 +194,19 @@ var tsnePlot = function() {
         return val
     }
 
+    function iWantHue(n) {
+        /* a palette as downloaded from iwanthue.com - not sure if this is better. Ellen likes it */
+        var colList = ["7e4401", "244acd", "afc300", "a144cb", "00a13e",
+            "f064e5", "478700", "727eff", "9ed671", "b6006c", "5fdd90", "f8384b",
+            "00b199", "bb000f", "0052a3", "fcba56", "005989", "c57000", "7a3a78",
+            "ccca76", "ff6591", "265e1c", "ff726c", "7b8550", "923223", "9a7e00",
+            "ffa9ad", "5f5300", "ff9d76", "b3885f"]; 
+        var colList2 = ["cd6a00", "843dc3", "c9cd31", "eda3ff", "854350"];
+        if (n<=5)
+            colList = colList2;
+        return colList.slice(0, n);
+    }
+
     function menuBarHide(idStr) {
     /* hide a menu bar selector */
          $(idStr).parent().addClass("disabled").css("pointer-events", "none");
@@ -149,6 +215,21 @@ var tsnePlot = function() {
     function menuBarShow(idStr) {
     /* show a menu bar entry given its selector */
          $(idStr).parent().removeClass("disabled").css("pointer-events", '');
+    }
+
+    function updateToolbar() {
+    /* update the toolbar with the current dataset info */
+        var geneList = [];
+
+        for(var key in gCurrentDataset.matrixOffsets) {
+            geneList.push({id:key, text:key});
+        }
+
+        //$('#tpGeneCombo').select2({
+            //placeholder : "Gene Symbol",
+            //ajax : {},
+            //dataAdapter : RefAdapter,
+        //});
     }
 
     function updateMenu() {
@@ -172,9 +253,13 @@ var tsnePlot = function() {
      $("#tpTrans"+(transparency*100)).addClass("active");
      $("#tpSize"+circleSize).addClass("active");
 
-     // the "hide labels" menu entry is only shown if labels are visible
-     if (gLabelMetaIdx === null)
+     // the "hide labels" menu entry is only shown if labels could be made visible
+     if (gCurrentDataset.labelField === null)
          menuBarHide("#tpHideLabels");
+     if (gCurrentDataset.showLabels===true)
+         $("#tpHideLabels").text(HIDELABELSNAME);
+     else
+         $("#tpHideLabels").text(SHOWLABELSNAME);
     }
 
     function onOpenDatasetLink() {
@@ -205,7 +290,7 @@ var tsnePlot = function() {
             },
         "Open Dataset" :
             function(event) {
-                loadDataset(selDatasetIdx);
+                loadOneDataset(selDatasetIdx);
                 $( this ).dialog( "close" );
             }
         };
@@ -230,19 +315,41 @@ var tsnePlot = function() {
       var htmls = [];  
       var coordFiles = gCurrentDataset.coordFiles;
       for (var i=0; i<coordFiles.length; i++) {
-            htmls.push('<li><a href="#" class="tpDataset" id="'+i+'">'+coordFiles[i][0]+'</a></li>');
+           var label = coordFiles[i].shortLabel;
+           if (label===undefined) {
+               label = "Dataset "+i;
+               console.log("Dataset "+i+" has no 'shortLabel' attribute");
+           }
+           htmls.push('<li><a href="#" class="tpDataset" id="'+i+'">'+label+'</a></li>');
       }
       $("#tpLayoutMenu").empty();
       $("#tpLayoutMenu").append(htmls.join(""));
     }
 
+    function clearMetaBar() {
+    /* empty all fields in the left-hand meta bar */
+        delete gCurrentDataset.metaHist;
+        var metaFields = gCurrentDataset.metaFields;
+        $('#tpMetaTitle').text(METABOXTITLE);
+        for (var i=0; i<metaFields.length; i++) {
+            $('#tpMetaLabel_'+i).html(metaFieldToLabel(metaFields[i]));
+            $('#tpMeta_'+i).html("");
+        }
+    }
+
     function updateSelection() {
     /* has to be called each time the selection has been changed */
-        plotDots();
-        renderer.render(stage);
         updateMenu();
+
         var cellIds = keys(gSelCellIds);
         updateGeneBarColors(cellIds);
+
+        if (cellIds.length===0)
+            clearMetaBar()
+        else if (cellIds.length===1)
+            updateMetaBarOneCell(cellIds[0]);
+        else
+            updateMetaBarManyCells(cellIds);
     }
 
     function onSaveAsClick() {
@@ -276,26 +383,67 @@ var tsnePlot = function() {
         return cellIds;
     }
 
-    function getAllCellIdsAsDict() {
+    function getAllCellIdsAsDict(onlyOnScreen) {
     /* return a list of all cell Ids */
+        if (onlyOnScreen===undefined)
+            onlyOnScreen = false;
+
+        var coords = [];
+        if (onlyOnScreen)
+            coords = pixelCoords;
+        else
+            coords = shownCoords;
+
         var cellIds = {};
-        for (var i=0; i<shownCoords.length; i++) {
-            var cellId = shownCoords[i][0];
+        for (var i=0; i<coords.length; i++) {
+            var cellId = coords[i][0];
             cellIds[cellId] = true;
         }
         return cellIds;
     }
 
     function onSelectAllClick() {
-    /* Edit - select all */
-        gSelCellIds = getAllCellIdsAsDict();
+    /* Edit - select all visible*/
+        gSelCellIds = getAllCellIdsAsDict(true);
         updateSelection();
+        plotDots();
+        renderer.render(stage);
     }
 
     function onSelectNoneClick() {
     /* Edit - Select None */
         gSelCellIds = {};
         updateSelection();
+        plotDots();
+        renderer.render(stage);
+    }
+
+    function onMarkClick() {
+        /* Edit - mark selection (with arrows) */
+        if (gCurrentDataset.markedCellIds===undefined)
+            gCurrentDataset.markedCellIds = {};
+
+        var markedIds = gCurrentDataset.markedCellIds;
+
+        var selIds = keys(gSelCellIds);
+        if (selIds.length>100) {
+            warn("You cannot mark more than 100 "+gSampleDesc+"s");
+            return;
+        }
+
+        for (var i = 0; i < selIds.length; i++) {
+            var selId = selIds[i];
+            markedIds[selId] = true;
+        }
+
+        plotDots();
+        renderer.render(stage);
+    }
+
+    function onMarkClearClick() {
+        gCurrentDataset.markedCellIds = {};
+        plotDots();
+        renderer.render(stage);
     }
 
     function onSelectByIdClick() {
@@ -338,6 +486,8 @@ var tsnePlot = function() {
                         }
                     $( this ).dialog( "close" );
                     updateSelection();
+                    plotDots();
+                    renderer.render(stage);
                     //alert(idList.length+ " " + gSampleDesc+"s are selected");
                 }
             }
@@ -411,7 +561,7 @@ var tsnePlot = function() {
          htmls.push('<li class="dropdown">');
            htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">File</a>');
            htmls.push('<ul class="dropdown-menu">');
-             htmls.push('<li><a href="#" id="tpOpenDatasetLink"><span class="dropmenu-item-label">Open Dataset...</span><span class="dropmenu-item-content">O</span></a></li>');
+             htmls.push('<li><a href="#" id="tpOpenDatasetLink"><span class="dropmenu-item-label">Open Dataset...</span><span class="dropmenu-item-content">o</span></a></li>');
              htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Download Data</a>');
                htmls.push('<ul class="dropdown-menu" id="tpDownloadMenu">');
                  htmls.push('<li><a href="#" id="tpDownload_matrix">Gene Expression Matrix</a></li>');
@@ -427,9 +577,11 @@ var tsnePlot = function() {
          htmls.push('<li class="dropdown">');
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">Edit</a>');
          htmls.push('<ul class="dropdown-menu">');
-         htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all</span><span class="dropmenu-item-content">A</span></a></li>');
-         htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">N</span></a></li>');
-         htmls.push('<li><a id="tpSelectById" href="#">Select by ID...</a></li>');
+         htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
+         htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
+         htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">m</span></a></li>');
+         htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
+         htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
          htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
          htmls.push('</ul>'); // View dropdown
          htmls.push('</li>'); // View dropdown
@@ -440,19 +592,12 @@ var tsnePlot = function() {
 
          htmls.push('<li><a href="#" id="tpZoom100Button"><span class="dropmenu-item-label">Zoom to 100%</span><span class="dropmenu-item-content">z</span></a></li>');
 
-
-         htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Layout Method</a>');
-           htmls.push('<ul class="dropdown-menu" id="tpLayoutMenu">');
-           htmls.push('</ul>'); // Layout sub-menu
-
-         htmls.push('</li>');   // sub-menu container
-
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li><a href="#" id="tpOnlySelectedButton">Show only selected</a></li>');
          htmls.push('<li><a href="#" id="tpFilterButton">Hide selected '+gSampleDesc+'s</a></li>');
          htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
-         htmls.push('<li><a href="#" id="tpHideLabels">Hide cluster labels</a></li>');
+         htmls.push('<li><a href="#" id="tpHideShowLabels">Hide cluster labels<span class="dropmenu-item-content">c l</span></a></li>');
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
@@ -489,10 +634,6 @@ var tsnePlot = function() {
 
        htmls.push('</ul>'); // navbar-nav
 
-       //htmls.push('<ul class="nav navbar-nav navbar-right">');
-           //htmls.push('<li><a href="#">Zoom out 100%</a></li>');
-       //htmls.push('</ul>'); // navbar-nav
-
        htmls.push('</div>'); // container
        htmls.push('</nav>'); // navbar
        htmls.push('</div>'); // tpMenuBar
@@ -505,17 +646,17 @@ var tsnePlot = function() {
        $('#tpOnlySelectedButton').click( onShowOnlySelectedClick );
        $('#tpZoom100Button').click( onZoom100Click );
        $('#tpShowAllButton').click( onShowAllClick );
-       $('#tpHideLabels').click( onHideLabelsClick );
+       $('#tpHideShowLabels').click( onHideShowLabelsClick );
        $('#tpExportIds').click( onExportIdsClick );
        $('#tpSelectById').click( onSelectByIdClick );
+       $('#tpMark').click( onMarkClick );
+       $('#tpMarkClear').click( onMarkClearClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
        $('#tpOpenDatasetLink').click( onOpenDatasetLink );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
        $('#tpDownloadMenu li a').click( onDownloadClick );
-
-       updateMenu();
 
        // make sure that anchors under disabled li-elements are not clickable
        //$('tpMenuBar').on('click', '.disabled > a', function(e) {
@@ -554,94 +695,34 @@ var tsnePlot = function() {
        $('[data-submenu]').submenupicker();
     }
 
-    function drawMenu() {
-       var htmls = [];
-       htmls.push("<div id='tpMenuBar'>");
-
-       htmls.push("<div id='tpZoom100Button' class='tpButton'>Zoom 100%</div>");
-
-       htmls.push("<div id='tpDatasetButton' class='tpButton'>Dataset <span style='font-size:0.9em'>&#9662;</span>");
-       htmls.push("<ul id='tpDatasetMenu' class='tpMenu'>");
-       for (var i = 0; i < gOptions.datasets.length; i++) {
-           var dataset = gOptions.datasets[i];
-           var line = "<li><div id='tpDataset_"+i+"'>"+dataset.label+"</div></li>";
-           htmls.push(line);
-       }
-       htmls.push("</ul>");
-       htmls.push("</div>");
-
-       htmls.push("<div id='tpMethodButton' class='tpButton'>Method <span style='font-size:0.9em'>&#9662;</span>");
-       htmls.push("<ul id='tpMethodMenu' class='tpMenu'>");
-       htmls.push("<li><div id='seurat'>Seurat T-SNE</div></li>");
-       htmls.push("<li><div id='pca12'>PCA: PC1 / PC2</div></li>");
-       htmls.push("<li><div id='pca23'>PCA: PC2 / PC3</div></li>");
-       htmls.push("<li><div id='pca34'>PCA: PC3 / PC4</div></li>");
-       htmls.push("</ul>");
-       htmls.push("</div>");
-
-       htmls.push("<div id='tpSizeButton' class='tpButton'>Size <span style='font-size:0.9em'>&#9662;</span>");
-       htmls.push("<ul id='tpSizeMenu' class='tpMenu'>");
-       htmls.push("<li><div>1 px</div></li>");
-       htmls.push("<li><div>2 px</div></li>");
-       htmls.push("<li><div>3 px</div></li>");
-       htmls.push("<li><div>4 px</div></li>");
-       htmls.push("<li><div>5 px</div></li>");
-       htmls.push("<li><div>6 px</div></li>");
-       htmls.push("</ul>");
-       htmls.push("</div>");
-
-       htmls.push("<div id='tpTransButton' class='tpButton'>Transparency <span style='font-size:0.9em'>&#9662;</span>");
-       htmls.push("<ul id='tpTransMenu' class='tpMenu'>");
-       htmls.push("<li><div>0%</div></li>");
-       htmls.push("<li><div>10%</div></li>");
-       htmls.push("<li><div>20%</div></li>");
-       htmls.push("<li><div>30%</div></li>");
-       htmls.push("<li><div>40%</div></li>");
-       htmls.push("<li><div>50%</div></li>");
-       htmls.push("<li><div>60%</div></li>");
-       htmls.push("<li><div>70%</div></li>");
-       htmls.push("<li><div>80%</div></li>");
-       htmls.push("<li><div>90%</div></li>");
-       htmls.push("</ul>");
-       htmls.push("</div>");
-
-       htmls.push("<div id='tpFilterButton' class='tpButton tpButtonInactive'>Hide selected</div>");
-       htmls.push("<div id='tpOnlySelectedButton' class='tpButton tpButtonInactive'>Show only selected</div>");
-       htmls.push("<div id='tpShowAllButton' class='tpButton tpButtonInactive'>Show all</div>");
-       htmls.push("<div id='tpHelpButton' class='tpButton'>Tutorial</div>");
-
-       htmls.push("</div>"); // tpMenuBar
-
-       $(document.body).append(htmls.join(""));
-       $( ".tpMenu" ).menu();
-       //jQuery( function() { $('#tpSizeMenu').width($('#tpSizeButton').width()); } );
-       jQuery( function() { $('#tpTransMenu').width($('#tpTransButton').width()); } );
-
-       $('#tpZoom100Button').click( onZoom100Click );
-
-       $('#tpSizeButton').click( function()   { $("#tpSizeMenu").toggle(); } );
-       $('#tpMethodButton').click( function() { $("#tpMethodMenu").toggle(); } );
-       $('#tpTransButton').click( function()  { $("#tpTransMenu").toggle(); } );
-       $('#tpDatasetButton').click( function()  { $("#tpDatasetMenu").toggle(); } );
-       $('#tpHelpButton').click( function()  { showIntro(false); } );
-
-       $('#tpMethodMenu li div').click( onMethodClick );
-       $('#tpTransMenu li div').click( onTransClick );
-       $('#tpSizeMenu li div').click( onSizeClick );
-       $('#tpDatasetMenu li div').click( onDatasetClick );
-
-       $('#tpFilterButton').click( onHideSelectedClick );
-       $('#tpOnlySelectedButton').click( onShowOnlySelectedClick );
-       $('#tpShowAllButton').click( onShowAllClick );
-    }
-
     function resizeRenderer() {
-       /* resize the canvas based on current window size */
+       /* resize the canvas based on current window size and number/absence of preloaded genes */
        var fromLeft = legendBarWidth+legendBarMargin;
        var width = window.innerWidth - metaBarWidth - fromLeft;
-       var height  = window.innerHeight - geneBarHeight - menuBarHeight;
+
+        $("#tpToolBar").css("width", width);
+        $("#tpToolBar").css("height", toolBarHeight);
+        $("#tpMetaBar").css("height", window.innerHeight - menuBarHeight);
+        $("#tpLegendBar").css("height", window.innerHeight - menuBarHeight);
+
+       var height  = null;
+       if (gCurrentDataset.preloadExpr===null || gCurrentDataset.preloadExpr==undefined)
+           height  = window.innerHeight - menuBarHeight - toolBarHeight;
+       else
+           height  = window.innerHeight - geneBarHeight - menuBarHeight - toolBarHeight;
+
        renderer.resize(width, height);
-       return {"renderer":renderer, "width" : width, "height" : height};
+       gWinInfo = {"renderer":renderer, "width" : width, "height" : height};
+    }
+
+    function panImage(xDiff, yDiff) {
+        //var  = stage.children;
+        for (var i = 0; i < visibleDots.length; i++) {
+            var dot = visibleDots[i];
+            dot.x += xDiff;
+            dot.y += yDiff;
+        }
+       renderer.render(stage);
     }
 
     function onBackgroundMouseMove(ev) {
@@ -651,13 +732,22 @@ var tsnePlot = function() {
            //$("#tpSelectBox").css({left:mouseDownX+legendBarWidth+legendMargin, top:mouseDownY+menuBarHeight}).show();
            var x = ev.data.global.x;
            var y = ev.data.global.y;
+           if (ev.data.originalEvent.metaKey) {
+               var panX = (x - lastPanX);
+               var panY = (y - lastPanY);
+               lastPanX = x;
+               lastPanY = y;
+               console.log('pan '+panX+' '+panY);
+               panImage(panX, panY);
+               return;
+           }
            var selectWidth = Math.abs(x - mouseDownX);
            var selectHeight = Math.abs(y - mouseDownY);
            var minX = Math.min(ev.data.global.x, mouseDownX);
            var minY = Math.min(ev.data.global.y, mouseDownY);
            var posCss = {
                 "left":minX + metaBarWidth+metaBarMargin, 
-                "top": minY + menuBarHeight,
+                "top": minY + menuBarHeight+toolBarHeight,
                 "width":selectWidth,
                 "height":selectHeight
            };
@@ -665,8 +755,6 @@ var tsnePlot = function() {
     }
 
     function onBackgroundMouseClick(ev) {
-       //if (mouseDownX !== null) // currently zooming? do not select
-        //   return;
        var x = ev.data.global.x;
        var y = ev.data.global.y;
        // 
@@ -679,22 +767,36 @@ var tsnePlot = function() {
        console.log("click onto free space, clearing selection");
        mouseDownX = null;
        mouseDownY = null;
+       $("#tpSelectBox").hide();
        if (!jQuery.isEmptyObject(gSelCellIds)) {
            gSelCellIds = {};
            updateSelection();
+           plotDots();
+           renderer.render(stage);
        }
     }
 
     function onBackgroundMouseDown (ev) {
     /* click on background */
         // just keep the coordinates, do nothing else
-        mouseDownX = ev.data.global.x;
-        mouseDownY = ev.data.global.y;
+       console.log("background mouse down");
+       //if (ev.data.originalEvent.metaKey) {
+           lastPanX = ev.data.global.x;
+           lastPanY = ev.data.global.y;
+       //} else {
+           mouseDownX = ev.data.global.x;
+           mouseDownY = ev.data.global.y;
+       //}
     }
 
     function onBackgroundMouseUp(ev) {
        if (mouseDownX === null) // user did not start the click on the canvas
            return;
+       //if (lastPanX !== null) {
+           //lastPanX = null;
+           //lastPanY = null;
+           //return;
+       //}
        $("#tpSelectBox").hide();
        $("#tpSelectBox").css({"width":0, "height":0});
 
@@ -711,27 +813,49 @@ var tsnePlot = function() {
        // address case when the mouse movement was upwards
        var pxMinX = Math.min(x, mouseDownX);
        var pxMaxX = Math.max(x, mouseDownX);
+
        var pxMinY = Math.min(y, mouseDownY);
        var pxMaxY = Math.max(y, mouseDownY);
-
-       // convert screen pixel click coords to data float values
-       var spanX = zoomRange.maxX - zoomRange.minX;
-       var spanY = zoomRange.maxY - zoomRange.minY;
-       var xMult = spanX / winInfo.width;
-       var yMult = spanY / winInfo.height;
-
-       var oldMinX = zoomRange.minX;
-       var oldMinY = zoomRange.minY;
-       zoomRange.maxX = oldMinX + (pxMaxX * xMult);
-       zoomRange.minX = oldMinX + (pxMinX * xMult);
-       zoomRange.maxY = oldMinY + (pxMaxY * yMult);
-       zoomRange.minY = oldMinY + (pxMinY * yMult);
-       console.log(zoomRange);
 
        mouseDownX = null;
        mouseDownY = null;
 
-       pixelCoords = scaleData(shownCoords);
+       if (ev.data.originalEvent.shiftKey) {
+           // OK, we're zooming:
+           // force the zoom rectangle to have the same aspect ratio as our canvas
+           // by adapting the height
+           var aspectRatio = gWinInfo.width / gWinInfo.height;
+           var rectWidth  = (pxMaxX-pxMinX);
+           var newHeight = rectWidth/aspectRatio;
+           pxMaxY = pxMinY + newHeight;
+
+           // convert screen pixel click coords to data float values
+           var zoomRange = gCurrentDataset.zoomRange;
+
+           // window size in data coordinates
+           var spanX = zoomRange.maxX - zoomRange.minX;
+           var spanY = zoomRange.maxY - zoomRange.minY;
+
+           // multiplier to convert from pixels to data coordinates
+           var xMult = spanX / gWinInfo.width; // multiplier
+           var yMult = spanY / gWinInfo.height;
+
+           var oldMinX = zoomRange.minX;
+           var oldMinY = zoomRange.minY;
+
+           zoomRange.minX = oldMinX + (pxMinX * xMult);
+           zoomRange.minY = oldMinY + (pxMinY * yMult);
+
+           zoomRange.maxX = oldMinX + (pxMaxX * xMult);
+           zoomRange.maxY = oldMinY + (pxMaxY * yMult);
+
+           pixelCoords = scaleData(shownCoords);
+       }
+       else {
+           // add the cells within the rectangle to the selection
+           gSelCellIds = findCellIdsInRect(pxMinX, pxMaxX, pxMinY, pxMaxY);
+           updateSelection();
+       }
        plotDots();
        renderer.render(stage);
     }
@@ -766,9 +890,10 @@ var tsnePlot = function() {
        renderer.view.style.position = "absolute";
        renderer.view.style.display = "block";
        renderer.view.style.left = metaBarWidth+metaBarMargin+"px";
-       renderer.view.style.top = menuBarHeight+"px";
+       renderer.view.style.top = (menuBarHeight+toolBarHeight)+"px";
        renderer.autoResize = true;
 
+       console.log(renderer.type);
        if (renderer.type instanceof PIXI.CanvasRenderer) {
            console.log('Using Canvas');
        } else {
@@ -776,7 +901,7 @@ var tsnePlot = function() {
        } 
 
        $(document.body).append(renderer.view);
-       return resizeRenderer();
+       resizeRenderer();
 
     }
 
@@ -799,8 +924,15 @@ var tsnePlot = function() {
             gLegend = buildLegendForMeta(gLegend.metaFieldIdx, sortBy);
             gClasses = assignCellClasses();
             }
-        else
-            buildLegendForExprAndClasses(sortBy);
+        else {
+            var geneIdx = gLegend.geneIdx;
+            var geneInfo = gCurrentDataset.preloadExpr.genes[geneIdx];
+            var geneId = geneInfo[0];
+            var geneSym = geneInfo[1];
+            var deciles = gCurrentDataset.preloadExpr.deciles[geneId];
+            var cellExpr = gCurrentDataset.preloadExpr.cellExpr;
+            buildLegendForExprAndClasses(geneIdx, geneSym, deciles, cellExpr);
+        }
     }
 
     function filterCoordsAndUpdate(cellIds, mode) {
@@ -857,42 +989,19 @@ var tsnePlot = function() {
         renderer.render(stage);
     }
 
-    function onHideLabelsClick(ev) {
-    /* user clicked the hide labels button */
-        //gSelCellIds = {};
-        gLabelMetaIdx = null;
-        plotDots();
-        menuBarHide("#tpHideLabels");
-        renderer.render(stage);
-    }
-
-    function onMethodClick(ev) {
-    /* user clicked a Method menu entry */
-        var methodType = ev.target.id;
-        switch (methodType) {
-            case "pca12" :
-                coord1Idx = 1;
-                coord2Idx = 2;
-                allCoords = pcaCoords;
-                break;
-            case "pca23" :
-                coord1Idx = 2;
-                coord2Idx = 3;
-                allCoords = pcaCoords;
-                break;
-            case "pca34" :
-                coord1Idx = 3;
-                coord2Idx = 4;
-                allCoords = pcaCoords;
-                break;
-            case "seurat" :
-                coord1Idx = 1;
-                coord2Idx = 2;
-                allCoords = seuratCoords;
-                break;
+    function onHideShowLabelsClick(ev) {
+    /* user clicked the hide labels / show labels menu entry */
+        if ($("#tpHideShowLabels").text()===SHOWLABELSNAME) {
+            gCurrentDataset.showLabels = true;
+            $("#tpHideShowLabels").text(HIDELABELSNAME);
+        }
+        else {
+            gCurrentDataset.showLabels = false;
+            $("#tpHideShowLabels").text(SHOWLABELSNAME);
         }
 
-        scaleDataAndColorByCluster();
+        plotDots();
+        renderer.render(stage);
     }
 
     function onSizeClick(ev) {
@@ -907,7 +1016,9 @@ var tsnePlot = function() {
     }
 
     function onZoom100Click(ev) {
-        zoomRange = cloneObj(zoomFullRange);
+    /* zoom to 100% */
+        circleSize = defaultCircleSize;
+        gCurrentDataset.zoomRange = cloneObj(gCurrentDataset.zoomFullRange);
         pixelCoords = scaleData(shownCoords);
         plotDots();
         renderer.render(stage);
@@ -915,6 +1026,9 @@ var tsnePlot = function() {
     }
 
     function zoom(scale) {
+    /* zoom to the center by a given factor */
+        circleSize *= (1.0-scale);
+        var zoomRange = gCurrentDataset.zoomRange;
         var xRange = Math.abs(zoomRange.maxX-zoomRange.minX);
         zoomRange.minX = zoomRange.minX - (xRange*scale);
         zoomRange.maxX = zoomRange.maxX + (xRange*scale);
@@ -940,40 +1054,28 @@ var tsnePlot = function() {
 
     function onResize(ev) {
         /* called when window is resized by user */
-        winInfo = resizeRenderer();
+        resizeRenderer();
         pixelCoords = scaleData(shownCoords);
-        var legendBarLeft = winInfo.width+metaBarMargin+metaBarWidth;
+        var legendBarLeft = gWinInfo.width+metaBarMargin+metaBarWidth;
         $('#tpLegendBar').css('left', legendBarLeft+"px");
-        var geneBarTop = winInfo.height+menuBarHeight+geneBarMargin;
-        drawGeneBar();
+        var geneBarTop = gWinInfo.height+menuBarHeight+geneBarMargin+toolBarHeight;
+        buildGeneBar();
         plotDots();
         renderer.render(stage);
     }
 
     function drawLegendBar() {
         // create an empty right side legend bar
-        var legendLeft = metaBarWidth+metaBarMargin+winInfo.width;
+        var legendLeft = metaBarWidth+metaBarMargin+gWinInfo.width;
         var htmls = [];
         htmls.push("<div id='tpLegendBar' style='position:absolute;top:"+menuBarHeight+"px;left:"+legendLeft+"px; width:"+legendBarWidth+"px'>");
         htmls.push("<div id='tpLegendTitle' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
         htmls.push("Legend:");
         htmls.push("</div>"); // title
-            //htmls.push("<div id='tpLegendTabs'>");
-                //htmls.push("<ul>");
-                //htmls.push("<li><a href='#tpLegendTab1'>Fill</a></li>");
-                //htmls.push("<li><a href='#tpLegendTab2'>Outline</a></li>");
-                //htmls.push("</ul>");
-                //htmls.push("<div id='tpLegendTab1'>");
                     htmls.push("<div id='tpLegendContent'>");
                     htmls.push("</div>"); // content 
-                //htmls.push("</div>"); // tab1 
-                //htmls.push("<div id='tpLegendTab2'>");
-                //htmls.push("</div>"); // tab2 
-            //htmls.push("</div>"); // tabs 
         htmls.push("</div>"); // bar 
         $(document.body).append(htmls.join(""));
-        //$('#tpLegendTabs').tabs();
-        //$('#tpLegendTabs > ul').hide();
     }
 
     function getTextWidth(text, font) {
@@ -1016,16 +1118,15 @@ var tsnePlot = function() {
     function loadColors(legendRows) {
     /* go over the legend lines, use the unique key to find the manually
      * defined colors in localStorage or in gOptions.metaColors */
-        _dump(gOptions);
-        var legendColors = gCurrentDataset.metaColors;
+        var metaColors = gCurrentDataset.metaColors;
         for (var i = 0; i < legendRows.length; i++) {
             var legKey = legendRows[i][5];
             var defColor = legendRows[i][1];
             var legLabel = legendRows[i][2];
             // first check localstorage
             var color = localStorage.getItem(legKey);
-            if (legendColors !== undefined && ((color===undefined) || (color===null))) {
-                    color = legendColors[legLabel];
+            if (metaColors !== undefined && ((color===undefined) || (color===null))) {
+                    color = metaColors[legLabel];
             }
 
             if (color===undefined || color === null) {
@@ -1052,6 +1153,7 @@ var tsnePlot = function() {
             metaToLegend[metaVal] = i;
         }
 
+        var metaData = gCurrentDataset.metaData;
         var cellIdToLegendId = {};
         for (var j = 0; j < allCoords.length; j++) {
             var cellId = allCoords[j][0];
@@ -1078,21 +1180,22 @@ var tsnePlot = function() {
         }
     }
 
-    function buildLegendForExprAndClasses() {
-        /* build legend for expression and update the gClasses global var */
-        var geneIdx = gLegend.geneIdx;
-        var geneId = geneFields[geneIdx][0];
-        var deciles = gDeciles[geneId];
+    function buildLegendForExprAndClasses(geneIdx, geneSym, deciles, cellToExpr) {
+        /* build legend for expression and update the gClasses global var 
+         * cellToExpr object with cellId -> array, geneIdx points to the right value
+         * */
 
-        $('#tpLegendTitle').html(geneId+" expression");
+        $('#tpLegendTitle').html(geneSym+" expression");
         
         // get count for each decile and the special bin for null values
+        // for all currently shown cells
         var decileCounts = newArray(10, 0);
         var nullCount = 0;
         var cellToClass = {};
         for (var i = 0; i < shownCoords.length; i++) {
             var cellId = shownCoords[i][0];
-            var exprVal = geneExpr[cellId][geneIdx]; 
+            var exprVal = cellToExpr[cellId][geneIdx];  // somewhat wasteful, at least for single genes
+
             if (exprVal===null)
                 {
                 nullCount++;
@@ -1107,7 +1210,7 @@ var tsnePlot = function() {
 
         var legendRows = [];
         // "no value" 
-        legendRows.push( [ cNullColor, cNullColor, "No Value", nullCount, 0, geneId+"|null"] );
+        legendRows.push( [ cNullColor, cNullColor, "No Value", nullCount, 0, geneSym+"|null"] );
 
         if ( deciles!==null ) {
             var defColors = makeColorPalette(10, true);
@@ -1119,81 +1222,13 @@ var tsnePlot = function() {
                 var legLabel = binMin.toFixed(2)+' to '+binMax.toFixed(2);
 
                 var defColor = defColors[j];
-                var uniqueKey = geneId+"|"+legLabel;
+                var uniqueKey = geneSym+"|"+legLabel;
                 legendRows.push( [ defColor, defColor, legLabel, count, legendId, uniqueKey] );
             }
         }
 
     gLegend.rows = loadColors(legendRows);
     gClasses = cellToClass;
-    }
-
-    function buildLegendForExpr_old() {
-        // get expression values, keep null values separate
-        var geneIdx = gLegend.geneIdx;
-        var geneId = geneFields[geneIdx][0];
-        var exprVals = [];
-        var nullIds = [];
-        for (var i = 0; i < shownCoords.length; i++) {
-            var cellId = shownCoords[i][0];
-            var exprVal = geneExpr[cellId][geneIdx]; 
-            if (exprVal==null)
-                nullIds.push(cellId);
-            else
-                exprVals.push( [exprVal, cellId] );
-        }
-
-        // sort them
-        exprVals = exprVals.sort(function(a, b){ return a[0] - b[0]; }); // sort by exprVal
-
-        // go over the values and assign cellIds to bins
-        var cell2bin = {};
-        var binSize = exprVals.length / 10;
-        var binMaxArr = newArray(11, -Number.MAX_VALUE); // 10 bins + bin0 for null values
-        var binCounts = newArray(11, 0);
-        for (i = 0; i < exprVals.length; i++) {
-            var exprRow = exprVals[i];
-            var exprVal = exprRow[0];
-            var cellId = exprRow[1];
-
-            var binIdx = 1+Math.floor(i / binSize); // binIdx=0 is reserved
-            binMaxArr[binIdx] = Math.max(binMaxArr[binIdx], exprVal);
-            binCounts[binIdx]++;
-            cell2bin[cellId] = binIdx;
-        }
-
-        // add the cellIds with null values
-        for (i = 0; i < nullIds.length; i++) {
-            cell2bin[nullIds[i]] = 0;
-        }
-
-        gClasses = cell2bin;
-
-        // contruct the legend
-        var geneSym = geneFields[geneIdx][0];
-        var legendRows = [];
-
-        // bin0 is "no value" 
-        legendRows.push( [ cNullColor, cNullColor, "No Value", nullIds.length, 0, geneSym+"|null"] );
-
-        if (exprVals.length>0) {
-            var defColors = makeColorPalette(binMaxArr.length, true);
-            var lastMax = exprVals[0][0];
-            for (i = 1; i < binCounts.length; i++) {
-                var count = binCounts[i];
-                var binMin = lastMax;
-                var binMax = binMaxArr[i];
-                var binId = i;
-                var legLabel = binMin.toFixed(2)+' to '+binMax.toFixed(2);
-                var defColor = defColors[i];
-                var uniqueKey = geneSym+"|"+legLabel;
-                legendRows.push( [ defColor, defColor, legLabel, count, binId, uniqueKey] );
-                lastMax = binMax;
-            }
-        }
-
-        gLegend.rows = loadColors(legendRows);
-
     }
 
     function onGeneClick (event) {
@@ -1248,14 +1283,12 @@ var tsnePlot = function() {
     function onChangeGenesClick(ev) {
     /* called when user clicks the "change" button in the gene list */
         var htmls = [];
-        //htmls.push("<div id='tpGeneDialog'>");
         htmls.push("<p style='padding-bottom: 5px'>Enter a list of gene symbols, one per line:</p>");
-        //htmls.push("<div>");
         htmls.push("<textarea id='tpGeneListBox' class='form-control' style='height:320px'>");
 
-
+        var geneFields = gCurrentDataset.preloadGenes.genes;
         for (var i = 0; i < geneFields.length; i++) {
-            htmls.push(geneFields[i][0]+"\r\n");
+            htmls.push(geneFields[i][1]+"\r\n");
         }
         htmls.push("</textarea>");
         //htmls.push("<p>");
@@ -1268,6 +1301,19 @@ var tsnePlot = function() {
         $('#tpGeneDialogOk').click ( onGeneDialogOkClick );
     }
 
+    function getSortedCellIds() {
+        /* return the cellId names of the expression matrix */
+        // get the sorted list of cell IDs - XX is there a risk that the matrix does not have a sorted order? 
+        // XX Risk of python sorting a different way than javascript?
+        var metaData = gCurrentDataset.metaData;
+        var cellIds = [];
+        for (var cellId in metaData) {
+            cellIds.push(cellId);
+        }
+        cellIds.sort();
+        return cellIds;
+    }
+
     function onGeneLoadComplete() {
         /* called when all gene expression vectors have been loaded */
         console.log("All genes complete");
@@ -1276,13 +1322,7 @@ var tsnePlot = function() {
             $("#tpDialog").dialog("close");
         }
 
-        // get the sorted list of cell IDs - XX is there a risk that the matrix does not have a sorted order? 
-        // XX Risk of python sorting a different way than javascript?
-        var cellIds = [];
-        for (var cellId in metaData) {
-            cellIds.push(cellId);
-        }
-        cellIds.sort();
+        var cellIds = getSortedCellIds();
 
         // transform the data from tpLoadGeneExpr as gene -> list of values (one per cellId) to 
         // newExprData cellId -> list of values (one per gene)
@@ -1298,13 +1338,16 @@ var tsnePlot = function() {
 
         // do the data transform
         var newGeneFields = [];
+        var newDeciles = {};
         for (var geneI = 0; geneI < gLoad_geneList.length; geneI++) {
             var geneSym = gLoad_geneList[geneI];
             var geneInfo = gLoad_geneExpr[geneSym];
 
             var geneId = geneInfo[0];
             var geneVec = geneInfo[1];
+            var deciles = geneInfo[2];
             newGeneFields.push( [geneSym, geneId] );
+            newDeciles[geneSym] = deciles;
 
             for (var cellI = 0; cellI < cellIdCount; cellI++) {
                 cellId = cellIds[cellI];
@@ -1314,29 +1357,43 @@ var tsnePlot = function() {
 
         gLoad_geneList = null;
         gLoad_geneExpr = null;
-        geneExpr = newExprData;
-        geneFields = newGeneFields;
-        drawGeneBar(); 
 
+        gCurrentDataset.preloadExpr = {};
+        gCurrentDataset.preloadExpr.genes = newGeneFields;
+        gCurrentDataset.preloadExpr.cellExpr = newExprData;
+        gCurrentDataset.preloadExpr.deciles = newDeciles;
+
+        buildGeneBar(); 
     }
 
-    function onReceiveExprLine(line) {
-        /* called when a line of the expression matrix has been loaded */
-        var symbol = this.geneSymbol;
-        console.log("Got gene "+symbol);
+    function parseMatrixLine(line) {
+        /* parse tsv line with first field being the geneId. Return as [geneId, [float1, float2, ...]] */
         var fields = line.split("\t");
         var geneId = fields[0];
-        // convert all but the first field to a new vector of floats
+        // convert all but the first field to a new array of floats
         var exprVec = [];
         for (var i = 1; i < fields.length; i++) {
             exprVec.push( parseFloat(fields[i]));
         }
+        //exprVec = new Float32Array(exprVec);
+        var exprTuple = [geneId, exprVec];
+        return exprTuple;
+    }
+
+    function onReceiveExprLineProgress(line) {
+        /* called when a line of the expression matrix has been loaded: parse line and upd. progressbar */
+        var symbol = this.geneSymbol;
+        console.log("Got gene "+symbol);
+        var exprTuple = parseMatrixLine(line);
+        var exprVec = exprTuple[1];
+        exprTuple.push( getDeciles(exprVec) );
+        gLoad_geneExpr[symbol] = exprTuple;
+
         var progressbar = $( "#tpGeneProgress" );
         var val = progressbar.progressbar( "value" ) || 0 ;
         val++;
         progressbar.progressbar( "value", val );
         $( "#tpProgressLabel" ).text(symbol);
-        gLoad_geneExpr[symbol] = [geneId, exprVec];
 
         var progrMax = progressbar.progressbar("option", "max");
         if (val >= progrMax)
@@ -1354,6 +1411,97 @@ var tsnePlot = function() {
       return parts.map(function(part) { return part.trim().replace(/(^[\/]*|[\/]*$)/g, ''); }).join(separator || '/');
     }
 
+    function getDeciles(arr) {
+    /* return the deciles for an array of floats, line-by-line python->js port from cbPrep */
+        var values = arr.slice(0).sort(); // make sorted copy of array
+        var binSize = ((values.length)-1.0) / 10.0;
+
+        // get deciles from the list of sorted values
+        var deciles = [];
+        var pos = 0;
+        for (var i = 0; i < 11; i++) { // 10 bins means 11 ranges
+            pos = Math.floor(binSize * i); // ? could this ever exceed len(values) due to floating point issues?
+            if (pos > values.length) {
+                console.log("Warning - getDecile: pos > length of vector");
+                pos = values.length;
+            }
+            deciles.push(values[pos]);
+    }
+    return deciles;
+    }
+
+    function singleExprDone() {
+    /* called when both cellIds(header) and single line of the expr matrix have been read */
+        var sExpr = gCurrentDataset.singleExpr;
+        if (sExpr.exprVec===undefined || gCurrentDataset.matrixCellIds==undefined)
+            // don't proceed if one part of the data is not here yet
+            return;
+
+        // convert the expression vector to a dict cellId -> array of float, with a single value
+        var cellToExpr = {};
+        var exprVec = sExpr.exprVec;
+        var cellIds = gCurrentDataset.matrixCellIds;
+        for (var i = 0; i < cellIds.length; i++) {
+            var cellId = cellIds[i];
+            var val = [exprVec[i]];
+            cellToExpr[cellId] = val;
+        }
+        buildLegendForExprAndClasses(0, sExpr.symbol, sExpr.deciles, cellToExpr);
+        drawLegend();
+        plotDots();
+        renderer.render(stage);
+    }
+
+    function onReceiveMatrixSingleExprLine(line) {
+        /* got a single expression line from the matrix, no progressbar */
+        var sExpr = gCurrentDataset.singleExpr;
+        sExpr.symbol = this.geneSymbol;
+        console.log("Got gene "+sExpr.symbol);
+        var exprTuple = parseMatrixLine(line);
+        sExpr.geneId  = exprTuple[0];
+        sExpr.exprVec = exprTuple[1];
+        sExpr.deciles = getDeciles(sExpr.exprVec);
+
+        singleExprDone();
+    }
+
+    function onReceiveMatrixHeader(line) {
+        /* received the */
+        line = line.trim(); // old index script had a bug where it added a newline
+        var fields = line.split("\t");
+        var cellIds = fields.slice(1); // copy all but first
+        console.log("Got header, cellCount="+cellIds.length);
+        gCurrentDataset.matrixCellIds = cellIds;
+        singleExprDone();
+    }
+
+    function loadSingleGeneFromMatrix(geneSym) {
+        /* load gene expression of a single gene, build legend and color by it */
+        gCurrentDataset.singleExpr = {};
+
+        var url = joinPaths([gCurrentDataset.baseUrl, "geneMatrix.tsv"]);
+
+        // load the cell IDs (header line)
+        var offsetInfo = gCurrentDataset.matrixOffsets["_header"];
+        var start = offsetInfo[0];
+        var end = start+offsetInfo[1];
+        jQuery.ajax( { url: url,
+            headers: { Range: "bytes="+start+"-"+end } ,
+            success: onReceiveMatrixHeader
+        });
+
+        // load the expression vector
+        offsetInfo = gCurrentDataset.matrixOffsets[geneSym];
+        start = offsetInfo[0];
+        end = start+offsetInfo[1];
+        
+        jQuery.ajax( { url: url,
+            headers: { Range: "bytes="+start+"-"+end } ,
+            geneSymbol : geneSym,
+            success: onReceiveMatrixSingleExprLine
+        });
+    }
+
     function onGeneDialogOkClick(ev) {
     /* called the user clicks the OK button on the 'paste your genes' dialog box */
         var genes = $('#tpGeneListBox').val().replace(/\r\n/g, "\n").split("\n");
@@ -1366,6 +1514,7 @@ var tsnePlot = function() {
         var baseUrl = gCurrentDataset.baseUrl;
         var url = joinPaths([baseUrl, "geneMatrix.tsv"]);
         var validCount = 0; // needed for progressbar later
+        var matrixOffsets = gCurrentDataset.matrixOffsets;
         for (var i = 0; i < genes.length; i++) {
             var gene = genes[i];
             if (gene.length===0) // skip empty lines
@@ -1383,8 +1532,7 @@ var tsnePlot = function() {
             jQuery.ajax( { url: url,
                 headers: { Range: "bytes="+start+"-"+end } ,
                 geneSymbol : gene,
-                //progressInc : progressPerGene,
-                success: onReceiveExprLine
+                success: onReceiveExprLineProgress
             });
         }
 
@@ -1414,25 +1562,35 @@ var tsnePlot = function() {
 
     }
 
-    function drawGeneBar() {
+    function buildGeneBar() {
     /* create bottom gene expression info bar */
-        var canvasWidth = winInfo.width;
-        var canvasHeight = winInfo.height;
         $('#tpGeneBar').remove();
+        if (gCurrentDataset.preloadExpr===null)
+            return;
+        var geneFields = gCurrentDataset.preloadExpr.genes;
 
-        $(document.body).append("<div id='tpGeneBar' style='position:absolute;top:"+(menuBarHeight+canvasHeight+geneBarMargin)+"px;left:"+(metaBarWidth+metaBarMargin)+"px;width:"+canvasWidth+"px; height:"+geneBarHeight+"px; background-color:light-grey'></div>");
+        var canvasEl = $("canvas");
+        var canvasWidth = parseInt(canvasEl.css("width").replace("px", ""));
+        var canvasHeight = parseInt(canvasEl.css("height").replace("px", ""));
+
+        var barTop = menuBarHeight+toolBarHeight+canvasHeight+geneBarMargin;
+        var barLeft = metaBarWidth+metaBarMargin;
+
+        $(document.body).append("<div id='tpGeneBar' style='position:absolute;top:"+barTop+"px;left:"+barLeft+"px;width:"+canvasWidth+"px; height:"+geneBarHeight+"px; background-color:light-grey'></div>");
 
         var html = [];
         html.push('<table id="tpGeneTable"><tr>');
         html.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
-        var cellWidth = 83; // -> must correspond to CSS class tpGeneBarCell + padding + border
+        var cellWidth = 60; // -> must correspond to CSS class tpGeneBarCell + padding + border
         var colsPerRow = Math.floor(canvasWidth / cellWidth);
 
         var currWidth = 1;
         for (var i = 0; i < geneFields.length; i++) {
-            var geneName = geneFields[i][0];
-            var geneDesc = geneFields[i][1];
+            var geneInfo = geneFields[i];
+            var geneId   = geneInfo[0];
+            var geneName = geneInfo[1];
+            var geneDesc = geneInfo[2];
             if (((i % colsPerRow) == 0) && (i!=0)) {
                 html.push("</tr><tr>");
                 currWidth=0;
@@ -1504,19 +1662,20 @@ var tsnePlot = function() {
         var legend = {};
         legend.type = "meta";
         legend.metaFieldIdx = metaIndex;
-        legend.fieldName = metaFields[metaIndex];
+        legend.fieldName = gCurrentDataset.metaFields[metaIndex];
 
         // first make a list of all possible meta values and their counts
+        var metaData = gCurrentDataset.metaData;
         var metaCounts = {};
-        for (var i = 0; i < pixelCoords.length; i++) {
-            var cellId = pixelCoords[i][0];
+        for (var i = 0; i < allCoords.length; i++) {
+            var cellId = allCoords[i][0];
             var metaRow = metaData[cellId];
             var metaVal = metaRow[metaIndex];
             metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
         }
 
         if (keys(metaCounts).length > 100) {
-            alert("Cannot color on a field that has more than 100 different values");
+            warn("Cannot color on a field that has more than 100 different values");
             return null;
         }
 
@@ -1531,7 +1690,7 @@ var tsnePlot = function() {
         if (fieldName!==undefined)
             $("#tpLegendTitle").text(fieldName.replace(/_/g, " "));
 
-        var fieldName = metaFields[metaIndex];
+        var fieldName = gCurrentDataset.metaFields[metaIndex];
         // force field names that look like "cluster" to a rainbow palette
         // even if they look like numbers
         if (fieldName.indexOf("luster") != -1 && sortBy===undefined)
@@ -1557,14 +1716,32 @@ var tsnePlot = function() {
         return legend;
     }
 
-    function findCellIdsForLegendId (cellIdToLegendId, legendId, cellIds) {
+    function findCellIdsForLegendIds (cellIdToLegendId, legendIds, cellIds) {
     /* given a legendId, return an object with cellIds that are associated to a given class */
         if (cellIds==undefined)
             cellIds = {};
-        for (var cellId in cellIdToLegendId) {
-            if (gClasses[cellId] == legendId)
+        for (var i = 0; i < legendIds.length; i++) {
+            var legendId = legendIds[i];
+            for (var cellId in cellIdToLegendId) {
+                if (gClasses[cellId] == legendId)
+                    cellIds[cellId] = true;
+                }
+        }
+        return cellIds;
+    }
+
+    function findCellIdsInRect (minX, maxX, minY, maxY) {
+    /* given pixel coordinates, return the cellId within the rectangle*/
+    // XX This is not using a quad-tree, but should. It's very slow right now.
+        var cellIds = {};
+        for (var i = 0; i < pixelCoords.length; i++) {
+            var coord = pixelCoords[i];
+            var cellId = coord[0];
+            var x = coord[1];
+            var y = coord[2];
+            if ((x >= minX) && (x <= maxX) && (y >= minY) && (y <= maxY))
                 cellIds[cellId] = true;
-            }
+        }
         return cellIds;
     }
 
@@ -1574,55 +1751,290 @@ var tsnePlot = function() {
         if (legend==null)
             return;
 
-        if (metaFields!=null)
+        if (gCurrentDataset.metaFields!=null)
             $('#tpLegendTitle').text(legend.fieldName.replace(/_/g, " "));
         $('.tpMetaBox').removeClass('tpMetaSelect');
+        $('.tpMetaValue').removeClass('tpMetaValueSelect');
         $('#tpMetaBox_'+fieldId).addClass('tpMetaSelect');
+        $('#tpMeta_'+fieldId).addClass('tpMetaValueSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
 
         gLegend = legend;
         drawLegend();
         gClasses = assignCellClasses();
-        plotDots();
-        renderer.render(stage);
     }
 
     function onMetaClick (event) {
     /* called when user clicks a meta data field or label */
         var fieldId = parseInt(event.target.id.split("_")[1]);
-        gSelCellIds = {};
+        if (isNaN(fieldId)) {
+            // try up one level in the DOM tree
+            fieldId = parseInt(event.target.parentElement.id.split("_")[1]);
+        }
+        //gSelCellIds = {};
         colorByMetaField(fieldId);
+        plotDots();
+        renderer.render(stage);
     }
 
-    function drawToolBar () {
+    function addMetaTipBar(htmls, valFrac, valStr) {
+        /* add another bar to a simple histogram built from divs */
+        htmls.push("<div>&nbsp;");
+        htmls.push("<div class='tpMetaTipPerc'>"+(100*valFrac).toFixed(1)+"%</div>");
+        htmls.push("<div class='tpMetaTipName'>"+valStr+"</div>");
+        //htmls.push("<span class='tpMetaTipCount'>"+valCount+"</span>");
+        var pxSize = (valFrac * metaTipWidth).toFixed(0);
+        htmls.push("<div style='width:"+pxSize+"px' class='tpMetaTipBar'>&nbsp</div>");
+        htmls.push("</div>");
+    }
+
+    function onMetaMouseOver (event) {
+    /* called when user hovers over meta element: shows the histogram of selected values */
+        var metaHist = gCurrentDataset.metaHist;
+        if (metaHist===undefined)
+            return;
+
+        // mouseover over spans or divs will not find the id, so look at their parent, which is the main DIV
+        var target = event.target;
+        if (target.id==="")
+            target = event.target.parentNode;
+        if (target.id==="")
+            target = event.target.parentNode;
+        var targetId = target.id;
+
+        var fieldId = parseInt(targetId.split("_")[1]);
+
+        var valHist = metaHist[fieldId];
+        var htmls = [];
+        var otherCount = 0;
+        var totalSum = 0;
+        for (var i = 0; i < valHist.length; i++) {
+            var valInfo  = valHist[i];
+            var valCount = valInfo[0];
+            var valFrac  = valInfo[1];
+            var valStr   = valInfo[2];
+
+            totalSum += valCount;
+            // only show the top values, summarize everything else into "other"
+            if (i > HISTOCOUNT) {
+                otherCount += valCount;
+                continue;
+            }
+
+            if (valStr==="")
+                valStr = "<span style='color:indigo'>(empty)</span>";
+            addMetaTipBar(htmls, valFrac, valStr);
+        }
+
+        if (otherCount!==0) {
+            var otherFrac = (otherCount / totalSum);
+            addMetaTipBar(htmls, otherFrac, "<span style='color:indigo'>(other)</span>");
+        }
+        
+        $('#tpMetaTip').html(htmls.join(""));
+        $('#tpMetaTip').css({top: event.target.offsetTop+"px", left: metaBarWidth+"px", width:metaTipWidth+"px"});
+        $('#tpMetaTip').show();
+    }
+
+    function buildComboBox(htmls, id, entries, selIdx, placeholder, width) {
+    /* make html for a combo box and add lines to htmls list */
+        htmls.push('<select style="'+width+'px" id="'+id+'" data-placeholder="'+placeholder+'" class="tpCombo">');
+        for (var i = 0; i < entries.length; i++) {
+            var isSelStr = "";
+            var entry = entries[i];
+            if ((selIdx!==undefined && i===selIdx))
+                isSelStr = " selected"
+            htmls.push('<option value="'+entry[0]+'"'+isSelStr+'>'+entry[1]+'</option>');
+        }
+        htmls.push('</select>');
+    }
+
+    function loadCoordSet(coordIdx) {
+        var coordUrl = gCurrentDataset.coordFiles[coordIdx].url;
+        console.log("Loading coordinates from "+coordUrl);
+        //var fullUrl = joinPaths([gCurrentDataset.baseUrl, coordUrl]);
+        startLoadTsv("coords", coordUrl, loadCoordsFromTsv);
+    }
+
+    function onLayoutChange(ev, params) {
+        /* user changed the layout in the combobox */
+        var coordIdx = parseInt(params.selected);
+        loadCoordSet(coordIdx);
+
+        // remove the focus from the combo box
+        removeFocus();
+    }
+
+    function onGeneChange(ev) {
+        /* user changed the layout in the combobox */
+        var geneSym = ev.target.value;
+        console.log("Loading "+geneSym);
+        loadSingleGeneFromMatrix(geneSym);
+        // remove the focus from the combo box
+        //removeFocus();
+    }
+
+
+    function onDatasetChange(ev, params) {
+        /* user changed the dataset in the dropbox */
+        var datasetIdx = parseInt(params.selected);
+        loadOneDataset(datasetIdx);
+        removeFocus();
+    }
+
+    function buildLayoutCombo(htmls, files, id, width, left) {
+        /* files is a list of elements with a shortLabel attribute. Build combobox for them. */
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px"><label for="'+id+'">Layout</label>');
+        var entries = [];
+        for (var i = 0; i < files.length; i++) {
+            var coordFiles = files[i];
+            var label = coordFiles.shortLabel;
+            if (label===undefined)
+                warn("Layout coordinate file "+i+" has no .shortLabel attribute")
+            entries.push([i, label]);
+        }
+        buildComboBox(htmls, id, entries, 0, "Select a layout algorithm...", width);
+        htmls.push('</div>');
+    }
+
+    function buildDatasetCombo(htmls, datasets, id, width, left) {
+        /* datasets with a list of elements with a shortLabel attribute. Build combobox for them. */
+        var top = toolBarComboTop;
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Dataset</label>');
+        var entries = [];
+        for (var i = 0; i < datasets.length; i++) {
+            var dataset = datasets[i];
+            var label = dataset.shortLabel;
+            if (label===undefined)
+                label = "Dataset "+i;
+            entries.push([i, label]);
+        }
+        buildComboBox(htmls, id, entries, 0, "Select a dataset...", width);
+        htmls.push('</div>');
+    }
+
+    function buildGeneCombo(htmls, id, left) {
+        /* datasets with a list of elements with a shortLabel attribute. Build combobox for them. */
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
+        htmls.push('<label style="padding-right:5px" for="'+id+'">Color by gene</label>');
+        htmls.push('<select style="width:120px" id="'+id+'" placeholder="search..." class="tpCombo">');
+        htmls.push('</div>');
+    }
+
+
+    function activateCombobox(id) {
+        $('#'+id).chosen({
+            inherit_select_classes : true
+        });
+    }
+
+    function geneComboSearch(query, callback) {
+        /* called when the user types someething into the gene box, returns matching gene symbols */
+        if (!query.length) 
+            return callback();
+
+        var geneList = [];
+
+        for (var geneSym in gCurrentDataset.matrixOffsets) {
+            if (geneSym.toLowerCase().startsWith(query.toLowerCase()))
+                geneList.push({"id":geneSym, "text":geneSym});
+        }
+
+        return callback(geneList);
+    }
+
+    function buildToolBar (datasetIdx) {
     /* add the tool bar with icons of tools */
         $("#tpToolBar").remove();
-        $(document.body).append("<div id='tpToolBar' style='position:absolute;left:0px;top:"+menuBarHeight+"px'></div>");
+        $(document.body).append("<div id='tpToolBar' style='position:absolute;left:"+(metaBarWidth+metaBarMargin)+"px;top:"+menuBarHeight+"px'></div>");
 
         var htmls = [];
-        htmls.push('<button title="Activate zoom" id="tpIconZoomIn" type="button" class="btn-small btn-outline-primary"><i class="material-icons">zoom_in</i></button>');
-        htmls.push('<button title="Zoom out" id="tpIconZoomOut" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out</i></button>');
-        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary"><i style="height:20px" class="material-icons">zoom_out_map</i></button>');
+        htmls.push('<div id="tpIcons" style="display:inline-block">');
+        htmls.push('<button title="Zoom in" id="tpIconZoomIn" type="button" class="btn-small btn-outline-primary noPad"><i class="material-icons">zoom_in</i></button>');
+        htmls.push('<button title="Zoom out" id="tpIconZoomOut" type="button" class="btn-small btn-outline-primary noPad"><i class="material-icons">zoom_out</i></button>');
+        htmls.push('<button title="Zoom to 100%" id="tpIconZoom100" type="button" class="btn-small btn-outline-primary noPad"><i class="material-icons">zoom_out_map</i></button>');
+        htmls.push('</div>');
+
+        //htmls.push("&emsp;");
+        buildDatasetCombo(htmls, gOptions.datasets, "tpDatasetCombo", 100, toolBarComboLeft);
+
+        //htmls.push("&emsp;");
+        buildLayoutCombo(htmls, gCurrentDataset.coordFiles, "tpLayoutCombo", 200, toolBarComboLeft+330);
+
+        //htmls.push("&emsp;");
+        buildGeneCombo(htmls, "tpGeneCombo", toolBarComboLeft+590);
+
         $("#tpToolBar").append(htmls.join(""));
 
-       $('#tpIconZoomIn').click( onZoomInClick );
-       $('#tpIconZoomOut').click( onZoomOutClick );
-       $('#tpIconZoom100').click( onZoom100Click );
+        $('#tpIconZoomIn').click( onZoomInClick );
+        $('#tpIconZoomOut').click( onZoomOutClick );
+        $('#tpIconZoom100').click( onZoom100Click );
+        //activateCombobox("tpGeneCombo");
+        activateCombobox("tpDatasetCombo");
+        activateCombobox("tpLayoutCombo");
+
+        //$('#tpGeneCombo').select2({ placeholder : "Gene Symbol"}); // preliminary setup, real setup will be in updateToolbar()
+        $('#tpGeneCombo').selectize({
+                labelField : 'text',
+                valueField : 'id',
+                searchField : 'text',
+                load : geneComboSearch
+        });
+
+        $('#tpDatasetCombo').change(onDatasetChange);
+        // update the combobox, select the right dataset
+        $("#tpDatasetCombo").val(datasetIdx).trigger("chosen:updated");
+        $('#tpLayoutCombo').change(onLayoutChange);
+        $('#tpGeneCombo').change(onGeneChange);
     }
 
-    function drawMetaBar () {
+    function metaFieldToLabel(fieldName) {
+    /* convert the internal meta field string to the label shown in the UI. Fix underscores, _id, etc */
+        if (fieldName==="_id")
+            fieldName = capitalize(gSampleDesc)+" identifier";
+        else
+            fieldName = fieldName.replace(/_/g, " ");
+        return fieldName;
+    }
+
+    function buildMetaBar () {
     /* add the left sidebar with the meta data fields */
         $("#tpMetaBar").remove();
-        $(document.body).append("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+(menuBarHeight+toolBarHeight)+"px'></div>");
+        $(document.body).append("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+(menuBarHeight)+"px;width:"+metaBarWidth+"px'></div>");
 
         var htmls = [];
+        htmls.push("<div id='tpMetaTitle'>"+METABOXTITLE+"</div>");
+        var metaFields = gCurrentDataset.metaFields;
         for (var i = 0; i < metaFields.length; i++) {
-            var fieldName = metaFields[i].replace(/_/g, " ");
-            htmls.push("<div class='tpMetaBox' id='tpMetaBox_"+i+"'><div id='tpMetaLabel_"+i+"' class='tpMetaLabel'>"+fieldName+":</div><div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px' id='tpMeta_"+i+"'>&nbsp;</div></div>");
+            var fieldName = metaFields[i];
+            var greyFields = gCurrentDataset.inactiveFields;
+
+            var isGrey = false;
+            if (i===0)
+                isGrey = true;
+            if (greyFields!==undefined && greyFields.indexOf(fieldName)!==-1)
+                isGrey = true;
+
+            var addClass = "";
+            var addTitle="";
+            htmls.push("<div class='tpMetaBox' id='tpMetaBox_"+i+"'>");
+            if (isGrey) {
+                addClass=" tpMetaLabelGrey";
+                addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
+            }
+
+            htmls.push("<div id='tpMetaLabel_"+i+"' class='tpMetaLabel"+addClass+"'"+addTitle+"></div>");
+            htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px' id='tpMeta_"+i+"'>&nbsp;</div></div>");
         }
+
+        $(document.body).append("<div id='tpMetaTip'></div>");
         $("#tpMetaBar").append(htmls.join(""));
+        clearMetaBar();
+
         $(".tpMetaLabel").click( onMetaClick );
         $(".tpMetaValue").click( onMetaClick );
+        $(".tpMetaValue").mouseover( onMetaMouseOver );
+        $(".tpMetaValue").mouseleave ( function() { $('#tpMetaTip').hide()} );
         
         // setup the right-click menu
         var menuItems = [{name: "Use as cluster label"}];
@@ -1633,13 +2045,8 @@ var tsnePlot = function() {
             callback: onMetaRightClick
         };
         $.contextMenu( menuOpt );
-    }
-
-
-    function addInfoBars() {
-    /* add the info-panels with the meta fields and legend on the sides of the screen */
-        drawGeneBar();
-        drawMetaBar();
+        // setup the tooltips
+        //$('[title!=""]').tooltip();
     }
 
     function findMinMax(coords) {
@@ -1668,13 +2075,15 @@ var tsnePlot = function() {
     }
         
     function scaleData(coords) {
-    /* scale coords (x,y float coordinates) to integer pixels on screen and return new list of (cellId, x, y) */
+    /* scale coords (x,y float coordinates) to integer pixels on screen and
+     * return new list of (cellId, x, y). Take into account the current zoom range.  */
         var borderSize = 5;
-        var winWidth = winInfo.width-(2*borderSize);
-        var winHeight = winInfo.height-(2*borderSize);
+        var winWidth = gWinInfo.width-(2*borderSize);
+        var winHeight = gWinInfo.height-(2*borderSize);
         console.log("Starting coordinate scaling");
 
-        // var access is faster than object access
+        // (var access is faster than object access)
+        var zoomRange = gCurrentDataset.zoomRange;
         var minX = zoomRange.minX;
         var maxX = zoomRange.maxX;
         var minY = zoomRange.minY;
@@ -1762,25 +2171,48 @@ var tsnePlot = function() {
         intro.start();
     }
 
-    function loadConfig(jsonDict) {
-    /* accepts dict with 'metaFields' and 'geneFields', loads into global vars and sets up window */
-        metaFields = jsonDict.metaFields;
-        geneFields = jsonDict.geneFields;
-        gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
-        if (gLabelMetaIdx==undefined) {
-            gLabelMetaIdx = null;
-            menuBarHide("#tpHideLabels");
-        } else
-            menuBarShow("#tpHideLabels");
-        addInfoBars(metaFields);
-        resizeRenderer();
+    function oneFileLoaded(name) {
+        /* increase file loaded counter, if at 3, call the init function */
+        var status = gCurrentDataset.loadStatus;
+        if ( (status["meta"]==="ok" && status["coords"]==="ok")
+                && (status["offsets"]==="ok" || status["offsets"]==="error")
+                && (status["colors"]==="ok" || status["colors"]==="error") )
+        {
+            if (status["preload"]==="error")
+                gCurrentDataset.preloadExpr = null;
+            if (status["offsets"]==="error")
+                gCurrentDataset.matrixOffsets = null;
+            initInfoBarsAndPlot();
+        }
     }
 
-    function loadMeta(jsonDict) {
+    //function loadMetaFromJson(jsonDict) {
+    ///* accepts dict with 'meta', loads into global var 'meta' */
+        //gCurrentDataset.metaData = jsonDict.meta;
+        //oneFileLoaded("meta");
+    //}
+
+    function loadMetaFromTsv(papaResults) {
     /* accepts dict with 'meta', loads into global var 'meta' */
-        metaData = jsonDict.meta;
-        //if (currDataset.clusterLabelField!==undefined)
-            //gLabelMetaIdx = metaFields.indexOf(gOptions.labelField);
+        var rows = papaResults.data;
+        var headerRow = rows[0];
+        console.log(headerRow);
+        //if (headerRow[0]!=="meta") {
+            //warn("first field in meta.tsv is not 'meta'");
+            //return;
+        //}
+        gCurrentDataset.metaFields = headerRow;
+
+        var metaData = {};
+        for (var i = 1; i < rows.length; i++) {
+            var row = rows[i];
+            var cellId = row[0];
+            if (cellId==="")
+                continue;
+            metaData[cellId] = row;
+        }
+        gCurrentDataset.metaData = metaData;
+        oneFileLoaded("meta");
     }
 
     function makeColorPalette(n, isGradient) {
@@ -1796,43 +2228,35 @@ var tsnePlot = function() {
         return palette(["tol-sq"], n);
     }
 
-    function cloneObj(d) {
-    /* returns a copy of an object */
-        // see http://stackoverflow.com/questions/122102/what-is-the-most-efficient-way-to-deep-clone-an-object-in-javascript
-        return JSON.parse(JSON.stringify(d));
-    }
-
-    function keys(o) {
-    /* return all keys of object */
-        var allKeys = [];
-        for(var k in o) allKeys.push(k);
-        return allKeys;
-    }
-
     function scaleDataAndColorByCluster() {
-    /* called when meta and seurat coords have been loaded: scale data and color by meta field  */
+    /* called when meta and coordinates have been loaded: scale data and color by meta field  */
         // find range of data
-        zoomFullRange = findMinMax(allCoords);
-        zoomRange = cloneObj(zoomFullRange);
-        shownCoords = allCoords.slice();
+        gCurrentDataset.zoomFullRange = findMinMax(allCoords);
+        gCurrentDataset.zoomRange = cloneObj(gCurrentDataset.zoomFullRange);
+        shownCoords = allCoords.slice(); // most likely faster to copy and modify than build a new list
         pixelCoords = scaleData(shownCoords);
 
         var clusterFieldName = gCurrentDataset.clusterField;
-        if (clusterFieldName!=undefined) {
-            var clusterFieldIdx = metaFields.indexOf(clusterFieldName);
-            //if (clusterFieldIdx===undefined)
-                //console.log("Option clusterField is not defined for dataset "+gCurrentDatasetIdx);
-            if (clusterFieldIdx===undefined)
-                alert("Internal error: labelling field (option 'clusterField') "+clusterFieldName+" is not a valid field");
 
-            gLabelMetaIdx = clusterFieldIdx;
-            gClusterMids = null; // force recalc
-            colorByMetaField(clusterFieldIdx);
-        }
-        else {
-            gLabelMetaIdx = null;
+        if (clusterFieldName===undefined) {
+            gCurrentDataset.labelField = null;
+            gCurrentDataset.showLabels = false;
             gClusterMids = null; // force recalc
             colorByMetaField(0);
+        }
+        else {
+            var clusterFieldIdx = gCurrentDataset.metaFields.indexOf(clusterFieldName);
+            if (clusterFieldIdx===undefined || clusterFieldIdx==-1)
+                warn("Internal error: cluster label field (option 'clusterField') "+clusterFieldName+" is not a valid field");
+
+            // also auto-activate cluster labels if labels are not configured at all
+            if (gCurrentDataset.labelField===undefined && clusterFieldName!==undefined) {
+                gCurrentDataset.labelField = clusterFieldName;
+                gCurrentDataset.showLabels = true;
+            }
+
+            gClusterMids = null; // force recalc
+            colorByMetaField(clusterFieldIdx);
         }
 
         var introShownBefore = localStorage.getItem("introShown");
@@ -1840,104 +2264,235 @@ var tsnePlot = function() {
             setTimeout(function(){ showIntro(true); }, 3000); // first show user the UI and let them think 3 secs
     }
 
-    function loadTsneCoords(jsonDict) {
+    function initInfoBarsAndPlot() {
+        /* setup all the basic DIVs and listeners of the UI */
+        // check that the label field is a valid field
+        console.log("init UI");
+        if (gCurrentDataset.labelField!==undefined) {
+            gCurrentDataset.labelIndex = gCurrentDataset.metaFields.indexOf(gCurrentDataset.labelField);
+            if (gCurrentDataset.showLabels === undefined)
+                gCurrentDataset.showLabels = true;
+            if (gCurrentDataset.labelIndex==undefined) {
+                warn("The labelField "+gCurrentDataset.labelField+"is not a valid field in meta.tsv. Deactivating labels now.");
+                gCurrentDataset.labelIndex = null;
+                gCurrentDataset.showLabels = false;
+            } 
+        }
+        resizeRenderer();
+        buildMetaBar();
+        buildGeneBar();
+        scaleDataAndColorByCluster();
+
+        plotDots();
+        renderer.render(stage);
+        updateMenu();
+        updateToolbar();
+    }
+
+    //function loadCoordsFromJson(jsonDict) {
     /* accepts dict with 'shownCoords' loads into global var 'coords' */
-        seuratCoords = jsonDict["seuratCoords"];
-        allCoords = seuratCoords;
+        //coords = jsonDict["seuratCoords"];
+        //allCoords = coords;
+    //}
+
+    function loadColorsFromTsv(papaResults) {
+    /* accepts dict with 'shownCoords' loads into global var 'coords' */
+        console.log("got colors");
+        var rows = papaResults.data;
+        var nameToColor = {};
+        for (var i = 1; i < rows.length; i++) {
+            var row = rows[i];
+            var name = row[0];
+            var hex = row[1];
+            nameToColor[name] = hex;
+        }
+        gCurrentDataset.metaColors = nameToColor;
+        oneFileLoaded("colors");
     }
 
-    function loadPcaCoords(jsonDict) {
+    function loadCoordsFromTsv(papaResults) {
+    /* accepts dict with 'shownCoords' loads into global var 'coords' */
+        console.log("got coordinate TSV rows, parsing...");
+        var rows = papaResults.data;
+        var headerRow = rows[0];
+        if (headerRow[0]!=="cellId" || headerRow[1]!=="x" || headerRow[2]!=="y") {
+            warn("Coordinate file does not start with header line (cellId, x, y)");
+            return;
+        }
+
+        allCoords = []
+        for (var i = 1; i < rows.length; i++) {
+            var row = rows[i];
+            if (row[0]==="")
+                continue;
+            var x = parseFloat(row[1]);
+            var y = parseFloat(row[2]);
+            if (x!==x || y!==y)
+                warn("Row "+i+" of coordinate file contains a value that is not a number:"+JSON.stringify(row));
+            allCoords.push([row[0], x, y]);
+        }
+        shownCoords = cloneArray(allCoords);
+        oneFileLoaded("coords");
+    }
+
+    //function loadPcaCoords(jsonDict) {
     /* accepts dict with 'shownCoords' loads into global var 'pcaCoords' */
-        pcaCoords = jsonDict["pcaCoords"];
+        //pcaCoords = jsonDict["pcaCoords"];
+    //}
+
+    function geneExprDone(jsonDict) {
+    /* pre-loaded genes: accepts dict with 'geneExpr' : cellId : array of floats */
+        console.log("Got preloaded gene expression");
+        gCurrentDataset.preloadExpr = jsonDict;
+        resizeRenderer();
+        oneFileLoaded("expr");
     }
 
-    function loadGeneExpr(jsonDict) {
-    /* accepts dict with 'geneExpr' : cellId : array of floats */
-        geneExpr = jsonDict["geneExpr"];
-        gDeciles = jsonDict["deciles"];
-    }
+    //function loadExprFromTsv(papaResults) {
+    ///* load small-ish cell-on-rows matrix fully into RAM */
+    //    console.log(papaResults);
+    //    var rows = papaResults.data;
+    //    var headerRow = rows[0];
+    //    console.log(headerRow);
 
-    function indexLoadDone(jsonDict) {
+    //    // parse geneIds from the header line
+    //    var geneFields = [];
+    //    var geneIds = [];
+    //    for (var i = 1; i < headerRow.length; i++) {
+    //        var geneStr = headerRow[i];
+    //        var parts = geneStr.split("|");
+    //        var geneId = parts[0];
+    //        geneIds.push(geneId);
+    //        if (parts.length===3)
+    //            geneFields.push(parts);
+    //        else if (parts.length===1)
+    //            geneFields.push([geneId, "Not def.", "Not def."]);
+    //    }
+
+    //    // parse expr vectors from matrix
+    //    var geneCount = geneIds.length;
+    //    var cellCount = rows.length - 1 ;
+
+    //    // build array geneIdx -> array of float, for decile calc later on
+    //    //var geneToExpr = [];
+    //    //for (var i = 1; i < geneIds.length; i++) {
+    //        //geneToExpr.push( Float32Array(cellCount) );
+    //    //}
+
+    //    // build decile dict: geneId -> array of 11 floats
+    //    var deciles = {};
+    //    for (var i = 1; i < geneIds.length; i++) {
+    //        deciles.push( Float32Array(11) );
+    //    }
+
+    //    // parse all lines
+    //    var cellToExpr = {};
+    //    var decileIdx = 0;
+    //    for (var rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+    //        var row = rows[rowIdx];
+    //        var cellIdx = rowIdx-1;
+    //        var cellId = row[0];
+    //        var cellVec = Float32Array(geneCount);
+    //        //if (cellId==="")
+    //            //continue;
+    //        for (var geneIdx = 1; geneIdx < row.length; geneIdx++) {
+    //            val = parseFloat(row[geneIdx]);
+    //            cellVec[geneIdx-1] = val;
+    //            //geneToExpr[geneIdx-1][cellIdx] = val;
+    //        }
+    //        if (!cellId.startsWith("_decile"))
+    //            cellToExpr[cellId] = cellVec;
+    //        else
+    //            for (var i=0; i<geneIds.length; i++) {
+    //                deciles[geneIds[i]][decileIdx]
+    //            }
+
+
+    //            //if (val!==val) 
+    //                //warn("Row "+i+" of coordinate file contains a value that is not a number:"+val);
+    //    }
+    //    //coords = jsonDict["seuratCoords"];
+    //    //allCoords = seuratCoords;
+    //    gCurrentDataset.preloadExpr.genes = geneFields;
+    //    gCurrentDataset.preloadExpr.cellExpr = cellToExpr;
+    //    oneFileLoaded();
+    //}
+    function geneIndexLoadDone(jsonDict) {
         /* called when the matrix index is loaded */
-        matrixOffsets = jsonDict;
+        gCurrentDataset.matrixOffsets = jsonDict;
+        oneFileLoaded();
     }
 
-    function startLoadJson(path, func, showError) {
+    function startLoadJson(fileType, path, func, showError) {
     /* load a json file relative to baseUrl and call a function when done */
-    var fullUrl = jsonBaseUrl + path;
-    return jQuery.getJSON(fullUrl, function(data){ func(data); } )
-        .fail(function() { 
-            if (showError) 
-                alert("Could not load "+fullUrl);
+    var fullUrl = joinPaths([gCurrentDataset.baseUrl, path]);
+    jQuery.getJSON(fullUrl, 
+        function(data) { 
+            gCurrentDataset.loadStatus[fileType] = "ok";
+            func(data); 
+        }).fail(function() {  // weird syntax
+            if (showError) {
+                warn("Could not load JSON file "+fullUrl);
+                if (fileType==="preload")
+                    resizeRenderer(); // immediately adapt the height/size of the drawing canvas
+            } else {
+                gCurrentDataset.loadStatus[fileType] = "error";
+            }
         });
     }
 
-    function loadDataset(datasetIdx) {
-        /* reset the view and load a whole new dataset */
-        gClusterMids = null;
-        gSelCellIds = {};
-        pcaCoords = null;
-        seuratCoords = null;
-        gLegend = null;
-
-        gCurrentDataset = gOptions.datasets[datasetIdx];
-        var coordFiles = gCurrentDataset.coordFiles;
-        if (coordFiles==undefined)
-            gCurrentDataset.coordFiles = [
-                ["Seurat T-SNE", "seuratCoords.json"],
-                ["PCA: PC1 / PC2", "pc12.json"],
-                ["PCA: PC2 / PC3", "pc23.json"],
-                ["PCA: PC3 / PC4", "pc34.json"],
-                ["PCA: PC4 / PC5", "pc45.json"],
-            ];
-       drawLayoutMenu();
-
-        jsonBaseUrl = gCurrentDataset.baseUrl;
-        startLoadJson("geneExpr.json", loadGeneExpr, false );
-        // make sure that we plot only when both the config, the meta data and the tsne coords
-        // have been loaded
-        jQuery.when(
-            startLoadJson("config.json", loadConfig, true),
-            startLoadJson("sampleMeta.json", loadMeta, true ),
-            startLoadJson("seuratCoords.json", loadTsneCoords, true ) )
-        .then( scaleDataAndColorByCluster );
-        startLoadJson("geneMatrixOffsets.json", indexLoadDone, false );
-        //startLoadJson("seuratCoords.json", loadTsneCoords);
-        //startLoadJson("sampleMeta.json", loadMeta );
-            //startLoadJson("seuratCoords.json", loadTsneCoords ) )
-
-        startLoadJson("pcaCoords.json", loadPcaCoords, true );
+    function startLoadTsv(fileType, path, func) {
+    /* load a tsv file relative to baseUrl and call a function when done */
+    var fullUrl = joinPaths([gCurrentDataset.baseUrl,path]);
+    console.time(fileType+" starting TSV parse");
+    Papa.parse(fullUrl, {
+            download: true,
+            complete: function(results, localFile) {
+                        gCurrentDataset.loadStatus[fileType] = "ok";
+                        func(results, localFile);
+                    },
+            error: function(err, file) {
+                        gCurrentDataset.loadStatus[fileType] = "error";
+                    }
+            });
     }
+
+    function removeFocus() {
+    /* called when the escape key is pressed, removes current focus and puts focus to nothing */
+        window.focus(); 
+        if (document.activeElement) {
+                document.activeElement.blur();
+        }
+
+    }
+
+    function stopZoom() {
+    /* called when the escape key is pressed */
+        mouseDownX = null;
+        mouseDownY = null;
+        $("#tpSelectBox").hide();
+    }
+
 
     function setupKeyboard() {
     /* bind the keyboard shortcut keys */
         Mousetrap.bind('o', onOpenDatasetLink);
+        Mousetrap.bind('m', onMarkClick);
+        Mousetrap.bind('c m', onMarkClearClick);
         Mousetrap.bind('z', onZoom100Click);
         Mousetrap.bind('-', onZoomOutClick);
         Mousetrap.bind('+', onZoomInClick);
         Mousetrap.bind('n', onSelectNoneClick);
         Mousetrap.bind('a', onSelectAllClick);
+        Mousetrap.bind('d', function() {$('#tpDatasetCombo').trigger("chosen:open"); return false;});
+        Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
+        Mousetrap.bind('g', function() {$("#tpGeneCombo").selectize()[0].selectize.focus(); return false;});
+        Mousetrap.bind('c l', onHideShowLabelsClick );
+
+        $(document).keyup(function(e) { if (e.keyCode == 27) stopZoom(); });
+
     }
 
-    function loadData(opt, globalOpts) {
-        /* start the JSON data loading, uses first dataset */
-        if (globalOpts!=undefined) {
-            if ("sampleType" in globalOpts)
-                gSampleDesc = globalOpts["sampleType"];
-            if ("title" in globalOpts)
-                gTitle = globalOpts["title"];
-        }
-            
-        gOptions = opt;
-        drawMenuBar();
-        drawToolBar();
-        setupKeyboard();
-        //drawMenu();
-        winInfo = createRenderer();
-        drawLegendBar();
-        loadDataset(0);
-        menuBarHide("#tpShowAllButton");
-    }
 
     // https://stackoverflow.com/a/33861088/233871
     function isInt(x) {
@@ -2051,6 +2606,7 @@ var tsnePlot = function() {
 
     function findDotsWithMeta(metaIdx, hlValue) {
     /* return array of cellIds with a given meta value */
+        var metaData = gCurrentDataset.metaData;
         ret = [];
         for (var i = 0; i < pixelCoords.length; i++) {
             var cellId = pixelCoords[i][0];
@@ -2107,11 +2663,12 @@ var tsnePlot = function() {
                 $('.tpLegend').removeClass('tpLegendSelect');
             }
             var metaVal = gLegend.rows[legendId][4];
-            gSelCellIds = findCellIdsForLegendId(gClasses, legendId, gSelCellIds);
+            gSelCellIds = findCellIdsForLegendIds(gClasses, [legendId], gSelCellIds);
             menuBarShow("#tpFilterButton");
             menuBarShow("#tpOnlySelectedButton");
             $('#tpLegend_'+legendId).addClass('tpLegendSelect');
             gLegend.lastClicked=legendId;
+            updateSelection();
             updateGeneBarColors(keys(gSelCellIds));
         }
         plotDots();
@@ -2160,19 +2717,26 @@ var tsnePlot = function() {
         var metaIdx = parseInt(options.$trigger[0].id.split("_")[1]);
 
         if (key==0) {
-            gLabelMetaIdx = metaIdx;
+            gCurrentDataset.labelField = gCurrentDataset.metaFields[metaIdx];
             gClusterMids = null; // force recalc
-            menuBarShow("#tpHideLabels");
             plotDots();
             renderer.render(stage);
+            updateMenu();
         }
             
     }
 
     function onLegendRightClick (key, options) {
     /* user right-clicks on a legend label */
-        var legendId = parseInt(options.$trigger[0].id.split("_")[1]);
-        var cellIds = findCellIdsForLegendId(gClasses, legendId);
+        var selEls = $(".tpLegendSelect")
+        var legendIds = [];
+        for (var i = 0; i < selEls.length; i++) {
+            var selEl = selEls[i];
+            var legendId = parseInt(selEl.id.split("_")[1]);
+            legendIds.push(legendId);
+        }
+
+        var cellIds = findCellIdsForLegendIds(gClasses, legendIds);
         var mode;
         if (key==0) // hide
             mode = "hide";
@@ -2200,19 +2764,22 @@ var tsnePlot = function() {
             var count = rows[i][3];
 
             colors.push(colorHex); // save for later
+
+            var labelClass = "tpLegendLabel";
+            label = label.replace(/_/g, " ").replace(/'/g, "&#39;").trim();
+            if (label==="") {
+                label = "(empty)";
+                labelClass += " tpGrey";
+            }
+            else if (likeEmptyString(label))
+                labelClass += " tpGrey";
+
             var classStr = "tpLegend";
-            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "'>";
+            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "' title='"+label+"'>";
             htmls.push(line);
             htmls.push("<input class='tpColorPicker' id='tpLegendColorPicker_"+i+"' />");
 
-            classStr = "tpLegendLabel";
-            label = label.replace(/_/g, " ");
-            if (label.trim()==="") {
-                label = "(empty)";
-                classStr += " tpGrey";
-            }
-
-            htmls.push("<span class='"+classStr+"' id='tpLegendLabel_"+i+"'>");
+            htmls.push("<span class='"+labelClass+"' id='tpLegendLabel_"+i+"'>");
             htmls.push(label);
             htmls.push("</span>");
             htmls.push("<span class='tpLegendCount'>"+count+"</div>");
@@ -2235,7 +2802,7 @@ var tsnePlot = function() {
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
         $('.tpLegend').click( onLegendLabelClick );
-        $('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
+        //$('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
         $('#tpResetColors').click( onResetColorsClick );
         $('#tpSortBy').click( onSortByClick );
 
@@ -2298,22 +2865,31 @@ var tsnePlot = function() {
 
     function updateGeneBarColors(cellIds) {
     /* change the colors of the bottom gene bar to reflect the expression in cellIds */
-        if (cellIds==null)
+        if (gCurrentDataset.preloadExpr===null)
+            return;
+        var cellExpr = gCurrentDataset.preloadExpr.cellExpr;
+        var geneFields = gCurrentDataset.preloadExpr.genes;
+        if (cellExpr===null || geneFields===null)
+            return;
+
+        if (cellIds===null)
             cellIds = gGeneBarCells;
         else
             gGeneBarCells = cellIds;
         // translate the gene expression values to intensities
+        var deciles = gCurrentDataset.preloadExpr.deciles;
         var geneCount = geneFields.length;
         var intensities = newArray(geneCount, 0);
 
+        // as we compare across genes, we can only average the intensities, not the values
         for (var i = 0; i < cellIds.length; i++) {
             var cellId = cellIds[i];
-            var exprRow = geneExpr[cellId];
+            var exprRow = cellExpr[cellId];
             for (var j = 0; j < geneCount; j++) {
                 var val = exprRow[j];
                 if (val != null) {
                     var geneId = geneFields[j][0];
-                    var decileRanges = gDeciles[geneId];
+                    var decileRanges = deciles[geneId];
                     if (decileRanges==undefined) {
                         //console.log("Warning: No decile in json file for "+geneId);
                         continue;
@@ -2325,11 +2901,12 @@ var tsnePlot = function() {
         }
 
         // use the average binIdx for each gene
-        if (cellIds.length != 0)
+        if (cellIds.length !== 0)
             for (var i = 0; i < intensities.length; i++) {
                 intensities[i] = Math.round(intensities[i] / cellIds.length);
             }
 
+            
         if (gDecileColors === null)
             gDecileColors = makeColorPalette(10, true);
 
@@ -2345,6 +2922,10 @@ var tsnePlot = function() {
         }
 
         // use the average intensities to pick the colors
+        var exprVals = null;
+        if (cellIds.length === 1)
+            exprVals = cellExpr[cellIds[0]];
+
         for (var i = 0; i < geneFields.length; i++) {
             var fieldName = "#tpGeneBarCell_"+i;
             var foreColor = "black";
@@ -2359,17 +2940,131 @@ var tsnePlot = function() {
 
             if (binIdx >= 6)
                 foreColor = "white";
-            $(fieldName).css("background-color", "#"+backColor);
-            $(fieldName).css("color", foreColor);
+            var cellEl = $(fieldName);
+            cellEl.css("background-color", "#"+backColor);
+            cellEl.css("color", foreColor);
+
+            // Put the current expression value into a special attribute, 
+            // if a single cell is selected
+            var exprVal = 0;
+            if (cellIds.length === 1)
+                exprVal = exprVals[i];
+            cellEl.attr("data-value", exprVal)
         }
     }
 
-    function updateMetaBar(cellId) {
-        // update the meta bar with meta data from cellId
+    function countValues(arr) {
+        /* count values in array, return an array of [value, count], sorted by count */
+        // first make a list of all possible meta values and their counts
+        var metaData = gCurrentDataset.metaData;
+        var metaCounts = {};
+        for (var i = 0; i < pixelCoords.length; i++) {
+            var cellId = pixelCoords[i][0];
+            var metaRow = metaData[cellId];
+            var metaVal = metaRow[metaIndex];
+            metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
+        }
+
+        var counts = {};
+        for (var i = 0; i < arr.length; i++) {
+            var val = arr[i];
+            counts[val] = (counts[num] || 0) + 1;
+            var metaVal = metaRow[metaIndex];
+        }
+    }
+
+    function updateMetaBarManyCells(cellIds) {
+    /* update the meta fields on the left to reflect/summarize a list of cellIds */
+        var metaFields = gCurrentDataset.metaFields;
+        var metaData = gCurrentDataset.metaData;
+        var cellCount = cellIds.length;
+        $('#tpMetaTitle').text("Meta data of "+cellCount+" "+gSampleDesc+"s");
+
+        // for every field...
+        var metaHist = {};
+        for (var metaIdx = 0; metaIdx < metaFields.length; metaIdx++) {
+            var metaCounts = {};
+            // make an object of value -> count in the cells
+            for (var i = 0; i < cellCount; i++) {
+                var cellId = cellIds[i];
+                var metaVal = metaData[cellId][metaIdx];
+                metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
+            }
+            // convert the object to an array (count, percent, value) and sort it by count
+            var histoList = [];
+            for (var key in metaCounts) {
+                var count = metaCounts[key];
+                var frac  = (count / cellCount);
+                histoList.push( [count, frac, key] );
+            }
+            histoList = histoList.sort(function(a, b){ return b[0] - a[0]; }); // reverse-sort by count
+            metaHist[metaIdx] = histoList;
+
+            // make a quick list of the top values for the sparklines, ignore the rest
+            var countList = [];
+            var otherCount = 0;
+            for (var i=0; i < histoList.length; i++) {
+                var count = histoList[i][0];
+                if (i<SPARKHISTOCOUNT)
+                    countList.push(count);
+                else
+                    otherCount+=count;
+            }
+            if (otherCount!==0)
+                countList.push(otherCount);
+
+            // update the UI
+
+            var topCount = histoList[0][0];
+            var topPerc  = histoList[0][1];
+            var topVal   = histoList[0][2];
+            var percStr = (100*topPerc).toFixed(1)+"%";
+
+            if (topVal.length > 14)
+                topVal = topVal.substring(0, 14)+"...";
+
+            var label = "";
+            if (histoList.length!==1){
+                if (histoList[0][0]===1)
+                    label = "<span class='tpMetaMultiVal'>" + histoList.length + " unique values</span>";
+                else
+                //label = "<span class='tpMetaMultiVal'>" + histoList.length + " values</span><span class='tpMetaHistLabel'> Histogram </span>&nbsp;&nbsp;<span id='tpMetaSpark_"+metaIdx+"'></span>";
+                //label = "<span class='tpMetaMultiVal'>" + histoList.length + " values</span>&nbsp;<span id='tpMetaSpark_"+metaIdx+"'></span>";
+                label = "<span class='tpMetaMultiVal'>" + percStr + " " +topVal+"</span>&nbsp;<span class='tpMetaSpark' id='tpMetaSpark_"+metaIdx+"'></span>";
+            }
+            else
+                label = topVal;
+
+            $('#tpMeta_'+metaIdx).html(label);
+            $('#tpMetaSpark_'+metaIdx).sparkline(countList, {type:"bar", barSpacing:0, disableTooltips:true});
+
+            //var topCount = countList[0][0];
+            //var topPerc  = countList[0][1];
+            //var topVal   = countList[0][2];
+            //$('#tpMeta_'+metaIdx).text(topVal);
+            //var label = metaFieldToLabel(metaFields[metaIdx]);
+            //$('#tpMetaLabel_'+metaIdx).html(label+"<span class='tpMetaPerc'>"+(100*topPerc).toFixed(1)+"%</span>");
+        }
+        gCurrentDataset.metaHist = metaHist;
+    }
+
+    function updateMetaBarOneCell(cellId) {
+        // update the meta bar with meta data from a single cellId
+        delete gCurrentDataset.metaHist;
+        var metaData = gCurrentDataset.metaData;
         var cellInfo = metaData[cellId];
+        var metaFields = gCurrentDataset.metaFields;
+        $('#tpMetaTitle').text(METABOXTITLE);
         for (var i = 0; i < metaFields.length; i++) {
             var fieldName = metaFields[i];
-            $('#tpMeta_'+i).text(cellInfo[i]);
+            $('#tpMetaLabel_'+i).html(metaFieldToLabel(fieldName));
+            var fieldValue = cellInfo[i];
+            if (fieldValue.startsWith("http") && fieldValue.endsWith(".png")) {
+                $('#tpMeta_'+i).css('height', "40px");
+                $('#tpMeta_'+i).html("<img src='"+fieldValue+"'></img>");
+            } else
+                $('#tpMeta_'+i).html(fieldValue);
+            $('#tpMeta_'+i).attr('title', cellInfo[i]);
         }
 
     }
@@ -2384,7 +3079,7 @@ var tsnePlot = function() {
         //this.alpha = 0.5;
         //renderer.render(stage);
 
-        updateMetaBar(cellId)
+        updateMetaBarOneCell(cellId)
         updateGeneBarColors([cellId]);
     }
 
@@ -2397,18 +3092,22 @@ var tsnePlot = function() {
         if (!domEvent.shiftKey && !domEvent.ctrlKey && !domEvent.metaKey)
             gSelCellIds = {};
         gSelCellIds[cellId] = true;
-        updateMetaBar(cellId)
+        //updateMetaBarOneCell(cellId)
+        updateSelection();
         updateGeneBarColors([cellId]);
         plotDots();
         renderer.render(stage);
         event.stopPropagation();
     }
 
-    function plotClusterLabels (metaFieldIdx) {
+    function plotClusterLabels () {
     /* plot semi-transparent labels for clusters */
-        if (metaFieldIdx === null)
+        var metaFieldIdx = gCurrentDataset.metaFields.indexOf(gCurrentDataset.labelField);
+
+        if (metaFieldIdx === -1 || gCurrentDataset.showLabels === false)
             return;
 
+        var metaData = gCurrentDataset.metaData;
         if (gClusterMids === null) {
             // arrange the current coordinates to format cluster -> array of coords
             var clusterCoords = {};
@@ -2468,22 +3167,49 @@ var tsnePlot = function() {
         }
     }
 
+    function plotMarkers(stage, markerCoords) {
+        /* plot arrows at marker coords */
+        var t = PIXI.Texture.fromImage("marker");
+        //if (markerCoords.length > gMarkerSprites.children.length)
+           //while (markerCoords.length > gMarkerSprites.children.length)
+              //gMarkerSprites.addChild(new PIXI.Sprite(t));
+
+        for (var i = 0; i < markerCoords.length; i++) {
+            var pos = markerCoords[i];
+            //var m = gMarkerSprites[i];
+            var m = new PIXI.Sprite(t);
+            m.x = pos[0];
+            m.y = pos[1] - (2.5*circleSize);
+            m.anchor.set(0.5);
+            m.scale.set(1.5);
+            stage.addChild(m);
+        }
+        //stage.addChild(gMarkerSprites);
+    }
+
     function plotDots() {
         /* plot the data onto the canvas. colorByIndx is the index of the meta field to color on. */
         if (stage!=null)
             {
             console.time("clear");
-            stage.destroy(true); // free all children in OpenGL's GPU memory
+            //stage.removeChild(gMarkerSprites); // don't destroy the markers
+            var children = stage.children;
+            for (var i = 0; i < children.length; i++) {
+                children[i].destroy();
+            }
+            stage.destroy();
+            //stage.destroy(true); // free all children in OpenGL's GPU memory
             console.timeEnd("clear");
             }
 
         // a stage is a collection of drawables
         stage = new PIXI.Container();
+        //stage.addChild(gMarkerSprites);
 
        //var backgroundLayer = new PIXI.DisplayObjectContainer();
        var background = new PIXI.Graphics();
        background.beginFill(0x000000, 0.0);
-       background.drawRect(0, 0, winInfo.width, winInfo.height);
+       background.drawRect(0, 0, gWinInfo.width, gWinInfo.height);
        background.interactive = true;
        background.on("click", onBackgroundMouseClick);
 
@@ -2499,7 +3225,7 @@ var tsnePlot = function() {
 
         var textLines = [];
 
-        textLines.push(gCurrentDataset.label)
+        //textLines.push(gCurrentDataset.label)
 
         var countLine = pixelCoords.length + ' '+gSampleDesc+'s';
         if (hideCount!=0)
@@ -2531,9 +3257,15 @@ var tsnePlot = function() {
             }
         }
 
+        var markedCellIds = null;
+        if (gCurrentDataset.markedCellIds!==undefined)
+            markedCellIds = gCurrentDataset.markedCellIds;
+
         var hlCoords = [];
+        var markerCoords = [];
         console.time("drawing");
 
+        visibleDots = [];
         for (var i = 0; i < pixelCoords.length; i++) {
             var cellId = pixelCoords[i][0];
             var x = pixelCoords[i][1];
@@ -2547,9 +3279,9 @@ var tsnePlot = function() {
                 var gClass = gClasses[cellId];
                 fill = classColors[gClass];
                 }
-            //if (fill==-1) // -1 == hidden, do not draw
-                //continue
-            //var dot = drawRect(x, y, fill);
+
+            if (markedCellIds!=null && cellId in gCurrentDataset.markedCellIds)
+                markerCoords.push([x, y]);
 
             if (cellId in gSelCellIds)
                 {
@@ -2558,12 +3290,15 @@ var tsnePlot = function() {
                 continue;
                 }
 
+
+
             var dot = drawCircle(x, y, fill);
             dot.alpha = transparency;
 
             // setup mouse over 
             dot.interactive=true;
-            dot.hitArea = new PIXI.Rectangle(x-(circleSize/2), y-(circleSize/2), circleSize, circleSize);
+            // I'm making the hit area slightly larger, so easier to hit
+            dot.hitArea = new PIXI.Rectangle(x-(circleSize/2-1), y-(circleSize/2)-1, circleSize+1, circleSize+1);
             dot.cellId = cellId;
             dot.mouseover = onDotMouseOver;
             //dot.mouseout = function(mouseData) {
@@ -2571,14 +3306,195 @@ var tsnePlot = function() {
             //}
             dot.on('mousedown', onDotMouseClick);
             stage.addChild(dot);
+            visibleDots.push(dot); // XX wasteful: keep another ref for panning
         }
         
         // finally, draw the currently highlighted dots on top
         plotSelection(hlCoords);
-
-        plotClusterLabels(gLabelMetaIdx);
+        plotMarkers(stage, markerCoords);
+        plotClusterLabels();
 
         console.timeEnd("drawing");
+    }
+
+    function setupMouseWheel() {
+      $('canvas').on( 'DOMMouseScroll mousewheel', function ( event ) {
+          var delta = event.originalEvent.wheelDelta;
+          // event.originalEvent.detail > 0 || event.originalEvent.wheelDelta < 0 
+          if (delta > 0) {
+              //scroll down
+              console.log('Down');
+              zoom(-0.03);
+          } else {
+              //scroll up
+              console.log('Up');
+              zoom(0.03);
+          }
+      return false;
+    });
+    }
+
+    var digitTest = /^\d+$/,
+        keyBreaker = /([^\[\]]+)|(\[\])/g,
+        plus = /\+/g,
+        paramTest = /([^?#]*)(#.*)?$/;
+
+    function deparam(params){
+    /* https://github.com/jupiterjs/jquerymx/blob/master/lang/string/deparam/deparam.js */
+        if(! params || ! paramTest.test(params) ) {
+            return {};
+        } 
+       
+    
+        var data = {},
+            pairs = params.split('&'),
+            current;
+            
+        for(var i=0; i < pairs.length; i++){
+            current = data;
+            var pair = pairs[i].split('=');
+            
+            // if we find foo=1+1=2
+            if(pair.length != 2) { 
+                pair = [pair[0], pair.slice(1).join("=")]
+            }
+              
+            var key = decodeURIComponent(pair[0].replace(plus, " ")), 
+                value = decodeURIComponent(pair[1].replace(plus, " ")),
+                parts = key.match(keyBreaker);
+    
+            for ( var j = 0; j < parts.length - 1; j++ ) {
+                var part = parts[j];
+                if (!current[part] ) {
+                    // if what we are pointing to looks like an array
+                    current[part] = digitTest.test(parts[j+1]) || parts[j+1] == "[]" ? [] : {}
+                }
+                current = current[part];
+            }
+            var lastPart = parts[parts.length - 1];
+            if(lastPart == "[]"){
+                current.push(value)
+            }else{
+                current[lastPart] = value;
+            }
+        }
+        return data;
+    }
+
+    function pushState(vars) {
+    /* push the variables (object) into the history as the current URL */
+       var myUrl = window.location.href;
+       myUrl = myUrl.replace("#", "");
+       var urlParts = myUrl.split("?");
+       var baseUrl = urlParts[0];
+       var queryStr = urlParts[1];
+
+       var varDict = deparam(queryStr); // parse key=val&... string to object
+       for (var key in vars) {
+           var val = vars[key];
+           varDict[key] = val;
+       }
+
+       var argStr = jQuery.param(varDict); // convert to query-like string
+       history.pushState({}, gCurrentDataset.shortLabel, baseUrl+"?"+argStr);
+    }
+
+    function getVar(name, defVal) {
+       var myUrl = window.location.href;
+       myUrl = myUrl.replace("#", "");
+       var urlParts = myUrl.split("?");
+       var queryStr = urlParts[1];
+       var varDict = deparam(queryStr); // parse key=val&... string to object
+       if (varDict[name]===undefined)
+           return defVal;
+       else
+           return varDict[name];
+    }
+
+    function loadOneDataset(datasetIdx) {
+        /* reset the view and load a whole new dataset */
+        if (datasetIdx===undefined)
+            datasetIdx = 0;
+
+        gClusterMids = null;
+        gSelCellIds = {};
+        gCurrentCoordName = null;
+        gLegend = null;
+        gCurrentDataset = gOptions.datasets[datasetIdx];
+
+        var coordFiles = gCurrentDataset.coordFiles;
+        if (coordFiles===undefined)
+            gCurrentDataset.coordFiles = [
+                {shortLabel : "Seurat T-SNE", url : "seurat.coords.tsv"},
+                {shortLabel : "T-ETE", url : "tete.coords.tsv"},
+                {shortLabel : "Tumormap", url : "tumormap.coords.tsv"},
+                {shortLabel : "PCA - PC1/2",  url : "pc12.coords.tsv"},
+                {shortLabel : "PCA - PC2/3",  url : "pc23.coords.tsv"},
+                {shortLabel : "PCA - PC3/4", url : "pc34.coords.tsv"},
+                {shortLabel : "PCA - PC4/5", url : "pc45.coords.tsv"},
+            ];
+
+       buildToolBar(datasetIdx);
+
+       //drawLayoutMenu();
+
+       var coord1Url = gCurrentDataset.coordFiles[0].url;
+       if (coord1Url===undefined)
+           warn("config error: the 'coordFiles' config list, element 0, does not have a 'url' attribute");
+
+       gCurrentDataset.preloadExpr = {}; // until proven otherwise, assume that preloaded genes exist
+       gCurrentDataset.loadStatus = {};
+
+       startLoadTsv("colors", "colors.tsv", loadColorsFromTsv);
+       startLoadTsv("meta", "meta.tsv", loadMetaFromTsv);
+       startLoadTsv("coords", coord1Url, loadCoordsFromTsv);
+       startLoadJson("offsets", "geneMatrixOffsets.json", geneIndexLoadDone, false ); // not a required file anymore
+       startLoadJson("preload", "preloadGenes.json", geneExprDone, false ); // not a required file, so do not show error
+
+       pushState({ds:gCurrentDataset.baseUrl.replace("/","")});
+    }
+
+    /* ==== MAIN ==== ENTRY FUNCTION */
+    function loadData(opt, globalOpts) {
+        /* start the JSON data loading, uses first dataset */
+
+        // pre-load the marker image
+        PIXI.loader.add("marker", "img/marker.png").load( function() { 
+            var t = PIXI.Texture.fromImage("marker");
+            PIXI.Texture.addToCache(t, "marker");
+        });
+
+        if (globalOpts!=undefined) {
+            if ("sampleType" in globalOpts)
+                gSampleDesc = globalOpts["sampleType"];
+            if ("title" in globalOpts)
+                gTitle = globalOpts["title"];
+        }
+            
+        // if ds=xxx was found in the URL, search for this dataset
+        var datasetIndex = 0;
+        var dsUrl = getVar("ds", null);
+        if (dsUrl!==null) {
+            for (var i = 0; i < opt.datasets.length; i++) {
+                var ds = opt.datasets[i];
+                if (ds.baseUrl.replace(/\/$/, "")===dsUrl) {
+                    datasetIndex = i;
+                    break
+                }
+            }
+        }
+            
+
+        gOptions = opt;
+        drawMenuBar();
+        setupKeyboard();
+        gCurrentDataset = {};
+        createRenderer();
+        setupMouseWheel();
+        drawLegendBar();
+        loadOneDataset(datasetIndex);
+        menuBarHide("#tpShowAllButton");
+
     }
 
     // only export these functions 

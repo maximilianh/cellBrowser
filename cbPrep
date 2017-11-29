@@ -5,8 +5,8 @@
 import logging, sys, optparse, re, unicodedata, string, marshal, socket
 import json, math, shutil, os, platform, zlib
 from time import gmtime, strftime
-from collections import defaultdict, namedtuple
-from os.path import join, basename, dirname, isfile, isdir, abspath
+from collections import defaultdict, namedtuple, Counter
+from os.path import join, basename, dirname, isfile, isdir, abspath, splitext
 from os import makedirs
 import gzip
 
@@ -36,7 +36,20 @@ exprMatrix = None
 from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.3f')
 
+# name of dataset, specified with options.datasetName
+datasetName = None
+
 DATASETDESCNAME = "description.json"
+
+
+# try to load T-ETE
+teteLoaded = False
+try:
+    import numpy as np
+    import tete
+    teteLoaded = True
+except:
+    logging.error("Could not load T-ETE. T-ETE will be disabled. Missing dependencies? Are numpy and sklearn installed?")
 
 # ==== functions =====
 def parseArgs():
@@ -47,22 +60,22 @@ def parseArgs():
     commands:
     - 'coords': import existing coordinates, if you already have (x,y)-coordinates for each cell
               and also expression values.
-      Format:  %prog coords meta coords expr defaultGenes metaClusterField outDir
-      Example: %prog coords meta.tsv seuratCoords.tsv geneExpression.tsv defaultGenes.txt "Cluster" ~/public_html/cellBrowser/
+      Example: %prog coords -m meta.tsv -c seuratCoords.tsv -e geneExpression.tsv -g defaultGenes.txt -l "Cluster" -o ~/public_html/cellBrowser/
         - coords.tsv has to be in the format (cellId,x,y).
         - If you do not have a meta table, specify "none" instead.
 
     - 'matrix': read existing expression matrix and run through Seurat.
-      Example: %prog matrix meta.tsv exprMatrix.tsv ~/public_html/cellBrowser/
+      Example: %prog matrix -m meta.tsv -e exprMatrix.tsv -o ~/public_html/cellBrowser/
         - Matrix has one row per gene and one column per sample.
         - Use --log if the matrix is not in log2 format yet.
         - If you do not have a meta table, specify "none" instead.
         - if you re-run matrix again, it will read intermediate results from the <outDir>/build directory
         - this means that you need to clear the output directory if you want a full
           re-run.
+        - the clusters will be colored and labeled by the Seurat cluster
 
     - '10x': like 'matrix' but the input is a directory in 10x CellRanger format
-      Example: %prog 10x meta.tsv cellRangerOutputDir/ ~/public_html/cellBrowser/10Sample/
+      Example: %prog 10x -m meta.tsv -e cellRangerOutputDir/ -o ~/public_html/cellBrowser/10Sample/
         - If you do not have a meta table, specify "none" instead.
 
     - 'html': copy the js/htm/css files to the output directory
@@ -76,18 +89,27 @@ def parseArgs():
         R CMD INSTALL v1.4.0.tar.gz -l $R_LIBS_USER
     """)
 
-    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store", help="gene-cell expression matrix file, .gz is OK")
-    parser.add_option("-m", "--metaData", dest="metaData", action="store", help="meta data table file, .gz is OK")
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output dir to write .json files to. Note that under this directory a subdirectory 'build' will be created. It contains temporary files of the pipelines. You can delete it once you do not plan to re-run the json build again. ")
-    parser.add_option("-c", "--coords", dest="coords", action="store", help="table with cell coordinates")
+    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
+            help="gene-cell expression matrix file, .gz is OK")
+    parser.add_option("-m", "--metaData", dest="metaData", action="store",
+            help="meta data table file, .gz is OK")
+
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+            help="output dir to write .json files to. Note that under this directory a subdirectory 'build' will be created. It contains temporary files of the pipelines. You can delete it once you do not plan to re-run the json build again. ")
+
+    parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have many.")
+
     parser.add_option("-g", "--genes", dest="genes", action="store",
             help="default marker genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
+
     parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
+
     parser.add_option("-n", "--name",
         dest="datasetName",
         action="store", help="Human-readable label for dataset. The default is the parent directory name of the matrix file path.")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
+
     parser.add_option("", "--metaColumn",
         dest="metaColumn", action="store",
         help="the name of the column in meta data table that connects the meta data to the gene expression table. Common values are 'id', 'sampleId', 'cellId', etc. Default is the first column of the meta data table.")
@@ -100,13 +122,16 @@ def parseArgs():
         dest="symTable",
         action="store", help="use a table (transId, geneId, symbol) to convert transcript or gene identifiers in the expression matrix to symbols, default %default. Specify '-s none' if the input expression file is already using gene symbols.",
         default=join(dataDir, "gencode22.ens79-80.tab"))
+
     parser.add_option("", "--skip",
         dest="skip",
         action="store_true", help="just skip invalid gene identifiers in matrix, do not stop",
         default=join(dataDir, "gencode22.ens79-80.tab"))
+
     parser.add_option("", "--log2",
         dest="doLog",
         action="store_true", help="only when 'matrix': log2 the matrix before processing it")
+
     parser.add_option("", "--test",
         dest="test",
         action="store_true", help="run doctests")
@@ -146,7 +171,7 @@ def errAbort(msg):
     
 def writeList(list, fname):
     " write list to file, one value per line "
-    logging.debug("Writing %d elements to %s" % (len(list), fname))
+    logging.debug("Writing %d elements to %s, first element is %s" % (len(list), fname, list[0]))
     ofh = open(fname, "w")
     for l in list:
         ofh.write("%s\n"%l)
@@ -160,14 +185,18 @@ def parseList(fname):
     ofh = open(fname, "w")
     return l
 
-def parseDict(fname):
-    """ parse text file in format key<tab>value and return as dict key->val """
-    d = {}
-
+def openFile(fname):
     if fname.endswith(".gz"):
         fh = gzip.open(fname)
     else:
         fh = open(fname)
+    return fh
+
+def parseDict(fname):
+    """ parse text file in format key<tab>value and return as dict key->val """
+    d = {}
+
+    fh = openFile(fname)
 
     for line in fh:
         key, val = line.rstrip("\n").split("\t")
@@ -293,10 +322,7 @@ def lineFileNextRow(inFile):
     """
 
     if isinstance(inFile, str):
-        if inFile.endswith(".gz"):
-            fh = gzip.open(inFile, 'rb')
-        else:
-            fh = open(inFile)
+        fh = openFile(inFile)
     else:
         fh = inFile
 
@@ -304,6 +330,7 @@ def lineFileNextRow(inFile):
     line1 = line1.strip("\n").lstrip("#")
     headers = line1.split("\t")
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
+    headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
     headers = [x if x!="" else "noName" for x in headers]
 
     filtHeads = []
@@ -320,14 +347,10 @@ def lineFileNextRow(inFile):
         if line.startswith("#"):
             continue
         line = line.decode("latin1")
-        # map special chars in meta data to most similar ASCII equivalent
-        # XX
-        #print "before", repr(line)
+        # skip special chars in meta data and keep only ASCII
         line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        #print "after", repr(line)
-        line = line.rstrip("\n")
+        line = line.rstrip("\n").rstrip("\r")
         fields = string.split(line, "\t", maxsplit=len(headers)-1)
-        #print "fields", repr(fields)
         try:
             rec = Record(*fields)
         except Exception, msg:
@@ -346,13 +369,11 @@ def convTabToMarshal(matrixFname, marshFname, doLog):
     logging.info("Converting %s to %s" % (matrixFname, marshFname))
     logging.info("Reading %s" % matrixFname)
 
-    if matrixFname.endswith(".gz"):
-        ifh = gzip.open(matrixFname)
-    else:
-        ifh = open(matrixFname)
+    ifh = openFile(matrixFname)
 
     cellNames = ifh.readline().rstrip("\n").rstrip("\r").split("\t")[1:]
     lNo = 0
+    skippedIds = []
     for line in ifh:
         lNo += 1
         fs = line.rstrip("\n").rstrip("\r").split("\t")
@@ -367,7 +388,7 @@ def convTabToMarshal(matrixFname, marshFname, doLog):
             geneId = geneId.split(".")[0]
         if geneToSym is not None and geneId not in geneToSym:
             if options.skip:
-                logging.warn("Could not find Ensembl geneId '%s' in file %s. Skipping gene." % (geneId, options.symTable))
+                skippedIds.append(geneId)
                 continue
             if not geneId.startswith("ENS"):
                 logging.warn("when reading expression matrix, the gene ID '%s' does not start with 'ENS'. Looks like the gene matrix does not use Ensembl gene identifiers" % geneId)
@@ -386,6 +407,11 @@ def convTabToMarshal(matrixFname, marshFname, doLog):
                     sys.exit(1)
 
                 cellTransCounts[cellName][geneId] = val
+
+    if len(skippedIds) != 0:
+        logging.warn("In matrix file %s, in the first column, %d geneIds were not found in file %s. They were removed." % (matrixFname, len(skippedIds), options.symTable))
+        logging.warn("Ten examples of the skipped IDs are: %s" % skippedIds[:10])
+
     cellTransCounts = dict(cellTransCounts)
 
     logging.info("Writing %s" % marshFname)
@@ -413,6 +439,7 @@ def parseCoords(fname):
     """ parse tsv file in format cellId, x, y and return as list of (cellId, x, y) 
     Flip the y coordinates to make it more look like in R.
     """
+    logging.info("Parsing %s" % fname)
     coords = []
     maxY = 0
     for row in lineFileNextRow(fname):
@@ -462,9 +489,9 @@ def mostRelevantFields(meta):
 
 def saveJson(data, fname, pretty=False):
     if pretty:
-        json.dump(data, open(fname, "w"), sort_keys=True, indent=4, separators=(',', ': '))
+        json.dump(data, open(fname, "w"), sort_keys=True, indent=4, separators=(', ', ': '))
     else:
-        json.dump(data, open(fname, "w"))
+        json.dump(data, open(fname, "w"), separators=(',', ":"))
 
 def getDecilesList(values):
     """ given a list of values, return the 11 values that define the 10 ranges for the deciles 
@@ -492,6 +519,10 @@ def getDecilesList(values):
 def getDecilesMatrix(exprMatrix, geneIds):
     """ given a dict of geneId -> list of expression numbers, return a dict
     geneId -> list of the 10 deciles of these numbers """
+
+    if exprMatrix is None:
+        return None
+
     logging.info("Getting deciles for gene expression")
 
     ret = {}
@@ -568,7 +599,7 @@ def iterLineOffsets(ifh):
 
 def indexMatrix(fname):
     """ index a matrix with one gene per line and return dict with
-        gene symbol -> (file offset, line length) 
+        gene symbol -> (file offset, line length)
     """
     logging.info("Indexing line offsets of %s" % fname)
     ifh = open(fname)
@@ -623,35 +654,57 @@ def getGeneExpr(exprMatrix, geneIds):
 
     return geneExpr
 
+def saveCoords(coords, coordFname):
+    " save a list of (id, x, y) tuples to a filename. Only save 3 digits "
+    logging.debug("writing %d cell coordinates to %s" % (len(coords), coordFname))
+    ofh = open(coordFname, "w")
+    ofh.write("cellId\tx\ty\n")
+    for cellId, x, y in coords:
+        ofh.write("%s\t%0.3f\t%0.3f\n" % (cellId, x, y))
+    ofh.close()
 
-def writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, jsonDir):
-    " write coordinates, expression and meta data to jsonDir "
-    seuratFname = join(jsonDir, "seuratCoords.json") # "seuratCoords" -> list of x,y,cellId
-    pcaFname    = join(jsonDir, "pcaCoords.json") # 'pcaCoords' -> list of (cellId, (pc1, pc2, pc3, pc4, pc5))
-    geneFname   = join(jsonDir, "geneExpr.json") # "geneExpr" -> cellId -> list of floats
-    metaFname   = join(jsonDir, "sampleMeta.json") # "sampleMeta" -> cellId -> list of fields
-    configFname = join(jsonDir, "config.json") # "metaFields" and "exprFields"
-    datasetFname= join(jsonDir, "description.json") # three fields: label, URL and description
+def writeTsvCoords(coordDict, pcaCoords, jsonDir):
+    " write the coordinates to tsv files, one per coordinate algorithm "
+    coordFiles = []
 
-    logging.info("Writing coord data in JSON format to %s" % seuratFname)
-    seuratList = []
-    for cellId, x, y in seuratCoords:
-        seuratList.append((cellId, x, y))
+    # write all other coords
+    for (coordType, coordDesc), coordList in coordDict.iteritems():
+        coordFname = join(jsonDir, "%s.coords.tsv" % coordType) # "coords" json -> list of x,y,cellId
+        coordFiles.append( {"shortLabel":coordDesc, "url":basename(coordFname)} )
+        if isfile(coordFname):
+            logging.info("Not writing %s, already exists" % coordFname)
+            continue
+
+        logging.info("Writing coord data in JSON format to %s" % coordFname)
+        coords = []
+        for cellId, x, y in coordList:
+            coords.append((cellId, x, y))
+        #saveJson(coords, coordFname)
+        saveCoords(coords, coordFname)
+
+    if pcaCoords is not None:
+        # write PCA coords
+        for pcaFname, i, j in ( ("pc12",1,2), ("pc23",2,3), ("pc34",3,4), ("pc45",4,5)):
+            coordFname = join(jsonDir, "%s.coords.tsv" % pcaFname) # "coords" json -> list of x,y,cellId
+            if isfile(coordFname):
+                logging.info("Not writing PCs, %s already exists" % coordFname)
+            else:
+                logging.info("Writing PCs to %s" % coordFname)
+                coords = []
+                for row in pcaCoords:
+                    cellId = row[0]
+                    x = row[i]
+                    y = row[j]
+                    coords.append( (cellId, x, y) )
+                saveCoords(coords, coordFname)
+            coordFiles.append( {"shortLabel":"PCA: PC%d/PC%d" % (i, j ), "url":basename(coordFname)} )
+
+    return coordFiles
+
+def writeJsonConfig(cellInfo, coordFiles, geneIdToAnnot, fieldAnnots, configFname):
     data = {}
-    data["seuratCoords"] = seuratList
-    saveJson(data, seuratFname)
-    del data
+    data["coordFiles"] = coordFiles
 
-    if isfile(pcaFname):
-        logging.info("Not writing PCs, %s already exists" % pcaFname)
-    else:
-        logging.info("Writing 5 PCs to %s" % pcaFname)
-        data = {"pcaCoords" : pcaCoords}
-        saveJson(data, pcaFname)
-
-    # get the list of meta fields
-    #metaFields = mostRelevantFields(cellInfo)
-    data = {}
     metaFields = sorted(cellInfo.values()[0].keys())
     if "Seurat Cluster" in metaFields:
         print "XX", metaFields.index("Seurat Cluster")
@@ -661,51 +714,38 @@ def writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, cellInfo, gene
         print "XX", "No Seurat cluster in metaFields"
 
     data["metaFields"] = metaFields
+    data["fieldAnnots"] = fieldAnnots
 
-    # add the list of gene symbols and their descriptions
-    #if geneToSym is None:
-        #global geneToSym
-        #geneToSym = fakeGeneMap(exprMatrix)
+    #geneFields = []
+    #if geneIdToAnnot is not None:
+    #    for geneId, annot in geneIdToAnnot.iteritems():
+    #        if geneId not in matrixGeneIds:
+    #            logging.warn("gene %s in the default gene list (option -g) is not in the expression matrix. "
+    #                    "It will be skipped now and will not appear in the gene list" % geneId)
+    #            continue
 
-    geneFields = []
-    if geneIdToAnnot is not None:
-        for geneId, annot in geneIdToAnnot.iteritems():
-            if geneId not in matrixGeneIds:
-                logging.warn("gene %s in the default gene list (option -g) is not in the expression matrix. "
-                        "It will be skipped now and will not appear in the gene list" % geneId)
-                continue
+    #        if geneToSym:
+    #            sym = geneToSym[geneId]
+    #        else:
+    #            sym = geneId
+    #        geneFields.append( (sym, annot, geneId) )
+    #else:
+    #    for geneId, symbol in geneToSym.iteritems():
+    #        geneFields.append( (symbol, "", geneId) )
 
-            if geneToSym:
-                sym = geneToSym[geneId]
-            else:
-                sym = geneId
-            geneFields.append( (sym, annot, geneId) )
-    else:
-        for geneId, symbol in geneToSym.iteritems():
-            geneFields.append( (symbol, "", geneId) )
+    #if len(geneFields)>500:
+    #    logging.error("More than 500 marker genes have been selected to be shown by default - are you sure this is intentional? Consider using the -g option")
+    #    sys.exit(1)
 
-    if len(geneFields)>500:
-        logging.error("More than 500 marker genes have been selected to be shown by default - are you sure this is intentional? Consider using the -g option")
-        sys.exit(1)
+    #geneFields.sort() # sort by gene symbol
+    #data["preloadGenes"] = geneFields
+    #geneIds = [x[2] for x in geneFields]
 
-    geneFields.sort() # sort by gene symbol
-    data["geneFields"] = geneFields
-    geneIds = [x[2] for x in geneFields]
+    #logging.info("Writing %d gene names: %s ,..." % (len(geneFields), geneFields[:3]))
+    saveJson(data, configFname, pretty=True)
+    return metaFields
 
-    logging.info("Writing %d gene names: %s ,..." % (len(geneFields), geneFields[:3]))
-    saveJson(data, configFname)
-
-    if isfile(geneFname):
-        logging.info("Not writing %s, already exists" % geneFname)
-    else:
-        #decileData = getDecilesMatrix(exprMatrix, geneIds)
-        decileData = getDecilesMatrix(exprMatrix, None)
-        geneExpr = getGeneExpr(exprMatrix, geneIds)
-
-        logging.info("Writing gene expression to %s" % (geneFname))
-        data = {"geneExpr": geneExpr, "deciles":decileData}
-        saveJson(data, geneFname)
-
+def writeJsonMeta(cellInfo, metaFields, metaFname):
     # save the meta info
     data = {}
 
@@ -720,24 +760,67 @@ def writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, cellInfo, gene
     logging.info("Exporting sample meta data to %s" % metaFname)
     saveJson(data, metaFname)
 
-    # save the dataset description
-    if options.datasetName is not None:
-        desc["label"] = options.datasetName
+def writeTsvMeta(cellInfo, metaFields, metaFname):
+    " save the meta info to a .tsv file "
+    logging.info("Writing sample meta data to %s" % metaFname)
+    ofh = open(metaFname, "w")
+    ofh.write("_id\t")
+    ofh.write("\t".join(metaFields))
+    ofh.write("\n")
 
-    #if colors is not None:
-        #desc["metaColors"] = colors
+    for cellId, infoDict in cellInfo.iteritems():
+        row = [cellId]
+        for field in metaFields:
+            row.append(infoDict[field])
+        ofh.write("\t".join(row))
+        ofh.write("\n")
+    ofh.close()
 
-    if isfile(datasetFname):
-        logging.info("Not writing dataset description to %s, file already exists" % datasetFname)
+def writeJsonGenes(exprMatrix, geneFields, geneIds, geneFname):
+    if isfile(geneFname):
+        logging.info("Not writing %s, already exists" % geneFname)
     else:
-        logging.info("Writing new dataset description to %s" % datasetFname)
-        saveJson(desc, datasetFname, pretty=True)
+        decileData = getDecilesMatrix(exprMatrix, None)
+        geneExpr = getGeneExpr(exprMatrix, geneIds)
 
+        logging.info("Writing gene expression to %s" % (geneFname))
+        data = {"genes": geneFields, "cellExpr": geneExpr, "deciles":decileData}
+        saveJson(data, geneFname)
+
+def writeJsonDescription(desc, descFname, coordFiles):
+    # save the dataset description
+    if datasetName is not None:
+        desc["shortLabel"] = datasetName
+
+    desc["coordFiles"] = coordFiles
+
+    if isfile(descFname):
+        logging.info("Not writing dataset description to %s, file already exists" % descFname)
+    else:
+        logging.info("Writing new dataset description to %s" % descFname)
+        saveJson(desc, descFname, pretty=True)
+
+def writeJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, fieldAnnots, jsonDir):
+    " write coordinates, expression and meta data to jsonDir "
+    #pcaFname    = join(jsonDir, "pcaCoords.json") # 'pcaCoords' -> list of (cellId, (pc1, pc2, pc3, pc4, pc5))
+    #geneFname   = join(jsonDir, "preloadGenes.json") # "geneExpr" -> cellId -> list of floats
+    configFname = join(jsonDir, "config.json") # "metaFields" and "exprFields"
+    descFname   = join(jsonDir, "description.json") # three fields: label, URL and description
+
+    coordFiles = writeTsvCoords(coordDict, pcaCoords, jsonDir)
+    metaFields = writeJsonConfig(cellInfo, coordFiles, geneIdToAnnot, fieldAnnots, configFname)
+
+    #writeJsonGenes(exprMatrix, geneFields, geneIdToAnnot, geneFname)
+    #writeJsonMeta(cellInfo, metaFields, metaFname)
+    metaFname   = join(jsonDir, "meta.tsv")
+    writeTsvMeta(cellInfo, metaFields, metaFname)
+    writeJsonDescription(desc, descFname, coordFiles)
 
 def parseMeta(fname, cellIds, mustHaveField=None):
     """ parse a tab-sep file where one column is a cellId and the others are attributes for it.  
     returns a dict cellId -> dict with attributes.
     if fname is 'none': create fake meta data by using the headers of the file matrixFname
+    also returns fieldAnnots a dict of fieldName -> dict , e.g. "tooMany":1 or "range":decileList
     """
     if fname.lower()=="none":
         #cellIds = exprMatrix.keys()
@@ -748,10 +831,12 @@ def parseMeta(fname, cellIds, mustHaveField=None):
 
     idCol = options.metaColumn
     meta = {}
+    fieldVals = defaultdict(Counter) # counts of all distinct values, one per field. 
     for row in lineFileNextRow(fname):
         if idCol==None:
             idCol = row._fields[0]
             logging.info("--metaColumn not specified. Using the first field, '%s', as the sample identifier field" % idCol)
+
 
         rowDict = row._asdict()
         if idCol not in rowDict:
@@ -760,14 +845,44 @@ def parseMeta(fname, cellIds, mustHaveField=None):
         if mustHaveField and mustHaveField not in rowDict:
             errAbort("The meta data file %s does not contain a column named '%s'. First 50 available columns: %s. Specify a different cluster label field and run again." % (fname, mustHaveField, ",".join(row._fields[:50])))
 
+        for key, val in rowDict.iteritems():
+            fieldVals[key][val]+=1
+
         cellId = rowDict[idCol]
-        #del rowDict[idCol]
         assert(cellId not in rowDict) # cellId must not appear twice in meta file
+        del rowDict[idCol] # remove the cell id itself
         meta[cellId] = rowDict
-    return meta
+
+    # now create the fieldAnnots for all fields
+    fieldAnnots = defaultdict(dict)
+    for fieldName, valCounts in fieldVals.iteritems():
+        # flag fields that have too many different values
+        if len(valCounts)>=100:
+            fieldAnnots[fieldName]["tooMany"] = True
+            logging.info("field '%s' has %d different values, too many to color on" % (fieldName, len(valCounts)))
+
+        # get the deciles for all-numeric fields
+        allInt = True
+        vals = []
+        for val in valCounts:
+            try:
+                floatVal = float(val)
+                vals.append(val)
+            except:
+                allInt = False
+                break
+        if allInt and len(valCounts)>30:
+            deciles = getDecilesList(vals)
+            fieldAnnots[fieldName]["deciles"] = deciles
+            logging.info("field '%s' has only numeric values, deciles: %s" % (fieldName, deciles))
+
+    return meta, fieldAnnots
         
 def fakeGeneMap(exprMatrix):
     " collect a list of all genes in the expression matrix and return dict geneId -> geneId "") "
+    if exprMatrix is None:
+        return None
+
     geneMap = {}
     for cellId, cellExpr in exprMatrix.iteritems():
         for geneId, val in cellExpr.iteritems():
@@ -796,7 +911,7 @@ def useOnlyCommonCellIdsCoords(meta, exprMatrix, coords):
     """ make sure that the cellIds match up between meta, exprMatrix and coords.
     Return the arguments as they are, if their cellIds match up.
     Otherwise restrict all data to only the common cellIDs and return all arguments. 
-    Like function above, but with coords. Hard to make this generic
+    Like function above, but with coords. Hard to make this generic.
     """
     metaIds = set(meta)
     exprIds = set(exprMatrix)
@@ -835,8 +950,8 @@ def checkDefaultGenes():
     for g in remGenes:
         del geneIdToAnnot[g]
 
-    if errCount > 10:
-        raise Exception()
+    #if errCount > 10 and options.skip:
+        #raise Exception("too many invalid genes found, use --skip to ignore this")
 
 def isValidField(meta, fieldName):
     " make sure that fieldName really exists, stop if not "
@@ -844,15 +959,26 @@ def isValidField(meta, fieldName):
         if fieldName not in cellMeta:
             raise Exception("the field %s is not a valid meta data field" % fieldName)
 
-def importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, outDir):
+def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField, outDir):
     " parse coordinates and write all json files to outDir "
     buildDir = makeTmpDirFor(outDir)
-    exprMatrix = parseMatrix(exprFname, buildDir, options.doLog)
-    cellIds = exprMatrix.keys()
-    meta = parseMeta(metaFname, cellIds)
-    coords = parseCoords(coordFname)
 
-    isValidField(meta, clusterLabelField)
+    exprMatrix = None
+    cellIds = None
+    if matrixFname!=None:
+        exprMatrix = parseMatrix(matrixFname, buildDir, options.doLog)
+        cellIds = exprMatrix.keys()
+
+    meta, fieldAnnots = parseMeta(metaFname, cellIds)
+
+    coordDict = {}
+    for coordFname in coordFnames:
+        coords = parseCoords(coordFname)
+        coordName = splitext(basename(coordFname))[0]
+        coordDict[(coordName, coordName)] = coords
+
+    if clusterLabelField:
+        isValidField(meta, clusterLabelField)
 
     global geneToSym
     if geneToSym is None:
@@ -860,25 +986,39 @@ def importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, o
 
     checkDefaultGenes()
 
-    meta, exprMatrix, coords = useOnlyCommonCellIdsCoords(meta, exprMatrix, coords)
+    #meta, exprMatrix, coords = useOnlyCommonCellIdsCoords(meta, exprMatrix, coords)
 
     lines = []
     lines.append("Processing: coordinates supplied by user")
-    lines.append("Coordinate file: %s" % exprFname)
+    lines.append("Coordinate file: %s" % coordFname)
     lines.append("Meta data file: %s" % metaFname)
-    lines.append("Expression data file: %s" % exprFname)
+    lines.append("Expression data file: %s" % matrixFname)
     lines.append("Directory: %s" % os.getcwd())
     lines.append("Command: %s" % " ".join(sys.argv))
     lines.append("By: %s@%s %s" % (os.getenv('USER'), socket.gethostname(), strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    lines.append("%s" % exprFname)
+    lines.append("%s" % matrixFname)
     longLabel = "<br>".join(lines)
-    desc = {"label" : basename(dirname(abspath(exprFname))), "longLabel" : longLabel, "sampleCount" : len(coords), \
-            "clusterLabelField" : clusterLabelField}
 
-    matrixGeneIds = getNonZeroGenes(exprMatrix, buildDir)
-    writeJson(matrixGeneIds, exprMatrix, coords, {}, meta, geneToSym, geneIdToAnnot, desc, outDir)
+    shortLabel = datasetName
+    if shortLabel is None and matrixFname is not None:
+        shortLabel = basename(dirname(abspath(matrixFname)))
+    assert(shortLabel is not None)
+
+    desc = {
+        "shortLabel" : shortLabel,
+        "longLabel" : longLabel,
+        "sampleCount" : len(meta)
+        }
+
+    if clusterLabelField:
+        desc["clusterLabelField"] = clusterLabelField
+        desc["clusterField"] = clusterLabelField
+
+    writeJson(exprMatrix, coordDict, None, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
 
     copyMatrixAndIndex(exprMatrix, outDir)
+
+    preloadMatrixFname = join(outDir, "preloadMatrix.tsv")
 
 def writeMatrix(rows, fname, headers=None):
     """ write a list of rows to tab sep file """
@@ -1032,8 +1172,8 @@ print("Seurat: JackStraw 2 using all sign. genes")
 # max: changed num.replicate from 200 -> 100
 nbt=JackStraw(nbt,num.replicate = 100,do.print = FALSE)
 print("Seurat: Dimensionality Reduction")
-# max: I have decreased the number of iterations from 2000 in the example to 1200
-nbt=RunTSNE(nbt,dims.use = 1:11,max_iter=1200)
+# max: I have decreased the number of iterations from 2000 in the example to 800
+nbt=RunTSNE(nbt,dims.use = 1:11,max_iter=800)
 
 tsne12 <- FetchData(nbt, c("tSNE_1", "tSNE_2"))
 write.table(tsne12, "%(tsnePath)s", quote=FALSE, sep="\t", col.names=NA)
@@ -1109,8 +1249,8 @@ def addToMeta(meta, metaName, newMeta, prefix=""):
         doneCellIds.add(cellId)
 
     missingCellIds = allCellIds - doneCellIds
-    if missingCellIds!=0:
-        logging.warn("%d cells/samples has no value for the attribute '%s', setting it to '' now to avoid errors" % (len(missingCellIds), metaName))
+    if len(missingCellIds)!=0:
+        logging.warn("%d cells/samples have no value for the attribute '%s', setting it to '' now to avoid errors" % (len(missingCellIds), metaName))
         for cellId in missingCellIds:
                 meta[cellId][metaName] = ""
     return meta
@@ -1159,7 +1299,7 @@ def dictToCellMatrix(exprMatrix, onlyGenes):
         ouput: list of rows, 1st row has headers, 1st col has cellId
         The output is a matrix with one cell per row.
     """
-    allGenes = getNonZeroGenes(exprMatrix, onlyGenes)
+    allGenes = getNonZeroGenes(exprMatrix, onlyGenes=onlyGenes)
     # now create a matrix where each line is a cell, each column is a gene
     rows = []
     row1 = ["cellId"]
@@ -1192,7 +1332,7 @@ def runPca(meta, exprMatrix, tmpDir):
         runRscript(pcaScript, scriptPath)
 
     pcaCoords = parsePca(pcaFname)
-    return meta, pcaCoords
+    return pcaCoords
     
 def makeDescLines(metaFname, matrixFname):
     " return a list of html lines describing a Seurat run "
@@ -1205,18 +1345,20 @@ def makeDescLines(metaFname, matrixFname):
     lines.append("By: %s@%s %s" % (os.getenv('USER'), socket.gethostname(), strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     return lines
 
-def runSeuratPcaPipeline(metaFname, exprMatrix, buildDir):
-    " run Seurat and PCA and return new meta data "
-    cellIdFname = join(buildDir, "cellIds.txt")
-    if isfile(cellIdFname):
-        cellIds = parseList(cellIdFname)
-    else:
-        cellIds = exprMatrix.keys()
-        writeList(cellIds, cellIdFname)
+def getCellIdsFromMatrix(matrixFname):
+    #cellIdFname = join(buildDir, "cellIds.txt")
+    #if isfile(cellIdFname):
+        #cellIds = parseList(cellIdFname)
+    #else:
+        #cellIds = exprMatrix.keys()
+        #writeList(cellIds, cellIdFname)
+    headers = openFile(matrixFname).readline().rstrip("\n").split("\t")
+    return headers[1:]
 
-    meta = parseMeta(metaFname, cellIds)
+def runSeuratPcaPipeline(meta, exprMatrix, exprCellIds, buildDir):
+    " run Seurat and PCA and return new meta data "
     meta, seuratCoords = runSeurat(meta, exprMatrix, buildDir)
-    meta, pcaCoords    = runPca(meta, exprMatrix, buildDir)
+    pcaCoords    = runPca(meta, exprMatrix, buildDir)
     return meta, seuratCoords, pcaCoords
 
 def convert10X(inDir, outDir):
@@ -1271,6 +1413,9 @@ def convert10X(inDir, outDir):
 
 def copyMatrixAndIndex(exprMatrix, outDir):
     " copy the matrix to outDir/geneMatrix.tsv and add a file geneMatrixOffsets.json "
+    if exprMatrix is None:
+        return
+
     mtxFname = join(outDir, "geneMatrix.tsv")
     if isfile(mtxFname):
         logging.info("%s already exists, not writing matrix" % mtxFname)
@@ -1300,50 +1445,234 @@ def runOn10X(command, metaFname, cellRangerDir, outDir):
     buildDir = makeTmpDirFor(outDir)
     exprMatrix = parseMatrix(matrixFname, buildDir, True) # 10X matrices are not log'ed.
 
-    meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(metaFname, exprMatrix, buildDir)
+    exprCellIds = getCellIdsFromMatrix(matrixFname)
+    meta, fieldAnnots = parseMeta(metaFname, exprCellIds)
+
+    meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(meta, exprMatrix, exprCellIds, buildDir)
     lines = makeDescLines(metaFname, matrixFname)
 
     longLabel = "<br>".join(lines)
-    desc = {"label" : basename(dirname(abspath(matrixFname))), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
+    desc = {"shortLabel" : basename(dirname(abspath(matrixFname))), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
 
     matrixGeneIds = getNonZeroGenes(exprMatrix)
-    writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, outDir)
+    writeJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
 
-def writeDownloadFiles(metaFname, outDir):
-    " we keep a copy of the meta data in the directory so people can download them "
-    metaOutPath = join(outDir, "meta.tsv")
-    logging.info("Copying %s to %s" % (metaFname, metaOutPath))
-    shutil.copy(metaFname, metaOutPath)
+#def writeDownloadFiles(metaFname, outDir):
+    #" we keep a copy of the meta data in the directory so people can download them "
+    #metaOutPath = join(outDir, "meta.tsv")
+    #logging.info("Copying %s to %s" % (metaFname, metaOutPath))
+    #shutil.copy(metaFname, metaOutPath)
 
-def filterMatrixOnGenes(matrixFname, onlyGenes, outFname):
+def matrixSplitOffGenesAndCells(matrixFname, onlyGenes, outFname, outGeneFname, cellIdFname):
     " given a gene-on-rows file, keep only some genes, and write to file "
-    logging.info("filtering %s to %s, keeping only %d genes" % (matrixFname, outFname, len(onlyGenes)))
+    if onlyGenes is not None:
+        logging.info("filtering %s to %s, keeping only %d genes" % (matrixFname, outFname, len(onlyGenes)))
+
     ofh = open(outFname, "w")
+    genes = []
+    cellIds = False
     for line in open(matrixFname):
-        geneId = string.split(line[:100], "\t", 1)[0]
-        if not geneId in onlyGenes:
+        if not cellIds: # skip the first line
+            cellIds = line.rstrip("\n").split("\t")[1:]
             continue
-        ofh.write(line)
+        geneId, exprStr = string.split(line, "\t", maxsplit=1)
+        if onlyGenes is not None and not geneId in onlyGenes:
+            continue
+        #assert(exprStr.endswith("\n"))
+        ofh.write(exprStr)
+        genes.append(geneId)
+
     ofh.close()
 
-def runTete(matrixFname, buildDir):
-    " run T-ete and return the coordinates "
+    ofh = open(outGeneFname, "w")
+    ofh.write("\n".join(genes))
+    ofh.close()
+
+    ofh = open(cellIdFname, "w")
+    ofh.write("\n".join(cellIds))
+    ofh.close()
+
+def runTrimap(matrixFname, buildDir):
+    " run Trimap on reduced matrix (for speed!) and return the coordinates "
+    if not teteLoaded:
+        logging.info("Cannot run T-ETE, library was not loaded")
+        return None
+
     logging.info("T-ETE dimensionalty reduction")
+
     teteMatrixFname = join(buildDir, "tete.matrix.txt")
-    if isfile(teteMatrixFname):
-        logging.info("not doing gene filtering, found %s" % teteMatrixFname)
+    teteGeneFname = join(buildDir, "tete.genes.txt")
+    teteCellIdFname = join(buildDir, "tete.labels.txt")
+    teteCoordFname = join(buildDir, "tete.coords.txt")
+
+    if isfile(teteCellIdFname):
+        logging.info("not doing matrix output / gene filtering, found %s" % teteCellIdFname)
     else:
-        filterMatrixOnGenes(matrixFname, geneIdToAnnot, teteMatrixFname)
+        matrixSplitOffGenesAndCells(matrixFname, geneIdToAnnot, teteMatrixFname, teteGeneFname, teteCellIdFname)
+
+    if isfile(teteCoordFname):
+        coords = parseCoords(teteCoordFname)
+    else:
+        X = np.loadtxt(teteMatrixFname)
+        # XX
+        print(X.shape)
+        X = np.transpose(X)
+        print(X.shape)
+
+        Y = tete.tete(X, 2, 6)
+        xCoords = Y[:,0]
+        yCoords = Y[:,1]
+        cellIds = open(teteCellIdFname).read().splitlines()
+        print "x", xCoords
+        print "y", yCoords
+        print len(xCoords)
+        print len(yCoords)
+        assert(len(cellIds)==len(xCoords)==len(yCoords))
+
+        logging.info("Writing T-ETE coordinates to %s" % teteCoordFname)
+        ofh = open(teteCoordFname, "w")
+        ofh.write("cellId\tx\ty\n")
+        for cellId, x, y in zip(cellIds, xCoords, yCoords):
+            ofh.write("%s\t%0.3f\t%0.3f\n" % (cellId, x, y))
+        ofh.close()
+
+        coords = parseCoords(teteCoordFname)
+
+    return coords
+
+#def filterMatrixOnGenesAndTranspose(matrixFname, geneIdToAnnot, preloadMatrixFname):
+#    """ create a matrix with only selected geneIdToAnnot genes from matrixFname and store as one cell per row.
+#    (not one gene per row). Header fields have format geneId|geneSym|description or just geneId.
+#    """
+#    if geneIdToAnnot is None or len(geneIdToAnnot)==0:
+#        logging.info("No gene list provided, not preloading any genes, not creating %s" % preloadMatrixFname)
+#        return
+#
+#    if isfile(preloadMatrixFname):
+#        logging.info("%s already exists, not re-exporting it" % preloadMatrixFname)
+#        return
+#
+#    logging.info("Rewriting %s to %s, keeping only %d genes" % (matrixFname, preloadMatrixFname, len(geneIdToAnnot)))
+#
+#    ifh = open(matrixFname)
+#
+#    cellIds = ifh.readline().rstrip("\n").split("\t")[1:]
+#    geneLabels = []
+#
+#    cellIdToGene = defaultdict(list) # cellId(int) -> geneId(int) -> str
+#    for line in ifh:
+#        geneId, _ = string.split(line[:100], "\t", 1)
+#        if geneId not in geneIdToAnnot:
+#            continue
+#
+#        if geneToSym is not None:
+#            sym = geneToSym[geneId]
+#        else:
+#            sym = ""
+#
+#        desc = geneIdToAnnot[geneId]
+#        assert("|" not in desc)
+#        assert("|" not in sym)
+#        assert("|" not in geneId)
+#        geneLabel = "|".join([geneId, sym, desc])
+#
+#        geneLabels.append(geneLabel)
+#
+#        exprVec = line.rstrip("\n").split("\t")[1:]
+#
+#        for cellIdx, val in enumerate(exprVec):
+#            cellIdToGene[cellIdx].append(val)
+#
+#    # write header
+#    ofh = open(preloadMatrixFname, "w")
+#    ofh.write("gene\t")
+#    ofh.write("\t".join(geneLabels))
+#    ofh.write("\n")
+#
+#    # write the cell values
+#    for cellIdx, exprVec in cellIdToGene.iteritems():
+#        ofh.write(cellIds[cellIdx])
+#        ofh.write("\t")
+#        ofh.write("\t".join(exprVec))
+#        ofh.write("\n")
+#
+#    ofh.close()
+
+def parseGeneMatrix(fname, onlyGeneIds):
+    " parse a gene matrix for only a few genes, return two things: cellIds, and dict geneId -> list of floats"
+    ifh = open(fname)
+
+    cellIds = ifh.readline().rstrip("\n").split("\t")[1:]
+
+    data = {}
+    #geneIdx = 0
+    #geneIds = []
+    for line in ifh:
+        geneId, _ = string.split(line[:100], "\t", 1)
+        if geneId not in onlyGeneIds:
+            continue
+
+        exprVec = line.rstrip("\n").split("\t")[1:]
+        exprVec = [float(x) for x in exprVec]
+
+        #data[geneIdx] = exprVec
+        data[geneId] = exprVec
+        #geneIdx += 1
+        #geneIds.append(geneId)
+    return cellIds, data
+
+def writePreloadGenes(matrixFname, geneIdToAnnot, outFname):
+    " write a json object with geneFields (list of (geneId, sym, desc)), cellExpr (cellId -> array of float) and deciles (dict gene->11 floats) "
+    if matrixFname is None:
+        return
+
+    if geneIdToAnnot is None or len(geneIdToAnnot)==0:
+        logging.info("No gene list provided, not preloading any genes, not creating %s" % outFname)
+        return
+
+    if isfile(outFname):
+        logging.info("%s already exists, not re-exporting it" % outFname)
+        return
+
+    data = {}
+
+    cellIds, geneToVec = parseGeneMatrix(matrixFname, geneIdToAnnot)
+
+    cellToVec = defaultdict(list)
+
+    deciles = {}
+    for geneId, geneVec in geneToVec.iteritems():
+        for cellId, val in zip(cellIds, geneVec):
+            cellToVec[cellId].append(val)
+
+        deciles[geneId] = getDecilesList(geneVec)
+
+    geneLabels = []
+    for geneId, desc in geneIdToAnnot.iteritems():
+        sym = geneToSym[geneId]
+        geneLabels.append( (geneId, sym, desc) )
+
+    data["genes"] = geneLabels
+    data["cellExpr"] = cellToVec
+    data["deciles"] = deciles
+    saveJson(data, outFname)
 
 def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     " run Seurat and PCA over matrix, write all json to outDir "
     buildDir = makeTmpDirFor(outDir)
     exprMatrix = parseMatrix(matrixFname, buildDir, options.doLog)
-    matrixGeneIds = getNonZeroGenes(exprMatrix, buildDir)
-    
-    meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(metaFname, exprMatrix, buildDir)
 
-    teteCoords = runTete(matrixFname, buildDir)
+    # get cellIds in the matrix and read meta data
+    exprCellIds = getCellIdsFromMatrix(matrixFname)
+    matrixGeneIds = getNonZeroGenes(exprMatrix, buildDir)
+    meta, fieldAnnots = parseMeta(metaFname, exprCellIds)
+
+    meta, seuratCoords, pcaCoords = runSeuratPcaPipeline(meta, exprMatrix, exprCellIds, buildDir)
+
+    # XXX !!!
+    #teteCoords = runTrimap(matrixFname, buildDir)
+    teteCoords = None
+    # XXX !!!
 
     if clusterLabelField is None:
         clusterLabelField = "Seurat Cluster"
@@ -1353,11 +1682,21 @@ def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     lines = makeDescLines(metaFname, matrixFname)
     longLabel = "<br>".join(lines)
     shortLabel = basename(dirname(abspath(matrixFname)))
-    desc = {"label" : shortLabel, "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
+    desc = {"shortLabel" : shortLabel, "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
+
+    coordDict = { ("seurat", "T-SNE Seurat 1.4") : seuratCoords }
+
+    if teteCoords is not None:
+        coordDict[("tete", "T-ETE")] = teteCoords
 
     copyMatrixAndIndex(exprMatrix, outDir)
-    writeJson(matrixGeneIds, exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, outDir)
-    writeDownloadFiles(metaFname, outDir)
+
+    preloadMatrixFname = join(outDir, "preloadGenes.json")
+    #filterMatrixOnGenesAndTranspose(matrixFname, geneIdToAnnot, preloadMatrixFname)
+    writePreloadGenes(matrixFname, geneIdToAnnot, preloadMatrixFname)
+
+    writeJson(exprMatrix, coordDict, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    #writeDownloadFiles(metaFname, outDir)
 
 def findDatasets(outDir):
     """ search all subdirs of outDir for description.json files and return their contents as a list
@@ -1378,9 +1717,9 @@ def findDatasets(outDir):
         fname = join(outDir, subDir, "colors.tsv")
         if isfile(fname):
             colors = parseColors(fname)
-            datasetDesc["metaColors"] = colors
+            #datasetDesc["metaColors"] = colors
 
-        assert("label" in datasetDesc)
+        assert("shortLabel" in datasetDesc)
         #assert("longLabel" in datasetDesc)
         #if "longLabel" in datasetDesc:
             #del datasetDesc["longLabel"]
@@ -1391,11 +1730,15 @@ def findDatasets(outDir):
 
 def copyHtml(outDir):
     " copy html/js/css to outdir "
+    makeDir(join(outDir, "img"))
     baseDir = dirname(__file__)
-    for fname in ["cellBrowser.js", "cellBrowser.css"]:
+    for fname in ["cellBrowser.js", "cellBrowser.css", "img/marker.png"]:
         inFname = join(baseDir, fname)
         logging.info("Copying %s to %s" % (inFname, outDir))
-        shutil.copy(inFname, outDir)
+        if "img" in fname:
+            shutil.copy(inFname, outDir+"/img")
+        else:
+            shutil.copy(inFname, outDir)
 
     datasetDescs = findDatasets(outDir)
     datasetDescs = list(sorted(datasetDescs, key=lambda k: k.get('priority', 0), reverse=True))
@@ -1403,7 +1746,7 @@ def copyHtml(outDir):
     #datasetLabels = []
     #for dd in datasetDescs:
     #datasetLabels.append(dd["label"])
-    datasetLabels = [x["label"] for x in datasetDescs]
+    datasetLabels = [x["shortLabel"] for x in datasetDescs]
 
     # generate the index.html file
     indexFname = join(baseDir, "index.html")
@@ -1478,8 +1821,14 @@ def runCommands(args):
     exprFname = options.exprMatrix
 
     mustNotBeNull(outDir, "You need to provide an output directory")
-    mustNotBeNull(exprFname, "You need to provide an expression matrix")
     mustNotBeNull(metaFname, "You need to provide a meta data file")
+    if command=="coords":
+        if options.datasetName is None and exprFname is None:
+            errAbort("With 'coords', you need to provde either an expression matrix or at least a name for the dataset with -n")
+        if options.coords is None:
+            errAbort("With 'coords', you need to specify at least one coordinate file with the -c option")
+    else:
+        mustNotBeNull(exprFname, "You need to provide an expression matrix")
 
     makeDir(outDir)
 
@@ -1488,15 +1837,19 @@ def runCommands(args):
     #global colors
     #colors = parseColors(options.colors)
 
+    global datasetName
+    if options.datasetName is not None:
+        datasetName = options.datasetName
+
     if command=="coords":
-        coordFname = options.coords
+        coordFnames = options.coords # a list of filenames
         defaultGeneFname = options.genes
         clusterLabelField = options.clusterLabel
 
         readGeneInfo(defaultGeneFname)
 
         makeDir(dataOutDir)
-        importCoords(command, metaFname, exprFname, coordFname, clusterLabelField, dataOutDir)
+        importCoords(command, metaFname, exprFname, coordFnames, clusterLabelField, dataOutDir)
 
     if command=="matrix":
         defaultGeneFname = options.genes

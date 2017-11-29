@@ -1,10 +1,12 @@
 /* tsneViewer.js class definitions */
 /* * {padding: 0; margin: 0} */ /* important, otherwise precise placement is impossible */ 
 /* body { font-family: Roboto, sans-serif } */
-body { font-family: Arial,Helvetica,sans-serif; }
+body { font-family: Arial,Helvetica,sans-serif; overflow:hidden; }
+canvas { user-select: none }
+
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
-#tpLegendBar { margin-left: 4px; cursor:default}
-.tpLegendSelect { border: 2px solid black !important; border-bottom: 2px solid black}
+#tpLegendBar { margin-left: 4px; cursor:default; overflow-y: scroll;}
+.tpLegendSelect { outline: 2px solid black }
 .tpLegendLabel { display:inline; user-select: none; }
 /*.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888} */
 .tpLegendCount { display:inline-block; float: right; color: #888} 
@@ -24,7 +26,6 @@ body { font-family: Arial,Helvetica,sans-serif; }
 .ui-progressbar { position: relative; }
 .ui-progressbar-value { background-color: #888 }
 
-
 .tpProgressLabel {
     position: absolute;
     left: 40%;
@@ -38,12 +39,27 @@ body { font-family: Arial,Helvetica,sans-serif; }
 .tpGeneBarCellSelected { outline: 2px solid black}
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
-.tpMetaBox { font-size: 13px; cursor:default; border: 2px solid transparent; overflow:hidden }
+#tpMetaTitle { font-weight: bold; padding-bottom: 8px; padding-left: 5px }
+#tpMetaBar { overflow-y:scroll}
+.tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
 .tpMetaLabel { font-weight: bold; padding-left: 2px}
+.tpMetaLabelGrey { color: #666666}
+.tpMetaMultiVal { font-style: italic; text-color: gray }
+.tpMetaHistLabel { text-decoration: underline; color: blue }
 .tpMetaValue { height: 1.3em; margin-left: 8px; padding-left: 3px; background-color:#EEE }
-.tpMetaSelect { border: 2px solid black }
+.tpMetaSelect { outline: 2px solid black; background-color: #DEDEDE }
+.tpMetaValueSelect { background-color: #CCC}
+.tpMetaPerc { color:grey; float:right }
+.tpMetaSpark { float:right }
+
+#tpMetaTip { padding: 2px; border: 1px solid grey; background: white; display: none; position: absolute}
+.tpMetaTipBar { display: inline-block; position: absolute; left:0; background-color: #AAAAAA; z-index: 2 }
+.tpMetaTipPerc { display: inline-block; position: relative; left:0; z-index: 3; }
+.tpMetaTipName { display: inline-block; position: relative; left:20px; z-index: 3; }
 
 #tpSelectBox { border: 1px dotted black; }
+
+button { line-height: 12px }
 
 #tpButtonBar {display: block; }
 .tpButton { font-size: 15px; display: inline-block; background-color: #f6f6f6; border: 1px solid #c5c5c5; margin: 1px 3px 1px 1px; padding: 1px 3px 1px 3px; cursor:default; border-radius: 3px; vertical-align: middle; user-select: none}
@@ -52,7 +68,7 @@ body { font-family: Arial,Helvetica,sans-serif; }
 
 .tpMenu { z-index: 999; background: white; display:none; position:absolute}
 
-.sp-replacer { height: 17px; width: 18px; border: none; padding: 0px; margin-right: 5px; background-color: white }
+.sp-replacer { height: 17px; width: 18px; border: none; padding: 0px; margin-right: 5px; background-color: white; vertical-align: top }
 .sp-preview { height: 17px; width: 18px; border: none }
 .sp-dd { line-height: 11px; display:none }
 
@@ -60,6 +76,8 @@ body { font-family: Arial,Helvetica,sans-serif; }
 .navbar-xs { min-height:28px; height: 28px; }
 .navbar-xs .navbar-brand{ padding: 0px 12px;font-size: 16px;line-height: 28px; }
 .navbar-xs .navbar-nav > li > a {  padding-top: 0px; padding-bottom: 0px; line-height: 28px; }
+/* bootstrap's small buttons have a lot of padding, for the toolbar, that's too much */
+.noPad {padding:0;}
 
 /* make the navbar dividers smaller */
 .half-rule { 
@@ -67,6 +85,38 @@ body { font-family: Arial,Helvetica,sans-serif; }
     text-align: left;
     margin-top: 0;
     margin-bottom: 0;
+}
+
+ /* #tpToolBar { overflow:hidden; white-space: nowrap } */
+
+.tpToolBarItem { display:inline-block; white-space: nowrap }
+.tpToolBarItem > label { margin-right: 7px; display: inline} 
+
+.tpCombo { display: inline-block} 
+
+
+
+/* adapt the chosen.js style a little */
+.chosen-container-single .chosen-single { border-radius: 0; }
+.tpCombo > a { border-radius: 0;}
+
+
+/* same for select2 */
+.select2-container .select2-selection--single { 
+        border-radius: 0;
+        background: linear-gradient(#fff 20%,#f6f6f6 50%,#eee 52%,#f4f4f4 100%);
+        padding: 2px
+}
+/* and selectize */
+.selectize-input {
+        border-radius: 0;
+        background: linear-gradient(#fff 20%,#f6f6f6 50%,#eee 52%,#f4f4f4 100%);
+        padding: 2px;
+        overflow: visible; /* grrr!! otherwise baseline is ignored in tpToolBarItem */
+}
+#tpToolBar > div.selectize-control.tpCombo.single {
+        border-color: #aaaaaa;
+        display: inline-block;
 }
 
 /* make bootstrap's navbar show menus on mouse hover */
