@@ -3,7 +3,7 @@
 # convert/process single-cell data into the format required by cellBrowser.js
 
 import logging, sys, optparse, re, unicodedata, string, marshal, socket
-import json, math, shutil, os, platform, zlib
+import json, math, shutil, os, platform, zlib, glob
 from time import gmtime, strftime
 from collections import defaultdict, namedtuple, Counter
 from os.path import join, basename, dirname, isfile, isdir, abspath, splitext
@@ -100,7 +100,10 @@ def parseArgs():
     parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have many.")
 
     parser.add_option("-g", "--genes", dest="genes", action="store",
-            help="default marker genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
+            help="default preloaded genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
+
+    parser.add_option("-p", "--clusterSpec", dest="clusterSpec", action="store",
+            help="Tab-sep table with cluster specific genes. Format is <clusterName><geneSymbol><enrichmentScore><othercolumns>.")
 
     parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
 
@@ -228,6 +231,12 @@ def readGeneToSym(fname):
                 continue
             d[row.geneId.split(".")[0]]=row.symbol
     return d
+
+def convIdToSym(geneId):
+    if geneToSym is None:
+        return geneId
+    else:
+        return geneToSym[geneId]
 
 def readGeneIds(fname, geneToSym):
     """ input tab-sep file has format symbol, annotationString
@@ -1649,7 +1658,7 @@ def writePreloadGenes(matrixFname, geneIdToAnnot, outFname):
 
     geneLabels = []
     for geneId, desc in geneIdToAnnot.iteritems():
-        sym = geneToSym[geneId]
+        sym = convIdToSym(geneId)
         geneLabels.append( (geneId, sym, desc) )
 
     data["genes"] = geneLabels
@@ -1730,12 +1739,16 @@ def findDatasets(outDir):
 
 def copyHtml(outDir):
     " copy html/js/css to outdir "
-    makeDir(join(outDir, "img"))
+    imgDir = join(outDir, "img")
+    makeDir(imgDir)
+
     baseDir = dirname(__file__)
-    for fname in ["cellBrowser.js", "cellBrowser.css", "img/marker.png"]:
-        inFname = join(baseDir, fname)
+    fnames = [join(baseDir, "cellBrowser.js"), join(baseDir, "cellBrowser.css")]
+    fnames.extend( glob.glob(join(baseDir, "img", "*.png")) )
+
+    for inFname in fnames:
         logging.info("Copying %s to %s" % (inFname, outDir))
-        if "img" in fname:
+        if "img" in inFname:
             shutil.copy(inFname, outDir+"/img")
         else:
             shutil.copy(inFname, outDir)
@@ -1805,6 +1818,47 @@ def copyColors(fname, dataOutDir):
     parseColors(fname) # check if colors are hex values
     shutil.copy(fname, join(dataOutDir, "colors.tsv"))
 
+def splitAddSym(filename, outDir):
+    " split .tsv on first field and create many files in outDir with the non-first columns. Also map geneIds to symbols. "
+    ifh = open(filename)
+
+    headers = ifh.readline().rstrip("\n").split('\t')
+    otherHeaders = headers[2:]
+
+    data = defaultdict(list)
+    for line in ifh:
+        row = line.rstrip("\n").split('\t')
+        markerName = row[0]
+        geneId = row[1]
+        otherFields = row[2:]
+
+        newRow = []
+        newRow.append(geneId)
+        geneSym = convIdToSym(geneId)
+        newRow.append(geneSym)
+        newRow.extend(otherFields)
+
+        data[markerName].append(newRow)
+
+    newHeaders = ["id", "symbol"]
+    newHeaders.extend(otherHeaders)
+
+    for markerName, rows in data.iteritems():
+        outFname = join(outDir, markerName+".tsv")
+        logging.info("Writing %s" % outFname)
+        ofh = open(outFname, "w")
+        ofh.write("\t".join(newHeaders))
+        ofh.write("\n")
+        for row in rows:
+            ofh.write("\t".join(row))
+            ofh.write("\n")
+        ofh.close()
+
+def convClusterSpec(specGenesFname, markerDir):
+    " pre-process the cluster specific genes files to many .tsv files "
+    makeDir(markerDir)
+    splitAddSym(specGenesFname, markerDir)
+
 def runCommands(args):
     " basic cmd line parsing "
 
@@ -1845,7 +1899,10 @@ def runCommands(args):
         coordFnames = options.coords # a list of filenames
         defaultGeneFname = options.genes
         clusterLabelField = options.clusterLabel
+        specGenesFname = options.clusterSpec
 
+        markerDir = join(dataOutDir, "markers")
+        convClusterSpec(specGenesFname, markerDir)
         readGeneInfo(defaultGeneFname)
 
         makeDir(dataOutDir)
