@@ -21,6 +21,14 @@ canvas { user-select: none }
 .ui-menu-item { font-size:13px }
 .ui-menu .ui-menu-item-wrapper { padding: 1px 1em 1px .4em; }
 .ui-tooltip { font-size: 13px }
+.tpIconButton { padding: 1px 2px 1px 2px; border-radius: 0; height:28px; cursor: default}
+.tpClicked { background-color: #AAA }
+.tpClicked:hover { background-color: #AAA }
+
+.link { text-decoration: underline; color: #0000EE; cursor: pointer; }
+
+/* modify bootstrap tooltip defaults */
+.tooltip-inner { min-width: 220px; border-radius: 0}
 
 /* .ui-widget-header { background: white !important; border: 0px} */ /* DO NOT !important here. Is used by the progressbar */
 .ui-progressbar { position: relative; }
@@ -46,7 +54,7 @@ canvas { user-select: none }
 .tpMetaLabelGrey { color: #666666}
 .tpMetaMultiVal { font-style: italic; text-color: gray }
 .tpMetaHistLabel { text-decoration: underline; color: blue }
-.tpMetaValue { height: 1.3em; margin-left: 8px; padding-left: 3px; background-color:#EEE }
+.tpMetaValue { height: 1.3em; margin-left: 8px; padding-left: 3px; background-color:#EEE; }
 .tpMetaSelect { outline: 2px solid black; background-color: #DEDEDE }
 .tpMetaValueSelect { background-color: #CCC}
 .tpMetaPerc { color:grey; float:right }
@@ -62,8 +70,11 @@ canvas { user-select: none }
 button { line-height: 12px }
 
 #tpButtonBar {display: block; }
-.tpButton { font-size: 15px; display: inline-block; background-color: #f6f6f6; border: 1px solid #c5c5c5; margin: 1px 3px 1px 1px; padding: 1px 3px 1px 3px; cursor:default; border-radius: 3px; vertical-align: middle; user-select: none}
-.tpButton:hover { background-color: #EEE; user-select: none }
+.tpButton { border-radius: 0; font-size: 15px; display: inline-block; background-color: #f6f6f6; border: 1px solid #c5c5c5; margin: 1px 3px 1px 1px; padding: 1px 3px 1px 3px; cursor:default; vertical-align: middle; user-select: none}
+.tpButton:active { background-color: #888; }
+.tpButton active { background-color: #888; }
+.tpButton:hover { background-color: #eee }
+
 .tpButtonInactive { background-color: #EEE; user-select: none; color:#AAA; cursor:default}
 
 .tpMenu { z-index: 999; background: white; display:none; position:absolute}
@@ -77,7 +88,7 @@ button { line-height: 12px }
 .navbar-xs .navbar-brand{ padding: 0px 12px;font-size: 16px;line-height: 28px; }
 .navbar-xs .navbar-nav > li > a {  padding-top: 0px; padding-bottom: 0px; line-height: 28px; }
 /* bootstrap's small buttons have a lot of padding, for the toolbar, that's too much */
-.noPad {padding:0;}
+.noPad {padding:0 2 0 2}
 
 /* make the navbar dividers smaller */
 .half-rule { 

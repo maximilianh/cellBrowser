@@ -3,7 +3,7 @@
 # convert/process single-cell data into the format required by cellBrowser.js
 
 import logging, sys, optparse, re, unicodedata, string, marshal, socket
-import json, math, shutil, os, platform, zlib, glob
+import json, math, shutil, os, platform, zlib, glob, operator
 from time import gmtime, strftime
 from collections import defaultdict, namedtuple, Counter
 from os.path import join, basename, dirname, isfile, isdir, abspath, splitext
@@ -1737,6 +1737,14 @@ def findDatasets(outDir):
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
+def copyDescPages(inDir, outDir):
+    " copy description.html and makeDoc.html to output directory "
+    desc = join(inDir, "description.html")
+    makeDoc = join(inDir, "makeDoc.html")
+    logging.info("Copying %s, %s to %s" % (desc, makeDoc, outDir))
+    shutil.copy(desc, outDir)
+    shutil.copy(makeDoc, outDir)
+
 def copyHtml(outDir):
     " copy html/js/css to outdir "
     imgDir = join(outDir, "img")
@@ -1830,12 +1838,15 @@ def splitAddSym(filename, outDir):
         row = line.rstrip("\n").split('\t')
         markerName = row[0]
         geneId = row[1]
-        otherFields = row[2:]
+        scoreVal = float(row[2])
+        otherFields = row[3:]
+
+        geneSym = convIdToSym(geneId)
 
         newRow = []
         newRow.append(geneId)
-        geneSym = convIdToSym(geneId)
         newRow.append(geneSym)
+        newRow.append(scoreVal)
         newRow.extend(otherFields)
 
         data[markerName].append(newRow)
@@ -1844,12 +1855,14 @@ def splitAddSym(filename, outDir):
     newHeaders.extend(otherHeaders)
 
     for markerName, rows in data.iteritems():
+        rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score
         outFname = join(outDir, markerName+".tsv")
         logging.info("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
         ofh.write("\n")
         for row in rows:
+            row[2] = "%0.3f" % row[2] # limit to 3 digits
             ofh.write("\t".join(row))
             ofh.write("\n")
         ofh.close()
@@ -1907,6 +1920,7 @@ def runCommands(args):
 
         makeDir(dataOutDir)
         importCoords(command, metaFname, exprFname, coordFnames, clusterLabelField, dataOutDir)
+        copyDescPages(dirname(exprFname), dataOutDir)
 
     if command=="matrix":
         defaultGeneFname = options.genes
