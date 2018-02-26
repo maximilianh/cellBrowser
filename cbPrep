@@ -97,13 +97,13 @@ def parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output dir to write .json files to. Note that under this directory a subdirectory 'build' will be created. It contains temporary files of the pipelines. You can delete it once you do not plan to re-run the json build again. ")
 
-    parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have many.")
+    parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have multiple coordinate files. Default label is filename, change config.json to change label.")
 
     parser.add_option("-g", "--genes", dest="genes", action="store",
             help="default preloaded genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
 
-    parser.add_option("-p", "--clusterSpec", dest="clusterSpec", action="store",
-            help="Tab-sep table with cluster specific genes. Format is <clusterName><geneSymbol><enrichmentScore><othercolumns>.")
+    parser.add_option("-p", "--clusterSpec", dest="clusterSpec", action="append",
+            help="Tab-sep table with cluster specific genes. Format is <clusterName><geneSymbol><enrichmentScore><othercolumns>. Can be specified multiple times. Default label is filename. Modify config.json to change labels.")
 
     parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
 
@@ -340,7 +340,14 @@ def lineFileNextRow(inFile):
     headers = line1.split("\t")
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
     headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
-    headers = [x if x!="" else "noName" for x in headers]
+    #headers = [x if x!="" else "noName" for x in headers]
+    if headers[0]=="": # R does not name the first column by default
+        headers[0]="rowName"
+
+    if "" in headers:
+        logging.error("Found empty cells in header line of %s" % inFile)
+        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to fix it.")
+        assert(False)
 
     filtHeads = []
     for h in headers:
@@ -405,14 +412,16 @@ def convTabToMarshal(matrixFname, marshFname, doLog):
             sys.exit(1)
 
         for cellName, count in zip(cellNames, fs[1:]):
+            if count=="NA":
+                continue
             count = float(count)
             if count!=0.0:
                 val = float(count)
                 if doLog:
-                    val = math.log(val, 2)
+                    val = math.log(val+1, 2)
                 if val > 500:
                     logging.error("Found very high value in expression matrix: %f" % val)
-                    logging.error("This is unlikely to be a matrix of log'ed values. Rerun with --doLog.")
+                    logging.error("This is unlikely to be a matrix of log'ed values. Rerun with --log.")
                     sys.exit(1)
 
                 cellTransCounts[cellName][geneId] = val
@@ -444,16 +453,21 @@ def parseMatrix(matrixFname, buildDir, doLog):
     exprMat = marshal.load(open(marshFname))
     return exprMat
 
-def parseCoords(fname):
+def parseCoords(fname, validIds=None):
     """ parse tsv file in format cellId, x, y and return as list of (cellId, x, y) 
     Flip the y coordinates to make it more look like in R.
     """
     logging.info("Parsing %s" % fname)
     coords = []
     maxY = 0
+    skipCount = 0
     for row in lineFileNextRow(fname):
         assert(len(row)==3) # coord file has to have three rows (cellId, x, y), we just ignore the headers
         cellId = row[0]
+        if validIds:
+            if cellId not in validIds:
+                skipCount +=1
+                continue
         x = float(row[1])
         y = float(row[2])
         maxY = max(maxY, y)
@@ -463,6 +477,9 @@ def parseCoords(fname):
     for cellId, x, y in coords:
         newY = maxY - y
         newCoords.append( (cellId, x, newY) )
+
+    if skipCount != 0:
+        logging.warn("Ignored %d coordinates, no meta data for these" % (skipCount))
     return newCoords
 
 def parsePca(pcaFname):
@@ -471,7 +488,7 @@ def parsePca(pcaFname):
     logging.info("Parsing %s for Principal Components plot" % pcaFname)
     data = []
     for row in lineFileNextRow(pcaFname):
-        data.append( (row.noName, float(row.PC1), float(row.PC2), float(row.PC3), float(row.PC4), float(row.PC5) ) )
+        data.append( (row.rowName, float(row.PC1), float(row.PC2), float(row.PC3), float(row.PC4), float(row.PC5) ) )
     return data
 
 def mostRelevantFields(meta):
@@ -716,11 +733,10 @@ def writeJsonConfig(cellInfo, coordFiles, geneIdToAnnot, fieldAnnots, configFnam
 
     metaFields = sorted(cellInfo.values()[0].keys())
     if "Seurat Cluster" in metaFields:
-        print "XX", metaFields.index("Seurat Cluster")
         del metaFields[metaFields.index("Seurat Cluster")]
         metaFields.insert(0, "Seurat Cluster")
     else:
-        print "XX", "No Seurat cluster in metaFields"
+        logging.info("Could not find a 'Seurat Cluster' field in the meta data")
 
     data["metaFields"] = metaFields
     data["fieldAnnots"] = fieldAnnots
@@ -809,7 +825,7 @@ def writeJsonDescription(desc, descFname, coordFiles):
         logging.info("Writing new dataset description to %s" % descFname)
         saveJson(desc, descFname, pretty=True)
 
-def writeJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, fieldAnnots, jsonDir):
+def writeTsvAndJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, fieldAnnots, jsonDir):
     " write coordinates, expression and meta data to jsonDir "
     #pcaFname    = join(jsonDir, "pcaCoords.json") # 'pcaCoords' -> list of (cellId, (pc1, pc2, pc3, pc4, pc5))
     #geneFname   = join(jsonDir, "preloadGenes.json") # "geneExpr" -> cellId -> list of floats
@@ -865,25 +881,25 @@ def parseMeta(fname, cellIds, mustHaveField=None):
     # now create the fieldAnnots for all fields
     fieldAnnots = defaultdict(dict)
     for fieldName, valCounts in fieldVals.iteritems():
-        # flag fields that have too many different values
-        if len(valCounts)>=100:
-            fieldAnnots[fieldName]["tooMany"] = True
-            logging.info("field '%s' has %d different values, too many to color on" % (fieldName, len(valCounts)))
-
         # get the deciles for all-numeric fields
-        allInt = True
+        allNumeric = True
         vals = []
         for val in valCounts:
             try:
                 floatVal = float(val)
                 vals.append(val)
             except:
-                allInt = False
+                allNumeric = False
                 break
-        if allInt and len(valCounts)>30:
+        if allNumeric and len(valCounts)>30:
             deciles = getDecilesList(vals)
             fieldAnnots[fieldName]["deciles"] = deciles
             logging.info("field '%s' has only numeric values, deciles: %s" % (fieldName, deciles))
+
+        # flag fields that have too many different values
+        if len(valCounts)>=100 and not allNumeric:
+            fieldAnnots[fieldName]["tooMany"] = True
+            logging.info("field '%s' has %d different values, too many to color on" % (fieldName, len(valCounts)))
 
     return meta, fieldAnnots
         
@@ -980,9 +996,11 @@ def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField
 
     meta, fieldAnnots = parseMeta(metaFname, cellIds)
 
+    validIds = meta
+
     coordDict = {}
     for coordFname in coordFnames:
-        coords = parseCoords(coordFname)
+        coords = parseCoords(coordFname, validIds)
         coordName = splitext(basename(coordFname))[0]
         coordDict[(coordName, coordName)] = coords
 
@@ -1023,7 +1041,7 @@ def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField
         desc["clusterLabelField"] = clusterLabelField
         desc["clusterField"] = clusterLabelField
 
-    writeJson(exprMatrix, coordDict, None, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, coordDict, None, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
 
     copyMatrixAndIndex(exprMatrix, outDir)
 
@@ -1464,7 +1482,7 @@ def runOn10X(command, metaFname, cellRangerDir, outDir):
     desc = {"shortLabel" : basename(dirname(abspath(matrixFname))), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
 
     matrixGeneIds = getNonZeroGenes(exprMatrix)
-    writeJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
 
 #def writeDownloadFiles(metaFname, outDir):
     #" we keep a copy of the meta data in the directory so people can download them "
@@ -1704,7 +1722,7 @@ def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     #filterMatrixOnGenesAndTranspose(matrixFname, geneIdToAnnot, preloadMatrixFname)
     writePreloadGenes(matrixFname, geneIdToAnnot, preloadMatrixFname)
 
-    writeJson(exprMatrix, coordDict, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, coordDict, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
     #writeDownloadFiles(metaFname, outDir)
 
 def findDatasets(outDir):
@@ -1741,12 +1759,18 @@ def copyDescPages(inDir, outDir):
     " copy description.html and makeDoc.html to output directory "
     desc = join(inDir, "description.html")
     makeDoc = join(inDir, "makeDoc.html")
-    logging.info("Copying %s, %s to %s" % (desc, makeDoc, outDir))
-    shutil.copy(desc, outDir)
-    shutil.copy(makeDoc, outDir)
+    acroTsv = join(inDir, "acronyms.tsv")
+    logging.info("Copying %s, %s, %s (if present) to %s" % (desc, makeDoc, acroTsv, outDir))
+    if isfile(desc):
+        shutil.copy(desc, outDir)
+    if isfile(makeDoc):
+        shutil.copy(makeDoc, outDir)
+    if isfile(acroTsv):
+        shutil.copy(acroTsv, outDir)
 
 def copyHtml(outDir):
     " copy html/js/css to outdir "
+
     imgDir = join(outDir, "img")
     makeDir(imgDir)
 
@@ -1828,6 +1852,8 @@ def copyColors(fname, dataOutDir):
 
 def splitAddSym(filename, outDir):
     " split .tsv on first field and create many files in outDir with the non-first columns. Also map geneIds to symbols. "
+    if filename is None:
+        return
     ifh = open(filename)
 
     headers = ifh.readline().rstrip("\n").split('\t')
@@ -1856,6 +1882,7 @@ def splitAddSym(filename, outDir):
 
     for markerName, rows in data.iteritems():
         rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score
+        markerName = markerName.replace("/","_")
         outFname = join(outDir, markerName+".tsv")
         logging.info("Writing %s" % outFname)
         ofh = open(outFname, "w")
@@ -1878,6 +1905,10 @@ def runCommands(args):
     command = args[0]
     outDir = options.outDir
 
+    if outDir is None:
+        logging.error("You did not specify the -o option, but it is mandatory")
+        sys.exit(1)
+
     if command=="html":
         if options.colors is not None:
             errAbort("There is no need to specify colors with 'html'. Colors are defined for datasets.")
@@ -1889,6 +1920,7 @@ def runCommands(args):
 
     mustNotBeNull(outDir, "You need to provide an output directory")
     mustNotBeNull(metaFname, "You need to provide a meta data file")
+
     if command=="coords":
         if options.datasetName is None and exprFname is None:
             errAbort("With 'coords', you need to provde either an expression matrix or at least a name for the dataset with -n")
@@ -1912,10 +1944,13 @@ def runCommands(args):
         coordFnames = options.coords # a list of filenames
         defaultGeneFname = options.genes
         clusterLabelField = options.clusterLabel
-        specGenesFname = options.clusterSpec
+        specGenesFnames = options.clusterSpec
 
-        markerDir = join(dataOutDir, "markers")
-        convClusterSpec(specGenesFname, markerDir)
+        for specGenesFname in specGenesFnames:
+            markerType = splitexit(basename(specGenesFname))[0]
+            markerDir = join(dataOutDir, "markers", markerType)
+            convClusterSpec(specGenesFname, markerDir)
+
         readGeneInfo(defaultGeneFname)
 
         makeDir(dataOutDir)

@@ -14,8 +14,10 @@ var tsnePlot = function() {
     // - .labelField  = field name to use as cluster labels
     // - .coordFiles: optional, list of dicts, with at least shortLabel and url attributes
     // - .metaColors: dict of metaValue -> hexcolor (six chars)
+    // - .hubUrl: url of hub.txt, with UCSC track hub of reads
     // not necessary at all:
     // - .showLabels: optional, bool, whether cluster labels are shown
+    // - .markers: optional, list of (label, subdirectory) under markers/ that contain one .tsv per cluster
     
     // added by code upon load:
     // - .matrixOffsets: gene symbol -> [offset, linelen]
@@ -262,7 +264,7 @@ var tsnePlot = function() {
 
     function activateTooltip(selector) {
         // noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery 
-        var ttOpt = {"html": true, "animation": false, "delay":{"show":500, "hide":100}}; 
+        var ttOpt = {"html": true, "animation": false, "delay":{"show":400, "hide":100}, container:"body"}; 
         $(selector).bsTooltip(ttOpt);
     }
 
@@ -869,6 +871,8 @@ var tsnePlot = function() {
         zoomRange.minY = zoomRange.minY + yDiffData;
         zoomRange.maxY = zoomRange.maxY + yDiffData;
 
+        pushZoomState(zoomRange);
+
         _dump(zoomRange);
         pixelCoords = scaleData(shownCoords);
     }
@@ -956,6 +960,8 @@ var tsnePlot = function() {
 
        zoomRange.maxX = oldMinX + (pxMaxX * xMult);
        zoomRange.maxY = oldMinY + (pxMaxY * yMult);
+
+       pushZoomState(zoomRange);
 
        pixelCoords = scaleData(shownCoords);
     }
@@ -1203,6 +1209,7 @@ var tsnePlot = function() {
         circleSize = defaultCircleSize;
         gCurrentDataset.zoomRange = cloneObj(gCurrentDataset.zoomFullRange);
         pixelCoords = scaleData(shownCoords);
+        pushZoomState(null);
         plotDots();
         renderer.render(stage);
         ev.preventDefault();
@@ -1233,6 +1240,7 @@ var tsnePlot = function() {
         zoomRange.minY = zoomRange.minY - (yRange*scale);
         zoomRange.maxY = zoomRange.maxY + (yRange*scale);
        
+        pushZoomState(zoomRange);
         pixelCoords = scaleData(shownCoords);
         plotDots();
         renderer.render(stage);
@@ -1353,7 +1361,12 @@ var tsnePlot = function() {
         var cellIdToLegendId = {};
         for (var j = 0; j < allCoords.length; j++) {
             var cellId = allCoords[j][0];
-            metaVal = metaData[cellId][metaIdx];
+            var cellMeta = metaData[cellId];
+            var metaVal = null;
+            if (cellMeta===undefined)
+                metaVal = "(missingMetaData)";
+            else
+                metaVal = metaData[cellId][metaIdx];
             cellIdToLegendId[cellId] = metaToLegend[metaVal];
         }
         return cellIdToLegendId;
@@ -1862,7 +1875,11 @@ var tsnePlot = function() {
         for (var i = 0; i < allCoords.length; i++) {
             var cellId = allCoords[i][0];
             var metaRow = metaData[cellId];
-            var metaVal = metaRow[metaIndex];
+            var metaVal = null;
+            if (metaRow===undefined)
+                metaVal = "(missingMetaData)";
+            else
+                metaVal = metaRow[metaIndex];
             metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
         }
 
@@ -1975,6 +1992,7 @@ var tsnePlot = function() {
         colorByMetaField(fieldId);
         plotDots();
         renderer.render(stage);
+        pushState({"meta":fieldId, "gene":null});
     }
 
     function addMetaTipBar(htmls, valFrac, valStr) {
@@ -2060,6 +2078,7 @@ var tsnePlot = function() {
         /* user changed the layout in the combobox */
         var coordIdx = parseInt(params.selected);
         loadCoordSet(coordIdx);
+        pushState({"layout":coordIdx, "zoom":null});
 
         // remove the focus from the combo box
         removeFocus();
@@ -2068,6 +2087,7 @@ var tsnePlot = function() {
     function onGeneChange(ev) {
         /* user changed the layout in the combobox */
         var geneSym = ev.target.value;
+        pushState({"gene":geneSym, "meta":null});
         console.log("Loading "+geneSym);
         loadSingleGeneFromMatrix(geneSym);
         $(this).blur();
@@ -2188,7 +2208,6 @@ var tsnePlot = function() {
 
         $('#tpIconZoomIn').click( onZoomInClick );
         $('#tpIconZoomOut').click( onZoomOutClick );
-        $('#tpIconZoom100').click( onZoom100Click );
         $('#tpIconZoom100').click( onZoom100Click );
         //activateCombobox("tpGeneCombo");
         activateCombobox("tpDatasetCombo", datasetComboWidth);
@@ -2452,7 +2471,11 @@ var tsnePlot = function() {
     /* called when meta and coordinates have been loaded: scale data and color by meta field  */
         // find range of data
         gCurrentDataset.zoomFullRange = findMinMax(allCoords);
-        gCurrentDataset.zoomRange = cloneObj(gCurrentDataset.zoomFullRange);
+        var zoomRange = getZoomRangeFromUrl();
+        if (zoomRange===null)
+            zoomRange = cloneObj(gCurrentDataset.zoomFullRange)
+        gCurrentDataset.zoomRange = zoomRange;
+
         shownCoords = allCoords.slice(); // most likely faster to copy and modify than build a new list
         pixelCoords = scaleData(shownCoords);
 
@@ -2517,7 +2540,7 @@ var tsnePlot = function() {
     //}
 
     function loadColorsFromTsv(papaResults) {
-    /* accepts dict with 'shownCoords' loads into global var 'coords' */
+    /* load tsv with key/val into gCurrentDataset.metaColors */
         console.log("got colors");
         var rows = papaResults.data;
         var nameToColor = {};
@@ -2529,6 +2552,21 @@ var tsnePlot = function() {
         }
         gCurrentDataset.metaColors = nameToColor;
         oneFileLoaded("colors");
+    }
+
+    function loadAcronymsFromTsv(papaResults) {
+    /* load a tab sep file with key/value into gCurrentDataset */
+        console.log("trying to load acronyms");
+        var rows = papaResults.data;
+        var acronymToText = {};
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var key = row[0];
+            var val = row[1];
+            acronymToText[key] = val;
+        }
+        gCurrentDataset.acronyms = acronymToText;
+        oneFileLoaded("acronyms");
     }
 
     function loadCoordsFromTsv(papaResults) {
@@ -2548,8 +2586,10 @@ var tsnePlot = function() {
                 continue;
             var x = parseFloat(row[1]);
             var y = parseFloat(row[2]);
-            if (x!==x || y!==y)
-                warn("Row "+i+" of coordinate file contains a value that is not a number:"+JSON.stringify(row));
+            if (x!==x || y!==y) {
+                warn("Row "+i+" of coordinate file contains a value that is not a number:"+JSON.stringify(row)+". Parsing stopped.");
+                break;
+            }
             allCoords.push([row[0], x, y]);
         }
         shownCoords = cloneArray(allCoords);
@@ -3012,6 +3052,10 @@ var tsnePlot = function() {
             sum += count;
         }
 
+        var acronyms = gCurrentDataset.acronyms;
+        if (acronyms===undefined)
+            acronyms = {};
+
         for (var i = 0; i < rows.length; i++) {
             var colorHex = rows[i][0];
             var label = rows[i][2];
@@ -3029,19 +3073,29 @@ var tsnePlot = function() {
             else if (likeEmptyString(label))
                 labelClass += " tpGrey";
 
+            var labelDesc = acronyms[label] || null;
+            if (labelDesc===null) {
+                // only show the full value on mouse over if the label is long, "" suppresses mouse over
+                if (label.length > 20 || labelDesc===null)
+                    labelDesc = label;
+                else
+                    labelDesc = "";
+            }
+
+
             var classStr = "tpLegend";
-            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "' title='"+label+"'>";
+            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "'>";
             htmls.push(line);
             htmls.push("<input class='tpColorPicker' id='tpLegendColorPicker_"+i+"' />");
 
-            htmls.push("<span class='"+labelClass+"' id='tpLegendLabel_"+i+"'>");
+            htmls.push("<span class='"+labelClass+"' id='tpLegendLabel_"+i+"' data-placement='auto top' title='"+labelDesc+"'>");
             htmls.push(label);
             htmls.push("</span>");
             //htmls.push("<span class='tpLegendCount'>"+count+"</div>");
             var prec = 1;            
             if (freq<1)
                 prec = 2;
-            htmls.push("<span class='tpLegendCount' title='"+count+"/"+sum+"'>"+freq.toFixed(prec)+"%</div>");
+            htmls.push("<span class='tpLegendCount' title='"+count+" of "+sum+"'>"+freq.toFixed(prec)+"%</div>");
             htmls.push("</span>");
 
             htmls.push("</div>");
@@ -3055,6 +3109,8 @@ var tsnePlot = function() {
         //$('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
         $('#tpResetColors').click( onResetColorsClick );
         $('#tpSortBy').click( onSortByClick );
+        activateTooltip(".tpLegendLabel");
+        activateTooltip(".tpLegendCount");
 
         // setup the right-click menu
         var menuItems = [{name: "Hide "+gSampleDesc+"s with this value"}, {name:"Show only "+gSampleDesc+"s with this value"}];
@@ -3366,12 +3422,16 @@ var tsnePlot = function() {
         mouseDownY = null;
         lastPanX = null;
         lastPanY = null;
-        var label = ev.target.labelText;
-        console.log("click on label: "+label);
+        var clusterName = ev.target.labelText;
+        console.log("click on label: "+clusterName);
         ev.stopPropagation();
 
-        var markerTsvUrl = joinPaths(["markers", label+".tsv"]);
-        startLoadTsv("markers", markerTsvUrl, loadMarkersFromTsv, label);
+        var fname = clusterName.replace("/", "_")+".tsv";
+        if (gCurrentDataset.markers)
+            var markerTsvUrl = joinPaths(["markers", gCurrentDataset.markers[0][0], fname]);
+        else
+            var markerTsvUrl = joinPaths(["markers", fname]);
+        startLoadTsv("markers", markerTsvUrl, loadMarkersFromTsv, clusterName);
     }
 
     function geneListFormat(htmls, s, symbol) {
@@ -3421,6 +3481,9 @@ var tsnePlot = function() {
         var headerRow = rows[0];
 
         var htmls = [];
+        if (gCurrentDataset.hubUrl!==undefined)
+            htmls.push("<a target=_blank class='link' href='http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+gCurrentDataset.hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a>");
+
         htmls.push("<table class='table'>");
         htmls.push("<thead>");
         var hprdCol = null;
@@ -3485,7 +3548,10 @@ var tsnePlot = function() {
 
         var winWidth = window.innerWidth - 0.10*window.innerWidth;
         var winHeight = window.innerHeight - 0.10*window.innerHeight;
-        showDialogBox(htmls, "Cluster markers for &quot;"+label+"&quot;", {width: winWidth, height:winHeight, "buttons":buttons});
+        var title = "Cluster markers for &quot;"+label+"&quot;";
+        if (gCurrentDataset.acronyms!==undefined && label in gCurrentDataset.acronyms)
+            title += " - "+gCurrentDataset.acronyms[label];
+        showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
         removeFocus();
@@ -3500,7 +3566,12 @@ var tsnePlot = function() {
             var x = allCoords[i][1];
             var y = allCoords[i][2];
             var meta = metaData[cellId];
-            var clusterLabel = meta[metaFieldIdx];
+            var clusterLabel = null;
+            if (meta!==undefined)
+                clusterLabel = meta[metaFieldIdx];
+            else
+                clusterLabel = "(missingMetaData)";
+
             if (clusterCoords[clusterLabel] == undefined)
                 clusterCoords[clusterLabel] = [];
             clusterCoords[clusterLabel].push( [x, y] );
@@ -3793,24 +3864,30 @@ var tsnePlot = function() {
     }
 
     function pushState(vars) {
-    /* push the variables (object) into the history as the current URL */
+    /* push the variables (object) into the history as the current URL. key=null deletes a variable. */
+       // first get the current variables from the current URL
        var myUrl = window.location.href;
        myUrl = myUrl.replace("#", "");
        var urlParts = myUrl.split("?");
        var baseUrl = urlParts[0];
        var queryStr = urlParts[1];
+       var urlVars = deparam(queryStr); // parse key=val&... string to object
 
-       var varDict = deparam(queryStr); // parse key=val&... string to object
+       // overwrite everthing that we got
        for (var key in vars) {
            var val = vars[key];
-           varDict[key] = val;
+           if (val===null || val in urlVars)
+               delete urlVars[key];
+           else
+               urlVars[key] = val;
        }
 
-       var argStr = jQuery.param(varDict); // convert to query-like string
+       var argStr = jQuery.param(urlVars); // convert to query-like string
        history.pushState({}, gCurrentDataset.shortLabel, baseUrl+"?"+argStr);
     }
 
     function getVar(name, defVal) {
+        /* get query variable from current URL or default value if undefined */
        var myUrl = window.location.href;
        myUrl = myUrl.replace("#", "");
        var urlParts = myUrl.split("?");
@@ -3820,6 +3897,30 @@ var tsnePlot = function() {
            return defVal;
        else
            return varDict[name];
+    }
+
+    function pushZoomState(zoomRange) {
+        /* write the current zoom range to the URL. Null to remove it from the URL. */
+       if (zoomRange===null)
+            pushState({zoom:null});
+       else
+           pushState({zoom:zoomRange.minX.toFixed(5)+"_"+zoomRange.maxX.toFixed(5)+"_"+zoomRange.minY.toFixed(5)+"_"+zoomRange.maxY.toFixed(5)});
+    }
+
+    function getZoomRangeFromUrl() {
+        /* return a zoomRange object based on current URL */
+        var zoomStr = getVar("zoom", null);
+        if (zoomStr===null)
+            return null;
+        var zs = zoomStr.split("_");
+        if (zs.length!=4)
+            return null;
+        var zoomRange = {};
+        zoomRange.minX = parseFloat(zs[0]);
+        zoomRange.maxX = parseFloat(zs[1]);
+        zoomRange.minY = parseFloat(zs[2]);
+        zoomRange.maxY = parseFloat(zs[3]);
+        return zoomRange;
     }
 
     function loadOneDataset(datasetIdx) {
@@ -3849,7 +3950,11 @@ var tsnePlot = function() {
 
        //drawLayoutMenu();
 
-       var coord1Url = gCurrentDataset.coordFiles[0].url;
+       var coordIdx = parseInt(getVar("layout", 0));
+       if (coordIdx!=0)
+           // update combobox
+           $('#tpLayoutCombo').val(coordIdx).trigger('chosen:updated');
+       var coord1Url = gCurrentDataset.coordFiles[coordIdx].url;
        if (coord1Url===undefined)
            warn("config error: the 'coordFiles' config list, element 0, does not have a 'url' attribute");
 
@@ -3859,6 +3964,7 @@ var tsnePlot = function() {
        startLoadTsv("colors", "colors.tsv", loadColorsFromTsv);
        startLoadTsv("meta", "meta.tsv", loadMetaFromTsv);
        startLoadTsv("coords", coord1Url, loadCoordsFromTsv);
+       startLoadTsv("acronyms", "acronyms.tsv", loadAcronymsFromTsv);
        startLoadJson("offsets", "geneMatrixOffsets.json", geneIndexLoadDone, false ); // not a required file anymore
        startLoadJson("preload", "preloadGenes.json", geneExprDone, false ); // not a required file, so do not show error
 
