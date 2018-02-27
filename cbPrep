@@ -1838,6 +1838,7 @@ def parseColors(fname):
     " parse color table and return as dict value -> color "
     colDict = parseDict(fname)
     for metaVal, color in colDict.iteritems():
+        color = color.strip() # hbeale had a file with trailing spaces
         assert(len(color)<=6) # colors can be no more than six hex digits
         for c in color:
             assert(c in "0123456789ABCDEFabcdef") # color must be a hex number
