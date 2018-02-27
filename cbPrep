@@ -103,7 +103,7 @@ def parseArgs():
             help="default preloaded genes file. Can be a simple list of gene symbols, one per line. Or '<symbol><tab><annotation>'. Annotation is used for mouse-overs on gene symbols.")
 
     parser.add_option("-p", "--clusterSpec", dest="clusterSpec", action="append",
-            help="Tab-sep table with cluster specific genes. Format is <clusterName><geneSymbol><enrichmentScore><othercolumns>. Can be specified multiple times. Default label is filename. Modify config.json to change labels.")
+            help="Tab-sep table with cluster specific genes. Format is <clusterName><geneSymbol><enrichmentScore><othercolumns>. Can be specified multiple times. Default label is part of filename before first dot. Modify config.json to change labels.")
 
     parser.add_option("-l", "--clusterLabel", dest="clusterLabel", action="store", help="default field with the cluster label, from the meta data table.")
 
@@ -812,12 +812,13 @@ def writeJsonGenes(exprMatrix, geneFields, geneIds, geneFname):
         data = {"genes": geneFields, "cellExpr": geneExpr, "deciles":decileData}
         saveJson(data, geneFname)
 
-def writeJsonDescription(desc, descFname, coordFiles):
+def writeJsonDescription(desc, descFname, coordFiles, markerInfo):
     # save the dataset description
     if datasetName is not None:
         desc["shortLabel"] = datasetName
 
     desc["coordFiles"] = coordFiles
+    desc["markers"] = markerInfo
 
     if isfile(descFname):
         logging.info("Not writing dataset description to %s, file already exists" % descFname)
@@ -825,7 +826,7 @@ def writeJsonDescription(desc, descFname, coordFiles):
         logging.info("Writing new dataset description to %s" % descFname)
         saveJson(desc, descFname, pretty=True)
 
-def writeTsvAndJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, fieldAnnots, jsonDir):
+def writeTsvAndJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneIdToAnnot, desc, fieldAnnots, markerInfo, jsonDir):
     " write coordinates, expression and meta data to jsonDir "
     #pcaFname    = join(jsonDir, "pcaCoords.json") # 'pcaCoords' -> list of (cellId, (pc1, pc2, pc3, pc4, pc5))
     #geneFname   = join(jsonDir, "preloadGenes.json") # "geneExpr" -> cellId -> list of floats
@@ -839,7 +840,7 @@ def writeTsvAndJson(exprMatrix, coordDict, pcaCoords, cellInfo, geneToSym, geneI
     #writeJsonMeta(cellInfo, metaFields, metaFname)
     metaFname   = join(jsonDir, "meta.tsv")
     writeTsvMeta(cellInfo, metaFields, metaFname)
-    writeJsonDescription(desc, descFname, coordFiles)
+    writeJsonDescription(desc, descFname, coordFiles, markerInfo)
 
 def parseMeta(fname, cellIds, mustHaveField=None):
     """ parse a tab-sep file where one column is a cellId and the others are attributes for it.  
@@ -984,7 +985,7 @@ def isValidField(meta, fieldName):
         if fieldName not in cellMeta:
             raise Exception("the field %s is not a valid meta data field" % fieldName)
 
-def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField, outDir):
+def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField, markerInfo, outDir):
     " parse coordinates and write all json files to outDir "
     buildDir = makeTmpDirFor(outDir)
 
@@ -1041,7 +1042,7 @@ def importCoords(command, metaFname, matrixFname, coordFnames, clusterLabelField
         desc["clusterLabelField"] = clusterLabelField
         desc["clusterField"] = clusterLabelField
 
-    writeTsvAndJson(exprMatrix, coordDict, None, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, coordDict, None, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, markerInfo, outDir)
 
     copyMatrixAndIndex(exprMatrix, outDir)
 
@@ -1854,6 +1855,7 @@ def splitAddSym(filename, outDir):
     " split .tsv on first field and create many files in outDir with the non-first columns. Also map geneIds to symbols. "
     if filename is None:
         return
+    logging.debug("Splitting %s on first field" % filename)
     ifh = open(filename)
 
     headers = ifh.readline().rstrip("\n").split('\t')
@@ -1894,10 +1896,6 @@ def splitAddSym(filename, outDir):
             ofh.write("\n")
         ofh.close()
 
-def convClusterSpec(specGenesFname, markerDir):
-    " pre-process the cluster specific genes files to many .tsv files "
-    makeDir(markerDir)
-    splitAddSym(specGenesFname, markerDir)
 
 def runCommands(args):
     " basic cmd line parsing "
@@ -1946,15 +1944,19 @@ def runCommands(args):
         clusterLabelField = options.clusterLabel
         specGenesFnames = options.clusterSpec
 
+        markerInfo = []
         for specGenesFname in specGenesFnames:
-            markerType = splitexit(basename(specGenesFname))[0]
+            logging.debug("Processing cluster-specific genes from %s" % specGenesFname)
+            markerType = splitext(basename(specGenesFname))[0].split(".")[0]
             markerDir = join(dataOutDir, "markers", markerType)
-            convClusterSpec(specGenesFname, markerDir)
+            makeDir(markerDir)
+            splitAddSym(specGenesFname, markerDir)
+            markerInfo.append((markerDir, markerType))
 
         readGeneInfo(defaultGeneFname)
 
         makeDir(dataOutDir)
-        importCoords(command, metaFname, exprFname, coordFnames, clusterLabelField, dataOutDir)
+        importCoords(command, metaFname, exprFname, coordFnames, clusterLabelField, markerInfo, dataOutDir)
         copyDescPages(dirname(exprFname), dataOutDir)
 
     if command=="matrix":
