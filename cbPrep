@@ -1483,7 +1483,7 @@ def runOn10X(command, metaFname, cellRangerDir, outDir):
     desc = {"shortLabel" : basename(dirname(abspath(matrixFname))), "longLabel" : longLabel, "clusterField":"Seurat Cluster"}
 
     matrixGeneIds = getNonZeroGenes(exprMatrix)
-    writeTsvAndJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, seuratCoords, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, [], outDir)
 
 #def writeDownloadFiles(metaFname, outDir):
     #" we keep a copy of the meta data in the directory so people can download them "
@@ -1723,7 +1723,7 @@ def runOnMatrix(command, metaFname, matrixFname, clusterLabelField, outDir):
     #filterMatrixOnGenesAndTranspose(matrixFname, geneIdToAnnot, preloadMatrixFname)
     writePreloadGenes(matrixFname, geneIdToAnnot, preloadMatrixFname)
 
-    writeTsvAndJson(exprMatrix, coordDict, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, outDir)
+    writeTsvAndJson(exprMatrix, coordDict, pcaCoords, meta, geneToSym, geneIdToAnnot, desc, fieldAnnots, [], outDir)
     #writeDownloadFiles(metaFname, outDir)
 
 def findDatasets(outDir):
@@ -1884,7 +1884,7 @@ def splitAddSym(filename, outDir):
     newHeaders.extend(otherHeaders)
 
     for markerName, rows in data.iteritems():
-        rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score
+        #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
         markerName = markerName.replace("/","_")
         outFname = join(outDir, markerName+".tsv")
         logging.info("Writing %s" % outFname)
