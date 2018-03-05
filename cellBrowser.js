@@ -9,7 +9,7 @@ var tsnePlot = function() {
     var gCurrentDataset = null; // object with these fields
     // configuration provided by user:
     // - .baseUrl (reqd) = URL where files are loaded from
-    // - .label (reqd) = label for the dataset shown
+    // - .shortLabel (reqd) = label for the dataset shown
     // - .clusterField = field name to color on
     // - .labelField  = field name to use as cluster labels
     // - .coordFiles: optional, list of dicts, with at least shortLabel and url attributes
@@ -17,7 +17,8 @@ var tsnePlot = function() {
     // - .hubUrl: url of hub.txt, with UCSC track hub of reads
     // not necessary at all:
     // - .showLabels: optional, bool, whether cluster labels are shown
-    // - .markers: optional, list of (label, subdirectory) under markers/ that contain one .tsv per cluster
+    // - .markers: optional, list of (subdirectory, label). 
+    //            Subdir contains one .tsv per cluster, shown on click on cluster label.
     
     // added by code upon load:
     // - .matrixOffsets: gene symbol -> [offset, linelen]
@@ -2593,7 +2594,11 @@ var tsnePlot = function() {
             allCoords.push([row[0], x, y]);
         }
         shownCoords = cloneArray(allCoords);
-        oneFileLoaded("coords");
+        //oneFileLoaded("coords");
+        pixelCoords = scaleData(shownCoords);
+        gClusterMids = null;
+        plotDots();
+        renderer.render(stage);
     }
 
     //function loadPcaCoords(jsonDict) {
@@ -3415,6 +3420,65 @@ var tsnePlot = function() {
         event.stopPropagation();
     }
 
+    function constructMarkerWindow(clusterName) {
+        /* build and open the dialog with the marker genes table for a given cluster */
+        console.log("building marker genes window for "+clusterName);
+        var tabInfo = gCurrentDataset.markers; // list with (label, subdirectory)
+        if (tabInfo===undefined)
+            return;
+        var doTabs = (tabInfo != undefined && tabInfo.length>1);
+
+        var htmls = [];
+
+        if (gCurrentDataset.hubUrl!==undefined)
+            htmls.push("&nbsp;<a target=_blank class='link' href='http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+gCurrentDataset.hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
+
+        if (doTabs) {
+            htmls.push("<div id='tabs'>");
+            htmls.push("<ul>");
+            for (var tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
+                var tabLabel = tabInfo[tabIdx][1];
+                htmls.push("<li><a href='#tabs-"+tabIdx+"'>"+tabLabel+"</a>");
+            }
+            htmls.push("</ul>");
+        }
+
+        for (var tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
+            var divName = "tabs-"+tabIdx;
+            var tabDir = tabInfo[tabIdx][0];
+            var markerTsvUrl = joinPaths([tabDir, clusterName.replace("/", "_")+".tsv"]);
+
+            htmls.push("<div id='"+divName+"'>");
+            htmls.push("Loading...");
+            htmls.push("</div>");
+
+            startLoadTsv("markers", markerTsvUrl, loadMarkersFromTsv, divName);
+        }
+
+        htmls.push("</div>"); // tabs
+
+        var buttons = {
+        "Download as file" :
+            function() {
+                //url = joinPaths([baseUrl,"geneMatrix.tsv"]);
+                document.location.href = url;
+            },
+        };
+
+        var winWidth = window.innerWidth - 0.10*window.innerWidth;
+        var winHeight = window.innerHeight - 0.10*window.innerHeight;
+        var title = "Cluster markers for &quot;"+clusterName+"&quot;";
+        if (gCurrentDataset.acronyms!==undefined && clusterName in gCurrentDataset.acronyms)
+            title += " - "+gCurrentDataset.acronyms[clusterName];
+        showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
+        //$(".tpLoadGeneLink").on("click", onMarkerGeneClick);
+        //activateTooltip(".link");
+        $(".ui-widget-content").css("padding", "0");
+        $("#tabs").tabs();
+        removeFocus();
+
+    }
+
     function onLabelClick (ev) {
         /* user clicks a text label */
         console.log("click on label");
@@ -3425,13 +3489,7 @@ var tsnePlot = function() {
         var clusterName = ev.target.labelText;
         console.log("click on label: "+clusterName);
         ev.stopPropagation();
-
-        var fname = clusterName.replace("/", "_")+".tsv";
-        if (gCurrentDataset.markers)
-            var markerTsvUrl = joinPaths(["markers", gCurrentDataset.markers[0][0], fname]);
-        else
-            var markerTsvUrl = joinPaths(["markers", fname]);
-        startLoadTsv("markers", markerTsvUrl, loadMarkersFromTsv, clusterName);
+        constructMarkerWindow(clusterName);
     }
 
     function geneListFormat(htmls, s, symbol) {
@@ -3474,15 +3532,13 @@ var tsnePlot = function() {
         loadSingleGeneFromMatrix(geneSym);
     }
 
-    function loadMarkersFromTsv(papaResults, url, label) {
-        /* construct a dialog with a table from the marker tsv file */
+    function loadMarkersFromTsv(papaResults, url, divId) {
+        /* construct a table from a marker tsv file and write as html to the DIV with divID */
         console.log("got coordinate TSV rows, parsing...");
         var rows = papaResults.data;
         var headerRow = rows[0];
 
         var htmls = [];
-        if (gCurrentDataset.hubUrl!==undefined)
-            htmls.push("<a target=_blank class='link' href='http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+gCurrentDataset.hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a>");
 
         htmls.push("<table class='table'>");
         htmls.push("<thead>");
@@ -3526,6 +3582,11 @@ var tsnePlot = function() {
             for (var j = 2; j < row.length; j++) {
                 var val = row[j];
                 htmls.push("<td>");
+                if (val.startsWith("./")) {
+                    var imgUrl = val.replace("./", gCurrentDataset.baseUrl);
+                    var imgHtml = '<img width="100px" src="'+imgUrl+'">';
+                    val = "<a data-toggle='tooltip' data-placement='auto' class='tpPlots' target=_blank title='"+imgHtml+"' href='"+ imgUrl + "'>link</a>";
+                }
                 if (j===geneListCol || j===exprCol)
                     geneListFormat(htmls, val, geneSym);
                 else
@@ -3538,22 +3599,13 @@ var tsnePlot = function() {
         htmls.push("</tbody>");
         htmls.push("</table>");
 
-        var buttons = {
-        "Download as file" :
-            function() {
-                //url = joinPaths([baseUrl,"geneMatrix.tsv"]);
-                document.location.href = url;
-            },
-        };
-
-        var winWidth = window.innerWidth - 0.10*window.innerWidth;
-        var winHeight = window.innerHeight - 0.10*window.innerHeight;
-        var title = "Cluster markers for &quot;"+label+"&quot;";
-        if (gCurrentDataset.acronyms!==undefined && label in gCurrentDataset.acronyms)
-            title += " - "+gCurrentDataset.acronyms[label];
-        showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
+        $("#"+divId).html(htmls.join(""));
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
+
+        var ttOpt = {"html": true, "animation": false, "delay":{"show":100, "hide":100} }; 
+        $(".tpPlots").bsTooltip(ttOpt);
+
         removeFocus();
     }
 
