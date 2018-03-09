@@ -13,6 +13,7 @@ var tsnePlot = function() {
     // - .clusterField = field name to color on
     // - .labelField  = field name to use as cluster labels
     // - .coordFiles: optional, list of dicts, with at least shortLabel and url attributes
+    // - .coordIdx: optional, current index of layout shown
     // - .metaColors: dict of metaValue -> hexcolor (six chars)
     // - .hubUrl: url of hub.txt, with UCSC track hub of reads
     // not necessary at all:
@@ -133,7 +134,7 @@ var tsnePlot = function() {
     // height of the toolbar, in pixels
     var toolBarHeight = 28;
     // position of first combobox in toolbar from left, in pixels
-    var toolBarComboLeft = 160;
+    var toolBarComboLeft = 140;
     var toolBarComboTop   = 2;
     var datasetComboWidth = 200;
     var layoutComboWidth = 150;
@@ -1657,17 +1658,31 @@ var tsnePlot = function() {
             var val = [exprVec[i]];
             cellToExpr[cellId] = val;
         }
+
+        var geneSym = sExpr.symbol;
+        console.log("XX here with symbol"+geneSym);
+        if (geneSym !== null) {
+            console.log("XX adding to combo"+geneSym);
+            var select = $("#tpGeneCombo").selectize();
+            var selectize = select[0].selectize;
+            //var optId = selectize.search(geneSym);
+            selectize.addOption({text: geneSym, value: geneSym});
+            selectize.refreshOptions();
+            selectize.setTextboxValue(geneSym);
+        }
+
         buildLegendForExprAndClasses(0, sExpr.symbol, sExpr.deciles, cellToExpr);
         drawLegend();
         plotDots();
         renderer.render(stage);
+
     }
 
     function onReceiveMatrixSingleExprLine(line) {
         /* got a single expression line from the matrix, no progressbar */
         var sExpr = gCurrentDataset.singleExpr;
         sExpr.symbol = this.geneSymbol;
-        console.log("Got gene "+sExpr.symbol);
+        console.log("Got gene vector for "+sExpr.symbol);
         var exprTuple = parseMatrixLine(line);
         sExpr.geneId  = exprTuple[0];
         sExpr.exprVec = exprTuple[1];
@@ -1692,23 +1707,25 @@ var tsnePlot = function() {
 
         var url = joinPaths([gCurrentDataset.baseUrl, "geneMatrix.tsv"]);
 
-        // load the cell IDs (header line)
-        var offsetInfo = gCurrentDataset.matrixOffsets["_header"];
-        var start = offsetInfo[0];
-        var end = start+offsetInfo[1];
-        // Trying to fix this bug https://github.com/igvteam/igv.js/issues/424 by appending the gene symbol
-        // (not a random number, like JimR, but hopefully works just as well, hopefully even preserving caching )
-        jQuery.ajax( { url: url+"?"+geneSym,
-            headers: { Range: "bytes="+start+"-"+end } ,
-            success: onReceiveMatrixHeader
-        });
+        // load the cell IDs (header line), if we don't have it yet
+        if (gCurrentDataset.matrixCellIds==undefined) {
+            var offsetInfo = gCurrentDataset.matrixOffsets["_header"];
+            var start = offsetInfo[0];
+            var end = start+offsetInfo[1];
+            // Trying to fix this bug https://github.com/igvteam/igv.js/issues/424 by appending the gene symbol
+            // (not a random number, like JimR in IGV, but hopefully works just as well, hopefully even preserving caching )
+            jQuery.ajax( { url: url+"?"+"header",
+                headers: { Range: "bytes="+start+"-"+end } ,
+                success: onReceiveMatrixHeader
+            });
+        }
 
         // load the expression vector
         offsetInfo = gCurrentDataset.matrixOffsets[geneSym];
         start = offsetInfo[0];
         end = start+offsetInfo[1];
         
-        jQuery.ajax( { url: url,
+        jQuery.ajax( { url: url+"?"+geneSym,
             headers: { Range: "bytes="+start+"-"+end } ,
             geneSymbol : geneSym,
             success: onReceiveMatrixSingleExprLine
@@ -1778,7 +1795,7 @@ var tsnePlot = function() {
     function buildGeneBar() {
     /* create bottom gene expression info bar */
         $('#tpGeneBar').remove();
-        if (gCurrentDataset.preloadExpr===null)
+        if (gCurrentDataset.preloadExpr===null || gCurrentDataset.preloadExpr===undefined)
             return;
         var geneFields = gCurrentDataset.preloadExpr.genes;
 
@@ -2080,6 +2097,7 @@ var tsnePlot = function() {
         var coordIdx = parseInt(params.selected);
         loadCoordSet(coordIdx);
         pushState({"layout":coordIdx, "zoom":null});
+        gCurrentDataset.coordIdx = coordIdx;
 
         // remove the focus from the combo box
         removeFocus();
@@ -2153,7 +2171,7 @@ var tsnePlot = function() {
     }
 
     function geneComboSearch(query, callback) {
-        /* called when the user types someething into the gene box, returns matching gene symbols */
+        /* called when the user types something into the gene box, returns matching gene symbols */
         if (!query.length) 
             return callback();
 
@@ -2194,10 +2212,10 @@ var tsnePlot = function() {
         htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, gCurrentDataset.coordFiles, "tpLayoutCombo", 200, toolBarComboLeft+350);
+        buildLayoutCombo(htmls, gCurrentDataset.coordFiles, "tpLayoutCombo", 200, toolBarComboLeft+280);
 
         //htmls.push("&emsp;");
-        buildGeneCombo(htmls, "tpGeneCombo", toolBarComboLeft+560);
+        buildGeneCombo(htmls, "tpGeneCombo", toolBarComboLeft+500);
 
         $("#tpToolBar").append(htmls.join(""));
         activateTooltip('.tpIconButton');
@@ -2210,7 +2228,7 @@ var tsnePlot = function() {
         $('#tpIconZoomIn').click( onZoomInClick );
         $('#tpIconZoomOut').click( onZoomOutClick );
         $('#tpIconZoom100').click( onZoom100Click );
-        //activateCombobox("tpGeneCombo");
+
         activateCombobox("tpDatasetCombo", datasetComboWidth);
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
@@ -2468,15 +2486,18 @@ var tsnePlot = function() {
         return palette(["tol-sq"], n);
     }
 
-    function scaleDataAndColorByCluster() {
-    /* called when meta and coordinates have been loaded: scale data and color by meta field  */
-        // find range of data
+    function setZoomRange() {
+        /* find range of data and set variables related to it */
         gCurrentDataset.zoomFullRange = findMinMax(allCoords);
         var zoomRange = getZoomRangeFromUrl();
         if (zoomRange===null)
             zoomRange = cloneObj(gCurrentDataset.zoomFullRange)
         gCurrentDataset.zoomRange = zoomRange;
+    }
 
+    function scaleDataAndColorByCluster() {
+    /* called when meta and coordinates have been loaded: scale data and color by meta field  */
+        setZoomRange();
         shownCoords = allCoords.slice(); // most likely faster to copy and modify than build a new list
         pixelCoords = scaleData(shownCoords);
 
@@ -2595,6 +2616,7 @@ var tsnePlot = function() {
         }
         shownCoords = cloneArray(allCoords);
         //oneFileLoaded("coords");
+        setZoomRange();
         pixelCoords = scaleData(shownCoords);
         gClusterMids = null;
         plotDots();
@@ -4000,9 +4022,12 @@ var tsnePlot = function() {
 
        buildToolBar(datasetIdx);
 
-       //drawLayoutMenu();
-
        var coordIdx = parseInt(getVar("layout", 0));
+       // if the user has already selected a layout before in this dataset
+       // reuse it now
+       if (gCurrentDataset.coordIdx!==undefined)
+           coordIdx = gCurrentDataset.coordIdx;
+
        if (coordIdx!=0)
            // update combobox
            $('#tpLayoutCombo').val(coordIdx).trigger('chosen:updated');
