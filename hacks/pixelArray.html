@@ -1,0 +1,179 @@
+<html>
+<body>
+<span id="progress"></span><p>
+<span id="rectCount"></span><p>
+<span id="loadTime"></span><p>
+<span id="moveTime"></span><p>
+<span id="scaleTime"></span><p>
+<span id="drawTime"></span><p>
+</body>
+<script>
+'use strict';
+function getArg( name, url, def ) {
+    if (!url) url = location.href;
+    name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+    var regexS = "[\\?&]"+name+"=([^&#]*)";
+    var regex = new RegExp( regexS );
+    var results = regex.exec( url );
+    return results === null ? def : results[1];
+}
+
+function scaleData(coords, startIdx, minX, maxX, minY, maxY, winWidth, winHeight) {
+/* scale list of  [cellId, x (float),y (float)] to integer pixels on screen and
+ * return new list of (cellId, x, y). Take into account the current zoom range.  */
+    var borderSize = 5;
+    //var winWidth = gWinInfo.width-(2*borderSize);
+    //var winHeight = gWinInfo.height-(2*borderSize);
+    var startTime = new Date();
+
+    var spanX = maxX - minX;
+    var spanY = maxY - minY;
+    var xMult = winWidth / spanX;
+    var yMult = winHeight / spanY;
+
+    // transform from data floats to screen pixel coordinates
+    var pixelCoords = new Uint16Array(coords.length-startIdx);
+    for (var i = startIdx; i < coords.length/2; i++) {
+        var x = coords[i*2];
+        var y = coords[i*2+1];
+        // XX ignore anything outside of current zoom range. Performance?
+        if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
+            continue;
+        var xPx = Math.round((x-minX)*xMult)+borderSize;
+        var yPx = Math.round((y-minY)*yMult)+borderSize;
+        pixelCoords[2*(i-startIdx)] = xPx;
+        pixelCoords[2*(i-startIdx)+1] = yPx;
+    }
+    var diff = new Date() - startTime;
+    //console.log("Coordinate scaling: "+diff+" msecs");
+    //gClusterMids = null; // make sure the cluster midpoints get re-calculated
+    var labelEl = document.getElementById("scaleTime");
+    labelEl.innerHTML = "scaling data to screen pixels:"+diff+" msecs";
+    return pixelCoords;
+}
+
+function drawOnCanvasRect(pxCoords, canvasWidth, canvasHeight, size, alpha) {
+    /* draw with the canvas' rectangle function */
+   var canv = document.createElement('canvas');
+   canv.width = canvasWidth;
+   canv.height = canvasHeight;
+   canv.id = 'tpCanvas';
+   var ctx = canv.getContext("2d");
+
+   ctx.fillStyle = "#FF0000"; // the most expensive operation!
+   ctx.globalAlpha = alpha;
+   for (var i = 0; i < pxCoords.length/2; i++) {
+       var pxX = pxCoords[2*i];
+       var pxY = pxCoords[2*i+1];
+       ctx.fillRect(pxX, pxY, size, size);
+   }
+   document.body.appendChild(canv); // adds the canvas to the body element
+}
+
+function drawOnCanvasPixel(pxCoords, canvasWidth, canvasHeight, size, alpha) {
+    /* draw into a pixel buffer and copy the buffer into a canvas */
+   var canv = document.createElement('canvas');
+   canv.width = canvasWidth;
+   canv.height = canvasHeight;
+   canv.id = 'tpCanvas';
+   var ctx = canv.getContext("2d");
+   var canvasData = ctx.createImageData(canvasWidth, canvasHeight);
+   var cData = canvasData.data;
+
+   // first make an array to count coverage per pixel
+   var cov = new Uint8Array(canvasHeight*canvasWidth);
+   for (var i = 0; i < pxCoords.length/2; i++) {
+       var pxX = pxCoords[2*i];
+       var pxY = pxCoords[2*i+1];
+       cov[pxY*canvasWidth+pxX] += 1; // not checking for overflow: 255 ought to be enough for everyone
+   }
+   
+   // plot as grey
+   for (var i = 0; i < cov.length; i++) {
+       //var pxX = pxCoords[2*i];
+       //var pxY = pxCoords[2*i+1];
+       //var basePos = (pxY*canvasWidth*4) + (pxX*4);
+       var covVal = cov[i];
+       var basePos = i*4;
+       var greyVal = 255-(10*covVal);
+       cData[basePos] = greyVal;
+       cData[basePos+1] = greyVal;
+       cData[basePos+2] = greyVal;
+       cData[basePos+3] = 255; // = no alpha
+   }
+   ctx.putImageData(canvasData, 0, 0);
+   document.body.appendChild(canv); // adds the canvas to the body element
+   // = off-screen redering = makes no difference in Chrome at least
+}
+
+// init memory
+// get number of rectangles to draw
+var rndCount = parseInt(getArg("rnd", window.location.search, null));
+var s = parseInt(getArg("s", window.location.search, 2));
+
+var canvasSizeX = 1000;
+var canvasSizeY = 1000;
+
+var startLoadTime = new Date();
+var oReq = new XMLHttpRequest();
+oReq.open("GET", "coords.bin", true);
+oReq.responseType = "arraybuffer";
+oReq.onload = onCoordsLoaded;
+oReq.onprogress = onProgress;
+oReq.send(null);
+
+function onProgress(evt) {
+   var percentComplete = ((evt.loaded / evt.total) * 100).toFixed(1); 
+   document.getElementById("progress").innerHTML = "Data download progress "+percentComplete+" % of "+evt.total+" bytes";
+}
+
+function onCoordsLoaded(oEvent) {
+  /* called when binary coord data has been loaded */
+  var diff = new Date() - startLoadTime;
+  var labelEl = document.getElementById("loadTime");
+  labelEl.innerHTML = "Data download time:"+diff+" msecs";
+
+  var startTime = new Date();
+  var arrayBuffer = oReq.response; // Note: not oReq.responseText
+  if (!arrayBuffer) 
+    return;
+
+   //var coords = new Float32Array(arrayBuffer);
+   var coords = new Uint16Array(arrayBuffer);
+   //var elCount = coords[1];
+   var xMin = coords[2];
+   var xMax = coords[3];
+   var yMin = coords[4];
+   var yMax = coords[5];
+
+   var diff = new Date() - startTime;
+   var labelEl = document.getElementById("moveTime");
+   labelEl.innerHTML = "Moving data into array:"+diff+" msecs";
+
+   if (isNaN(rndCount))
+       var pxCoords = scaleData(coords, 6, xMin, xMax, yMin, yMax, canvasSizeX, canvasSizeY);
+   else {
+        // make random array of ints
+        var pxCoords = new Uint16Array(rndCount*2);
+        for (i = 0; i < rndCount; i++) {
+            var midX = Math.round(Math.random() * canvasSizeX);
+            var midY = Math.round(Math.random() * canvasSizeY);
+            pxCoords[2*i] = midX;
+            pxCoords[2*i+1] = midY;
+        }
+   }
+
+   var alpha = parseFloat(getArg("alpha", window.location.search, 0.2))
+   document.getElementById("rectCount").innerHTML = "Rect count "+pxCoords.length/2+", rectangle size "+s+" pixels, alpha "+alpha;
+
+   // draw
+   var startTime = new Date();
+   //drawOnCanvasRect(pxCoords, canvasSizeX, canvasSizeY, alpha);
+   drawOnCanvasPixel(pxCoords, canvasSizeX, canvasSizeY, alpha);
+   var diff = new Date() - startTime;
+   var labelEl = document.getElementById("drawTime");
+   labelEl.innerHTML = "Drawing time: "+diff+" msecs";
+};
+
+</script>
+</html>
