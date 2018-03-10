@@ -1,0 +1,1 @@
+cp stock-center-24.png ../
