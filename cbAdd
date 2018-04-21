@@ -1,8 +1,9 @@
 #!/usr/bin/env python2
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
+import zlib, math, operator
 from collections import defaultdict, namedtuple, OrderedDict
-from os.path import join, basename, dirname, isfile, isdir
+from os.path import join, basename, dirname, isfile, isdir, relpath, abspath
 
 # directory to static data files, e.g. gencode tables
 dataDir = join(dirname(__file__), "static")
@@ -33,6 +34,12 @@ def parseArgs():
     parser.add_option("-t", "--useTwoBytes",
         dest="useTwoBytes",
         action="store_true", help="use 2-byte-integers for the coordinates, default is to use four bytes")
+    parser.add_option("-q", "--quick",
+        dest="quick",
+        action="store_true", help="Do not rebuild the big gene expression files, if they already exist")
+    parser.add_option("", "--test",
+        dest="test",
+        action="store_true", help="run a few tests")
 
     #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
     #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
@@ -112,10 +119,24 @@ def lineFileNextRow(inFile):
             raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
         yield rec
 
-def parseIntoColumns(fname):
+def parseOneColumn(fname, colName):
+    " return a single column from a tsv as a list "
     ifh = open(fname)
     sep = "\t"
     headers = ifh.readline().rstrip("\n").rstrip("\r").split(sep)
+    colIdx = headers.index(colName)
+    vals = []
+    for line in ifh:
+        row = line.rstrip("\n").rstrip("\r").split(sep)
+        vals.append(row[colIdx])
+    return vals
+
+def parseIntoColumns(fname):
+    " parse tab sep file vertically, return as a list of (headerName, list of values) "
+    ifh = open(fname)
+    sep = "\t"
+    headers = ifh.readline().rstrip("\n").rstrip("\r").split(sep)
+    colsToGet = range(len(headers))
 
     columns = []
     for h in headers:
@@ -123,15 +144,15 @@ def parseIntoColumns(fname):
 
     for line in ifh:
         row = line.rstrip("\n").rstrip("\r").split(sep)
-        for i in range(len(headers)):
-            columns[i].append(row[i])
+        for colIdx in colsToGet:
+            columns[colIdx].append(row[colIdx])
     return zip(headers, columns)
 
-def openFile(fname):
+def openFile(fname, mode="r"):
     if fname.endswith(".gz"):
-        fh = gzip.open(fname)
+        fh = gzip.open(fname, mode)
     else:
-        fh = open(fname)
+        fh = open(fname, mode)
     return fh
 
 def parseDict(fname):
@@ -180,29 +201,34 @@ def getDecilesList(values):
     if len(values)==0:
         return None
 
-    values.sort()
-    binSize = float(len(values)-1) / 10.0; # width of each bin, in number of elements, fractions allowed
+    valCount = len(values)
+    binSize = float(valCount-1) / 10.0; # width of each bin, in number of elements, fractions allowed
+
+    values = list(sorted(values))
 
     # get deciles from the list of sorted values
     deciles = []
     pos = 0
-    for i in range(11): # 10 bins means that we need 11 ranges
+    for i in range(11): # 10 bins means that we need 11 limits
         pos = int (binSize * i)
-        if pos > len(values): # this should not happen, but maybe it can, due to floating point issues?
+        if pos > valCount: # this should not happen, but maybe it can, due to floating point issues?
             logging.warn("decile exceeds 10, binSize %d, i %d, len(values) %d" % (binSize, i, len(values)))
             pos = len(values)
         deciles.append ( values[pos] )
     return deciles
 
 def bytesAndFmt(x):
-    " how many bytes do we need to store x values and what is the sprintf format string for it? "
+    """ how many bytes do we need to store x values and what is the sprintf
+    format string for it?
+    """
+
     if x > 65535:
         assert(False) # field with more than 65k elements or high numbers? Weird meta data.
 
     if x > 255:
-        return 2, "<H"
+        return "Uint16", "<H" # see javascript typed array names, https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays
     else:
-        return 1, "<B"
+        return "Uint8", "<B"
 
 def discretizeField(numVals, fieldMeta):
     " given a list of values, add attributes to fieldMeta that describe the deciles "
@@ -216,17 +242,18 @@ def discretizeField(numVals, fieldMeta):
 
     fieldMeta["deciles"] = deciles
     fieldMeta["binCounts"] = binCounts
-    fieldMeta["byteCount"] = 1
+    fieldMeta["arrType"] = "uint8"
     fieldMeta["_fmt"] = "<B"
     return newVals, fieldMeta
 
-def getFieldMeta(valList):
+def guessFieldMeta(valList, fieldMeta, colors):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
     - 'type' can be: 'int', 'float', 'enum' or 'uniqueString'
     - if int or float: 'deciles' is a list of the deciles
     - if uniqueString: 'maxLen' is the length of the longest string
     - if enum: 'values' is a list of all possible values
+    - if colors is not None: 'colors' is a list of the default colors
     """
     intCount = 0
     floatCount = 0
@@ -251,34 +278,51 @@ def getFieldMeta(valList):
 
     valToInt = None
 
-    fieldMeta = {}
     if floatCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10:
-        # convert to decile index
+        # field is a floating point number: convert to decile index
         numVals = [float(x) for x in valList]
         newVals, fieldMeta = discretizeField(numVals, fieldMeta)
         fieldMeta["type"] = "float"
         fieldMeta["maxVal"] = maxVal
 
     elif intCount==len(valList):
-        # convert to decile index
+        # field is an integer: convert to decile index
         numVals = [int(x) for x in valList]
         newVals, fieldMeta = discretizeField(numVals, fieldMeta)
         fieldMeta["type"] = "int"
         fieldMeta["maxVal"] = maxVal
 
     elif len(valCounts)==len(valList):
+        # field is a unique string
         fieldMeta["type"] = "uniqueString"
         maxLen = max([len(x) for x in valList])
-        fieldMeta["byteCount"] = maxLen
+        fieldMeta["maxSize"] = maxLen
         fieldMeta["_fmt"] = "%ds" % (maxLen+1)
         newVals = valList
 
     else:
-        # convert to enum index
+        # field is an enum - convert to enum index
         fieldMeta["type"] = "enum"
         valArr = list(valCounts.keys())
-        fieldMeta["valCounts"] = valCounts
-        fieldMeta["byteCount"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
+
+        if colors!=None:
+            colArr = []
+            foundColors = 0
+            notFound = set()
+            for val in valArr:
+                if val in colors:
+                    colArr.append(colors[val])
+                    foundColors +=1
+                else:
+                    notFound.add(val)
+                    colArr.append("DDDDDD") # wonder if I should not stop here
+            if foundColors > 0:
+                fieldMeta["colors"] = colArr
+                if len(notFound)!=0:
+                    logging.warn("No default color found for field values %s" % notFound)
+
+        fieldMeta["valCounts"] = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True))
+        fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
         valToInt = dict([(y,x) for (x,y) in enumerate(valArr)]) # dict with value -> index in valArr
         newVals = [valToInt[x] for x in valList]
 
@@ -306,7 +350,7 @@ def cleanString(s):
             newS.append(c)
     return "".join(newS)
 
-def metaToBin(fname, outDir, datasetInfo):
+def metaToBin(fname, colorFname, outDir, datasetInfo):
     """ convert meta table to binary files. outputs fields.json and one binary file per field. 
     adds names of metadata fields to datasetInfo and returns datasetInfo
     """
@@ -314,18 +358,18 @@ def metaToBin(fname, outDir, datasetInfo):
 
     colData = parseIntoColumns(fname)
 
-    jsonName = join(outDir, "fields.json")
-    jsonFh = open(jsonName, "w")
+    colors = parseColors(colorFname)
 
     fieldInfo = []
     for colIdx, (fieldName, col) in enumerate(colData):
-        print("Field %d = %s" % (colIdx, fieldName))
+        logging.info("Meta data field index %d: '%s'" % (colIdx, fieldName))
         cleanFieldName = cleanString(fieldName)
         binName = join(outDir, fieldName+".bin")
 
-        fieldMeta, binVals = getFieldMeta(col)
+        fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
+        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors)
         fieldType = fieldMeta["type"]
 
         packFmt = fieldMeta["_fmt"]
@@ -340,12 +384,12 @@ def metaToBin(fname, outDir, datasetInfo):
                 binFh.write("%s\n" % x)
         binFh.close()
 
-        # write the json file
         del fieldMeta["_fmt"]
-        #jsonStr = json.dumps(fieldMeta,indent=2, sort_keys=True)
-        #jsonFh.write(jsonStr)
         fieldInfo.append(fieldMeta)
-        print(("Type: %(type)s, %(diffValCount)d different values, %(byteCount)d bytes per element" % fieldMeta))
+        if "type" in fieldMeta:
+            logging.info(("Type: %(type)s, %(diffValCount)d different values" % fieldMeta))
+        else:
+            logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
     datasetInfo["metaFields"] = fieldInfo
     #jsonFh.close()
@@ -363,6 +407,79 @@ def iterLineOffsets(ifh):
        if line!="":
            yield line, start, end
        start = ifh.tell()
+
+def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
+    """ convert gene expression vectors to vectors of deciles
+        and make json gene symbol -> (file offset, line length)
+    """
+    logging.info("converting %s to %s and writing index to %s" % (fname, binFname, jsonFname))
+    logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
+    logging.info("Converting gene expression vectors to deciles...")
+    ofh = open(binFname, "w")
+    geneToOffset = {}
+    skipIds = 0
+    highCount = 0
+
+    ifh = openFile(fname)
+
+    headers = ifh.readline().rstrip("\n").split("\t")
+
+    geneCount = 0
+    for line in ifh:
+        geneCount += 1
+        row = line.split("\t")
+        geneId = row[0]
+        if geneToSym is None:
+            symbol = geneId
+        else:
+            symbol = geneToSym.get(geneId)
+            if symbol is None:
+                skipIds += 1
+                continue
+        if symbol in geneToOffset:
+            logging.warn("Gene %s/%s is duplicated in matrix, using only first occurence" % (geneId, symbol))
+            continue
+
+        vals = [float(x) for x in row[1:]]
+        if max(vals) > 500:
+            highCount += 1
+
+        # TODO: slow - port this to numpy, but keep this old code to avoid numpy dependency
+	if not skipLog:
+            vals = [math.log(x+1, 2) for x in vals]
+        deciles = getDecilesList(vals) # should we not rather remove 0-values before doing this?
+        decVals = [findBin(deciles, x) for x in vals]
+        # TODO end
+
+        decChrList = [chr(x) for x in decVals]
+        decStr = "".join(decChrList)
+
+        decCompr = zlib.compress(decStr)
+        logging.debug("compression factor of %s: %f, before %d, after %d"% (symbol, float(len(decCompr)) / len(decStr), len(decStr), len(decCompr)))
+
+        geneToOffset[symbol] = (ofh.tell(), len(decCompr), deciles)
+        ofh.write(decCompr)
+
+        if geneCount % 1000 == 0:
+            logging.info("Got deciles for %d genes" % geneCount)
+    ofh.close()
+
+    if highCount==0:
+        logging.error("No single value in the matrix is > 500. It looks like this matrix has been log'ed already")
+        logging.error("Rerun with --skipLog.")
+        sys.exit(1)
+
+    if len(geneToOffset)==0:
+        errAbort("No genes from the expression matrix could be mapped to symbols in the input file."
+            "Are you sure these are Ensembl IDs? If they are already gene symbols, re-run with '-s none'."
+            "One example gene ID from the input matrix is %s." % geneId)
+
+    if skipIds!=0:
+        logging.warn("Could not resolve %d genes from Ensembl ID to gene symbol" % skipIds)
+
+    ofh = open(jsonFname, "w")
+    json.dump(geneToOffset, ofh)
+    ofh.close()
 
 def indexMatrix(fname, geneToSym, jsonFname):
     """ index a matrix with one gene per line and write json with a dict
@@ -424,21 +541,37 @@ def indexMeta(fname, outFname):
         ofh.write(struct.pack("<H", lineLen))
     ofh.close()
 
-#def testMetaIndex():
-#    # test meta index
-#    fh = open(join(outDir, "meta/metaOffsets.bin"))
-#    fh.seek(10*6)
-#    o = fh.read(4)
-#    s = fh.read(2)
-#    offset = struct.unpack("<L", o)
-#    l = struct.unpack("<H", s)
-#    print offset, l
-#
-#    fh = open(join(outDir, "meta/meta.tsv"))
-#    fh.seek(offset[0])
-#    print fh.read(l[0])
+def testMetaIndex(outDir):
+    # test meta index
+    fh = open(join(outDir, "meta.index"))
+    #fh.seek(10*6)
+    o = fh.read(4)
+    s = fh.read(2)
+    offset = struct.unpack("<L", o) # little endian
+    l = struct.unpack("<H", s)
+    print "offset, linelen:", offset, l
+
+    #fh = open(join(outDir, "meta/meta.tsv"))
+    #fh.seek(offset[0])
+    #print fh.read(l[0])
 
 # ----------- main --------------
+
+def parseColors(fname):
+    " parse color table and return as dict value -> color "
+    if not isfile(fname):
+        logging.warn("File %s does not exist" % fname)
+        return None
+
+    colDict = parseDict(fname)
+    newDict = {}
+    for metaVal, color in colDict.iteritems():
+        color = color.strip().strip("#") # hbeale had a file with trailing spaces
+        assert(len(color)<=6) # colors can be no more than six hex digits
+        for c in color:
+            assert(c in "0123456789ABCDEFabcdef") # color must be a hex number
+        newDict[metaVal] = color
+    return newDict
 
 def parseScaleCoordsAsDict(fname, useTwoBytes):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
@@ -468,14 +601,17 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
         scaleY = (maxY-minY)/65536
         topY = 65535
 
-    # flip coords on the Y axis, possibly scale to 16 bits
+    # not flipping coords anymore, origin is top-left ?
     newCoords = {}
     for cellId, x, y in coords:
         if useTwoBytes:
-            newX = int(scaleX * (maxX - x))
-            newY = int(65536 - (scaleY * (maxY - y)))
+            #newX = int(scaleX * (maxX - x))
+            #newY = int(65536 - (scaleY * (maxY - y)))
+            newX = int(scaleX * (x - minX))
+            newY = int(65536 - (scaleY * (y - minY)))
         else:
-            newY = maxY - y # just flip
+            #newY = maxY - y # just flip
+            newY = y # just flip
 
         newCoords[cellId] = (x, newY)
 
@@ -484,7 +620,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     " check and reorder the meta data, has to be in the same order as the expression matrix, write to fixedMetaFname "
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
-    matrixSampleNames = open(matrixFname).readline().rstrip("\n").rstrip("\r").split("\t")[1:]
+    matrixSampleNames = openFile(matrixFname).readline().rstrip("\n").rstrip("\r").split("\t")[1:]
     metaSampleNames = [string.split(line, "\t", 1)[0] for line in open(metaFname)][1:]
 
     # check that there is a 1:1 sampleName relationship
@@ -504,13 +640,13 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     doFilter = False
     if len(metaNotMat)!=0:
         logging.warn("%d samples names are in the meta data, but not in the expression matrix. Examples: %s" % (len(metaNotMat), list(metaNotMat)[:10]))
-        logging.warn("These samples will be dropped from the expression matrix")
+        logging.warn("These samples will be removed from the meta data")
         matrixSampleNames = metaSampleNames
         doFilter = True
 
     if len(matNotMeta)!=0:
         logging.warn("%d samples names are in the expression matrix, but not in the meta data. Examples: %s" % (len(matNotMeta), list(matNotMeta)[:10]))
-        logging.warn("These samples will be dropped from the meta data")
+        logging.warn("These samples will be removed from the expression matrix")
 
     #if stop:
         #sys.exit(1)
@@ -534,14 +670,18 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
 
     return matrixSampleNames, doFilter
 
-def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes):
-    " write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames "
+def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo):
+    """ write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames
+    Also return as a list.
+    """
     logging.info("Writing coordinates to %s and %s" % (coordBin, coordJson))
     binFh = open(coordBin, "wb")
     minX = 2^32
     minY = 2^32
     maxX = -2^32
     maxY = -2^32
+    xVals = []
+    yVals = []
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
@@ -552,34 +692,42 @@ def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes):
         maxX = max(x, maxX)
         maxY = max(y, maxY)
 
+        # all little endian
         if useTwoBytes:
             binFh.write(struct.pack("<H", x))
             binFh.write(struct.pack("<H", y))
         else:
             binFh.write(struct.pack("<f", x))
             binFh.write(struct.pack("<f", y))
+
+        xVals.append(x)
+        yVals.append(y)
     
-    coordInfo = {}
     coordInfo["minX"] = minX
     coordInfo["maxX"] = maxX
     coordInfo["minY"] = minY
     coordInfo["maxY"] = maxY
     if useTwoBytes:
-        coordInfo["bytes"] = 2
+        coordInfo["type"] = "Uint16"
     else:
-        coordInfo["bytes"] = 4
+        coordInfo["type"] = "Float32"
+    return coordInfo, xVals, yVals
 
 def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
-    " copy matrix. If doFilter is true: keep only the samples in filtSampleNames"
+    " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter:
         logging.info("Copying %s to %s" % (inFname, outFname))
         shutil.copy(inFname, outFname)
+        if not outFname.endswith(".gz"):
+            os.system("gzip %s" % outFname)
         return
 
     sep = "\t"
 
     logging.info("Copying %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
-    ifh = open(inFname)
+
+    ifh = openFile(inFname)
+
     headLine = ifh.readline()
     headers = headLine.rstrip("\n").rstrip("\r").split(sep)
 
@@ -589,7 +737,9 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
         if name in keepFields:
             keepIdx.append(i)
 
-    ofh = open(outFname, "w")
+    ofh = openFile(outFname, "w")
+
+
     for line in ifh:
         row = line.rstrip("\n").rstrip("\r").split(sep)
         newRow = []
@@ -697,7 +847,7 @@ def guessConfig(options):
             #otherFiles["markerLists"] = [markerFname]
     return conf
 
-def mapFilenames(conf):
+def mapFilenames(inDir, conf):
     # replace file names in config files with file names in the output directory
     copyFiles = []
     #copyFiles.append( (conf["meta"], "meta.tsv") )
@@ -706,8 +856,8 @@ def mapFilenames(conf):
     #copyFiles.append( (conf["exprMatrix"], "exprMatrix.tsv") )
     #conf["exprMatrix"] = "exprMatrix.tsv"
 
-    if "descHtml" in conf:
-        fname = conf["descHtml"]
+    if "description" in conf:
+        fname = makeAbs(inDir, conf["description"])
         if not isfile(fname):
             logging.error("%s referred to in config file does not exist, skipping" % fname)
             conf["description"] = None
@@ -716,7 +866,7 @@ def mapFilenames(conf):
             conf["description"] = "description.html"
 
     if "makeDoc" in conf:
-        fname = conf["makeDoc"]
+        fname = makeAbs(inDir, conf["makeDoc"])
         if not isfile(fname):
             logging.error("%s referred to in config file does not exist, skipping" % fname)
             conf["makeDoc"] = None
@@ -724,14 +874,14 @@ def mapFilenames(conf):
             copyFiles.append( (fname, "makeDoc.html") )
             conf["makeDoc"] = "makeDoc.html"
 
-    if "colors" in conf:
-        fname = conf["colors"]
-        if not isfile(fname):
-            logging.error("%s referred to in config file does not exist, skipping" % fname)
-            conf["colors"] = None
-        else:
-            copyFiles.append( (fname, "colors.tsv") )
-            conf["colors"] = "colors.tsv"
+    #if "colors" in conf:
+        #fname = makeAbs(inDir, conf["colors"])
+        #if not isfile(fname):
+            #logging.error("%s referred to in config file does not exist, skipping" % fname)
+            #conf["colors"] = None
+        #else:
+            #copyFiles.append( (fname, "colors.tsv") )
+            #conf["colors"] = "colors.tsv"
 
     #newCoords = []
     #for coordIdx, (origFname, label) in enumerate(conf["coords"]):
@@ -760,6 +910,7 @@ def findInputFiles(options):
     """
     if options.inConf:
         conf = loadConfig(options.inConf)
+        inDir = dirname(options.inConf)
     else:
         conf = guessConfig(options)
 
@@ -773,38 +924,144 @@ def findInputFiles(options):
     #if options.markers:
         #conf["markers"] = options.markers
 
-    conf, copyFiles = mapFilenames(conf)
+    conf, copyFiles = mapFilenames(inDir, conf)
 
-    return conf, copyFiles
+    return inDir, conf, copyFiles
 
-def addDataset(conf, fileToCopy, outDir, options):
+def makeAbs(inDir, fname):
+    " return absolute path of fname under inDir "
+    return abspath(join(inDir, fname))
+
+def makeAbsDict(inDir, dicts):
+    " given list of dicts with key 'file', make paths absolute "
+    for d in dicts:
+        d["file"] = makeAbs(inDir, d["file"])
+    return dicts
+
+def parseTsvColumn(fname, colName):
+    " parse a tsv file and return column as a pair (values, assignment row -> index in values) "
+    logging.info("Parsing column %s from %s" % (colName, fname))
+    vals = parseOneColumn(fname, colName)
+
+    newVals = []
+    valToInt = {}
+    maxIdx = -1
+    for v in vals:
+        if v not in valToInt:
+            maxIdx+=1
+            valToInt[v] = maxIdx
+        idx = valToInt[v]
+        newVals.append(idx)
+
+    intToVal = {v: k for k, v in valToInt.iteritems()} # inverse key/val in dict
+
+    valArr = []
+    for i in range(0, maxIdx+1):
+        valArr.append(intToVal[i])
+
+    return newVals, valArr
+
+def makeMids(xVals, yVals, labelVec, labelVals):
+    """
+    calculate the positions (centers) for the cluster labels
+    given a coord list and a vector of the same size with the label indeces, return a list of [x, y, coordLabel] 
+    """
+    logging.info("Calculating cluster midpoints")
+    assert(len(xVals)==len(labelVec)==len(yVals))
+
+    # prep the arrays
+    clusterXVals = []
+    clusterYVals = []
+    for i in range(len(labelVals)):
+        clusterXVals.append([])
+        clusterYVals.append([])
+    assert(len(clusterXVals)==len(labelVals))
+
+    # sort the coords into separate arrays, one per cluster
+    for i in range(len(labelVec)):
+        #for (x, y), clusterIdx in zip(coords, labelVec):
+        clusterIdx = labelVec[i]
+        clusterXVals[clusterIdx].append(xVals[i])
+        clusterYVals[clusterIdx].append(yVals[i])
+
+    midInfo = []
+    for clustIdx, xList in enumerate(clusterXVals):
+        yList = clusterYVals[clustIdx]
+        # get the midpoint
+        midX = sum(xList) / float(len(xList))
+        midY = sum(yList) / float(len(yList))
+
+        # take only the best 70% of the points closest to the midpoints
+        xyDist = []
+        for x, y in zip(xList, yList):
+            dist = math.sqrt((x-midX)**2+(y-midY)**2)
+            xyDist.append( (dist, x, y) )
+        xyDist.sort()
+        xyDistBest = xyDist[:int(0.7*len(xyDist))]
+
+        # now recalc the midpoint
+        xSum = sum([x for dist, x, y in xyDistBest])
+        ySum = sum([y for dist, x, y in xyDistBest])
+        midX = xSum / float(len(xyDistBest))
+        midY = ySum / float(len(xyDistBest))
+
+        clusterName = labelVals[clustIdx]
+        midInfo.append([midX, midY, clusterName])
+    return midInfo
+
+def addDataset(inDir, conf, fileToCopy, outDir, options):
     " write config to outDir and copy over all files in fileToCopy "
-    confName = join(outDir, "dataset.conf")
+    # keep a copy of the original config
+    confName = join(outDir, "origConf.json")
     json.dump(conf, open(confName, "w"))
 
     for src, dest in fileToCopy:
         logging.info("Copying %s -> %s" % (src, dest))
         shutil.copy(src, join(outDir, dest))
 
-    matrixFname = conf["exprMatrix"]
-    metaFname = conf["meta"]
-    coordFnames = conf["coords"]
-    markerFnames = conf["markers"]
+    matrixFname = makeAbs(inDir, conf["exprMatrix"])
+    metaFname = makeAbs(inDir, conf["meta"])
+    coordFnames = makeAbsDict(inDir, conf["coords"])
+    markerFnames = makeAbsDict(inDir, conf["markers"])
+
+    skipLog = conf["matrixIsLog"]
+    colorFname = conf.get("colors")
+
+    # these don't exist / are not needed in the output json file
+    del conf["meta"]
+    del conf["exprMatrix"]
+    del conf["matrixIsLog"]
+    del conf["colors"]
 
     # index the meta data
-    metaDir = join(outDir, "meta")
+    metaDir = join(outDir, "metaFields")
     makeDir(metaDir)
-    fixedMeta = join(metaDir, "meta.tsv")
+    fixedMeta = join(outDir, "meta.tsv")
     sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, fixedMeta)
-    conf = metaToBin(metaFname, join(outDir, "meta"), conf)
-    indexMeta(metaFname, join(outDir, "meta", "metaOffsets.bin"))
+    conf["sampleCount"] = len(sampleNames)
+    conf = metaToBin(metaFname, colorFname, metaDir, conf)
+    indexMeta(metaFname, join(outDir, "meta.index"))
 
     # index the expression matrix
     geneToSym = readGeneToSym(options.symTable)
+
     myMatrixFname = join(outDir, "exprMatrix.tsv")
+    if matrixFname.endswith(".gz"):
+        myMatrixFname += ".gz"
+
+    binMatFname = join(outDir, "exprMatrix.bin")
     matrixIndexFname = join(outDir, "exprMatrixOffsets.json")
-    indexMatrix(matrixFname, geneToSym, matrixIndexFname)
-    copyMatrix(matrixFname, myMatrixFname, sampleNames, needFilterMatrix)
+    #indexMatrix(matrixFname, geneToSym, matrixIndexFname)
+
+    if options.quick and isfile(matrixIndexFname):
+        logging.info("quick-mode: Not rebuilding matrix index")
+    else:
+        matrixToBin(matrixFname, geneToSym, binMatFname, matrixIndexFname, skipLog)
+
+    if options.quick and isfile(myMatrixFname):
+        logging.info("quick-mode: Not rebuilding expression matrix")
+    else:
+        copyMatrix(matrixFname, myMatrixFname, sampleNames, needFilterMatrix)
 
     # convert the coordinates
     newCoords = []
@@ -813,15 +1070,29 @@ def addDataset(conf, fileToCopy, outDir, options):
         coordLabel = coordInfo["shortLabel"]
         coords = parseScaleCoordsAsDict(coordFname, options.useTwoBytes)
         #coordLabel = basename(coordFname).split(".")[0]
-        coordDir = "coords_%d" % coordIdx
+        coordName = "coords_%d" % coordIdx
         #coordName = cleanString(coordLabel)
-        coordDir = join(outDir, "coords", coordDir)
+        coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
         coordBin = join(coordDir, "coords.bin")
         coordJson = join(coordDir, "coords.json")
-        writeCoords(coords, sampleNames, coordBin, coordJson, options.useTwoBytes)
-        newCoords.append( {"name" : coordDir, "shortLabel" : coordLabel})
-    conf["coords"] = coordInfo
+        coordInfo = OrderedDict()
+        coordInfo["name"] = coordName
+        coordInfo["shortLabel"] = coordLabel
+        coordInfo, xVals, yVals = writeCoords(coords, sampleNames, coordBin, coordJson, options.useTwoBytes, coordInfo)
+        newCoords.append( coordInfo )
+        conf["coords"] = newCoords
+
+        if "labelField" in conf:
+            clusterLabelField = conf["labelField"]
+            labelVec, labelVals = parseTsvColumn(metaFname, clusterLabelField)
+            clusterMids = makeMids(xVals, yVals, labelVec, labelVals)
+
+            midFname = join(coordDir, "clusterLabels.json")
+            midFh = open(midFname, "w")
+            json.dump(clusterMids, midFh, indent=2)
+            logging.info("Wrote cluster labels to %s" % midFname)
+
 
     # convert the markers
     newMarkers = []
@@ -836,9 +1107,7 @@ def addDataset(conf, fileToCopy, outDir, options):
         splitMarkerTable(markerFname, geneToSym, markerDir)
 
         newMarkers.append( {"name" : markerName, "shortLabel" : markerLabel})
-    conf["markers"] = markerInfo
-
-    conf["sampleCount"] = len(sampleNames)
+    conf["markers"] = newMarkers
 
     # write dataset summary info
     descJson = join(outDir, "dataset.json")
@@ -849,14 +1118,19 @@ def addDataset(conf, fileToCopy, outDir, options):
 def main():
     args, options = parseArgs()
 
+    if options.test:
+        testMetaIndex(args[0])
+        sys.exit(0)
+
     if options.inConf is None:
         errAbort("You have to specify at least an input config file.")
     if options.outDir is None:
         errAbort("You have to specify at least the output directory.")
 
-    conf, filesToCopy = findInputFiles(options)
+    inDir, conf, filesToCopy = findInputFiles(options)
 
     outDir = options.outDir
+
 
     #if outDir is None or metaFname is None or matrixFname is None or len(coordFnames)==0:
         #errAbort("You have to specify at least a meta file, an expression matrix, a coordinate file  and one output directory")
@@ -866,6 +1140,6 @@ def main():
     datasetDir = join(outDir, conf["name"])
     makeDir(datasetDir)
 
-    addDataset(conf, filesToCopy, datasetDir, options)
+    addDataset(inDir, conf, filesToCopy, datasetDir, options)
 
 main()

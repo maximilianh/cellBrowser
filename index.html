@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="ext/spectrum-1.8.0.css">
 <link rel="stylesheet" href="ext/jquery.contextMenu.css">
 <link rel="stylesheet" href="ext/jquery.tipsy.1.0.3.min.css">
-<link rel="stylesheet" href="ext/bootstrap.3.3.7.min.css">
+<link rel="stylesheet" href="ext/bootstrap.min.css">
 <link rel="stylesheet" href="ext/introjs.2.4.0.min.css">
 <link rel="stylesheet" href="ext/bootstrap-submenu.min.css">
 <link rel="stylesheet" href="ext/bootstrap-dropmenu.min.css">
@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="ext/chosen.1.8.2.min.css">
 <link rel="stylesheet" href="ext/select2.4.0.4.min.css">
 <link rel="stylesheet" href="ext/selectize.0.12.4.min.css">
-<link rel="stylesheet" href="cellBrowser.css">
+<link rel="stylesheet" href="css/cellBrowser.css">
 
 <script src="ext/FileSaver.1.1.20151003.min.js"></script>
 <script src="ext/jquery.3.1.1.min.js"></script>
@@ -33,6 +33,7 @@
 <script src="ext/papaparse.min.js"></script>
 <script src="ext/bootstrap.min.js"></script>
 <script src="ext/bootstrap-submenu.js"></script>
+<script src="ext/pako_inflate.min.js"></script>
 
 <script>
   $.fn.bsButton = $.fn.button.noConflict();
@@ -42,14 +43,16 @@
 <script src="ext/select2.min.js"></script>
 <script src="ext/selectize.min.js"></script>
 <script src="ext/jquery.sparkline.min.js"></script>
-<script src="cellBrowser.js"></script>
+<script src="js/cellBrowser.js"></script>
+<script src="js/cbData.js"></script>
+<script src="js/cbDraw.js"></script>
 
 </head>
 <body>
 <script>
 // -- MAIN --
 var datasetList = null;
-var opt = {"datasets": datasetList};
-tsnePlot.loadData(opt);
+//var opt = {"datasets": datasetList};
+tsnePlot.loadData(datasetList);
 </script>
 </body>

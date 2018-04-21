@@ -100,10 +100,8 @@ def copyStatic(baseDir, outDir):
 
     copyAllFiles(baseDir, "img", outDir)
     copyAllFiles(baseDir, "ext", outDir)
-
-    fnames = [join(baseDir, "cellBrowser.js"), join(baseDir, "cellBrowser.css")]
-    for filename in fnames:
-        shutil.copy(filename, outDir)
+    copyAllFiles(baseDir, "js", outDir)
+    copyAllFiles(baseDir, "css", outDir)
 
 def makeIndexHtml(baseDir, datasets, outDir):
     dsList = []
