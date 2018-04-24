@@ -1,6 +1,10 @@
 UCSC Single Cell Browser Demo
 =============================
 
+This browser is mostly targeting SmartSeq Datasets right now, up to 30-40k cells. 
+An improved version supports 1-2 million cells (it's in the "ng" branch) but it's not ready yet.
+Please contact me if you need a browser for a big 10X dataset, I can let you know when the new version is ready, hopefully during May 2018.
+
 This repo contains two parts:
 * a Python script that runs a gene expression matrix through Seurat and
   massages the output data into JSON
