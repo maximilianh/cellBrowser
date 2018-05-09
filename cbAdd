@@ -1,18 +1,28 @@
 #!/usr/bin/env python2
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
-import zlib, math, operator
-from collections import defaultdict, namedtuple, OrderedDict
+import zlib, math, operator, doctest, copy
+from collections import defaultdict, namedtuple, OrderedDict, Counter
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath
+
+# I have made the crazy decision to make everything work without Numpy. Let's see how long this lasts
+numpyLoaded = True
+try:
+    import numpy as np
+except:
+    numpyLoaded = False
+    logging.warn("Numpy could not be loaded. The script should work, but it will be a lot slower to process the matrix.")
+
+import time
 
 # directory to static data files, e.g. gencode tables
 dataDir = join(dirname(__file__), "static")
 
 # ==== functions =====
     
-def parseArgs():
+def parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] -i dataset.conf -o outputDir - add a dataset to the single cell viewer")
+    parser = optparse.OptionParser("usage: %prog [options] -i dataset.conf -o outputDir - add a dataset to the single cell viewer directory")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
@@ -34,6 +44,10 @@ def parseArgs():
     parser.add_option("-t", "--useTwoBytes",
         dest="useTwoBytes",
         action="store_true", help="use 2-byte-integers for the coordinates, default is to use four bytes")
+    #parser.add_option("-e", "--enumFields",
+        #dest="enumFields",
+        #action="store", help="comma-sep list of meta fields that should be treated as categories, even when they contain only numbers. This is needed when you cluster ID field is a number, not a text string.")
+
     parser.add_option("-q", "--quick",
         dest="quick",
         action="store_true", help="Do not rebuild the big gene expression files, if they already exist")
@@ -45,9 +59,9 @@ def parseArgs():
     #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
     (options, args) = parser.parse_args()
 
-    #if args==[]:
-        #parser.print_help()
-        #exit(1)
+    if showHelp:
+        parser.print_help()
+        exit(1)
 
     if options.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -60,8 +74,10 @@ def makeDir(outDir):
         logging.info("Creating %s" % outDir)
         os.makedirs(outDir)
 
-def errAbort(msg):
+def errAbort(msg, showHelp=False):
         logging.error(msg)
+        if showHelp:
+            parseArgs(showHelp=True)
         sys.exit(1)
 
 def lineFileNextRow(inFile):
@@ -192,29 +208,8 @@ def readGeneToSym(fname):
             d[row.geneId.split(".")[0]]=row.symbol
     return d
 
-def getDecilesList(values):
-    """ given a list of values, return the 11 values that define the 10 ranges for the deciles 
-    >>> l = [-4.059,-3.644,-3.184,-3.184,-3.184,-3.059,-2.943,-2.396,-2.322,-2.252,-2.252,-2.252,-2.12,-2.12,-1.943,-1.943,-1.69,-1.556,-1.322,-1.184,-1.12,-0.862,-0.862,-0.837,-0.837,-0.667,-0.644,-0.535,-0.454,-0.234,-0.184,0.084,0.084,0.151,0.299,0.31,0.444,0.485,0.575,0.632,0.66,0.748,0.824,1.043,1.098,1.176,1.239,1.356,1.411,1.521,1.526,1.609,1.748,1.77,1.832,1.864,1.88,2.081,2.094,2.242,2.251,2.331,2.376,2.664,2.718,2.787,2.858,2.928,2.978,3.011,3.093,3.144,3.157,3.245,3.352,3.444,3.462,3.479,3.609,3.699,3.714,3.795,3.811,3.857,3.871,3.903,3.914,3.983,3.985,3.986,4.006,4.056,4.063,4.156,4.179,4.221,4.35,4.352,4.361,4.372,4.38,4.427,4.432,4.447,4.45,4.459,4.516,4.521,4.527,4.611,4.636,4.644,4.659,4.662,4.81,4.866,4.882,4.902,4.916,4.918,5.01,5.018,5.02,5.133,5.179,5.186,5.205,5.218,5.245,5.25,5.262,5.263,5.365,5.374,5.412,5.421,5.437,5.45,5.453,5.484,5.501,5.527,5.527,5.534,5.561,5.566,5.567,5.624,5.646,5.662,5.691,5.705,5.706,5.712,5.87,5.909,5.912,5.92,5.978,5.978,6.012,6.086,6.086,6.106,6.114,6.155,6.168,6.171,6.179,6.221,6.287,6.317,6.324,6.354,6.364,6.385,6.389,6.397,6.427,6.439,6.49,6.513,6.517,6.521,6.557,6.578,6.579,6.648,6.703,6.756,6.887,6.953,7.042,7.155,7.194,7.21,7.225,7.249,7.254,7.291,7.382,7.397,7.504,7.603,7.65,7.861,8.524]
-    >>> getDecilesList(l)
-    [-4.059, -1.12, 0.748, 2.331, 3.811, 4.447, 5.133, 5.561, 6.114, 6.578, 8.524]
-    """
-    if len(values)==0:
-        return None
-
-    valCount = len(values)
-    binSize = float(valCount-1) / 10.0; # width of each bin, in number of elements, fractions allowed
-
-    values = list(sorted(values))
-
-    # get deciles from the list of sorted values
-    deciles = []
-    pos = 0
-    for i in range(11): # 10 bins means that we need 11 limits
-        pos = int (binSize * i)
-        if pos > valCount: # this should not happen, but maybe it can, due to floating point issues?
-            logging.warn("decile exceeds 10, binSize %d, i %d, len(values) %d" % (binSize, i, len(values)))
-            pos = len(values)
-        deciles.append ( values[pos] )
+def getDecilesList_np(values):
+    deciles = np.percentile( values, [0,10,20,30,40,50,60,70,80,90,100] )
     return deciles
 
 def bytesAndFmt(x):
@@ -230,23 +225,43 @@ def bytesAndFmt(x):
     else:
         return "Uint8", "<B"
 
-def discretizeField(numVals, fieldMeta):
+#def getDecilesWithZeros(numVals):
+#    """ return a pair of the deciles and their counts.
+#    Counts is 11 elements long, the first element holds the number of zeros, 
+#    which are treated separately
+#
+#    >>> l = [0,0,0,0,0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,8,9,10]
+#    >>> getDecilesWithZeros(l)
+#     ([1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+#    """
+#    nonZeros  = [x for x in numVals if x!=0.0]
+#
+#    zeroCount = len(numVals) - len(nonZeros)
+#    deciles   = getDecilesList_np(nonZeros)
+#
+#    decArr = np.searchsorted(deciles, numVals)
+#    decCounts(deciles, nonZeros)
+#
+#    decCounts.insert(0, zeroCount)
+#    return deciles, decCounts, newVals
+
+def discretizeField(numVals, fieldMeta, numType):
     " given a list of values, add attributes to fieldMeta that describe the deciles "
-    deciles = getDecilesList(numVals)
-    binCounts = [0]*10
-    newVals = []
-    for x in numVals:
-        binIdx = findBin(deciles, x)
-        newVals.append(binIdx)
-        binCounts[binIdx]+=1
+    #deciles, binCounts, newVals = getDecilesWithZeros(numVals)
+    digArr, binInfo = digitizeArr(numVals, numType)
+    deciles = []
+    decCounts = []
+    for start, end, count in binInfo:
+        deciles.append(end)
+        decCounts.append(count)
 
     fieldMeta["deciles"] = deciles
-    fieldMeta["binCounts"] = binCounts
+    fieldMeta["decCounts"] = decCounts
     fieldMeta["arrType"] = "uint8"
     fieldMeta["_fmt"] = "<B"
-    return newVals, fieldMeta
+    return digArr, fieldMeta
 
-def guessFieldMeta(valList, fieldMeta, colors):
+def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
     - 'type' can be: 'int', 'float', 'enum' or 'uniqueString'
@@ -278,21 +293,23 @@ def guessFieldMeta(valList, fieldMeta, colors):
 
     valToInt = None
 
-    if floatCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10:
+    if floatCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
         # field is a floating point number: convert to decile index
         numVals = [float(x) for x in valList]
-        newVals, fieldMeta = discretizeField(numVals, fieldMeta)
+
+        newVals, fieldMeta = discretizeField(numVals, fieldMeta, "float")
+
         fieldMeta["type"] = "float"
         fieldMeta["maxVal"] = maxVal
 
-    elif intCount==len(valList):
+    elif intCount==len(valList) and not forceEnum:
         # field is an integer: convert to decile index
         numVals = [int(x) for x in valList]
-        newVals, fieldMeta = discretizeField(numVals, fieldMeta)
+        newVals, fieldMeta = discretizeField(numVals, fieldMeta, "int")
         fieldMeta["type"] = "int"
         fieldMeta["maxVal"] = maxVal
 
-    elif len(valCounts)==len(valList):
+    elif len(valCounts)==len(valList) and not forceEnum:
         # field is a unique string
         fieldMeta["type"] = "uniqueString"
         maxLen = max([len(x) for x in valList])
@@ -334,14 +351,6 @@ def guessFieldMeta(valList, fieldMeta, colors):
 def writeNum(col, packFmt, ofh):
     " write a list of numbers to a binary file "
 
-def findBin(ranges, val):
-    """ given an array of values, find the index i where ranges[i] < val < ranges[i+1]
-    This is a dumb brute force implementation - use binary search?
-    """
-    for i in range(0, len(ranges)):
-        if ((val >= ranges[i]) and (val <= ranges[i+1])):
-            return i
-
 def cleanString(s):
     " returns only alphanum characters in string s "
     newS = []
@@ -350,7 +359,7 @@ def cleanString(s):
             newS.append(c)
     return "".join(newS)
 
-def metaToBin(fname, colorFname, outDir, datasetInfo):
+def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
     """ convert meta table to binary files. outputs fields.json and one binary file per field. 
     adds names of metadata fields to datasetInfo and returns datasetInfo
     """
@@ -363,13 +372,14 @@ def metaToBin(fname, colorFname, outDir, datasetInfo):
     fieldInfo = []
     for colIdx, (fieldName, col) in enumerate(colData):
         logging.info("Meta data field index %d: '%s'" % (colIdx, fieldName))
+        forceEnum = (fieldName in enumFields)
         cleanFieldName = cleanString(fieldName)
         binName = join(outDir, fieldName+".bin")
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
-        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors)
+        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
         packFmt = fieldMeta["_fmt"]
@@ -408,6 +418,233 @@ def iterLineOffsets(ifh):
            yield line, start, end
        start = ifh.tell()
 
+def iterExprFromFile(fname, matType):
+    " yield (gene, array) tuples from gene expression file "
+    if fname.endswith(".gz"):
+        ifh = gzip.open(fname)
+    else:
+        ifh = open(fname)
+    
+    sep = "\t"
+    if ".csv" in fname.lower():
+        sep = ","
+
+    headLine = ifh.readline()
+    for line in ifh:
+        gene, rest = string.split(line, sep, maxsplit=1)
+        if numpyLoaded:
+            a = np.fromstring(rest, sep=sep, dtype=matType)
+        else:
+            a = rest.split(sep)
+            if matType=="int":
+                a = [int(x) for x in a]
+            else:
+                a = [float(x) for x in a]
+
+        yield gene, a
+
+def autoDetectMatType(matIter, n):
+    " check if matrix has 'int' or 'float' data type by looking at the first n genes"
+    # auto-detect the type of the matrix: int vs float
+    geneCount = 0
+
+    for gene, a in matIter:
+        if numpyLoaded:
+            a_int = a.astype(int)
+            hasOnlyInts = np.array_equal(a, a_int)
+            if not hasOnlyInts:
+                return "float"
+        else:
+            for x in a:
+                frac, whole = math.modf(x)
+                if frac != 0.0:
+                    return "float"
+        if geneCount==n:
+            break
+        geneCount+=1
+    return "int"
+
+def getDecilesList(values):
+    """ given a list of values, return the 10 values that define the 10 ranges for the deciles
+    """
+    if len(values)==0:
+        return None
+
+    valCount = len(values)
+    binSize = float(valCount-1) / 10.0; # width of each bin, in number of elements, fractions allowed
+
+    values = list(sorted(values))
+
+    # get deciles from the list of sorted values
+    deciles = []
+    pos = 0
+    for i in range(10): # 10 bins means that we need 10 limits, the last limit is at 90%
+        pos = int (binSize * i)
+        if pos > valCount: # this should not happen, but maybe it can, due to floating point issues?
+            logging.warn("decile exceeds 10, binSize %d, i %d, len(values) %d" % (binSize, i, len(values)))
+            pos = len(values)
+        deciles.append ( values[pos] )
+    return deciles
+
+def findBin(ranges, val):
+    """ given an array of values, find the index i where ranges[i] < val <= ranges[i+1]
+    ranges have to be sorted.
+    This is a dumb brute force implementation - maybe binary search is faster, if ever revisit this again
+    Someone said up to 10 binary search is not faster.
+    """
+    if val==0: # speedup
+        return 0
+    for i in range(0, len(ranges)):
+        if (val < ranges[i]):
+            return i
+    # if doesn't fit in anywhere, return beyond last possible index
+    return i+1
+
+def digitize_py(arr, matType):
+    """ calculate deciles ignoring 0s from arr, use these deciles to digitize the whole arr,
+    return (digArr, zeroCount, bins).
+    bins is an array of (min, max, count)
+    There are at most 11 bins and bin0 is just for the value zero.
+    For bin0, min and max are both 0.0
+
+    matType can be "int" or "float".
+    If it is 'int' and arr has only <= 11 values, will not calculate deciles, but rather just
+    count the numbers and use them to create bins, one per number.
+    """
+    if matType=="int":
+        valCount = len(set(arr))
+        if valCount <= 11: # 10 deciles + 0s
+            counts = Counter(arr).most_common()
+            counts.sort()
+
+            valToIdx = {}
+            for i, (val, count) in enumerate(counts):
+                valToIdx[val] = i
+
+            digArr = [valToIdx[x] for x in arr]
+            bins = []
+            for val, count in counts:
+                bins.append( (val, val, count) )
+            return digArr, bins
+
+    noZeroArr = [x for x in arr if x!=0]
+    zeroCount = len(arr) - len(noZeroArr)
+    deciles = getDecilesList(noZeroArr) # there are 10 limits for the 10 deciles, 0% - 90%
+    deciles.insert(0, 0) # bin0 is always for the zeros
+    # we now have 11 limits
+    assert(len(deciles)<=11)
+
+    # digitize and count bins
+    digArr = []
+    binCounts = len(deciles)*[0]
+    for x in arr:
+        binIdx = findBin(deciles, x)
+        # bin1 is always empty, so move down all other indices
+        if binIdx>0:
+            binIdx-=1
+        digArr.append(binIdx)
+        binCounts[binIdx]+=1
+
+    # create the bin info
+    bins = []
+    bins.append( [float(0), float(0), float(binCounts[0])] )
+    for i in range(1, len(deciles)):
+        minVal = deciles[i-1]
+        maxVal = deciles[i]
+        count = binCounts[i]
+        # skip empty bins
+        if count!=0:
+            bins.append( [float(minVal), float(maxVal), float(count)] )
+
+    # add the maximum value explicitly, more meaningful
+    bins[-1][1] = np.amax(arr)
+    return digArr, bins
+
+def digitizeArr(arr, numType):
+    if numpyLoaded:
+        return digitize_np(arr, numType)
+    else:
+        return digitize_py(arr, numType)
+
+def binEncode(bins):
+    " encode a list of at 11 three-tuples into a string of 33 floats (little endian)"
+    # add (0,0,0) elements to bins until it has 11 elements "
+    padBins = copy.copy(bins)
+    for i in range(len(bins), 11):
+        padBins.append( (0.0, 0.0, 0.0) )
+    print len(padBins), padBins, len(padBins)
+    assert(len(padBins)==11)
+
+    strList = []
+    for xMin, xMax, count in padBins:
+        strList.append( struct.pack("<f", xMin) )
+        strList.append( struct.pack("<f", xMax) )
+        strList.append( struct.pack("<f", count) )
+    ret = "".join(strList)
+    assert(len(ret)==11*3*4)
+    return ret
+
+def digitize_np(arr, matType):
+    " hopefully the same as digitize(), but using numpy "
+    if matType=="int":
+        # raw counts mode:
+        # first try if there are enough unique values in the array
+        # if there are <= 10 values, deciles make no sense,
+        # so simply enumerate the values and map to bins 0-10
+        binCounts = np.bincount(arr)
+        nonZeroCounts = binCounts[np.nonzero(binCounts)] # remove the 0s
+        if nonZeroCounts.size <= 11:
+            valToBin = {}
+            bins = []
+            binIdx = 0
+            for val, count in enumerate(binCounts):
+                if count!=0:
+                    bins.append( (val, val, count) )
+                    valToBin[val] = binIdx
+                    binIdx += 1
+            # map values to bin indices, from stackoverflow
+            digArr = np.vectorize(valToBin.__getitem__)(arr)
+            return digArr, bins
+
+    # calculate the deciles without the zeros, otherwise
+    # the 0s completely distort the deciles
+    noZero = np.copy(arr)
+    noZero = arr[np.nonzero(arr)]
+
+    deciles = np.percentile( noZero, [0,10,20,30,40,50,60,70,80,90] , interpolation="lower")
+    # make sure that we always have a bin for the zeros
+    deciles = np.insert(deciles, 0, 0)
+    # now we have 10 limits, defining 11 bins
+    # but bin1 will always be empty, as there is nothing between the value 0 and the lowest limit
+    digArr = np.searchsorted(deciles, arr, side="right")
+    # so we decrease all bin indices that are not 0
+    np.putmask(digArr, digArr>0, digArr-1)
+    binCounts = np.bincount(digArr)
+
+    bins = []
+    zeroCount = binCounts[0]
+
+    # bin0 is a bit special
+    bins.append( [float(0), float(0), zeroCount] )
+
+    for i in range(1, len(deciles)):
+        binCount = binCounts[i]
+        if binCount==0:
+            continue
+
+        minVal = deciles[i-1]
+        maxVal = deciles[i]
+        bins.append( [minVal, maxVal, binCount] )
+
+    bins[-1][1] = max(arr)
+    return digArr, bins
+
+def maxVal(a):
+    if numpyLoaded:
+        return np.amax(a)
+    else:
+        return max(a)
+
 def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
@@ -420,54 +657,61 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
     skipIds = 0
     highCount = 0
 
-    ifh = openFile(fname)
+    logging.info("Auto-detecting number type of %s" % fname)
+    geneIter = iterExprFromFile(fname, "float")
+    matType = autoDetectMatType(geneIter, 10)
+    logging.info("Numbers in matrix are of type '%s'", matType)
 
-    headers = ifh.readline().rstrip("\n").split("\t")
+    geneIter = iterExprFromFile(fname, matType)
 
     geneCount = 0
-    for line in ifh:
+    for geneId, exprArr in geneIter:
         geneCount += 1
-        row = line.split("\t")
-        geneId = row[0]
         if geneToSym is None:
             symbol = geneId
         else:
             symbol = geneToSym.get(geneId)
             if symbol is None:
                 skipIds += 1
+                logging.warn("%s is not a valid gene ID" % geneId)
                 continue
         if symbol in geneToOffset:
             logging.warn("Gene %s/%s is duplicated in matrix, using only first occurence" % (geneId, symbol))
             continue
 
-        vals = [float(x) for x in row[1:]]
-        if max(vals) > 500:
+        if maxVal(exprArr) > 200:
             highCount += 1
 
-        # TODO: slow - port this to numpy, but keep this old code to avoid numpy dependency
-	if not skipLog:
-            vals = [math.log(x+1, 2) for x in vals]
-        deciles = getDecilesList(vals) # should we not rather remove 0-values before doing this?
-        decVals = [findBin(deciles, x) for x in vals]
-        # TODO end
+        logging.debug("Processing %s, symbol %s" % (geneId, symbol))
+        digArr, binInfo = digitizeArr(exprArr, matType)
+        binStr = binEncode(binInfo)
 
-        decChrList = [chr(x) for x in decVals]
+        decChrList = [chr(x) for x in digArr]
         decStr = "".join(decChrList)
+        geneIdLen = struct.pack("<H", len(geneId))
 
-        decCompr = zlib.compress(decStr)
-        logging.debug("compression factor of %s: %f, before %d, after %d"% (symbol, float(len(decCompr)) / len(decStr), len(decStr), len(decCompr)))
+        # gene records are compressed.
+        # The format of a record is:
+        # - 2 bytes: length of descStr, e.g. gene identifier or else
+        # - len(descStr) bytes: the descriptive string descStr
+        # - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
+        # - array of n bytes, n = number of cells
+        geneStr = geneIdLen+geneId+binStr+decStr
 
-        geneToOffset[symbol] = (ofh.tell(), len(decCompr), deciles)
-        ofh.write(decCompr)
+        geneCompr = zlib.compress(geneStr)
+        logging.debug("compression factor of %s: %f, before %d, after %d"% (symbol, float(len(geneCompr)) / len(geneStr), len(geneStr), len(geneCompr)))
 
-        if geneCount % 1000 == 0:
+        geneToOffset[symbol] = (ofh.tell(), len(geneCompr))
+        ofh.write(geneCompr)
+
+        if geneCount % 10 == 0:
             logging.info("Got deciles for %d genes" % geneCount)
     ofh.close()
 
     if highCount==0:
-        logging.error("No single value in the matrix is > 500. It looks like this matrix has been log'ed already")
-        logging.error("Rerun with --skipLog.")
-        sys.exit(1)
+        logging.warn("No single value in the matrix is > 200. Has this matrix been log'ed?")
+        #logging.error("Rerun with --skipLog.")
+        #sys.exit(1)
 
     if len(geneToOffset)==0:
         errAbort("No genes from the expression matrix could be mapped to symbols in the input file."
@@ -597,8 +841,8 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
         coords.append( (cellId, x, y) )
 
     if useTwoBytes:
-        scaleX = (maxX-minX)/65536
-        scaleY = (maxY-minY)/65536
+        scaleX = 65535/(maxX-minX)
+        scaleY = 65535/(maxY-minY)
         topY = 65535
 
     # not flipping coords anymore, origin is top-left ?
@@ -607,20 +851,22 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
         if useTwoBytes:
             #newX = int(scaleX * (maxX - x))
             #newY = int(65536 - (scaleY * (maxY - y)))
-            newX = int(scaleX * (x - minX))
-            newY = int(65536 - (scaleY * (y - minY)))
+            x = int(scaleX * (x - minX))
+            #newY = int(65536 - (scaleY * (y - minY)))
+            y = int(scaleY * (y - minY))
+            #print "XX", x, y, minX, minY, maxX, maxY, scaleX, scaleY, newX, newY
         else:
             #newY = maxY - y # just flip
-            newY = y # just flip
+            pass
 
-        newCoords[cellId] = (x, newY)
+        newCoords[cellId] = (x, y)
 
     return newCoords
 
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     " check and reorder the meta data, has to be in the same order as the expression matrix, write to fixedMetaFname "
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
-    matrixSampleNames = openFile(matrixFname).readline().rstrip("\n").rstrip("\r").split("\t")[1:]
+    matrixSampleNames = readHeaders(matrixFname)[1:]
     metaSampleNames = [string.split(line, "\t", 1)[0] for line in open(metaFname)][1:]
 
     # check that there is a 1:1 sampleName relationship
@@ -1009,6 +1255,11 @@ def makeMids(xVals, yVals, labelVec, labelVals):
         midInfo.append([midX, midY, clusterName])
     return midInfo
 
+def readHeaders(fname):
+    " return headers of a file "
+    #return openFile(fname).readline().rstrip("\n").split("\t")
+    return openFile(fname).readline().rstrip("\n").rstrip("\r").split("\t")
+
 def addDataset(inDir, conf, fileToCopy, outDir, options):
     " write config to outDir and copy over all files in fileToCopy "
     # keep a copy of the original config
@@ -1026,21 +1277,29 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
 
     skipLog = conf["matrixIsLog"]
     colorFname = conf.get("colors")
+    enumFields = conf.get("enumFields")
 
     # these don't exist / are not needed in the output json file
     del conf["meta"]
     del conf["exprMatrix"]
     del conf["matrixIsLog"]
     del conf["colors"]
+    del conf["enumFields"]
 
     # index the meta data
     metaDir = join(outDir, "metaFields")
     makeDir(metaDir)
-    fixedMeta = join(outDir, "meta.tsv")
-    sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, fixedMeta)
-    conf["sampleCount"] = len(sampleNames)
-    conf = metaToBin(metaFname, colorFname, metaDir, conf)
-    indexMeta(metaFname, join(outDir, "meta.index"))
+    metaIdxFname = join(outDir, "meta.index")
+
+    finalMeta = join(outDir, "meta.tsv")
+    if isfile(metaIdxFname) and options.quick:
+        logging.info("quick-mode: %s already exists, not recreating" % metaIdxFname)
+        sampleNames = readHeaders(finalMeta)[1:]
+    else:
+        sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMeta)
+        conf["sampleCount"] = len(sampleNames)
+        conf = metaToBin(metaFname, colorFname, metaDir, enumFields, conf)
+        indexMeta(metaFname, metaIdxFname)
 
     # index the expression matrix
     geneToSym = readGeneToSym(options.symTable)
@@ -1054,12 +1313,12 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     #indexMatrix(matrixFname, geneToSym, matrixIndexFname)
 
     if options.quick and isfile(matrixIndexFname):
-        logging.info("quick-mode: Not rebuilding matrix index")
+        logging.info("quick-mode: Not discretizing matrix, because %s already exists" % matrixIndexFname)
     else:
         matrixToBin(matrixFname, geneToSym, binMatFname, matrixIndexFname, skipLog)
 
     if options.quick and isfile(myMatrixFname):
-        logging.info("quick-mode: Not rebuilding expression matrix")
+        logging.info("quick-mode: Not rebuilding expression matrix %s" % myMatrixFname)
     else:
         copyMatrix(matrixFname, myMatrixFname, sampleNames, needFilterMatrix)
 
@@ -1091,7 +1350,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
             midFname = join(coordDir, "clusterLabels.json")
             midFh = open(midFname, "w")
             json.dump(clusterMids, midFh, indent=2)
-            logging.info("Wrote cluster labels to %s" % midFname)
+            logging.info("Wrote cluster labels and midpoints to %s" % midFname)
 
 
     # convert the markers
@@ -1119,13 +1378,14 @@ def main():
     args, options = parseArgs()
 
     if options.test:
-        testMetaIndex(args[0])
+        #testMetaIndex(args[0])
+        doctest.testmod()
         sys.exit(0)
 
     if options.inConf is None:
-        errAbort("You have to specify at least an input config file.")
+        errAbort("You have to specify at least an input config file.", showHelp=True)
     if options.outDir is None:
-        errAbort("You have to specify at least the output directory.")
+        errAbort("You have to specify at least the output directory.", showHelp=True)
 
     inDir, conf, filesToCopy = findInputFiles(options)
 
