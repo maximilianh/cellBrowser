@@ -170,8 +170,9 @@ def cbScanpy(args, options):
     print('Performing tSNE')
     sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
 
-    print('Performing Louvain Clustering')
-    sc.pp.neighbors(adata, n_pcs=int(pc_nb))
+    neighbors = 5
+    print('Performing Louvain Clustering, using %d neighbors' % neighbors)
+    sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=2.5)
     fig=sc.pl.tsne(adata, color='louvain')
 
@@ -184,7 +185,7 @@ def cbScanpy(args, options):
 
     #Finding Top Markers, according to z-score
     print('Finding top markers for each cluster')
-    sc.tl.rank_genes_groups(adata, 'louvain_groups')
+    sc.tl.rank_genes_groups(adata, 'louvain')
 
     #Saving top 100 for each cluster to CSV
     print('Saving results')
@@ -209,7 +210,7 @@ def cbScanpy(args, options):
     pd.DataFrame.to_csv(marker_df,markerFname,sep='\t',index=False)
 
     #Save cells <-> cluster in tsv
-    adata.obs[['louvain_groups']].to_csv(clusterFname,sep='\t')
+    adata.obs[['louvain']].to_csv(clusterFname,sep='\t')
 
     #Save tsne coords of cells
     tsne_coord=pd.DataFrame(adata.obsm.X_tsne,index=adata.obs.index)

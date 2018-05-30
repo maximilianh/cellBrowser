@@ -88,13 +88,16 @@ def lineFileNextRow(inFile):
     """
 
     if isinstance(inFile, str):
+        # input file is a string = file name
         fh = openFile(inFile)
+        sep = sepForFile(inFile)
     else:
         fh = inFile
+        sep = "\t"
 
     line1 = fh.readline()
     line1 = line1.strip("\n").lstrip("#")
-    headers = line1.split("\t")
+    headers = line1.split(sep)
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
     headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
     #headers = [x if x!="" else "noName" for x in headers]
@@ -123,7 +126,7 @@ def lineFileNextRow(inFile):
         # skip special chars in meta data and keep only ASCII
         line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
         line = line.rstrip("\n").rstrip("\r")
-        fields = string.split(line, "\t", maxsplit=len(headers)-1)
+        fields = string.split(line, sep, maxsplit=len(headers)-1)
         try:
             rec = Record(*fields)
         except Exception as msg:
@@ -338,10 +341,11 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
                 if len(notFound)!=0:
                     logging.warn("No default color found for field values %s" % notFound)
 
-        fieldMeta["valCounts"] = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True))
+        valCounts = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True)) # = (label, count)
+        fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
-        valToInt = dict([(y,x) for (x,y) in enumerate(valArr)]) # dict with value -> index in valArr
-        newVals = [valToInt[x] for x in valList]
+        valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
+        newVals = [valToInt[x] for x in valList] # 
 
     #fieldMeta["valCount"] = len(valList)
     fieldMeta["diffValCount"] = len(valCounts)
@@ -402,7 +406,6 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
             logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
     datasetInfo["metaFields"] = fieldInfo
-    #jsonFh.close()
     return datasetInfo
 
 def iterLineOffsets(ifh):
@@ -547,14 +550,16 @@ def digitize_py(arr, matType):
 
     # create the bin info
     bins = []
-    bins.append( [float(0), float(0), float(binCounts[0])] )
+    if zeroCount!=0:
+        bins.append( [float(0), float(0), float(zeroCount)])
+
     for i in range(1, len(deciles)):
         minVal = deciles[i-1]
         maxVal = deciles[i]
         count = binCounts[i]
         # skip empty bins
-        if count!=0:
-            bins.append( [float(minVal), float(maxVal), float(count)] )
+        #if count!=0:
+        bins.append( [float(minVal), float(maxVal), float(count)] )
 
     # add the maximum value explicitly, more meaningful
     bins[-1][1] = np.amax(arr)
@@ -572,7 +577,7 @@ def binEncode(bins):
     padBins = copy.copy(bins)
     for i in range(len(bins), 11):
         padBins.append( (0.0, 0.0, 0.0) )
-    print len(padBins), padBins, len(padBins)
+    #print len(padBins), padBins, len(padBins)
     assert(len(padBins)==11)
 
     strList = []
@@ -585,7 +590,14 @@ def binEncode(bins):
     return ret
 
 def digitize_np(arr, matType):
-    " hopefully the same as digitize(), but using numpy "
+    """ hopefully the same as digitize(), but using numpy 
+    >>> digitize_np([1,2,3,4,5,6,4,1,1,1], "int")
+    """
+
+    # meta data comes in as a list
+    if not type(arr) is np.ndarray:
+        arr = np.array(arr)
+
     if matType=="int":
         # raw counts mode:
         # first try if there are enough unique values in the array
@@ -598,18 +610,23 @@ def digitize_np(arr, matType):
             bins = []
             binIdx = 0
             for val, count in enumerate(binCounts):
-                if count!=0:
-                    bins.append( (val, val, count) )
-                    valToBin[val] = binIdx
-                    binIdx += 1
+                #if count!=0:
+                bins.append( (val, val, count) )
+                valToBin[val] = binIdx
+                binIdx += 1
             # map values to bin indices, from stackoverflow
             digArr = np.vectorize(valToBin.__getitem__)(arr)
             return digArr, bins
 
     # calculate the deciles without the zeros, otherwise
     # the 0s completely distort the deciles
-    noZero = np.copy(arr)
+    #noZero = np.copy(arr)
+    #nonZeroIndices = np.nonzero(arr)
     noZero = arr[np.nonzero(arr)]
+
+    # gene not expressed -> do nothing
+    if noZero.size==0:
+        return np.zeros(arr.size, dtype=np.int8), [(0.0, 0.0, arr.size)]
 
     deciles = np.percentile( noZero, [0,10,20,30,40,50,60,70,80,90] , interpolation="lower")
     # make sure that we always have a bin for the zeros
@@ -625,18 +642,19 @@ def digitize_np(arr, matType):
     zeroCount = binCounts[0]
 
     # bin0 is a bit special
-    bins.append( [float(0), float(0), zeroCount] )
+    if zeroCount!=0:
+        bins.append( [float(0), float(0), zeroCount] )
 
     for i in range(1, len(deciles)):
         binCount = binCounts[i]
-        if binCount==0:
-            continue
-
+        #if binCount==0:
+            #continue
         minVal = deciles[i-1]
         maxVal = deciles[i]
         bins.append( [minVal, maxVal, binCount] )
 
     bins[-1][1] = max(arr)
+    print bins, len(digArr), digArr
     return digArr, bins
 
 def maxVal(a):
@@ -645,14 +663,32 @@ def maxVal(a):
     else:
         return max(a)
 
-def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
+def exprRowEncode(geneDesc, binInfo, digArr):
+    " encode geneDesc, deciles and array of decile indixes into a single string that can be read by the .js code "
+    # The format of a record is:
+    # - 2 bytes: length of descStr, e.g. gene identifier or else
+    # - len(descStr) bytes: the descriptive string descStr
+    # - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
+    # - array of n bytes, n = number of cells
+    decChrList = [chr(x) for x in digArr]
+    decStr = "".join(decChrList)
+    geneIdLen = struct.pack("<H", len(geneDesc))
+
+    binStr = binEncode(binInfo)
+    geneStr = geneIdLen+geneDesc+binStr+decStr
+    return geneStr
+
+def matrixToBin(fname, geneToSym, binFname, jsonFname):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
     logging.info("converting %s to %s and writing index to %s" % (fname, binFname, jsonFname))
-    logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
+    #logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
     logging.info("Converting gene expression vectors to deciles...")
-    ofh = open(binFname, "w")
+
+    tmpFname = binFname + ".tmp"
+    ofh = open(tmpFname, "w")
+
     geneToOffset = {}
     skipIds = 0
     highCount = 0
@@ -675,6 +711,10 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
                 skipIds += 1
                 logging.warn("%s is not a valid gene ID" % geneId)
                 continue
+        if symbol.isdigit():
+            logging.warn("line %d in gene matrix: gene identifier %s is a number. Sure that the first column is gene ID?" %
+                    (geneId, symbol))
+
         if symbol in geneToOffset:
             logging.warn("Gene %s/%s is duplicated in matrix, using only first occurence" % (geneId, symbol))
             continue
@@ -684,19 +724,8 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
 
         logging.debug("Processing %s, symbol %s" % (geneId, symbol))
         digArr, binInfo = digitizeArr(exprArr, matType)
-        binStr = binEncode(binInfo)
 
-        decChrList = [chr(x) for x in digArr]
-        decStr = "".join(decChrList)
-        geneIdLen = struct.pack("<H", len(geneId))
-
-        # gene records are compressed.
-        # The format of a record is:
-        # - 2 bytes: length of descStr, e.g. gene identifier or else
-        # - len(descStr) bytes: the descriptive string descStr
-        # - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
-        # - array of n bytes, n = number of cells
-        geneStr = geneIdLen+geneId+binStr+decStr
+        geneStr = exprRowEncode(geneId, binInfo, digArr)
 
         geneCompr = zlib.compress(geneStr)
         logging.debug("compression factor of %s: %f, before %d, after %d"% (symbol, float(len(geneCompr)) / len(geneStr), len(geneStr), len(geneCompr)))
@@ -708,8 +737,9 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
             logging.info("Got deciles for %d genes" % geneCount)
     ofh.close()
 
+
     if highCount==0:
-        logging.warn("No single value in the matrix is > 200. Has this matrix been log'ed?")
+        logging.warn("No single value in the matrix is > 200. It looks like this matrix has been log'ed before. Our recommendation for visual inspection is to not transform matrices, but that is of course up to you.")
         #logging.error("Rerun with --skipLog.")
         #sys.exit(1)
 
@@ -721,48 +751,18 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, skipLog):
     if skipIds!=0:
         logging.warn("Could not resolve %d genes from Ensembl ID to gene symbol" % skipIds)
 
-    ofh = open(jsonFname, "w")
-    json.dump(geneToOffset, ofh)
-    ofh.close()
-
-def indexMatrix(fname, geneToSym, jsonFname):
-    """ index a matrix with one gene per line and write json with a dict
-        gene symbol -> (file offset, line length)
-    """
-    logging.info("Indexing line offsets of %s into %s" % (fname, jsonFname))
-    ifh = open(fname)
-    geneToOffset = {}
-    skipIds = 0
-    lineNo = 0
-    for line, start, end in iterLineOffsets(ifh):
-        if start == 0:
-            symbol = "_header"
-        else:
-            geneId, _ = string.split(line, "\t", 1)
-            if geneToSym is None:
-                symbol = geneId
-            else:
-                symbol = geneToSym.get(geneId)
-                if symbol is None:
-                    skipIds += 1
-                    continue
-        lineLen = end - start
-        assert(lineLen!=0)
-        if symbol in geneToOffset:
-            logging.warn("Gene %s/%s is duplicated in matrix, using only first occurence" % (geneId, symbol))
-            continue
-        geneToOffset[symbol] = (start, lineLen)
-        lineNo += 1
-
-    if len(geneToOffset)==1:
-        errAbort("No genes could be mapped to symbols in the input file. Are you sure these are Ensembl IDs? If they are already gene symbols, re-run with '-s none'. One example gene ID is %s." % geneId)
-
-    if skipIds!=0:
-        logging.warn("Could not resolve %d genes from Ensembl ID to gene symbol" % skipIds)
+    os.rename(tmpFname, binFname)
 
     ofh = open(jsonFname, "w")
     json.dump(geneToOffset, ofh)
     ofh.close()
+
+
+def sepForFile(fname):
+    if ".csv" in fname:
+        return ","
+    else:
+        return "\t"
 
 def indexMeta(fname, outFname):
     """ index a tsv by its first field. Writes binary data to outFname.
@@ -771,13 +771,14 @@ def indexMeta(fname, outFname):
     ofh = open(outFname, "wb")
     logging.info("Indexing meta file %s to %s" % (fname, outFname))
     ifh = open(fname)
+    sep = sepForFile(fname)
     headerDone = False
     for line, start, end in iterLineOffsets(ifh):
         if not headerDone:
             headerDone = True
             continue
 
-        field1, _ = string.split(line, "\t", 1)
+        field1, _ = string.split(line, sep, 1)
         lineLen = end - start
         assert(lineLen!=0)
         assert(lineLen<65535) # meta data line cannot be longer than 2 bytes
@@ -830,7 +831,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
     maxY = -2^32
     skipCount = 0
     for row in lineFileNextRow(fname):
-        assert(len(row)==3) # coord file has to have three rows (cellId, x, y), we ignore the headers
+        assert(len(row)==3) # coord file has to have three rows (cellId, x, y), we just ignore the headers
         cellId = row[0]
         x = float(row[1])
         y = float(row[2])
@@ -867,7 +868,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     " check and reorder the meta data, has to be in the same order as the expression matrix, write to fixedMetaFname "
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
     matrixSampleNames = readHeaders(matrixFname)[1:]
-    metaSampleNames = [string.split(line, "\t", 1)[0] for line in open(metaFname)][1:]
+    metaSampleNames = readSampleNames(metaFname)
 
     # check that there is a 1:1 sampleName relationship
     mat = set(matrixSampleNames)
@@ -877,7 +878,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         sys.exit(1)
 
     if len(mat.intersection(meta))==0:
-        logging.error("Meta data and expression matrix have no single sample name in common")
+        logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row?")
         sys.exit(1)
 
     matNotMeta = meta - mat
@@ -900,7 +901,8 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     logging.info("Data contains %d samples/cells" % len(matrixSampleNames))
 
     # slurp in the whole meta data
-    ofh = open(fixedMetaFname, "w")
+    tmpFname = fixedMetaFname+".tmp"
+    ofh = open(tmpFname, "w")
     metaToLine = {}
     for lNo, line in enumerate(open(metaFname)):
         if lNo==0:
@@ -913,25 +915,29 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     for matrixName in matrixSampleNames:
         ofh.write(metaToLine[matrixName])
     ofh.close()
+    os.rename(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, doFilter
 
-def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo):
+def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo):
     """ write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames
     Also return as a list.
     """
-    logging.info("Writing coordinates to %s and %s" % (coordBin, coordJson))
-    binFh = open(coordBin, "wb")
+    tmpFname = coordBinFname+".tmp"
+    logging.info("Writing coordinates to %s and %s" % (coordBinFname, coordJson))
+    binFh = open(tmpFname, "wb")
+
     minX = 2^32
     minY = 2^32
     maxX = -2^32
     maxY = -2^32
     xVals = []
     yVals = []
+
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            errAbort("sample name %s is in coordinate file but not in matrix nor meta data")
+            errAbort("sample name %s is in meta file but not in coordinate file" % sampleName)
         x, y = coordTuple
         minX = min(x, minX)
         minY = min(y, minY)
@@ -949,6 +955,9 @@ def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo
         xVals.append(x)
         yVals.append(y)
     
+    binFh.close()
+    os.rename(tmpFname, coordBinFname)
+
     coordInfo["minX"] = minX
     coordInfo["maxX"] = maxX
     coordInfo["minY"] = minY
@@ -957,6 +966,7 @@ def writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo
         coordInfo["type"] = "Uint16"
     else:
         coordInfo["type"] = "Float32"
+
     return coordInfo, xVals, yVals
 
 def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
@@ -965,7 +975,7 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
         logging.info("Copying %s to %s" % (inFname, outFname))
         shutil.copy(inFname, outFname)
         if not outFname.endswith(".gz"):
-            os.system("gzip %s" % outFname)
+            os.system("gzip -f %s" % outFname)
         return
 
     sep = "\t"
@@ -1210,9 +1220,12 @@ def parseTsvColumn(fname, colName):
 def makeMids(xVals, yVals, labelVec, labelVals):
     """
     calculate the positions (centers) for the cluster labels
-    given a coord list and a vector of the same size with the label indeces, return a list of [x, y, coordLabel] 
+    given a coord list and a vector of the same size with the label indices, return a list of [x, y, coordLabel]
     """
     logging.info("Calculating cluster midpoints")
+    #print len(xVals)
+    #print len(labelVec)
+    #print len(yVals)
     assert(len(xVals)==len(labelVec)==len(yVals))
 
     # prep the arrays
@@ -1257,8 +1270,18 @@ def makeMids(xVals, yVals, labelVec, labelVals):
 
 def readHeaders(fname):
     " return headers of a file "
-    #return openFile(fname).readline().rstrip("\n").split("\t")
-    return openFile(fname).readline().rstrip("\n").rstrip("\r").split("\t")
+    logging.info("Reading headers of file %s" % fname)
+    line1 = openFile(fname).readline().rstrip("\n").rstrip("\r")
+    sep = sepForFile(fname)
+    return line1.split(sep)
+
+def readSampleNames(fname):
+    " read only the first column of fname, strip the headers "
+    logging.info("Reading sample names from %s" % fname)
+    sampleNames = []
+    for row in lineFileNextRow(fname):
+        sampleNames.append(row[0])
+    return sampleNames
 
 def addDataset(inDir, conf, fileToCopy, outDir, options):
     " write config to outDir and copy over all files in fileToCopy "
@@ -1274,17 +1297,26 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     metaFname = makeAbs(inDir, conf["meta"])
     coordFnames = makeAbsDict(inDir, conf["coords"])
     markerFnames = makeAbsDict(inDir, conf["markers"])
+    descJsonFname = join(outDir, "dataset.json")
 
-    skipLog = conf["matrixIsLog"]
+    #skipLog = conf["matrixIsLog"]
     colorFname = conf.get("colors")
     enumFields = conf.get("enumFields")
 
     # these don't exist / are not needed in the output json file
     del conf["meta"]
     del conf["exprMatrix"]
-    del conf["matrixIsLog"]
+    #del conf["matrixIsLog"]
     del conf["colors"]
-    del conf["enumFields"]
+    if "enumFields" in conf:
+        del conf["enumFields"]
+
+    # in quick mode, reuse the old config file
+    if options.quick and isfile(descJsonFname):
+        logging.info("Quick-mode: re-using config file %s" % descJsonFname)
+        oldConf = json.load(open(descJsonFname))
+        for k, v in oldConf.iteritems():
+            conf[k] = v
 
     # index the meta data
     metaDir = join(outDir, "metaFields")
@@ -1294,14 +1326,19 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     finalMeta = join(outDir, "meta.tsv")
     if isfile(metaIdxFname) and options.quick:
         logging.info("quick-mode: %s already exists, not recreating" % metaIdxFname)
-        sampleNames = readHeaders(finalMeta)[1:]
+        sampleNames = readSampleNames(finalMeta)
+        needFilterMatrix = conf["matrixWasFiltered"]
     else:
         sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMeta)
         conf["sampleCount"] = len(sampleNames)
-        conf = metaToBin(metaFname, colorFname, metaDir, enumFields, conf)
-        indexMeta(metaFname, metaIdxFname)
+        conf["matrixWasFiltered"] = needFilterMatrix
+        conf = metaToBin(finalMeta, colorFname, metaDir, enumFields, conf)
+        indexMeta(finalMeta, metaIdxFname)
+    logging.info("Kept %d cells present in both meta data file and expression matrix" % len(sampleNames))
 
-    # index the expression matrix
+    writeJson(conf, descJsonFname)
+
+    # process the expression matrix: two steps
     geneToSym = readGeneToSym(options.symTable)
 
     myMatrixFname = join(outDir, "exprMatrix.tsv")
@@ -1310,15 +1347,16 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
 
     binMatFname = join(outDir, "exprMatrix.bin")
     matrixIndexFname = join(outDir, "exprMatrixOffsets.json")
-    #indexMatrix(matrixFname, geneToSym, matrixIndexFname)
 
+    # step1: discretize expression matrix for the viewer
     if options.quick and isfile(matrixIndexFname):
         logging.info("quick-mode: Not discretizing matrix, because %s already exists" % matrixIndexFname)
     else:
-        matrixToBin(matrixFname, geneToSym, binMatFname, matrixIndexFname, skipLog)
+        matrixToBin(matrixFname, geneToSym, binMatFname, matrixIndexFname)
 
+    # step2: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
     if options.quick and isfile(myMatrixFname):
-        logging.info("quick-mode: Not rebuilding expression matrix %s" % myMatrixFname)
+        logging.info("quick-mode: Not copying+reordering raw expression matrix %s" % myMatrixFname)
     else:
         copyMatrix(matrixFname, myMatrixFname, sampleNames, needFilterMatrix)
 
@@ -1328,7 +1366,6 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
         coords = parseScaleCoordsAsDict(coordFname, options.useTwoBytes)
-        #coordLabel = basename(coordFname).split(".")[0]
         coordName = "coords_%d" % coordIdx
         #coordName = cleanString(coordLabel)
         coordDir = join(outDir, "coords", coordName)
@@ -1368,11 +1405,13 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         newMarkers.append( {"name" : markerName, "shortLabel" : markerLabel})
     conf["markers"] = newMarkers
 
+    writeJson(conf, descJsonFname)
+
+def writeJson(conf, descJsonFname):
     # write dataset summary info
-    descJson = join(outDir, "dataset.json")
-    descJsonFh = open(descJson, "w")
+    descJsonFh = open(descJsonFname, "w")
     json.dump(conf, descJsonFh, indent=2)
-    logging.info("Wrote %s" % descJson)
+    logging.info("Wrote %s" % descJsonFname)
 
 def main():
     args, options = parseArgs()

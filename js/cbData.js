@@ -84,7 +84,8 @@ var cbUtil = (function () {
     my.onDoneBinaryData = function(oEvent) {
         /* called when binary file has been loaded */
         var url = this._url;
-        if (this.status !== 200) {
+        // 200 = OK, 206 = Partial Content OK
+        if (this.status !== 200 && this.status !== 206) {
             alert("Could not load "+url+", error " + oEvent.statusText);
             return;
         }
@@ -100,8 +101,11 @@ var cbUtil = (function () {
         if (this._start!==undefined) {
             // check if the expected length is OK. Some webservers don't support byte range 
             // requests.
-            var expLength = this._end-this._start;
-            if (binData.byteLength !== expLength) {
+            var expLength = this._end-this._start+1; // byte range is inclusive
+            if (binData.byteLength < expLength)
+                alert("internal error cbData.js: chunk is too small. Does the HTTP server really support byte range requests?");
+
+            if (binData.byteLength > expLength) {
                 console.log("Webserver does not support byte range requests, working around it, but this may be slow");
                 if (this._arrType) {
                     binData = new Uint8Array(binData);
@@ -184,21 +188,32 @@ function CbDbFile(url) {
     var self = this; // this has two conflicting meanings in javascript. 
     // we use 'self' to refer to object variables and 'this' to refer to the calling object
 
+    self.name = url;
     self.url = url;
-    self._coordsDoneFunc = null;
     self.geneOffsets = null;
 
     this.conf = null;
 
-    this.init = function(onDone) {
-    /* load config from URL and call func when done */
+    this.loadConfig = function(onDone) {
+    /* load config and gene offsets from URL and call func when done */
+
+        var doneCount = 0;
+        function gotOneFile() {
+            doneCount++;
+            if (doneCount===2)
+                onDone();
+        }
+
         // load config and call onDone
         var dsUrl = cbUtil.joinPaths([this.url, "dataset.json"]);
-        cbUtil.loadJson(dsUrl, function(data) { self.conf = data; });
+        // should I deactivate the cache here?
+        // this is a file that users typicaly change often
+        dsUrl = dsUrl+"?"+Math.floor(Math.random()*100000000);
+        cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile()});
 
         // start loading gene offsets, this takes a while
         var osUrl = cbUtil.joinPaths([this.url, "exprMatrixOffsets.json"]);
-        cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; onDone();});
+        cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; gotOneFile();});
     };
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {
@@ -235,7 +250,7 @@ function CbDbFile(url) {
     };
 
     this.getDefaultColorField = function() {
-        /* return a pair: [0] is "meta" or "gene" and [1] is the field name */
+        /* return a pair: [0] is "meta" or "gene" and [1] is the field name or the gene */
         return ["meta", self.conf.clusterField];
     };
 
@@ -256,11 +271,18 @@ function CbDbFile(url) {
     };
 
     this.loadMetaForCell = function(cellIdx, onDone, onProgress) {
-    /* for a given cell, call onDone with a list of the metadata values, as strings. */
+    /* for a given cell, call onDone with an array of the metadata values, as strings. */
         // first we need to lookup the offset of the line and its length from the index
         var url = cbUtil.joinPaths([self.url, "meta.index"]);
         var start = (cellIdx*6); // four bytes for the offset + 2 bytes for the line length
         var end   = start+6;
+
+        function lineDone(text) {
+            /* called when the line from meta.tsv has been read */
+            var fields = text.split("\t");
+            fields[fields.length-1] = fields[fields.length-1].trim(); // remove newline
+            onDone(fields);
+        }
 
         function offsetDone(arr) {
             /* called when the offset in meta.index has been read */
@@ -268,38 +290,67 @@ function CbDbFile(url) {
             var lineLen = cbUtil.baReadUint16(arr, 4);
             // now get the line from the .tsv file
             var url = cbUtil.joinPaths([self.url, "meta.tsv"]);
-            cbUtil.loadFile(url+"?"+cellIdx, null, onDone, onProgress, null, 
+            cbUtil.loadFile(url+"?"+cellIdx, null, lineDone, onProgress, null, 
                 offset, offset+lineLen);
         }
 
-        // chrome caching sometimes fails with byte range requests, so add cellidx
-        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(text) { onDone(text); }, 
+        // chrome caching sometimes fails with byte range requests, so add cellidx to the URL
+        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); }, 
             undefined, null, start, end);
     };
 
-    this.loadExprVec = function(geneId, onDone, onProgress) {
-    /* given a geneId (string), retrieve array of deciles and call onDone with the
+    this.loadExprVec = function(geneSym, onDone, onProgress) {
+    /* given a geneSym (string), retrieve array of deciles and call onDone with the
      * array */
-        function onGeneDone(comprData, metaData) {
-            // decompress data and run onDone on it
-            var uncomprData = pako.inflate(comprData);
-            onDone(uncomprData, metaData);
+        function onGeneDone(comprData, geneSym) {
+            // decompress data and run onDone when ready
+            var buf = pako.inflate(comprData);
+
+            // see python code in cbAdd, function 'exprRowEncode':
+            //# The format of a record is:
+            //# - 2 bytes: length of descStr, e.g. gene identifier or else
+            //# - len(descStr) bytes: the descriptive string descStr
+            //# - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
+            //# - array of n bytes, n = number of cells
+            
+            // read the gene description
+            var descLen = cbUtil.baReadUint16(buf, 0);
+            var arr = buf.slice(2, 18);
+            var geneDesc = String.fromCharCode.apply(null, arr);
+
+            // read the info about the bins
+            var binInfoLen = 11*3*4;
+            var dv = new DataView(buf.buffer, 2+descLen, binInfoLen);
+            var binInfo = []
+            for (var i=0; i < 11; i++) {
+                var startOfs = i*12;
+                var min = dv.getFloat32(startOfs, true); // true = little-endian
+                var max = dv.getFloat32(startOfs+4, true);
+                var binCount = dv.getFloat32(startOfs+8, true); // number of cells in this bin
+                if (min===0 && max===0 && binCount===0)
+                    break;
+                binInfo.push( [min, max, binCount] );
+            }
+
+            // read the byte array with one bin index per cell
+            var digArr = buf.slice(2+descLen+binInfoLen);
+             
+            onDone(digArr, geneSym, geneDesc, binInfo);
         }
 
-        var offsData = self.geneOffsets[geneId];
+        var offsData = self.geneOffsets[geneSym];
         if (offsData===undefined)
             onDone(null);
 
         var start = offsData[0];
         var lineLen = offsData[1];
-        var deciles = offsData[2];
 
-        var end = start + lineLen;
+        var end = start + lineLen - 1; // end pos is inclusive
 
         var url = cbUtil.joinPaths([self.url, "exprMatrix.bin"]);
-        //cbUtil.loadFile(url+"?"+geneId, null, onLineDone, onProgress, {'gene':geneId}, 
+        //cbUtil.loadFile(url+"?"+geneSym, null, onLineDone, onProgress, {'gene':geneSym}, 
          //   start, end);
-        cbUtil.loadFile(url+"?"+geneId, Uint8Array, onGeneDone, onProgress, {'gene':geneId, 'deciles' : deciles}, 
+        cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
             start, end);
 
     };
@@ -320,6 +371,37 @@ function CbDbFile(url) {
      * objects with 'name', 'label', 'valCounts', etc */
         return self.conf.metaFields;
     };
+
+    this.getConf = function() {
+    /* return an object with a few general settings for the viewer:
+     * - alpha: default transparency
+     * - radius: circle default radius  */
+        return self.conf;
+    };
+
+    this.getGenes = function() {
+    /* return an object with the geneSymbols */
+        return self.geneOffsets;
+    }
+
+    this.searchGenes = function(prefix, onDone) {
+    /* call onDone with an array of gene symbols that start with prefix (case-ins.)
+     * returns an array of objects with .id and .text attributes  */
+        var geneList = [];
+        for (var geneSym in self.geneOffsets) {
+            if (geneSym.toLowerCase().startsWith(prefix))
+                geneList.push({"id":geneSym, "text":geneSym});
+        }
+        onDone(geneList);
+    }
+
+    this.getName = function() {
+    /* return name of current dataset*/
+        if (self.conf!==null)
+            return self.conf.name;
+        else
+            return self.name;
+    }
 
     this.getDefaultClusterFieldIndex = function() {
     /* return field index of default cluster field */
