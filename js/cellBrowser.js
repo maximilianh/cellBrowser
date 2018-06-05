@@ -24,9 +24,6 @@ var tsnePlot = function() {
     var renderer = null;
     var gWinInfo = null; // .width and .height of the PIXI canvas
 
-    // for progress
-    var progressUrls = [];
-
     // -- CONSTANTS
     var gTitle = "UCSC Cell Browser";
     const COL_PREFIX = "col_";
@@ -49,7 +46,7 @@ var tsnePlot = function() {
     // height of the toolbar, in pixels
     var toolBarHeight = 28;
     // position of first combobox in toolbar from left, in pixels
-    var toolBarComboLeft = 140;
+    var toolBarComboLeft = metaBarWidth;
     var toolBarComboTop   = 2;
     var datasetComboWidth = 200;
     var layoutComboWidth = 150;
@@ -65,9 +62,9 @@ var tsnePlot = function() {
     var cNullColor = "DDDDDD";
     var cNullForeground = "#AAAAAA";
 
-    var HIDELABELSNAME = "Hide cluster labels";
-    var SHOWLABELSNAME = "Show cluster labels";
-    var METABOXTITLE   = "Meta data fields";
+    var HIDELABELSNAME = "Hide labels";
+    var SHOWLABELSNAME = "Show labels";
+    var METABOXTITLE   = "Cell Annotations";
 
     // histograms show only the top X values and summarize the rest into "other"
     var HISTOCOUNT = 12;
@@ -616,14 +613,14 @@ var tsnePlot = function() {
 
          htmls.push('<li><a href="#" id="tpZoomPlus"><span class="dropmenu-item-label">Zoom in</span><span class="dropmenu-item-content">+</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoomMinus"><span class="dropmenu-item-label">Zoom out</span><span class="dropmenu-item-content">-</span></a></li>');
-         htmls.push('<li><a href="#" id="tpZoom100Menu"><span class="dropmenu-item-label">Zoom to 100%</span><span class="dropmenu-item-content">z</span></a></li>');
+         htmls.push('<li><a href="#" id="tpZoom100Menu"><span class="dropmenu-item-label">Zoom to 100%</span><span class="dropmenu-item-content">spc</span></a></li>');
 
          htmls.push('<li><hr class="half-rule"></li>');
 
          //htmls.push('<li><a href="#" id="tpOnlySelectedButton">Show only selected</a></li>');
          //htmls.push('<li><a href="#" id="tpFilterButton">Hide selected '+gSampleDesc+'s</a></li>');
          //htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
-         htmls.push('<li><a href="#" id="tpHideShowLabels">Hide cluster labels<span class="dropmenu-item-content">c l</span></a></li>');
+         htmls.push('<li><a href="#" id="tpHideShowLabels">Hide labels<span class="dropmenu-item-content">c l</span></a></li>');
          htmls.push('<li><hr class="half-rule"></li>');
 
          htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
@@ -726,13 +723,40 @@ var tsnePlot = function() {
        renderer.setSize(rendererWidth, rendererHeight);
     }
 
+    var progressUrls = [];
+
     function onProgress(ev) {
-        console.log(ev);
+        /* show progress bars */
         var url = ev.currentTarget.responseURL;
+        if (url.search("exprMatrix.bin")!==-1)
+            return;
+
         var index = progressUrls.indexOf(url);
-        if (index===undefined) {
+        if (index===-1) {
             progressUrls.push(url);
             index = progressUrls.length-1;
+        }
+
+        console.log(ev);
+        var label = url;
+        if (url.endsWith("coords.bin"))
+            label = "Loading Coordinates";
+        else if (url.endsWith(".bin"))
+            label = "Loading cell annotations";
+        var labelId = "#tpProgressLabel"+index;
+        $(labelId).html(label);
+
+        var percent = Math.round(100 * (ev.loaded / ev.total));
+
+        if (percent===100) {
+            $("#tpProgress"+index).css("width", percent+"%");
+            $("#tpProgress"+index).show(0);
+            progressUrls.splice(index, 1);
+            $("#tpProgressDiv"+index).css("display", "none");
+        }
+        else {
+            $("#tpProgress"+index).css("width", percent+"%");
+            $("#tpProgressDiv"+index).css("display", "inherit");
         }
     }
 
@@ -918,16 +942,15 @@ var tsnePlot = function() {
     function onHideShowLabelsClick(ev) {
     /* user clicked the hide labels / show labels menu entry */
         if ($("#tpHideShowLabels").text()===SHOWLABELSNAME) {
-            gCurrentDataset.showLabels = true;
+            renderer.setShowLabels(true);
             $("#tpHideShowLabels").text(HIDELABELSNAME);
         }
         else {
-            gCurrentDataset.showLabels = false;
+            renderer.setShowLabels(false);
             $("#tpHideShowLabels").text(SHOWLABELSNAME);
         }
 
-        plotDots();
-        renderer.render(stage);
+        renderer.drawDots();
     }
 
     function onSizeClick(ev) {
@@ -942,10 +965,10 @@ var tsnePlot = function() {
     }
 
     function onZoom100Click(ev) {
-    /* zoom to 100% */
+    /* in addition to zooming (done by cbDraw already), reset the URL */
         changeUrl({'zoom':null});
-        renderer.zoom100();
-        renderer.drawDots();
+        //renderer.zoom100();
+        //renderer.drawDots();
     }
 
     function activateMode(modeName) {
@@ -955,14 +978,14 @@ var tsnePlot = function() {
     }
 
     function onZoomOutClick(ev) {
-        var zoomRange = renderer.zoomBy(0.2);
+        var zoomRange = renderer.zoomBy(0.8);
         pushZoomState(zoomRange);
         renderer.drawDots();
         ev.preventDefault();
     }
 
     function onZoomInClick(ev) {
-        var zoomRange = renderer.zoomBy(-0.2);
+        var zoomRange = renderer.zoomBy(1.2);
         pushZoomState(zoomRange);
         renderer.drawDots();
         ev.preventDefault();
@@ -1493,44 +1516,6 @@ var tsnePlot = function() {
         $('#tpChangeGenes').click( onChangeGenesClick );
     }
 
-    function addMenus() {
-        // build the color-by menu
-        $('#tpMetaBar').append('<ul class="tpMenu" id="tpColorByMenu" style="display:none">');
-        for (var i = 0; i < fields.length; i++) {
-            var fieldName = fields[i];
-            $('#tpColorByMenu').append('<li><div>'+fieldName+'</div></li>');
-        }
-        $('#tpColorByMenu').append('</ul>');
-        $( "#tpColorByMenu" ).menu();
-
-        var tpColorByLink = $("#tpColorByLink");
-        tpColorByLink.click(function() {
-          var menu = $('#tpColorByMenu');
-          if (menu.is(":visible"))
-              {
-              console.log("hide it");
-              menu.hide();
-              }
-          else
-              {
-              console.log("show it");
-              menu.show();
-              }
-        });
-
-        // close menu when document is clicked anywhere else -- ? performance ?
-        var tpMenuEl = $('.tpMenu');
-        $(document).click(function(e) {
-            clicked = $(e.target);
-            if (clicked[0]===tpColorByLink[0])
-                return;
-            if(!$.contains(tpMenuEl, clicked)) {
-                console.log("clicked outside, now hiding");
-                $('.tpMenu').hide();
-            }
-        });
-    }
-
     function likeEmptyString(label) {
     /* some special values like "undefined" and empty string get colored in grey  */
         return (label===null || label.trim()==="" || label==="none" || label==="None" || label==="unknown" 
@@ -1766,9 +1751,9 @@ var tsnePlot = function() {
         removeFocus();
     }
 
-    function buildLayoutCombo(htmls, files, id, width, left) {
+    function buildLayoutCombo(htmls, files, id, width, left, top) {
         /* files is a list of elements with a shortLabel attribute. Build combobox for them. */
-        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px"><label for="'+id+'">Layout</label>');
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Layout</label>');
         var entries = [];
         for (var i = 0; i < files.length; i++) {
             var coordFiles = files[i];
@@ -1781,9 +1766,8 @@ var tsnePlot = function() {
         htmls.push('</div>');
     }
 
-    function buildDatasetCombo(htmls, datasets, id, width, left) {
+    function buildDatasetCombo(htmls, datasets, id, width, left, top) {
         /* datasets with a list of elements with a shortLabel attribute. Build combobox for them. */
-        var top = toolBarComboTop;
         htmls.push('<div class="tpToolBarItem" style="position:absolute;width:150px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Dataset</label>');
         var entries = [];
         for (var i = 0; i < datasets.length; i++) {
@@ -1799,10 +1783,13 @@ var tsnePlot = function() {
 
     function buildGeneCombo(htmls, id, left) {
         /* datasets with a list of elements with a shortLabel attribute. Build combobox for them. */
-        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
-        htmls.push('<label style="padding-right:5px" for="'+id+'">Color by gene</label>');
+        //htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
+        htmls.push('<div class="tpToolBarItem" style="padding-left: 3px">');
+        htmls.push('<label style="padding-right:5px" for="'+id+'">Gene</label><p>');
         htmls.push('<select style="width:120px" id="'+id+'" placeholder="search..." class="tpCombo">');
+        htmls.push('</select>');
         htmls.push('</div>');
+        //htmls.push("<button>Multi-Gene</button>");
     }
 
 
@@ -1828,50 +1815,49 @@ var tsnePlot = function() {
     }
 
     function buildToolBar (coordInfo, datasetName, fromLeft, fromTop) {
-    /* add the tool bar with icons of tools */
+    /* add the tool bar with icons of tools and add under body to the DOM */
         $("#tpToolBar").remove();
 
-        $(document.body).append("<div id='tpToolBar' style='position:absolute;left:"+fromLeft+"px;top:"+fromTop+"px'></div>");
-
         var htmls = [];
-        htmls.push('<div id="tpIcons" style="display:inline-block">');
-        htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
-        htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="margin-right:0"><img src="img/zoom.png"></button>');
-        htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" style="margin-right:0"><img src="img/move.png"></button>');
-        htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0"><img src="img/select.png"></button>');
-        htmls.push('</div>');
+        htmls.push("<div id='tpToolBar' style='position:absolute;left:"+fromLeft+"px;top:"+fromTop+"px'>");
+        //htmls.push('<div id="tpIcons" style="display:inline-block">');
+        //htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
+        //htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="margin-right:0"><img src="img/zoom.png"></button>');
+        //htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" style="margin-right:0"><img src="img/move.png"></button>');
+        //htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0"><img src="img/select.png"></button>');
+        //htmls.push('</div>');
 
-        htmls.push('&emsp;');
+        //htmls.push('&emsp;');
         //htmls.push('<button title="Zoom in" id="tpIconZoomIn" type="button" class="btn-small btn-outline-primary noPad"><i class="material-icons">zoom_in</i></button>');
         //htmls.push('<button title="Zoom out" id="tpIconZoomOut" type="button" class="btn-small btn-outline-primary noPad"><i class="material-icons">zoom_out</i></button>');
-        htmls.push('<button title="Zoom to full, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="margin-right:0"><img src="img/center.png"></button>');
+        //htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="margin-right:0"><img src="img/center.png"></button>');
 
         //htmls.push("&emsp;");
-        buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, toolBarComboLeft);
 
         //htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
         //htmls.push('<button title="More info about this dataset" id="tpIconDatasetInfo" type="button" class="ui-button tpIconButton"><img title="More info about this dataset" src="img/info.png"></button>');
         //htmls.push('</div>');
-        htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
+        //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
-        //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 200, toolBarComboLeft+280);
+        htmls.push("&emsp;");
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 0, 0);
+        buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
 
-        //htmls.push("&emsp;");
-        buildGeneCombo(htmls, "tpGeneCombo", toolBarComboLeft+500);
+        htmls.push("</div>");
 
-        $("#tpToolBar").append(htmls.join(""));
+        $(document.body).append(htmls.join(""));
+
         activateTooltip('.tpIconButton');
 
-        $('#tpIconModeMove').click( function() { activateMode("move")} );
-        $('#tpIconModeZoom').click( function() { activateMode("zoom")} );  
-        $('#tpIconModeSelect').click( function() { activateMode("select")} );
+        //$('#tpIconModeMove').click( function() { activateMode("move")} );
+        //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );  
+        //$('#tpIconModeSelect').click( function() { activateMode("select")} );
         $('#tpZoom100Button').click( onZoom100Click );
         $('#tpIconDatasetInfo').click( function() { onOpenDatasetClick(gCurrentDataset.baseUrl)});
 
-        $('#tpIconZoomIn').click( onZoomInClick );
-        $('#tpIconZoomOut').click( onZoomOutClick );
-        $('#tpIconZoom100').click( onZoom100Click );
+        //$('#tpIconZoomIn').click( onZoomInClick );
+        //$('#tpIconZoomOut').click( onZoomOutClick );
+        //$('#tpIconZoom100').click( onZoom100Click );
 
         activateCombobox("tpDatasetCombo", datasetComboWidth);
         activateCombobox("tpLayoutCombo", layoutComboWidth);
@@ -1901,24 +1887,13 @@ var tsnePlot = function() {
         return fieldName;
     }
 
-    function buildMetaBar (metaFieldInfo) {
-    /* add the left sidebar with the meta data fields. db.loadConf 
-     * must have completed before this can be run, we need the meta field info. */
-        $("#tpMetaBar").remove();
-        $(document.body).append("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+(menuBarHeight)+"px;width:"+metaBarWidth+"px'></div>");
-
-        var htmls = [];
-        htmls.push("<div id='tpMetaTitle'>"+METABOXTITLE+"</div>");
+    function buildMetaPane(htmls, metaFieldInfo) {
+        //htmls.push("<div id='tpMetaTitle'>"+METABOXTITLE+"</div>");
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var field = metaFieldInfo[i];
             var fieldName = field.label;
-            //var greyFields = gCurrentDataset.inactiveFields;
 
             var isGrey = (field.diffValCount>100);
-            //if (i===0)
-                //isGrey = true;
-            //if (greyFields!==undefined && greyFields.indexOf(fieldName)!==-1)
-                //isGrey = true;
 
             var addClass = "";
             var addTitle="";
@@ -1927,14 +1902,51 @@ var tsnePlot = function() {
                 addClass=" tpMetaLabelGrey";
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
-
             htmls.push("<div id='tpMetaLabel_"+i+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldName+"</div>");
             htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px' id='tpMeta_"+i+"'>&nbsp;</div></div>");
         }
         htmls.push("<div class='tpMetaNote' style='hidden'></div>");
+    }
+    function buildMetaBar (metaFieldInfo) {
+    /* add the left sidebar with the meta data fields. db.loadConf 
+     * must have completed before this can be run, we need the meta field info. */
+        $("#tpMetaBar").remove();
+        // setup the tabs
+        var tabsWidth = metaBarWidth;
 
+        var htmls = [];
+        htmls.push("<div id='tpMetaBar' style='position:absolute;left:0px;top:"+menuBarHeight+"px;width:"+metaBarWidth+"px'>");
+
+        htmls.push("<div id='tpMetaPanes' style='margin-top:2px; margin-left:1px'>");
+            htmls.push("<ul class='nav nav-tabs'>");
+                htmls.push("<li class='active'><a id='tpMetaPaneLink' data-toggle='tab' class='tpTab' href='#tpAnnotPane'>Cell Annotations</a></li>");
+                htmls.push("<li><a id='tpGenePaneLink' data-toggle='tab' class='tpTab' href='#tpGenePane'>Genes</a></li>");
+            htmls.push("</ul>");
+            //htmls.push("</div>");
+
+            htmls.push("<div class='tab-content'>");
+
+                htmls.push("<div id='tpAnnotPane' class='tab-pane'>");
+                buildMetaPane(htmls, metaFieldInfo);
+                htmls.push("</div>");
+
+                htmls.push("<div id='tpGenePane' class='tab-pane' style='height:200px'>");
+                buildGeneCombo(htmls, "tpGeneCombo", 0);
+                htmls.push("</div>");
+
+            htmls.push("</div>"); // tab-content
+
+        htmls.push("</div>"); // opendialogtabs
+
+        htmls.push("</div>"); // tpMetaBar
+
+        $(document.body).append(htmls.join(""));
         $(document.body).append("<div id='tpMetaTip'></div>");
-        $("#tpMetaBar").append(htmls.join(""));
+
+        // this is weird, but I have not found a better way to make the tab show up
+        $("#tpGenePaneLink").tab("show");
+        $("#tpMetaPaneLink").tab("show");
+
         //clearMetaBar();
 
         $(".tpMetaLabel").click( onMetaClick );
@@ -3316,7 +3328,7 @@ var tsnePlot = function() {
         var canvLeft = metaBarWidth+metaBarMargin;
         var canvTop  = menuBarHeight+toolBarHeight;
         var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
-        var canvHeight = window.innerHeight - menuBarHeight;
+        var canvHeight = window.innerHeight - menuBarHeight - toolBarHeight;
 
         if (renderer===null)
            renderer = new CbCanvas(canvTop, canvLeft, canvWidth, canvHeight);

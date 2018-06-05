@@ -19,6 +19,7 @@ function cloneObj(d) {
 
 function CbCanvas(top, left, width, height) {
     // a class that draws circles onto a canvas
+    // width and height includes the status line and half-transprent +/- zoom buttons
     
     var self = this; // 'this' has two conflicting meanings in javascript. 
     // I use 'self' to refer to object variables and 'this' to refer to the caller context
@@ -26,9 +27,20 @@ function CbCanvas(top, left, width, height) {
     // --- object variables 
     
     const gTextSize = 15;
+    const gStatusHeight = 12;
+    const gZoomButtonSize = 30;
+    const gZoomFromRight = 60;
+    const gZoomFromBottom = 100;
+
+    self.gSampleDescription = "cell"; 
 
     self.ctx = null; // the canvas context
-    self.canvas = addCanvasToBody( top, left, width, height );
+    self.canvas = addCanvasToBody( top, left, width, height-gStatusHeight );
+
+    addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
+    addModeButtons(top+5, left+5, self);
+    addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
+    addProgressBars(top+Math.round(height*0.3), left+30);
     
     // callbacks when user clicks or hovers over label or cell 
     self.onLabelClick = null; // gets text of label and event
@@ -42,6 +54,20 @@ function CbCanvas(top, left, width, height) {
     
     // -- (private) helper functions
     // -- these are normal functions, not methods, they do not access "self"
+
+    function gebi(idStr) {
+        return document.getElementById(idStr);
+    }
+
+    function activateTooltip(selector) {
+        /* uses bootstrap tooltip. Use noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery 
+         */
+        if ($.fn.bsTooltip!==undefined) {
+            var ttOpt = {"html": true, "animation": false, "delay":{"show":400, "hide":100}, container:"body"}; 
+            $(selector).bsTooltip(ttOpt);
+        }
+    }
+
     function guessRadius(coordCount) {
         /* a few rules to find a good initial radius, depending on the number of dots */
         if (coordCount > 50000)
@@ -54,21 +80,123 @@ function CbCanvas(top, left, width, height) {
             return 5;
     }
 
-    function setupMouseWheel(canvas) {
-      canvas.on( 'DOMMouseScroll mousewheel', function ( event ) {
-          var delta = event.originalEvent.wheelDelta;
-          // event.originalEvent.detail > 0 || event.originalEvent.wheelDelta < 0 
-          if (delta > 0) {
-              //scroll down
-              console.log('Down');
-              zoom(-0.03);
-          } else {
-              //scroll up
-              console.log('Up');
-              zoom(0.03);
-          }
-      return false;
-    });
+    function addCtrlButton(width, height, id, text) {
+        var div = document.createElement('div');
+        div.id = id;
+        //div.style.border = "1px solid #DDDDDD";
+        div.style.backgroundColor = "rgb(230, 230, 230, 0.6)";
+        div.style.width = width+"px";
+        div.style.height = height+"px";
+        div.style["text-align"]="center";
+        div.style["vertical-align"]="middle";
+        div.style["line-height"]=height+"px";
+
+        div.innerHTML = "<span style='font-size: 14px; font-weight:bold'>"+text+"</span>";  
+        return div;
+    }
+
+    function makeCtrlContainer(top, left) {
+        /* make a container for half-transprent ctrl buttons over the canvas */
+        var ctrlDiv = document.createElement('div');
+        ctrlDiv.id = "tpCtrls";
+        ctrlDiv.style.position = "absolute";
+        ctrlDiv.style.left = left+"px";
+        ctrlDiv.style.top = top+"px";
+        ctrlDiv.style["border-radius"]="2px";
+        ctrlDiv.style["cursor"]="pointer";
+        ctrlDiv.style["box-shadow"]="0px 2px 4px rgba(0,0,0,0.3)";
+        ctrlDiv.style["border-top-left-radius"]="2px";
+        ctrlDiv.style["border-top-right-radius"]="2px";
+        ctrlDiv.style["user-select"]="none";
+        return ctrlDiv;
+    }
+
+    function addZoomButtons(top, left, self) {
+        /* add the plus/minus buttons to the DOM and place at position x,y on the screen */
+        $("#tpCtrls").remove();
+        var width = gZoomButtonSize;
+        var height = gZoomButtonSize;
+
+        var plusDiv = addCtrlButton(width, height, "tpCtrlZoomPlus", "+");
+        plusDiv.style["border-bottom"] = "1px solid #D7D7D7";
+
+        var minusDiv = addCtrlButton(width, height, "tpCtrlZoomMinus", "-");
+
+        var ctrlDiv = makeCtrlContainer(top, left);
+        ctrlDiv.appendChild(plusDiv);
+        ctrlDiv.appendChild(minusDiv);
+        document.body.appendChild(ctrlDiv);
+
+        $("#tpCtrlZoomMinus").click( function() { self.zoomBy(0.75); self.drawDots(); });
+        $("#tpCtrlZoomPlus").click( function() { self.zoomBy(1.25); self.drawDots(); });
+    }
+    
+    function addModeButtons(top, left, self) {
+        /* add the zoom/move/select control buttons to the DOM */
+        var htmls = [];
+        //htmls.push('<div id="tpIcons" style="display:inline-block">');
+        htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
+        htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="display: block; margin-right:0"><img src="img/zoom.png"></button>');
+        htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" class="tpModeButton" style="margin-right:0"><img src="img/move.png"></button>');
+        htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0; display:block"><img src="img/select.png"></button>');
+        //htmls.push('</div>');
+        htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="margin-top: 2px; margin-right:0; display:block"><img style="width:22px; height:22px" src="img/center.png"></button>');
+
+        var ctrlDiv = makeCtrlContainer(top, left);
+        ctrlDiv.innerHTML = htmls.join("");
+        document.body.appendChild(ctrlDiv);
+        activateTooltip('.tpIconButton');
+
+        gebi('tpIconModeMove').addEventListener('click', function() { self.activateMode("move");});
+        gebi('tpIconModeZoom').addEventListener ('click', function() { self.activateMode("zoom")});  
+        gebi('tpIconModeSelect').addEventListener ('click',  function() { self.activateMode("select")});
+        gebi('tpZoom100Button').addEventListener ('click', self.zoom100);
+    }
+
+    function setStatus(text) {
+        document.getElementById("tpStatus").innerHTML = text;
+    }
+
+    function addStatusLine(top, left, width, height) {
+        /* add a status line div */
+        var div = document.createElement('div');
+        div.id = "tpStatus";
+        div.style.backgroundColor = "rgb(240, 240, 240)";
+        div.style.position = "absolute";
+        div.style.top = top+"px";
+        div.style.left = left+"px";
+        div.style.width = width+"px";
+        div.style.height = height+"px";
+        div.style["border-left"]="1px solid #DDD";
+        div.style["border-right"]="1px solid #DDD";
+        //div.style["border-bottom"]="1px solid #DDD";
+        div.style["font-size"]=(gStatusHeight-1)+"px";
+        //div.style["vertical-align"]="middle";
+        //div.style["line-height"]=(height-2)+"px";
+        //div.style["box-shadow"]="0px 2px 4px rgba(0,0,0,0.3)";
+        //div.style["border-radius"]="2px";
+        div.style["cursor"]="pointer";
+        document.body.appendChild(div);
+    }
+
+    function addProgressBars(top, left) {
+       /* add the progress bar DIVs to the DOM */
+       var div = document.createElement('div');
+       div.id = "tpProgressBars";
+       div.style.top = top+"px";
+       div.style.left = left+"px";
+       div.style.position = "absolute";
+
+       var htmls = [];
+       for (var i=0; i<3; i++) {
+           htmls.push('<div id="tpProgressDiv'+i+'" style="display:none; height:17px; width:300px; background-color: rgba(180, 180, 180, 0.3)" style="">');
+           htmls.push('<div id="tpProgress'+i+'" style="background-color:#666; height:17px; width:10%"></div>');
+           htmls.push('<div id="tpProgressLabel'+i+'" style="color:white; line-height:17px; position:absolute; top:'+(i*17)+'px;left:100px">Loading...</div>');
+           htmls.push('</div>');
+       }
+
+       div.innerHTML = htmls.join("");
+       document.body.appendChild(div);
     }
 
     function addCanvasToBody(top, left, width, height) {
@@ -270,9 +398,9 @@ function CbCanvas(top, left, width, height) {
        ctx.save();
        console.log("Drawing "+coordColors.length+" coords with drawImg renderer, radius="+radius);
        var off = document.createElement('canvas'); // not added to DOM, will be gc'ed
-       var diam = 2*radius;
-       var tileWidth = diam+2;
-       var tileHeight = diam+2;
+       var diam = 2 * radius;
+       var tileWidth = diam + 2; // must add one pixel on each side, space for antialising
+       var tileHeight = diam + 2; // otherwise circles look cut off
        off.width = (colors.length+1) * tileWidth;
        off.height = tileHeight;
        var ctxOff = off.getContext('2d');  
@@ -290,12 +418,12 @@ function CbCanvas(top, left, width, height) {
            // only draw outline for big circles
            ctxOff.lineWidth=1.0;
            if (radius>6) {
-               var strokeCol = "#"+shadeColor(colors[i], 0.3);
+               var strokeCol = "#"+shadeColor(colors[i], 0.9);
                ctxOff.strokeStyle=strokeCol;
 
-               //ctxOff.beginPath();
-               //ctxOff.arc(i * diam + radius, radius, radius, 0, 2 * Math.PI);
-               //ctxOff.closePath();
+               ctxOff.beginPath();
+               ctxOff.arc(i * tileWidth + radius + 1, radius +1, radius, 0, 2 * Math.PI);
+               ctxOff.closePath();
                ctxOff.stroke();
            }
 
@@ -517,6 +645,8 @@ function CbCanvas(top, left, width, height) {
         self.pxLabels   = null;   // cluster labels in pixels, array of [x,y,text] 
         self.pxLabelBbox = null;   // cluster label bounding boxes, array of [x1,x2,x2,y2]
 
+        self.doDrawLabels = true;  // should cluster labels be drawn?
+
         self.colors     = null;   // list of six-digit hex codes
         self.colorArr   = null;   // length is pxCoords/2, one byte per cell = index into self.colors
         self.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
@@ -567,9 +697,13 @@ function CbCanvas(top, left, width, height) {
        self.width = width;
        self.height = height;
 
+       addZoomButtons(self.top+height-gZoomFromBottom, self.left+width-gZoomFromRight, self);
+       $("#tpStatus").css({"top":top + height - gStatusHeight});
+
        self.scaleData();
        clearCanvas(self.ctx, width, height);
        self.drawDots();
+
     };
 
     this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY) {
@@ -588,6 +722,7 @@ function CbCanvas(top, left, width, height) {
 
        self.coords = coords;
        self.clusterLabels = clusterLabels;
+       setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
 
        self.scaleData();
        if (self.radius===null || self.radius==undefined)
@@ -664,7 +799,8 @@ function CbCanvas(top, left, width, height) {
         }
 
         console.timeEnd("draw");
-        self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels);
+        if (self.doDrawLabels===true)
+            self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels);
     };
 
     this.cellsAtPixel = function(x, y) {
@@ -703,6 +839,7 @@ function CbCanvas(top, left, width, height) {
        self.zoomRange = cloneObj(self.initZoom);
        self.scaleData();
        self.radius = self.initRadius;
+       self.drawDots();
     };
 
     this.zoomTo = function(x1, y1, x2, y2) {
@@ -716,15 +853,12 @@ function CbCanvas(top, left, width, height) {
 
        // force the zoom rectangle to have the same aspect ratio as our canvas
        // by adapting the height. This is what Microsoft software does
+       // It may be better to fix the aspect ratio of the zoom rectangle while zooming?
+       // We probably do not want to distort the ratio.
        var aspectRatio = self.width / self.height;
        var rectWidth  = (pxMaxX-pxMinX);
        var newHeight = rectWidth/aspectRatio;
        pxMaxY = pxMinY + newHeight;
-
-       // adapt the circle size
-       var currRadius = self.radius;
-       if (currRadius===0) // 0 = 1 pixel wide
-           currRadius = 0.5;
 
        var zoomRange = self.zoomRange;
        // window size in data coordinates
@@ -749,19 +883,46 @@ function CbCanvas(top, left, width, height) {
        self.scaleData();
     };
 
-    this.zoomBy = function(scale) {
-    /* zoom to the center by a given factor. Returns new zoom range. */
-        var zoomRange = self.zoomRange;
-        var xRange = Math.abs(zoomRange.maxX-zoomRange.minX);
-        zoomRange.minX = zoomRange.minX - (xRange*scale);
-        zoomRange.maxX = zoomRange.maxX + (xRange*scale);
+    this.zoomBy = function(zoomFact, xPx, yPx) {
+    /* zoom centered around xPx,yPx by a given factor. Returns new zoom range. 
+     * zoomFact = 1.2 means zoom +20%
+     * zoomFact = 0.8 means zoom -20%
+     * */
+        var zr = self.zoomRange;
+        var iz = self.initZoom;
 
-        var yRange = Math.abs(zoomRange.maxY-zoomRange.minY);
-        zoomRange.minY = zoomRange.minY - (yRange*scale);
-        zoomRange.maxY = zoomRange.maxY + (yRange*scale);
+        console.log("zoomfact "+self.zoomFact);
+
+        var xRange = Math.abs(zr.maxX-zr.minX);
+        var yRange = Math.abs(zr.maxY-zr.minY);
+
+        var minWeightX = 0.5; // how zooming should be distributed between min/max
+        var minWeightY = 0.5;
+        if (xPx!==undefined) {
+            minWeightX = (xPx/self.width);
+            minWeightY = (yPx/self.height);
+        }
+        var scale = (1.0-zoomFact);
+
+        var newRange = {};
+        newRange.minX = zr.minX - (xRange*scale*minWeightX);
+        newRange.maxX = zr.maxX + (xRange*scale*(1-minWeightX));
+
+        newRange.minY = zr.minY - (yRange*scale*minWeightY);
+        newRange.maxY = zr.maxY + (yRange*scale*(1-minWeightY));
+
+        // extreme zoom factors don't make sense, at some point we reach
+        // the limit of the floating point numbers
+        var newZoom = ((iz.maxX-iz.minX)/(newRange.maxX-newRange.minX));
+        if (newZoom < 0.01 || newZoom > 1500)
+            return zr;
+
+        console.log("x min max "+zr.minX+" "+zr.maxX);
+        console.log("y min max "+zr.minY+" "+zr.maxY);
        
+        self.zoomRange = newRange;
         self.scaleData();
-        return zoomRange;
+        return newRange;
     };
 
     this.panStart = function() {
@@ -796,6 +957,7 @@ function CbCanvas(top, left, width, height) {
     this.selectClear = function() {
         /* clear selection */
         self.selCells = null;
+        setStatus("");
     };
 
     this.selectAdd = function(cellIdx) {
@@ -812,6 +974,7 @@ function CbCanvas(top, left, width, height) {
         else
             self.selCells.splice(foundIdx, 1);
         console.time("selectAdd");
+        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
     };
 
     this.selectVisible = function() {
@@ -829,6 +992,7 @@ function CbCanvas(top, left, width, height) {
             selCells.push(i);
         }
         self.selCells = selCells;
+        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
     }
 
     this.selectByColor = function(colIdx) {
@@ -843,6 +1007,7 @@ function CbCanvas(top, left, width, height) {
         }
         self.selCells = selCells;
         console.log(self.selCells.length+" cells selected, by color");
+        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
     };
 
     this.selectInRect = function(x1, y1, x2, y2) {
@@ -868,7 +1033,7 @@ function CbCanvas(top, left, width, height) {
             }
 
         }
-        console.log(self.selCells.length+" total cells selected");
+        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
         console.timeEnd("select");
     };
 
@@ -958,6 +1123,16 @@ function CbCanvas(top, left, width, height) {
              "height":selectHeight
         };
         $("#tpSelectBox").css(posCss).show();
+    }
+
+    this.onMouseWheel = function(ev, delta, deltaX, deltaY) {
+      console.log(delta, deltaX, deltaY);
+      console.log(ev);
+      var pxX = ev.originalEvent.clientX - self.left;
+      var pxY = ev.originalEvent.clientY - self.top;
+      self.zoomBy(1+(0.01*delta), pxX, pxY);
+      self.drawDots();
+      ev.preventDefault();
     }
 
     this.onMouseMove = function(ev) {
@@ -1107,7 +1282,15 @@ function CbCanvas(top, left, width, height) {
        self.canvas.onmousedown = self.onMouseDown;
        self.canvas.onmousemove = self.onMouseMove;
        self.canvas.onmouseup = self.onMouseUp;
+
+       // mouse wheel
+       var hamster = Hamster(self.canvas);
+       hamster.wheel(self.onMouseWheel);
     };
+
+    this.setShowLabels = function(doShow) {
+        self.doDrawLabels = doShow;
+    }
 
     this.activateMode = function(modeName) {
     /* switch to one of the mouse drag modes: zoom, select or move */
