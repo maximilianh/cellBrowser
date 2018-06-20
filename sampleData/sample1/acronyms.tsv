@@ -1,0 +1,47 @@
+Astrocyte	Astrocyte
+Choroid	Choroid Plexus
+EN-PFC1	Excitatory Neuron-Prefrontal Cortex-1
+EN-PFC2	Excitatory Neuron-Prefrontal Cortex-2
+EN-PFC3	Excitatory Neuron-Prefrontal Cortex-3
+EN-V1-1	Excitatory Neuron - Visual Cortex - 1
+EN-V1-2	Excitatory Neuron - Visual Cortex - 2
+EN-V1-3	Excitatory Neuron - Visual Cortex - 3
+Endothelial	Endothelial
+Glyc	Glycolysis
+IN-CTX-CGE1	Interneuron - Cortex - Caudal Ganglionic Eminence-1
+IN-CTX-CGE2	Interneuron - Cortex - Caudal Ganglionic Eminence-2
+IN-CTX-MGE1	Interneuron - Cortex - Medial Ganglionic Eminence-1
+IN-CTX-MGE2	Interneuron - Cortex - Medial Ganglionic Eminence-2
+IN-STR	Interneuron - Striatum
+IPC-div1	Intermediate Progenitor - Dividing -1 
+IPC-div2	Intermediate Progenitor - Dividing - 2
+IPC-nEN1	Intermediate Progenitor - Newborn Excitatory Neuron -1
+IPC-nEN2	Intermediate Progenitor - Newborn Excitatory Neuron -2
+IPC-nEN3	Intermediate Progenitor - Newborn Excitatory Neuron -3
+MGE-IPC1	Medial Ganglionic Eminence - Intermediate Progenitor -1 
+MGE-IPC2	Medial Ganglionic Eminence - Intermediate Progenitor -2
+MGE-IPC3	Medial Ganglionic Eminence - Intermediate Progenitor -3
+MGE-RG1	Medial Ganglionic Eminence - Radial Glia - 1
+MGE-RG2	Medial Ganglionic Eminence - Radial Glia - 2
+MGE-div	Medial Ganglionic Eminence - Dividing
+Microglia	Microglia
+Mural	Mural
+OPC	Oligodendrocyte Precursor Cell
+RG-div1	Radial Glia - dividing - 1
+RG-div2	Radial Glia - dividing - 2
+RG-early	Radial Glia - early
+Unk1	Unknown 1
+Unk2	Unknown 2
+Unk3	Unknown 3
+Unk4	Unknown 4
+nEN-early1	Newborn Excitatory Neuron - early -1
+nEN-early2	Newborn Excitatory Neuron - early -2
+nEN-late	Newborn Excitatory Neuron - late
+nIN1	Newborn Interneuron -1 
+nIN2	Newborn Interneuron -2
+nIN3	Newborn Interneuron -3
+nIN4	Newborn Interneuron -4
+nIN5	Newborn Interneuron -5
+oRG	Outer Radial Glia
+tRG	Trucated Radial Glia
+vRG	Ventral Radial Glia
