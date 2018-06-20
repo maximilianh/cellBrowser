@@ -4,8 +4,12 @@
 body { font-family: Arial,Helvetica,sans-serif; overflow:hidden; }
 canvas { user-select: none }
 
+#tpLegendBar { cursor:default; overflow-y: scroll; padding-left: 2px; border-left: 1px solid #D7D7D7; height:100%}
+
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
-#tpLegendBar { margin-left: 4px; cursor:default; overflow-y: scroll;}
+#tpLegendHeader { background-color:#eee; color: #777 }
+#tpLegendCol1 { padding-left: 2px}
+#tpLegendCol2 { float: right; padding-right: 2px}
 .tpLegendSelect { outline: 2px solid black }
 .tpLegendLabel { display:inline; user-select: none; }
 /*.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888} */
@@ -14,8 +18,8 @@ canvas { user-select: none }
 
 .ui-helper-reset { text-size: 12px !important}
 .ui-tabs { padding: 0 !important}
-.ui-tabs .ui-tabs-panel { padding: 0 !important}
-.ui-tabs-nav { padding: 0 !important}
+.ui-tabs { padding:0 !important;}
+.ui-tabs-panel { padding-top: 5px}
 .ui-tabs-anchor { padding: 3px !important}
 .ui-corner-all { border-radius: 0px !important }
 .ui-menu-item { font-size:13px }
@@ -30,7 +34,9 @@ canvas { user-select: none }
 /* modify bootstrap tooltip defaults */
 .tooltip-inner { min-width: 220px; border-radius: 0}
 
-/* .ui-widget-header { background: white !important; border: 0px} */ /* DO NOT !important here. Is used by the progressbar */
+.ui-widget-header { background: white !important; border: 0px } */ /* DO NOT !important here. Is used by the progressbar */
+.ui-state-active { background: green }
+
 .ui-progressbar { position: relative; }
 .ui-progressbar-value { background-color: #888 }
 
@@ -47,8 +53,13 @@ canvas { user-select: none }
 .tpGeneBarCellSelected { outline: 2px solid black}
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
-#tpMetaTitle { font-weight: bold; padding-bottom: 8px; padding-left: 5px }
-#tpMetaBar { overflow-y:scroll}
+.tpSidebarHeader { font-weight: bold; padding-left: 2px; font-size: 16px; padding-top: 2px; height: 25px}
+#tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
+#tpSideMeta { padding-left: 2px}
+#tpMetaPanel { background-color: #EEE; margin-top: 10px}
+#tpLeftTabs { border: 0}
+#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px }
+
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
 .tpMetaLabel { font-weight: bold; padding-left: 2px}
 .tpMetaLabelGrey { color: #666666}
@@ -68,6 +79,8 @@ canvas { user-select: none }
 #tpSelectBox { border: 1px dotted black; }
 
 button { line-height: 12px }
+
+.btn-default { background: linear-gradient(#fff 20%, #f7f7f7 60%, #f5f5f5 100%) }
 
 #tpButtonBar {display: block; }
 .tpButton { border-radius: 0; font-size: 15px; display: inline-block; background-color: #f6f6f6; border: 1px solid #c5c5c5; margin: 1px 3px 1px 1px; padding: 1px 3px 1px 3px; cursor:default; vertical-align: middle; user-select: none}
@@ -90,6 +103,29 @@ button { line-height: 12px }
 /* bootstrap's small buttons have a lot of padding, for the toolbar, that's too much */
 .noPad {padding:0 2 0 2}
 
+/* make bootstrap's tabs smaller */
+.nav-tabs>li>a { 
+        padding: 4px; 
+        color: black ;
+        background-color: #CCC;
+        border-top-left-radius: 7px;
+        border-top-right-radius: 7px;
+        border: 1px solid #BBB;
+        border-bottom-color: transparent;
+}
+.nav-tabs>li.active>a {
+        background-color: #DDD;
+        border: 1px solid #CCC;
+        color: black ;
+        border-bottom-color: transparent;
+}
+
+.nav-tabs>li>a:hover { background-color: #DDD; color: black ; }
+.nav-tabs>li.active>a:hover { background-color: #DDD; color: black ; }
+
+.nav-tabs>li>a:focus { background-color: #DDD; color: black ; }
+.nav-tabs>li.active>a:focus { background-color: #DDD; color: black ; }
+
 /* make the navbar dividers smaller */
 .half-rule { 
     margin-left: 0;
@@ -98,7 +134,9 @@ button { line-height: 12px }
     margin-bottom: 0;
 }
 
- /* #tpToolBar { overflow:hidden; white-space: nowrap } */
+#tpToolBar { margin-left: 5px; margin-top: 1px}
+
+#tpCanvas { }
 
 .tpToolBarItem { display:inline-block; white-space: nowrap }
 .tpToolBarItem > label { margin-right: 7px; display: inline} 
@@ -123,6 +161,7 @@ button { line-height: 12px }
         border-radius: 0;
         background: linear-gradient(#fff 20%,#f6f6f6 50%,#eee 52%,#f4f4f4 100%);
         padding: 2px;
+        padding-left: 5px;
         overflow: visible; /* grrr!! otherwise baseline is ignored in tpToolBarItem */
 }
 #tpToolBar > div.selectize-control.tpCombo.single {

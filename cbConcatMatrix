@@ -8,10 +8,11 @@ from os.path import join, basename, dirname, isfile
     
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] file1 file2 ... outFname - merge expression matrices with one line per gene into a big matrix. Matrices must have identical genes in the same order and the same number of lines. Handles .csv files, otherwise defaults to tab-sep, input .gz OK.")
+    parser = optparse.OptionParser("usage: %prog [options] file1 file2 ... -o outFname - merge expression matrices with one line per gene into a big matrix. Matrices must have identical genes in the same order and the same number of lines. Handles .csv files, otherwise defaults to tab-sep input, input .gz OK.")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     parser.add_option("-c", "--csv", dest="csv", action="store_true", help="use , as the field separator for the input files. Output is always tab-sep.")
+    parser.add_option("-o", "", dest="outFname", action="store", help="output filename")
     #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
     #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
     (options, args) = parser.parse_args()
@@ -19,6 +20,12 @@ def parseArgs():
     if args==[]:
         parser.print_help()
         exit(1)
+
+    if options.outFname==None:
+        logging.error("You must provide an output filename for -o , e.g. -o test.tsv or -o /dev/stdout")
+        parser.print_help()
+        exit(1)
+
 
     if options.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -40,6 +47,7 @@ def getAllFields(ifhs, sep):
     colCounts = []
     for ifh in ifhs:
         fields = ifh.readline().rstrip('\r\n').split(sep)
+        fields = [f.strip('"') for f in fields] # R sometimes adds quotes
         colCounts.append(len(fields))
         #assert(fields[0]=="#gene")
         for i, field in enumerate(fields):
@@ -60,8 +68,8 @@ def getAllFields(ifhs, sep):
 def main():
     args, options = parseArgs()
 
-    inFnames = args[:-1]
-    outFname = args[-1]
+    inFnames = args
+    outFname = options.outFname
     ofh = open(outFname, "w")
 
     ifhs = []

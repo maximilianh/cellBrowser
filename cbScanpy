@@ -17,24 +17,37 @@ import scanpy.api as sc
 import pandas as pd
 import numpy as np
 
+import warnings
+warnings.filterwarnings("ignore")
+
 # ==== functions =====
+# for iphython debug command line
+def excepthook(type, value, traceback):
+    from IPython import embed
+    embed()
+
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] -e matrixFile -o outDir - run scanpy and output .tsv files
+
+    If exceptions occur, will automatically start the debugger.
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
-            help="gene-cell expression matrix file, .gz is OK")
+            help="gene-cell expression matrix file, possible formats: .h5ad, .csv, .xlsx, .h5, .loom, .mtx, .txt, .tab, .data")
     #parser.add_option("-m", "--metaData", dest="metaData", action="store",
             #help="meta data table file, .gz is OK")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output directory")
 
+    parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
+            help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
+
     parser.add_option("", "--test",
         dest="test",
         action="store_true", help="run doctests")
-    parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
+    parser.add_option("-d", "--debug", dest="debug", action="store_true", help="open an iPython shell when an exception occurs. also output debug messages")
 
     (options, args) = parser.parse_args()
 
@@ -49,6 +62,10 @@ def parseArgs():
 
     if options.debug:
         logging.basicConfig(level=logging.DEBUG)
+        #import sys
+        #import IPython # just making sure that ipython is installed. install with 'pip install ipython'
+        #sys.excepthook = excepthook
+
     else:
         logging.basicConfig(level=logging.INFO)
     return args, options
@@ -58,13 +75,14 @@ def errAbort(msg):
         sys.exit(1)
 
 def cbScanpy(args, options):
-    " run expr matrix through scanpy "
+    " run expr matrix through scanpy, output "
+    matrixFname = options.exprMatrix
     outDir = options.outDir
+    
     if not isdir(outDir):
-        logging.info("Creating %s" % outDir)
+        logging.info("Creating output directory %s" % outDir)
         makedirs(outDir)
 
-    matrixFname = options.exprMatrix
     clusterFname = join(outDir, "clusters.tsv")
     tsneFname = join(outDir, "tsne.tsv")
     markerFname = join(outDir, "markers.tsv")
@@ -81,7 +99,12 @@ def cbScanpy(args, options):
 
     start = timeit.default_timer()
     print("Loading data")
-    adata = sc.read(matrixFname, cache=True ,first_column_names=True)
+    adata = sc.read(matrixFname, cache=True , first_column_names=True)
+    if not options.samplesOnRows:
+        print("Transposing the expression matrix")
+        adata = adata.T
+    print("Data has %d samples/observations" % len(adata.obs))
+    print("Data has %d genes/variables" % len(adata.var))
 
     minGenes = 200
     minCells = 3
@@ -109,7 +132,7 @@ def cbScanpy(args, options):
         print("Dying cells cannot be removed - please check your expression matrix")
         doMito = False
     else:
-        doMito = true
+        doMito = True
         adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
         adata.obs['n_counts'] = np.sum(adata.X, axis=1)
 
@@ -170,14 +193,19 @@ def cbScanpy(args, options):
     print('Performing tSNE')
     sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
 
+    #Save tsne coords of cells
+    tsne_coord=pd.DataFrame(adata.obsm.X_tsne,index=adata.obs.index)
+    tsne_coord.columns=['tsne_1','tsne_2']
+    tsne_coord.to_csv(tsneFname,sep='\t')
+
     neighbors = 5
     print('Performing Louvain Clustering, using %d neighbors' % neighbors)
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=2.5)
     fig=sc.pl.tsne(adata, color='louvain')
 
-    #Clustering. Default Resolution: 4
-    res = 2.5
+    #Clustering. Default Resolution: 1
+    res = 1.0
     print('Performing Louvain Clustering, resolution = %f' % res)
     sc.pp.neighbors(adata, n_pcs=int(pc_nb))
     sc.tl.louvain(adata, resolution=res)
@@ -190,8 +218,8 @@ def cbScanpy(args, options):
     #Saving top 100 for each cluster to CSV
     print('Saving results')
     nb_marker=100
-    top_score=pd.DataFrame(adata.uns['rank_genes_groups_gene_scores']).loc[:nb_marker]
-    top_gene=pd.DataFrame(adata.uns['rank_genes_groups_gene_names']).loc[:nb_marker]
+    top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
+    top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
     marker_df= pd.DataFrame()
     for i in range(len(top_score.columns)):
         concat=pd.concat([top_score[[str(i)]],top_gene[[str(i)]]],axis=1,ignore_index=True)
@@ -212,10 +240,6 @@ def cbScanpy(args, options):
     #Save cells <-> cluster in tsv
     adata.obs[['louvain']].to_csv(clusterFname,sep='\t')
 
-    #Save tsne coords of cells
-    tsne_coord=pd.DataFrame(adata.obsm.X_tsne,index=adata.obs.index)
-    tsne_coord.columns=['tsne_1','tsne_2']
-    tsne_coord.to_csv(tsneFname,sep='\t')
 
     #Label Clusters with top markers NOT USED
     #top_mark=pd.DataFrame(adata.uns['rank_genes_groups_gene_names']).loc[:0].values.tolist()
@@ -239,6 +263,13 @@ def main():
     global options
     args, options = parseArgs()
 
-    cbScanpy(args, options)
+    try:
+        cbScanpy(args, options)
+    # on an exception, automatically bring up the debugger - avoids having to reload the data file
+    except:
+        extype, value, tb = sys.exc_info()
+        import traceback, pdb
+        traceback.print_tb(tb)
+        pdb.post_mortem(tb)
 
 main()

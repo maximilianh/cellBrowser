@@ -98,6 +98,7 @@ def copyStatic(baseDir, outDir):
     logging.info("Copying js, css and img files to %s" % outDir)
     imgDir = join(outDir, "img")
 
+    copyAllFiles(baseDir, "ext/images", outDir)
     copyAllFiles(baseDir, "img", outDir)
     copyAllFiles(baseDir, "ext", outDir)
     copyAllFiles(baseDir, "js", outDir)

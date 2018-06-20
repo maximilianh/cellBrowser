@@ -46,6 +46,8 @@ function CbCanvas(top, left, width, height) {
     self.onLabelClick = null; // gets text of label and event
     self.onCellClick = null; // gets array of cellIds and event
     self.onCellHover = null; // gets array of cellIds
+    self.onNoCellHover = null; // called to clear whatever old cell info client is showing
+    // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
 
     // timer that is reset on every mouse move
     self.timer = null;
@@ -57,6 +59,13 @@ function CbCanvas(top, left, width, height) {
 
     function gebi(idStr) {
         return document.getElementById(idStr);
+    }
+
+    function removeElById(idStr) {
+        var el = gebi(idStr);
+        if (el!==null) {
+            el.parentNode.removeChild(el);
+        }
     }
 
     function activateTooltip(selector) {
@@ -113,7 +122,6 @@ function CbCanvas(top, left, width, height) {
 
     function addZoomButtons(top, left, self) {
         /* add the plus/minus buttons to the DOM and place at position x,y on the screen */
-        $("#tpCtrls").remove();
         var width = gZoomButtonSize;
         var height = gZoomButtonSize;
 
@@ -127,8 +135,8 @@ function CbCanvas(top, left, width, height) {
         ctrlDiv.appendChild(minusDiv);
         document.body.appendChild(ctrlDiv);
 
-        $("#tpCtrlZoomMinus").click( function() { self.zoomBy(0.75); self.drawDots(); });
-        $("#tpCtrlZoomPlus").click( function() { self.zoomBy(1.25); self.drawDots(); });
+        gebi("tpCtrlZoomMinus").addEventListener('click', function() { self.zoomBy(0.75); self.drawDots(); });
+        gebi("tpCtrlZoomPlus").addEventListener('click', function() { self.zoomBy(1.25); self.drawDots(); });
     }
     
     function addModeButtons(top, left, self) {
@@ -145,12 +153,13 @@ function CbCanvas(top, left, width, height) {
         var ctrlDiv = makeCtrlContainer(top, left);
         ctrlDiv.innerHTML = htmls.join("");
         document.body.appendChild(ctrlDiv);
+
         activateTooltip('.tpIconButton');
 
-        gebi('tpIconModeMove').addEventListener('click', function() { self.activateMode("move");});
-        gebi('tpIconModeZoom').addEventListener ('click', function() { self.activateMode("zoom")});  
-        gebi('tpIconModeSelect').addEventListener ('click',  function() { self.activateMode("select")});
-        gebi('tpZoom100Button').addEventListener ('click', self.zoom100);
+        gebi('tpIconModeMove').addEventListener('click', function() { self.activateMode("move");}, false);
+        gebi('tpIconModeZoom').addEventListener ('click', function() { self.activateMode("zoom")}, false);  
+        gebi('tpIconModeSelect').addEventListener ('click',  function() { self.activateMode("select")}, false);
+        gebi('tpZoom100Button').addEventListener ('click', function(ev) { self.onZoom100Click(ev) } );
     }
 
     function setStatus(text) {
@@ -169,6 +178,7 @@ function CbCanvas(top, left, width, height) {
         div.style.height = height+"px";
         div.style["border-left"]="1px solid #DDD";
         div.style["border-right"]="1px solid #DDD";
+        div.style["border-top"]="1px solid #DDD";
         //div.style["border-bottom"]="1px solid #DDD";
         div.style["font-size"]=(gStatusHeight-1)+"px";
         //div.style["vertical-align"]="middle";
@@ -203,7 +213,7 @@ function CbCanvas(top, left, width, height) {
         /* add a canvas element to the body element of the current page and keep left/top/width/eight in self */
         var canv = document.createElement('canvas');
         canv.id = 'tpCanvas';
-        canv.style.border = "1px solid #AAAAAA";
+        //canv.style.border = "1px solid #AAAAAA";
         canv.style.backgroundColor = "white";
         canv.style.position = "absolute";
         canv.style.display = "block";
@@ -231,7 +241,39 @@ function CbCanvas(top, left, width, height) {
         return canv;
     }
 
-    function scaleData(coords, borderSize, zoomRange, winWidth, winHeight, annots) {
+    function scaleLabels(labels, zoomRange, borderSize, winWidth, winHeight) {
+        /* scale cluster label position to pixel coordinates */
+        winWidth = winWidth-(2*borderSize);
+        winHeight = winHeight-(2*borderSize);
+
+        var minX = zoomRange.minX;
+        var maxX = zoomRange.maxX;
+        var minY = zoomRange.minY;
+        var maxY = zoomRange.maxY;
+
+        var spanX = maxX - minX;
+        var spanY = maxY - minY;
+        var xMult = winWidth / spanX;
+        var yMult = winHeight / spanY;
+        
+        // scale the label coords
+        var pxLabels = [];
+        for (var i = 0; i < labels.length; i++) {
+            var annot = labels[i];
+            var x = annot[0];
+            var y = annot[1];
+            var text = annot[2];
+            // XX ignore anything outside of current zoom range. Performance?
+            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
+                continue;
+            var xPx = Math.round((x-minX)*xMult)+borderSize;
+            var yPx = Math.round((y-minY)*yMult)+borderSize;
+            pxLabels.push([xPx, yPx, text]);
+        }
+        return pxLabels;
+    }
+
+    function scaleCoords(coords, borderSize, zoomRange, winWidth, winHeight, annots) {
     /* scale list of [x (float),y (float)] to integer pixels on screen and
      * annots is an array with on-screen annotations in the format (x, y, otherInfo) that is also scaled.
      * return [array of (x (int), y (int)), scaled annots array]. Take into account the current zoom range.  
@@ -272,32 +314,15 @@ function CbCanvas(top, left, width, height) {
         //if (pixelCount!==coords.length/2)
             //pixelCoords = pixelCoords.slice(0, pixelCount*2);
 
-        // also transform the labels
-        var newAddCoords = [];
-        if (annots!==undefined && annots!==null) {
-            for (var i = 0; i < annots.length; i++) {
-                var annot = annots[i];
-                var x = annot[0];
-                var y = annot[1];
-                var other = annot[2];
-                // XX ignore anything outside of current zoom range. Performance?
-                if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
-                    continue;
-                var xPx = Math.round((x-minX)*xMult)+borderSize;
-                var yPx = Math.round((y-minY)*yMult)+borderSize;
-                newAddCoords.push([xPx, yPx, other]);
-            }
-        }
-
         console.timeEnd("scale");
-        var ret = [];
-        ret[0] = pixelCoords;
-        ret[1] = newAddCoords;
-        return ret;
+        return pixelCoords;
+        //var ret = [];
+        //ret[0] = pixelCoords;
+        //ret[1] = newAddCoords;
+        //return ret;
     }
 
     function drawRect(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
-       clearCanvas(ctx, width, height);
        console.log("Drawing "+coordColors.length+" rectangles, with fillRect");
        ctx.save();
        ctx.globalAlpha = alpha;
@@ -331,7 +356,6 @@ function CbCanvas(top, left, width, height) {
 
     function drawCirclesStupid(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
     /* draw little circles onto canvas. pxCoords are the centers.  */
-       clearCanvas(ctx, width, height);
        console.log("Drawing "+coordColors.length+" circles with stupid renderer");
        ctx.globalAlpha = alpha;
        var dblSize = 2*radius;
@@ -348,7 +372,7 @@ function CbCanvas(top, left, width, height) {
        }
     }
 
-    function drawLabels(ctx, labelCoords) {
+    function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
         /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
         ctx.save();
         ctx.font = "bold "+gTextSize+"px Sans-serif"
@@ -363,20 +387,57 @@ function CbCanvas(top, left, width, height) {
         ctx.shadowBlur=6;
         ctx.shadowColor="white";
         ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.textAlign = "left";
 
         var addMargin = 1; // how many pixels to extend the bbox around the text, make clicking easier
         var bboxArr = [];
+
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
             var x = coord[0];
             var y = coord[1];
             var text = coord[2];
 
+            var textWidth = ctx.measureText(text).width;
+            // move x to the left, so text is centered on x
+            x = x - (textWidth*0.5);
+
+            // at 100% zoom, make some minimal effort to keep labels on screen
+            if (zoomFact===1.0) {
+                if (x < 0)
+                    x = 0;
+                if ((x + textWidth) > winWidth)
+                    x = winWidth - textWidth;
+                if (y+gTextSize > winHeight)
+                    y = winHeight-gTextSize;
+            }
+
             ctx.strokeText(text,x,y); 
             ctx.fillText(text,x,y); 
 
-            var width = ctx.measureText(text).width;
-            bboxArr.push( [x-addMargin, y-addMargin, x+width+addMargin, y+gTextSize+addMargin] );
+            bboxArr.push( [x-addMargin, y-addMargin, x+textWidth+addMargin, y+gTextSize+addMargin] );
+        }
+        ctx.restore();
+        return bboxArr;
+    }
+
+    function drawLabels_dom(ctx, labelCoords, isFull) {
+        /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
+        for (var i=0; i < labelCoords.length; i++) {
+            var coord = labelCoords[i];
+            var x = coord[0];
+            var y = coord[1];
+            var text = coord[2];
+
+            var div = document.createElement('div');
+            div.id = id;
+            //div.style.border = "1px solid #DDDDDD";
+            div.style.backgroundColor = "rgb(230, 230, 230, 0.6)";
+            div.style.width = width+"px";
+            div.style.height = height+"px";
+            div.style["text-align"]="center";
+            div.style["vertical-align"]="middle";
+            div.style["line-height"]=height+"px";
         }
         ctx.restore();
         return bboxArr;
@@ -393,7 +454,6 @@ function CbCanvas(top, left, width, height) {
        // almost copied from by https://stackoverflow.com/questions/13916066/speed-up-the-drawing-of-many-points-on-a-html5-canvas-element
        // around 2x faster than drawing full circles
        // create an off-screen canvas
-       clearCanvas(ctx, width, height);
 
        ctx.save();
        console.log("Drawing "+coordColors.length+" coords with drawImg renderer, radius="+radius);
@@ -493,8 +553,6 @@ function CbCanvas(top, left, width, height) {
 
     function drawRectBuffer(ctx, width, height, pxCoords, colorArr, colors, alpha, selCells) {
         /* Draw little rectangles with size 3 using a memory buffer*/
-       
-       clearCanvas(ctx, width, height);
        var canvasData = ctx.getImageData(0, 0, width, height);
        var cData = canvasData.data;
 
@@ -535,7 +593,6 @@ function CbCanvas(top, left, width, height) {
        // by default the canvas has black pixels
        // so not doing: var canvasData = ctx.createImageData(width, height);
        // XX is this really faster than manually zero'ing the array?
-       clearCanvas(ctx, width, height);
        var canvasData = ctx.getImageData(0, 0, width, height);
        var cData = canvasData.data;
 
@@ -632,12 +689,7 @@ function CbCanvas(top, left, width, height) {
 
         self.mode = 1;   // drawing mode
 
-        self.zoomRange = {};
-        self.zoomRange.minX = getAttr(args, "minX", null);
-        self.zoomRange.maxX = getAttr(args, "maxX", null);
-        self.zoomRange.minY = getAttr(args, "minY", null);
-        self.zoomRange.maxY = getAttr(args, "maxX", null);
-
+        self.zoomRange = null; // object with keys minX, , maxX, minY, maxY
         self.coords     = null;
         self.clusterLabels = null; // cluster labels, array of [x,y,text]
 
@@ -681,27 +733,49 @@ function CbCanvas(top, left, width, height) {
        self.canvas.style.top = top+"px";
     };
 
+    this.onZoom100Click = function(ev) {
+        self.zoom100();
+        self.drawDots();
+        gebi('tpZoom100Button').blur();
+    };
+
     this.scaleData = function() {
-       /* scale data to current zoom range */
-       var s = scaleData(self.coords, self.radius, self.zoomRange, self.width, self.height, self.clusterLabels);
-       self.pxCoords = s[0];
-       self.pxLabels = s[1];
+       /* scale coords and labels to current zoom range */
+       //var s = scaleData(self.coords, self.radius, self.zoomRange, self.width, self.height, self.clusterLabels);
+       //self.pxCoords = s[0];
+
+       var borderMargin = self.radius;
+       self.pxCoords = scaleCoords(self.coords, borderMargin, self.zoomRange, self.canvas.width, self.canvas.height);
+
+       self.pxLabels = null;
+       if (self.clusterLabels!==undefined && self.clusterLabels!==null)
+           self.pxLabels = scaleLabels(self.clusterLabels, self.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
     }
 
     this.setSize = function(width, height) {
        /* resize canvas on the page re-scale the data and re-draw */
-       self.canvas.style.width = width+"px";
-       self.canvas.style.height = height+"px";
-       self.canvas.width = width;
-       self.canvas.height = height;
+       
+       // css and canvas sizes: these must be identical, otherwise canvas gets super slow
+       var canvWidth = width;
+       var canvHeight = height-gStatusHeight;
+       self.canvas.style.width = canvWidth+"px";
+       self.canvas.style.height = canvHeight+"px";
+       self.canvas.width = canvWidth;
+       self.canvas.height = canvHeight;
+
        self.width = width;
        self.height = height;
 
-       addZoomButtons(self.top+height-gZoomFromBottom, self.left+width-gZoomFromRight, self);
-       $("#tpStatus").css({"top":top + height - gStatusHeight});
+       var zoomDiv = gebi('tpCtrls');
+       zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
+       zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
+
+       var statusDiv = gebi('tpStatus');
+       statusDiv.style.top = (self.top+height-gStatusHeight)+"px";
+       statusDiv.style.width = width+"px";
 
        self.scaleData();
-       clearCanvas(self.ctx, width, height);
+       //clearCanvas(self.ctx, width, height);
        self.drawDots();
 
     };
@@ -746,7 +820,7 @@ function CbCanvas(top, left, width, height) {
         if (self.pxCoords===null)
              alert("internal error: cannot draw if coordinates are not set yet");
         if (self.colorArr.length !== self.pxCoords.length*0.5)
-            alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array");
+            alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+self.colorArr.length+" color values but coordinates for "+(self.pxCoords.length/2)+" cells.");
 
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
 
@@ -769,8 +843,10 @@ function CbCanvas(top, left, width, height) {
         console.log("drawing, zoom factor "+self.zoomFact+", radius "+self.radius+", alpha "+self.alpha);
         console.time("draw");
 
+        self.clear();
+
         if (self.radius===0) {
-            drawPixels(self.ctx, self.width, self.height, self.pxCoords, 
+            drawPixels(self.ctx, self.canvas.width, self.canvas.height, self.pxCoords, 
                 self.colorArr, self.colors, self.alpha, self.selCells);
         }
 
@@ -800,7 +876,7 @@ function CbCanvas(top, left, width, height) {
 
         console.timeEnd("draw");
         if (self.doDrawLabels===true)
-            self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels);
+            self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels, self.canvas.width, self.canvas.height, self.zoomFact);
     };
 
     this.cellsAtPixel = function(x, y) {
@@ -835,7 +911,7 @@ function CbCanvas(top, left, width, height) {
     //};
 
     this.zoom100 = function() {
-       /* zoom to 100% */
+       /* zoom to 100% and redraw */
        self.zoomRange = cloneObj(self.initZoom);
        self.scaleData();
        self.radius = self.initRadius;
@@ -928,8 +1004,8 @@ function CbCanvas(top, left, width, height) {
     this.panStart = function() {
        /* called when starting a panning sequence, makes a snapshop of the current image */
        self.panCopy = document.createElement('canvas'); // not added to DOM, will be gc'ed
-       self.panCopy.width = self.width;
-       self.panCopy.height = self.height;
+       self.panCopy.width = self.canvas.width;
+       self.panCopy.height = self.canvas.height;
        var destCtx = self.panCopy.getContext("2d", { alpha: false });
        destCtx.drawImage(self.canvas, 0, 0);
     }
@@ -939,7 +1015,7 @@ function CbCanvas(top, left, width, height) {
         console.log('panning by '+xDiff+' '+yDiff);
 
        //var srcCtx = self.panCopy.getContext("2d", { alpha: false });
-       clearCanvas(self.ctx, self.width, self.height);
+       clearCanvas(self.ctx, self.canvas.width, self.canvas.height);
        self.ctx.drawImage(self.panCopy, -xDiff, -yDiff);
        // keep these for panEnd
        self.panDiffX = xDiff;
@@ -1042,8 +1118,8 @@ function CbCanvas(top, left, width, height) {
 
         // convert pixel range to data scale range
         var zr = self.zoomRange;
-        var xDiffData = xDiff * ((zr.maxX - zr.minX) / self.width);
-        var yDiffData = yDiff * ((zr.maxY - zr.minY) / self.height);
+        var xDiffData = xDiff * ((zr.maxX - zr.minX) / self.canvas.width);
+        var yDiffData = yDiff * ((zr.maxY - zr.minY) / self.canvas.height);
         
         // move zoom range 
         zr.minX = zr.minX + xDiffData;
@@ -1051,27 +1127,29 @@ function CbCanvas(top, left, width, height) {
         zr.minY = zr.minY + yDiffData;
         zr.maxY = zr.maxY + yDiffData;
 
-        var s = scaleData(self.coords, self.radius, self.zoomRange, self.width, self.height, self.clusterLabels);
-        self.pxCoords = s[0];
-        self.pxLabels = s[1];
+        self.scaleData();
     };
 
     this.labelAt = function(x, y) {
         /* return the text of the label at position x,y or null if nothing there */
-        console.time("labelCheck");
+        //console.time("labelCheck");
+        var clusterLabels = self.clusterLabels;
         var labelCoords = self.pxLabels;
         var boxes = self.pxLabelBbox;
+
         for (var i=0; i < labelCoords.length; i++) {
-            var label = labelCoords[2];
+            var labelText = clusterLabels[i][2];
             var box = boxes[i];
             var x1 = box[0];
             var y1 = box[1];
             var x2 = box[2];
             var y2 = box[3];
-            if ((x >= x1) && (x <= x2) && (y >= y1) && (y <= y2))
-                return label;
+            if ((x >= x1) && (x <= x2) && (y >= y1) && (y <= y2)) {
+                //console.timeEnd("labelCheck");
+                return labelText;
+            }
         }
-        console.timeEnd("labelCheck");
+        //console.timeEnd("labelCheck");
         return null;
     }
 
@@ -1137,23 +1215,32 @@ function CbCanvas(top, left, width, height) {
 
     this.onMouseMove = function(ev) {
         /* called when the mouse is moved over the Canvas */
-        //console.log("background move");
+
+        // set a timer so we can get "hover" functionality without too much CPU
         if (self.timer!=null)
             clearTimeout(self.timer);
         self.timer = setTimeout(self.onNoMouseMove, 170);
-
-        // save mouse pos for onNoMouseMove
+        // save mouse pos for onNoMouseMove timer handler
         self.lastMouseX = ev.clientX;
         self.lastMouseY = ev.clientY;
 
-        //if (self.mouseDownX === null) {
-            // can stop quickly if no button pressed and no panning active
-            //ev.preventDefault();
-            //return;
-        //}
-
+        // label hit check requires canvas coordinates x/y
         var clientX = ev.clientX;
         var clientY = ev.clientY;
+        var canvasTop = self.top;
+        var canvasLeft = self.left;
+        var xCanvas = clientX - canvasLeft;
+        var yCanvas = clientY - canvasTop;
+
+        // when the cursor is over a label, change it to a hand
+        if (self.pxLabelBbox!==null && self.pxLabels!==null) {
+            var labelInfo = self.labelAt(xCanvas, yCanvas);
+            if (labelInfo===null)
+                self.canvas.style.cursor = self.canvasCursor;
+            else
+                self.canvas.style.cursor = 'pointer'; // not 'hand' anymore ! and not 'grab' yet!
+        }
+
         if (self.mouseDownX!==null) {
             if ((ev.altKey || self.dragMode==="move") && self.panCopy!==null) {
                 var xDiff = self.mouseDownX - clientX;
@@ -1171,8 +1258,11 @@ function CbCanvas(top, left, width, height) {
         var x = self.lastMouseX - self.left; // need canvas, not screen coordinates
         var y = self.lastMouseY - self.top;
         var cellIds = self.cellsAt(x, y);
-        if (cellIds!==null)
-            self.onCellHover(cellIds);
+        // only call onNoCellHover if callback exists and there is nothing selected
+        if (cellIds===null && self.onNoCellHover!==null && self.selCells===null )
+                self.onNoCellHover();
+        else if (self.onCellHover!==null)
+                self.onCellHover(cellIds);
     };
 
     this.onMouseDown = function(ev) {
@@ -1306,6 +1396,10 @@ function CbCanvas(top, left, width, height) {
             cursor= 'default';
 
         self.canvas.style.cursor=cursor;
+        self.canvasCursor = cursor;
+        $(".tpIconButton").removeClass('tpClicked'); 
+        var upModeName = modeName[0].toUpperCase() + modeName.slice(1);
+        $("#tpIconMode"+upModeName).blur().addClass("tpClicked"); 
     }
 
     this.randomDots = function(n, radius, mode) {
