@@ -825,19 +825,20 @@ function CbCanvas(top, left, width, height) {
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
 
         // we make the circles only half as wide as expected
-        self.radius = Math.floor((Math.max(0.8, self.initRadius) * self.zoomFact) * 0.4);
+        //self.radius = Math.floor((Math.max(0.8, self.initRadius) * self.zoomFact) * 0.4);
+        self.radius = Math.sqrt(self.initRadius * self.zoomFact);
 
         // at high zoom levels, make the circles a bit smaller, to reduce overlap
-        var drawRadius = self.radius;
-        if (self.radius > 30)
-            drawRadius = Math.round(drawRadius*0.3);
-        else if (self.radius > 18)
-            drawRadius = Math.round(drawRadius*0.4);
-        else if (self.radius > 5)
-            drawRadius= Math.round(drawRadius*0.7);
+        //var drawRadius = self.radius;
+        //if (self.radius > 30)
+            //drawRadius = Math.round(drawRadius*0.3);
+        //else if (self.radius > 18)
+            //drawRadius = Math.round(drawRadius*0.4);
+        //else if (self.radius > 5)
+            //drawRadius= Math.round(drawRadius*0.7);
         //if (drawRadius > 6)
             //drawRadius = Math.round(drawRadius*0.6);
-        console.log("Theoretical radius "+self.radius+", corrected radius "+drawRadius);
+        //console.log("Theoretical radius "+self.radius+", corrected radius "+drawRadius);
         self.radius = drawRadius;
                 
         console.log("drawing, zoom factor "+self.zoomFact+", radius "+self.radius+", alpha "+self.alpha);
