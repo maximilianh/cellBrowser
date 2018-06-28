@@ -209,10 +209,10 @@ function CbDbFile(url) {
         // should I deactivate the cache here?
         // this is a file that users typicaly change often
         dsUrl = dsUrl+"?"+Math.floor(Math.random()*100000000);
-        cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile()});
+        cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile();});
 
         // start loading gene offsets, this takes a while
-        var osUrl = cbUtil.joinPaths([this.url, "exprMatrixOffsets.json"]);
+        var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
         cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; gotOneFile();});
     };
 
@@ -299,11 +299,159 @@ function CbDbFile(url) {
             undefined, null, start, end);
     };
 
+    function sortArrOfArr(arr, j) {
+        /* sort an array of arrays by the j-th element */
+        arr.sort(function(a, b) { 
+            return a[j] > b[j] ? 1 : -1;
+            });
+    }
+
+    function countAndSort(arr) {
+        /* count values in array, return an array of [value, count] */
+        //var counts = {};
+        var counts = new Map();
+        for (var i=0; i < arr.length; i++) {
+            var num = arr[i];
+            //counts[num] = counts[num] ? counts[num] + 1 : 1;
+            counts.set(num, (counts.get(num) | 0) + 1);
+        }
+        var entries = Array.from(counts.entries());
+        entries.sort(function(a,b) { return a[0]-b[0]});
+        return entries;
+    }
+
+    function arrToEnum(arr, counts) {
+        /* replace values in array with their enum-index */
+        // make a mapping value -> bin
+        var valToBin = {};
+        sortArrOfArr(counts, 0); // sort by value
+        for (var i=0; i<counts.length; i++) {
+            var val = counts[i];
+            valToBin[val] = i;
+        }
+
+        // apply the mapping
+        var dArr = new Uint8Array(arr.length);
+        for (var i=0; i<arr.length; i++) {
+            dArr[i] = valToBin[arr[i]];
+        }
+
+        var binInfo = [];
+        for (var i=0; i < counts.length; i++) {
+            var val = parseFloat(counts[i][0]);
+            var count = counts[i][1];
+            binInfo.push([val, val, count]);
+        }
+
+        var ret = {"dArr":dArr, "binInfo":binInfo};
+        return ret;
+    }
+
+    // XX is this really faster than a simple iteration?
+    function smoolakBS_left(arr, find) {
+	// binary search, returns index left of insert point
+	// based on https://jsperf.com/binary-search-in-javascript/7
+        // insert_left based on https://rosettacode.org/wiki/Binary_search
+	var lo = 0;
+	var hi = arr.length - 1;
+	var i;
+	while(lo <= hi) {
+	    i = ((lo + hi) >> 1);
+	    if(arr[i] >= find) 
+		hi = i - 1;
+            else
+	    //if (arr[i] < find) 
+		lo = i + 1;
+	    //else 
+		//{ return lo; }
+	}
+	return lo;
+    }
+
+    function findBins(numVals, breakVals) {
+    /*
+    find the bin index for the break defined by breakVals for every value in numVals.
+    The comparison uses "<=" ("left"). The first bin is therefore just the value of
+    the first break, which makes sense for the most common case, 0, going into
+    a special bin.  (for speed, 0 is hardcoded to always go into
+    bin0). The caller can decrease break0 for more natural results in cases
+    where special treatment of bin0 is not intended, e.g. when 0 does not appear.
+    Also returns an array with the count for every bin.
+    */
+	
+        var dArr = new Uint8Array(numVals.length); 
+        var binCounts = new Uint32Array(breakVals.length);
+
+        for (var i=0; i<numVals.length; i++) {
+            var val = numVals[i];
+            var binIdx = 0;
+            if (val!==0) // special case for 0, saves some time
+                binIdx = smoolakBS_left(breakVals, numVals[i]);
+            dArr[i] = binIdx;
+            binCounts[binIdx]++;
+        }
+        return {"dArr":dArr, "binCounts":binCounts};
+    }
+
+    function discretizeArray(arr) {
+        /* discretize numeric values to deciles. return an obj with dArr and binInfo */
+        /* ported from Python cbAdd:discretizeArray */
+        var maxBinCount = 10;
+        var counts = countAndSort(arr);
+
+        // if we have just a few values, do not do any binning, just count
+        if (counts.length < maxBinCount)
+            return arrToEnum(arr, counts);
+
+        // make array of count-indices of the breaks
+        var breakPercs = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+        var countLen = counts.length;
+        var breakIndices = [];
+        for (var i=0; i < breakPercs.length; i++) {
+            var bp = breakPercs[i];
+            breakIndices.push( Math.round(bp*countLen) );
+        }
+        breakIndices.push(countLen-1); // the last break is always a special case
+
+        // make array with values at the break indices
+        var breakValues = [];
+        for (var i=0; i < breakIndices.length; i++) {
+            var breakIdx = breakIndices[i];
+            var breakVal = counts[breakIdx][0];
+            // for expression vectors without a 0,
+            // we don't want special handling of the value 0:
+            // force break0 to be 0, so bin0 covers 0-break1
+            if (i===0 && breakVal!==0)
+                breakVal = 0;
+            breakValues.push( breakVal );
+        }
+
+        var fb = findBins(arr, breakValues);
+        var dArr = fb.dArr;
+        var binCounts = fb.binCounts;
+
+        var binInfo = [];
+        for (var i=0; i<binCounts.length; i++) {
+            var binMax = parseFloat(breakValues[i]);
+            var binMin = 0.0;
+            if (i===0)
+                binMin = binMax;
+            else
+                binMin = parseFloat(breakValues[i-1]);
+
+            var binCount = binCounts[i];
+            binInfo.push( [binMin, binMax, binCount] );
+        }
+
+        return {"dArr": dArr, "binInfo": binInfo};
+    }
+
     this.loadExprVec = function(geneSym, onDone, onProgress) {
     /* given a geneSym (string), retrieve array of deciles and call onDone with the
      * array */
         function onGeneDone(comprData, geneSym) {
             // decompress data and run onDone when ready
+            console.log("Got expression data, size = "+comprData.length+" bytes");
             var buf = pako.inflate(comprData);
 
             // see python code in cbAdd, function 'exprRowEncode':
@@ -315,27 +463,38 @@ function CbDbFile(url) {
             
             // read the gene description
             var descLen = cbUtil.baReadUint16(buf, 0);
-            var arr = buf.slice(2, 18);
+            var arr = buf.slice(2, 2+descLen);
             var geneDesc = String.fromCharCode.apply(null, arr);
 
             // read the info about the bins
-            var binInfoLen = 11*3*4;
-            var dv = new DataView(buf.buffer, 2+descLen, binInfoLen);
-            var binInfo = []
-            for (var i=0; i < 11; i++) {
-                var startOfs = i*12;
-                var min = dv.getFloat32(startOfs, true); // true = little-endian
-                var max = dv.getFloat32(startOfs+4, true);
-                var binCount = dv.getFloat32(startOfs+8, true); // number of cells in this bin
-                if (min===0 && max===0 && binCount===0)
-                    break;
-                binInfo.push( [min, max, binCount] );
-            }
+            //var binInfoLen = 11*3*4;
+            //var dv = new DataView(buf.buffer, 2+descLen, binInfoLen);
+            //var binInfo = []
+            //for (var i=0; i < 11; i++) {
+                //var startOfs = i*12;
+                //var min = dv.getFloat32(startOfs, true); // true = little-endian
+                //var max = dv.getFloat32(startOfs+4, true);
+                //var binCount = dv.getFloat32(startOfs+8, true); // number of cells in this bin
+                //if (min===0 && max===0 && binCount===0)
+                    //break;
+                //binInfo.push( [min, max, binCount] );
+            //}
 
             // read the byte array with one bin index per cell
-            var digArr = buf.slice(2+descLen+binInfoLen);
-             
-            onDone(digArr, geneSym, geneDesc, binInfo);
+            // var digArr = buf.slice(2+descLen+binInfoLen);
+            
+            // read the expression array
+            var sampleCount = self.conf.sampleCount;
+            var matrixType = self.conf.matrixArrType;
+            var ArrType = cbUtil.makeType(matrixType);
+            var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
+            var exprArr = new ArrType(arrData.buffer);
+
+            console.time("discretize");
+            var da = discretizeArray(exprArr);
+            console.timeEnd("discretize");
+
+            onDone(da.dArr, geneSym, geneDesc, da.binInfo);
         }
 
         var offsData = self.geneOffsets[geneSym];
@@ -382,7 +541,7 @@ function CbDbFile(url) {
     this.getGenes = function() {
     /* return an object with the geneSymbols */
         return self.geneOffsets;
-    }
+    };
 
     this.searchGenes = function(prefix, onDone) {
     /* call onDone with an array of gene symbols that start with prefix (case-ins.)
@@ -393,7 +552,7 @@ function CbDbFile(url) {
                 geneList.push({"id":geneSym, "text":geneSym});
         }
         onDone(geneList);
-    }
+    };
 
     this.getName = function() {
     /* return name of current dataset*/
@@ -401,7 +560,7 @@ function CbDbFile(url) {
             return self.conf.name;
         else
             return self.name;
-    }
+    };
 
     this.getDefaultClusterFieldIndex = function() {
     /* return field index of default cluster field */

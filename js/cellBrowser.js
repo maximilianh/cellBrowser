@@ -779,9 +779,18 @@ var tsnePlot = function() {
 
        db.loadMetaVec(fieldIdx, function(carr) {renderer.setColorArr(carr); doneLoad(); } , onProgress);
 
-        changeUrl({"gene":null, "meta":fieldName});
+       changeUrl({"gene":null, "meta":fieldName});
        // clear the gene search box
        var select = $('#tpGeneCombo')[0].selectize.clear();
+    }
+
+    function activateTab(name) {
+        /* activate a tab on the left side */
+        var idx = 0;
+        if (name==="gene")
+            idx = 1;
+
+        $( "#tpLeftTabs" ).tabs( "option", "active", 1 );
     }
 
     function colorByGene(geneSym, onDone) {
@@ -848,10 +857,12 @@ var tsnePlot = function() {
        if (getVar("gene", null)!==null) {
            colorType = "gene";
            colorBy = getVar("gene");
+           activateTab("gene");
        }
        else if (getVar("meta", null)!==null) {
            colorType = "meta";
            colorBy = getVar("meta");
+           activateTab("meta");
        }
 
        gLegend = {};
@@ -1317,39 +1328,25 @@ var tsnePlot = function() {
         //buildGeneBar(); 
     }
 
-    function parseMatrixLine(line) {
-        /* parse tsv line with first field being the geneId. Return as [geneId, [float1, float2, ...]] */
-        var fields = line.split("\t");
-        var geneId = fields[0];
-        // convert all but the first field to a new array of floats
-        var exprVec = [];
-        for (var i = 1; i < fields.length; i++) {
-            exprVec.push( parseFloat(fields[i]));
-        }
-        //exprVec = new Float32Array(exprVec);
-        var exprTuple = [geneId, exprVec];
-        return exprTuple;
-    }
-
-    function onReceiveExprLineProgress(line) {
+    //function onReceiveExprLineProgress(line) {
         /* called when a line of the expression matrix has been loaded: parse line and upd. progressbar */
-        var symbol = this.geneSymbol;
-        console.log("Got gene "+symbol);
-        var exprTuple = parseMatrixLine(line);
-        var exprVec = exprTuple[1];
-        exprTuple.push( getDeciles(exprVec) );
-        gLoad_geneExpr[symbol] = exprTuple;
-
-        var progressbar = $( "#tpGeneProgress" );
-        var val = progressbar.progressbar( "value" ) || 0 ;
-        val++;
-        progressbar.progressbar( "value", val );
-        $( "#tpProgressLabel" ).text(symbol);
-
-        var progrMax = progressbar.progressbar("option", "max");
-        if (val >= progrMax)
-            onGeneLoadComplete();
-    }
+        //var symbol = this.geneSymbol;
+        //console.log("Got gene "+symbol);
+        //var exprTuple = parseMatrixLine(line);
+        //var exprVec = exprTuple[1];
+        //exprTuple.push( getDeciles(exprVec) );
+        //gLoad_geneExpr[symbol] = exprTuple;
+//
+        //var progressbar = $( "#tpGeneProgress" );
+        //var val = progressbar.progressbar( "value" ) || 0 ;
+        //val++;
+        //progressbar.progressbar( "value", val );
+        //$( "#tpProgressLabel" ).text(symbol);
+//
+        //var progrMax = progressbar.progressbar("option", "max");
+        //if (val >= progrMax)
+            //onGeneLoadComplete();
+    //}
 
     /**
      from https://stackoverflow.com/questions/29855098/is-there-a-built-in-javascript-function-similar-to-os-path-join:
@@ -1565,6 +1562,13 @@ var tsnePlot = function() {
                 binMin+=stepSize;
             }
         } else if (fieldInfo.binMethod==="quantiles") {
+            var binMin = fieldInfo.minVal;
+            var breaks = fieldInfo.breaks;
+            var binCounts = fieldInfo.binCounts;
+            var binCount = fieldInfo.binCounts.length;
+            for (var i=0; i<binCount; i++) {
+                binInfo.push( [breaks[i], breaks[i+1], binCounts[i]] );
+            }
         }
             
         return binInfo;
