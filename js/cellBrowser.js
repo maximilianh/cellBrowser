@@ -2199,32 +2199,36 @@ var tsnePlot = function() {
         //$(document.body).append(htmls.join(""));
 
         localStorage.setItem("introShown", "true");
+        activateTab("meta");
         var intro = introJs();
         intro.setOption("hintAnimation", false);
+        intro.setOption("exitOnEst", true);
+        intro.setOption("exitOnOverlayClick", true);
         if (addFirst)
             intro.addStep({
                 element: document.querySelector('#tpHelpButton'),
-                intro: "Are you here for the first time and wondering what this is?<br>The tutorial takes only 1 minute. To skip the tutorial now, click 'Skip'.<br>You can always show it again by clicking 'Tutorial'.",
+                intro: "Are you here for the first time and wondering what this is?<br>The tutorial takes only 1 minute. To skip the tutorial now, click 'Skip' or press Esc.<br>You can always show it again by clicking 'Tutorial'.",
               });
 
         intro.addSteps(
             [
               {
                 intro: "You can see a scatter plot of circles in the middle of the screen. Each circle is a "+gSampleDesc+".",
+                element: document.querySelector('#tpCanvas'),
               },
               {
                 element: document.querySelector('#tpLeftSidebar'),
                 intro: "Meta data: when you move the mouse over a circle, its meta data fields will be shown here.<br>Click on a field to color the circles by the values of a field.<br>Right-click to select a field for the text labels.",
                 position: 'right'
               },
-              {
-                element: document.querySelector('#tpGeneBar'),
-                intro: "Expression data: when you move the mouse, expression values will be shown here.<br>Click on a gene to color the circles by gene expression level (log'ed).",
-                position: 'top'
-              },
+              //{
+                //element: document.querySelector('#tpGeneBar'),
+                //intro: "Expression data: when you move the mouse, expression values will be shown here.<br>Click on a gene to color the circles by gene expression level (log'ed).",
+                //position: 'top'
+              //},
               {
                 element: document.querySelector('#tpLegendBar'),
-                intro: "The legend shows the mapping from colors to meta or gene expression values.<br>Click on a color to change it.<br>Right-click to hide or show-only "+gSampleDesc+"s with certain values.<br>Click on the legend text to highlight "+gSampleDesc+"s with this value.",
+                intro: "The legend shows the mapping from colors to meta or gene expression values.<br>Click on a color to change it.<br>Click on the legend text to select "+gSampleDesc+"s with this value.",
                 position: 'left'
               },
             ]);
