@@ -59,8 +59,11 @@ var tsnePlot = function() {
     var circleSize = 4.0;
     // color for missing value when coloring by expression value
     //var cNullColor = "CCCCCC";
-    var cNullColor = "DDDDDD";
-    var cNullForeground = "#AAAAAA";
+    const cNullColor = "DDDDDD";
+    const cNullForeground = "#AAAAAA";
+
+    const cDefGradPalette = "Blue";  // default legend gradient palette for numeric ranges
+    const cDefQualPalette  = "tol-sq"; // default legend palette for categorical values
 
     var HIDELABELSNAME = "Hide labels";
     var SHOWLABELSNAME = "Show labels";
@@ -774,7 +777,7 @@ var tsnePlot = function() {
            changeUrl({"meta":fieldName, "gene":null});
 
        buildLegendForMetaIdx(fieldIdx);
-       var renderColors = getLegendColors(gLegend.rows);
+       var renderColors = legendGetColors(gLegend.rows);
        renderer.setColors(renderColors);
 
        db.loadMetaVec(fieldIdx, function(carr) {renderer.setColorArr(carr); doneLoad(); } , onProgress);
@@ -790,7 +793,7 @@ var tsnePlot = function() {
         if (name==="gene")
             idx = 1;
 
-        $( "#tpLeftTabs" ).tabs( "option", "active", 1 );
+        $( "#tpLeftTabs" ).tabs( "option", "active", idx );
     }
 
     function colorByGene(geneSym, onDone) {
@@ -804,7 +807,7 @@ var tsnePlot = function() {
             _dump(binInfo);
             makeLegendExpr(geneSym, geneDesc, binInfo);
             buildLegendBar();
-            renderer.setColors(getLegendColors(gLegend.rows));
+            renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(exprVec);
             onDone();
         }
@@ -827,7 +830,7 @@ var tsnePlot = function() {
            loadsDone +=1;
            if (loadsDone===2) {
                buildLegendBar();
-               renderer.setColors(getLegendColors(gLegend.rows));
+               renderer.setColors(legendGetColors(gLegend.rows));
                renderer.drawDots();
            }
        }
@@ -1024,15 +1027,59 @@ var tsnePlot = function() {
         resizeDivs();
     }
 
+    function onColorPaletteClick(ev) {
+        /* called when users clicks a color palette */
+        var palName = ev.target.getAttribute("data-palette");
+        changeLegendPalette(palName);
+    }
+
+    function changeLegendPalette(palName) {
+        /* change the legend color palette and put it into the URL */
+        var rows = gLegend.rows;
+        var pal = palette(palName, rows.length);
+        if (pal===null) {
+            alert("Sorry, this palette does not have "+rows.length+" different colors");
+            return;
+        }
+
+        legendSetPalette(gLegend, palName);
+        changeUrl({"pal":palName});
+
+        buildLegendBar();
+        var colors = legendGetColors(gLegend.rows);
+        renderer.setColors(colors);
+        renderer.drawDots();
+    }
+
     function buildEmptyLegendBar(fromLeft, fromTop) {
         // create an empty right side legend bar
         var htmls = [];
         htmls.push("<div id='tpLegendBar' style='position:absolute;top:"+fromTop+"px;left:"+fromLeft+"px; width:"+legendBarWidth+"px'>");
-        htmls.push("<div class='tpSidebarHeader'>Legend</div>");
+        htmls.push("<div class='tpSidebarHeader'>Legend");
+
+        //htmls.push("<div id='tpToolbarButtons' style='padding-bottom: 2px'>");
+        htmls.push("<div style='float:right' class='btn-group btn-group-xs'>");
+            htmls.push("<button type='button' class='btn btn-default dropdown-toggle' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false' id='tpChangeColorScheme'>Colors&nbsp;<span class='caret'> </span></button>");
+            htmls.push('<ul class="dropdown-menu pull-right">');
+            htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol" href="#">Paul Tol&#39;s</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="Blue" href="#">Shades of blue</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="Red" href="#">Shades of red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-sq" href="#">White to red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Blue to red</a></li>');
+            htmls.push('</ul>');
+        htmls.push("</div>"); // btn-group
+        //htmls.push("</div>"); // tpToolbarButtons
+
+        htmls.push("</div>"); // tpSidebarHeader
+
+        htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
                     htmls.push("<div id='tpLegendContent'>");
                     htmls.push("</div>"); // content 
         htmls.push("</div>"); // bar 
         $(document.body).append(htmls.join(""));
+
+        $(".tpColorLink").click( onColorPaletteClick );
     }
 
     function getTextWidth(text, font) {
@@ -1061,79 +1108,49 @@ var tsnePlot = function() {
         return table;
     }
 
-    function getLegendColors(rows) {
+    function legendGetColors(rows) {
     /* go over the legend lines: create an array of colors in the order of their meta value indexes.
      * (the values in the legend may be sorted not in the order of their internal indices) */
-        //var rows = gLegend.rows;
         var colArr = []
         for (var i = 0; i < rows.length; i++) {
-            var idx = rows[i][4]; // 4 = meta val index or expression bin
-            colArr[idx] = rows[i][0]; // 0 = color
+            var row = rows[i];
+            var col = row[0];
+            if (col===null)
+                col = row[1]; // only use default color if nothing else set
+
+            var idx = row[4]; // 4 = meta val index or expression bin XX
+            colArr[idx] = col; // 0 = color
         }
 
         return colArr;
     }
 
-    function assignCellClasses() {
-    /* return a map cellId:colorInteger, based on the currently active meta field */
-        var metaIdx = gLegend.metaFieldIdx;
-
-        if (gLegend.rows===undefined)
-            return;
-
-        // build map meta val -> legendId
-        var metaToLegend = {};
-        var rows = gLegend.rows;
-        var metaVal = null;
+    function legendSetPalette(legend, palName) {
+    /* update the defColor [1] attribute of all legend rows */
+        var rows = legend.rows;
+        var pal = palette(palName, rows.length);
         for (var i = 0; i < rows.length; i++) {
-            metaVal = rows[i][4];
-            metaToLegend[metaVal] = i;
+            rows[i][1] = pal[i];
         }
+        legend.palName = palName;
 
-        var metaData = gCurrentDataset.metaData;
-        var cellIdToLegendId = {};
-        for (var j = 0; j < allCoords.length; j++) {
-            var cellId = allCoords[j][0];
-            var cellMeta = metaData[cellId];
-            var metaVal = null;
-            if (cellMeta===undefined)
-                metaVal = "(missingMetaData)";
-            else
-                metaVal = metaData[cellId][metaIdx];
-            cellIdToLegendId[cellId] = metaToLegend[metaVal];
-        }
-        return cellIdToLegendId;
-    }
-
-    function newArray(n, val) {
-        /* return an array initialized with val */
-        var arr = new Array(n);
-        for (var i = 0; i < n; i++)
-            arr[i] = val;
-        return arr;
-    }
-
-    function findBin(ranges, val) {
-    /* given an array of values, find the index i where ranges[i] < val < ranges[i+1] */
-    /* XX performance - use binary search */
-    for (var i = 0; i < ranges.length-1; i++) {
-        if ((val >= ranges[i]) && (val <= ranges[i+1]))
-            return i;
-        }
+        // update the dropdown menu
+        $('.tpColorLink').parent().removeClass("active");
+        $('.tpColorLink[data-palette="'+palName+'"]').parent().addClass("active");
     }
 
     function makeLegendRowsNumeric(binInfo) {
         /* return an array of legend lines given bin info from gene expression or a numeric meta field  */
         var legendRows = [];
-        var zeroIsGrey = false;
+        //var zeroIsGrey = false;
 
         // special case for the first "0" element = no value, make this always grey
-        var bin0Min = binInfo[0][0];
-        var bin0Max = binInfo[0][1];
-        if (bin0Min===0 && bin0Max===0)
-            zeroIsGrey = true;
+        //var bin0Min = binInfo[0][0];
+        //var bin0Max = binInfo[0][1];
+        //if (bin0Min===0 && bin0Max===0)
+            //zeroIsGrey = true;
 
-        var defColors = makeColorPalette(10, true, zeroIsGrey);
+        //var defColors = makeColorPalette(10, true, zeroIsGrey);
         var colIdx = 0;
         for (var binIdx = 0; binIdx < binInfo.length; binIdx++) {
             var binMin = binInfo[binIdx][0];
@@ -1157,22 +1174,23 @@ var tsnePlot = function() {
             else
                 legLabel = binMin.toFixed(minDig);
 
-            var defColor = defColors[binIdx];
-            var uniqueKey = legLabel;
-            var legColor = defColor;
+            //var defColor = defColors[binIdx];
+            //var uniqueKey = legLabel;
+            //var legColor = defColor;
 
             // override any color with the color specified in the current URL
             var savKey = COL_PREFIX+legLabel;
-            var legColor = getVar(savKey, legColor);
+            var legColor = getVar(savKey, null);
 
             if (binMin===0 && binMax===0) {
                 legLabel = "No Value";
                 uniqueKey = "noExpr";
+                legColor = cNullColor;
             }
             else
                 colIdx++;
 
-            legendRows.push( [ legColor, defColor, legLabel, count, binIdx, uniqueKey] );
+            legendRows.push( [ legColor, null, legLabel, count, binIdx, uniqueKey] );
         }
         return legendRows;
     }
@@ -1184,11 +1202,13 @@ var tsnePlot = function() {
         activateTooltip("#tpGeneSym");
         
         var legendRows = makeLegendRowsNumeric(binInfo);
-        var colors = getLegendColors(legendRows);
+        var colors = legendGetColors(legendRows);
 
         gLegend.rows = legendRows;
         gLegend.title = "Gene: "+geneSym;
         gLegend.titleHover = geneId;
+        gLegend.rowType = "range";
+        legendSetPalette(gLegend, cDefGradPalette);
         return colors;
     }
 
@@ -1583,12 +1603,14 @@ var tsnePlot = function() {
 
         var fieldInfo = db.getMetaFields()[metaIndex];
         legend.fieldName = fieldInfo.label;
-        legend.title = "Field: "+legend.fieldName.replace(/_/g, " ");
+        legend.title = legend.fieldName.replace(/_/g, " ");
 
         // numeric meta fields are a special case
         if (fieldInfo.type==="int" || fieldInfo.type==="float") {
             var binInfo = numMetaToBinInfo(fieldInfo);
             legend.rows = makeLegendRowsNumeric(binInfo);
+            legend.rowType = "range";
+            legendSetPalette(legend, cDefGradPalette);
             return legend;
         }
 
@@ -1629,9 +1651,10 @@ var tsnePlot = function() {
         var countListSorted = sortResult.list;
 
         var useGradient = (fieldInfo.type==="float" || fieldInfo.type==="int");
-        var defaultColors = makeColorPalette(countListSorted.length, useGradient);
+        //var defaultColors = makeColorPalette(countListSorted.length, useGradient);
 
         var rows = [];
+        //var defColIdx = 0;
         for (var legRowIdx = 0; legRowIdx < countListSorted.length; legRowIdx++) {
             var legRowInfo = countListSorted[legRowIdx];
             var label = legRowInfo[0];
@@ -1639,19 +1662,24 @@ var tsnePlot = function() {
             var valIdx = legRowInfo[2];
             var uniqueKey = label;
 
-            var defColor = defaultColors[legRowIdx];
-            var color = defColor;
+            //var defColor = defaultColors[legRowIdx];
             if (likeEmptyString(label))
                 color = cNullColor;
+            //else {
+                //defColor = defaultColors[defColIdx];
+                //defColIdx++;
+            //    }
             // override any color with the color specified in the current URL
             var savKey = COL_PREFIX+label;
-            color = cartGet(savKey, color);
+            var color = cartGet(savKey, null);
 
-            rows.push( [ color, defColor, label, count, valIdx, uniqueKey] );
+            rows.push( [ color, null, label, count, valIdx, uniqueKey] );
         }
 
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
+        legend.rowType = "category";
+        legendSetPalette(legend, cDefQualPalette);
         return legend;
     }
 
@@ -1684,7 +1712,6 @@ var tsnePlot = function() {
         gLegend = legend;
         buildLegendBar();
         $('#tpLegendTitle').text(legend.fieldName.replace(/_/g, " "));
-        //gClasses = assignCellClasses();
     }
 
     function onMetaClick (event) {
@@ -2020,6 +2047,7 @@ var tsnePlot = function() {
         //htmls.push("<div id='tpSideMeta'>");
         htmls.push('<label style="margin-bottom:10px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, metaFieldInfo, "tpMetaCombo", 0);
+        htmls.push('<div style="margin-top:8px" class="tpHint">Mouse-over a '+gSampleDesc+' to show annotations</div>');
         buildMetaPanel(htmls, metaFieldInfo);
         //htmls.push("</div>"); // tpSideMeta
         htmls.push("</div>"); // tpAnnotTab
@@ -2212,7 +2240,7 @@ var tsnePlot = function() {
         if (n<30)
             pal = iWantHue(n);
         else
-            pal = palette(["tol", "rainbow"], n);
+            pal = palette(["tol", "mpn65", "rainbow"], n);
     }
     else
         pal = palette(["tol-sq"], n);
@@ -2596,6 +2624,18 @@ var tsnePlot = function() {
         filterCoordsAndUpdate(cellIds, mode);
     }
 
+    function setLegendHeaders(type) {
+    /* set the headers of the right-hand legend */
+        if (type==="category") {
+            $('#tpLegendCol1').html('Name<span class="caret"></span>');
+            $('#tpLegendCol2').html('Frequency<span class="caret"></span>');
+        }
+        else {
+            $('#tpLegendCol1').html('Range');
+            $('#tpLegendCol2').html('Frequency');
+        }
+    }
+
     function buildLegendBar(sortBy) {
     /* draws current legend as specified by gLegend.rows 
      * sortBy can be "name" or "count" or "undefined" (=auto-detect)
@@ -2616,31 +2656,15 @@ var tsnePlot = function() {
             //sortLabel = "Sort by freq." // add the link to sort by the other possibility
         //else
             //sortLabel = "Sort by name"
-
-        htmls.push("<div id='tpToolbarButtons' style='padding-bottom: 2px'>");
-        htmls.push("<div class='btn-group btn-group-xs'>");
-        //htmls.push("<div class='btn-group'>");
-        //htmls.push("<button type='button' class='btn btn-default' id='tpResetColors'>Reset colors</button>");
-        htmls.push("<button type='button' class='btn btn-default dropdown-toggle' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false' id='tpChangeColorScheme'>Color Scheme <span class='caret'> </span></button>");
-        htmls.push('<ul class="dropdown-menu">');
-        htmls.push('<li><a href="#">Rainbow</a></li>');
-        htmls.push('<li><a href="#">Rainbow2</a></li>');
-        htmls.push('<li><a href="#">Shades of blue</a></li>');
-        htmls.push('<li><a href="#">Shades of green to red</a></li>');
-        htmls.push('</ul>');
-        htmls.push("</div>");
-
+            //$('#tpLegendTitle').html('<span id="tpGeneSym" title="' +geneId+'">'+geneSym+" expression</span>");
         //htmls.push("<span id='tpSortBy' style='color: #888; cursor:pointer; font-size:13px'>"+sortLabel+"</span>");
         //htmls.push("<div class='btn-group btn-group-xs' role='group'>");
         //htmls.push("<button type='button' class='btn btn-default' id='tpSortBy'>"+sortLabel+"</button>");
         //htmls.push("</div>");
-        htmls.push("</div>");
-
-        htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
-            //$('#tpLegendTitle').html('<span id="tpGeneSym" title="' +geneId+'">'+geneSym+" expression</span>");
         htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+gLegend.title+"</span>");
+        htmls.push('<div class="tpHint">Click below to select '+gSampleDesc+'s</small></div>');
         htmls.push("</div>"); // title
-        htmls.push('<div id="tpLegendHeader"><span id="tpLegendCol1">Name<span class="caret"></span></span><span id="tpLegendCol2">Frequency<span class="caret"></span></span></div>');
+        htmls.push('<div id="tpLegendHeader"><span id="tpLegendCol1"></span><span id="tpLegendCol2"></span></div>');
 
         // get the sum of all, to calculate frequency
         var sum = 0;
@@ -2654,9 +2678,13 @@ var tsnePlot = function() {
             acronyms = {};
 
         for (var i = 0; i < rows.length; i++) {
-            var colorHex = rows[i][0];
-            var label = rows[i][2];
-            var count = rows[i][3];
+            var row = rows[i];
+            var colorHex = row[0]; // manual color
+            if (colorHex===null)
+                colorHex = row[1]; // default color
+
+            var label = row[2];
+            var count = row[3];
             var freq  = 100*count/sum;
 
             colors.push(colorHex); // save for later
@@ -2700,14 +2728,12 @@ var tsnePlot = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
 
-
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
+        setLegendHeaders(gLegend.rowType);
 
         activateTooltip("#tpResetColors");
         activateTooltip("#tpSortBy");
-        //$("#tpLegendCol1").click( function() {sortLegendBy("name)} );
-        //$("#tpLegendCol2").click( function() {sortLegendBy("freq)} );
         $("#tpLegendCol1").click( onSortByClick );
         $("#tpLegendCol2").click( onSortByClick );
 
@@ -2734,7 +2760,7 @@ var tsnePlot = function() {
                 hideAfterPaletteSelect : true,
                 color : colors[i],
                 showPalette: true,
-                allowEmpty : true,
+                //allowEmpty : true,
                 showInput: true,
                 preferredFormat: "hex",
                 change: onColorPickerChange
@@ -2765,7 +2791,7 @@ var tsnePlot = function() {
         // save color to cart if necessary
         cartSave(saveKey, newColHex, defColorHex);
 
-        var colors = getLegendColors(gLegend.rows);
+        var colors = legendGetColors(gLegend.rows);
         renderer.setColors(colors);
         renderer.drawDots();
     }
