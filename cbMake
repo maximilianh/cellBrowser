@@ -7,6 +7,9 @@ from os.path import join, basename, dirname, isfile, isdir
 # directory to static data files, e.g. gencode tables
 dataDir = join(dirname(__file__), "static")
 
+# default html output directory
+defOutDir = os.environ.get("CBOUT")
+
 # ==== functions =====
     
 def parseArgs():
@@ -15,6 +18,8 @@ def parseArgs():
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
+
     #parser.add_option("-m", "--meta", dest="meta", action="store",
         #help="meta data tsv file, aka sample sheet. One row per sample, first row has headers, first column has sample name."
         #)
@@ -24,7 +29,7 @@ def parseArgs():
 
     (options, args) = parser.parse_args()
 
-    if args==[]:
+    if options.outDir==None:
         parser.print_help()
         exit(1)
 
@@ -133,10 +138,10 @@ def cbMake(outDir, options):
 
 def main():
     args, options = parseArgs()
-    outDir = args[0]
+    outDir = options.outDir
 
     if outDir is None:
-        errAbort("You have to specify at least the output directory.")
+        errAbort("You have to specify at least the output directory or set the environment variable CBOUT.")
 
     cbMake(outDir, options)
 

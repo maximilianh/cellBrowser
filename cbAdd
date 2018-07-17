@@ -18,6 +18,8 @@ import time
 # directory to static data files, e.g. gencode tables
 dataDir = join(dirname(__file__), "static")
 
+defOutDir = os.environ.get("CBOUT")
+
 # ==== functions =====
     
 def parseArgs(showHelp=False):
@@ -26,27 +28,11 @@ def parseArgs(showHelp=False):
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
-    #parser.add_option("-m", "--meta", dest="meta", action="store",
-        #help="meta data tsv file, aka sample sheet. One row per sample, first row has headers, first column has sample name."
-        #)
-    #parser.add_option("-e", "--matrix", dest="matrix", action="store",
-        #help="expression matrix file, one gene per row, one sample per column. First column has gene identifiers (Ensembl or symbol), First row has sample names. ")
-    #parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have multiple coordinate files.")
 
     parser.add_option("-i", "--inConf", dest="inConf", action="store",
-        help="a dataset.conf file that specifies labels and all input files")
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
-    #parser.add_option("-s", "--symTable",
-        #dest="symTable",
-        #action="store", help="use a table (transId, geneId, symbol) to convert transcript or gene identifiers in the expression matrix to symbols, default %default. Specify '-s none' if the input expression file is already using gene symbols.",
-        #default=join(dataDir, "gencode22.ens79-80.tab"))
+        help="a dataset.conf file that specifies labels and all input files, default %default", default="dataset.conf")
 
-    parser.add_option("-t", "--useTwoBytes",
-        dest="useTwoBytes",
-        action="store_true", help="use 2-byte-integers for the coordinates, default is to use four bytes")
-    #parser.add_option("-e", "--enumFields",
-        #dest="enumFields",
-        #action="store", help="comma-sep list of meta fields that should be treated as categories, even when they contain only numbers. This is needed when you cluster ID field is a number, not a text string.")
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
     parser.add_option("-q", "--quick",
         dest="quick",
@@ -55,8 +41,6 @@ def parseArgs(showHelp=False):
         dest="test",
         action="store_true", help="run a few tests")
 
-    #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
-    #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
     (options, args) = parser.parse_args()
 
     if showHelp:
@@ -1020,7 +1004,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
         scaleY = 65535/(maxY-minY)
         topY = 65535
 
-    # not flipping coords anymore, origin is top-left ?
+    # not flipping coords anymore, is origin at top-left in html ?
     newCoords = {}
     for cellId, x, y in coords:
         if useTwoBytes:
@@ -1196,7 +1180,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
         return
     logging.info("Splitting cluster markers from %s into directory %s" % (filename, outDir))
     #logging.debug("Splitting %s on first field" % filename)
-    ifh = open(filename)
+    ifh = openFile(filename)
 
     headers = ifh.readline().rstrip("\n").split('\t')
     otherHeaders = headers[2:]
@@ -1285,52 +1269,24 @@ def guessConfig(options):
 def mapFilenames(inDir, conf):
     # replace file names in config files with file names in the output directory
     copyFiles = []
-    #copyFiles.append( (conf["meta"], "meta.tsv") )
-    #conf["meta"] = "meta.tsv"
-
-    #copyFiles.append( (conf["exprMatrix"], "exprMatrix.tsv") )
-    #conf["exprMatrix"] = "exprMatrix.tsv"
 
     if "description" in conf:
         fname = makeAbs(inDir, conf["description"])
         if not isfile(fname):
             logging.error("%s referred to in config file does not exist, skipping" % fname)
-            conf["description"] = None
+            conf["summary"] = None
         else:
             copyFiles.append( (fname, "description.html") )
-            conf["description"] = "description.html"
+            conf["summary"] = "summary.html"
 
     if "makeDoc" in conf:
         fname = makeAbs(inDir, conf["makeDoc"])
         if not isfile(fname):
             logging.error("%s referred to in config file does not exist, skipping" % fname)
-            conf["makeDoc"] = None
+            conf["methods"] = None
         else:
-            copyFiles.append( (fname, "makeDoc.html") )
-            conf["makeDoc"] = "makeDoc.html"
-
-    #if "colors" in conf:
-        #fname = makeAbs(inDir, conf["colors"])
-        #if not isfile(fname):
-            #logging.error("%s referred to in config file does not exist, skipping" % fname)
-            #conf["colors"] = None
-        #else:
-            #copyFiles.append( (fname, "colors.tsv") )
-            #conf["colors"] = "colors.tsv"
-
-    #newCoords = []
-    #for coordIdx, (origFname, label) in enumerate(conf["coords"]):
-        #newFname = "coords%d" % coordIdx
-        #copyFiles.append( (origFname, newFname) )
-        #newCoords.append( (newFname, label) )
-    #conf["coords"] = newCoords
-
-    #newMarkers = []
-    #for coordIdx, (origFname, label) in enumerate(conf["markers"]):
-        #newFname = "markers%d" % coordIdx
-        #copyFiles.append( (origFname, newFname) )
-        #newMarkers.append( (newFname, label) )
-    #conf["markers"] = newMarkers
+            copyFiles.append( (fname, "methods.html") )
+            conf["methods"] = "methods.html"
 
     return conf, copyFiles
 
@@ -1348,16 +1304,6 @@ def findInputFiles(options):
         inDir = dirname(options.inConf)
     else:
         conf = guessConfig(options)
-
-    # command line options can override the config file settings
-    #if options.meta:
-        #conf["meta"] = options.meta
-    #if options.matrix:
-        #conf["exprMatrix"] = options.matrix
-    #if options.coords:
-        #conf["coords"] = options.coords
-    #if options.markers:
-        #conf["markers"] = options.markers
 
     conf, copyFiles = mapFilenames(inDir, conf)
 
@@ -1396,7 +1342,7 @@ def parseTsvColumn(fname, colName):
 
     return newVals, valArr
 
-def makeMids(xVals, yVals, labelVec, labelVals):
+def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     """
     calculate the positions (centers) for the cluster labels
     given a coord list and a vector of the same size with the label indices, return a list of [x, y, coordLabel]
@@ -1422,7 +1368,7 @@ def makeMids(xVals, yVals, labelVec, labelVals):
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
         yList = clusterYVals[clustIdx]
-        # get the midpoint
+        # get the midpoint of this cluster
         midX = sum(xList) / float(len(xList))
         midY = sum(yList) / float(len(yList))
 
@@ -1437,11 +1383,34 @@ def makeMids(xVals, yVals, labelVec, labelVals):
         # now recalc the midpoint
         xSum = sum([x for dist, x, y in xyDistBest])
         ySum = sum([y for dist, x, y in xyDistBest])
-        midX = xSum / float(len(xyDistBest))
-        midY = ySum / float(len(xyDistBest))
+        fixMidX = xSum / float(len(xyDistBest))
+        fixMidY = ySum / float(len(xyDistBest))
 
         clusterName = labelVals[clustIdx]
-        midInfo.append([midX, midY, clusterName])
+        midInfo.append([fixMidX, fixMidY, clusterName])
+
+    # make some minimal effort to reduce overlaps
+    #spanX = coordInfo['maxX'] - coordInfo['minX']
+    #spanY = coordInfo['maxY'] - coordInfo['minY']
+    #tickX = spanX / 1000 # rough guess how much one pixel could be on 
+    #tickY = spanY / 1000 # the final screen
+    #for i, (midX1, midY1, clusterName1) in enumerate(midInfo):
+        #print "first", i, midX1, midY1, clusterName1
+        #for j, (midX2, midY2, clusterName2) in enumerate(midInfo[i+1:]):
+            #print "second", j, midX2, midY2, clusterName1, clusterName2
+            #distX = abs(midX2-midX1)
+            #distY = abs(midY2-midY1)
+            #print distX, distY
+            ## if distance between two labels too short:
+            #dist = math.sqrt((((midX2-midX1)/tickX)**2+((midY2-midY1)/tickY)**2))
+            #print "dist in pixels", dist
+            #if dist< 30:
+                #print "moving"
+                #print "before", midInfo[j]
+                ## move the first label slightly downwards
+                #midInfo[j][1] = midY1 + 5 * tickY
+                #print "after", midInfo[j]
+
     return midInfo
 
 def readHeaders(fname):
@@ -1457,9 +1426,11 @@ def parseGeneInfo(geneToSym, fname):
     if fname is None:
         return {}
     logging.info("Parsing %s" % fname)
-    validSyms = set()
-    for gene, sym in geneToSym.iteritems():
-        validSyms.add(sym)
+    validSyms = None
+    if geneToSym is not None:
+        validSyms = set()
+        for gene, sym in geneToSym.iteritems():
+            validSyms.add(sym)
 
     geneInfo = []
     hasDesc = None
@@ -1472,7 +1443,7 @@ def parseGeneInfo(geneToSym, fname):
             if "pmid" in row._fields:
                 hasPmid = True
         sym = row.symbol
-        if sym not in validSyms:
+        if validSyms is not None and sym not in validSyms:
             logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
             continue
 
@@ -1506,7 +1477,7 @@ def readSampleNames(fname):
 
 def addDataset(inDir, conf, fileToCopy, outDir, options):
     " write config to outDir and copy over all files in fileToCopy "
-    # keep a copy of the original config
+    # keep a copy of the original config in the output directory for debugging later
     confName = join(outDir, "origConf.json")
     json.dump(conf, open(confName, "w"))
 
@@ -1520,10 +1491,8 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     markerFnames = makeAbsDict(inDir, conf["markers"])
     descJsonFname = join(outDir, "dataset.json")
 
-    #skipLog = conf["matrixIsLog"]
     colorFname = conf.get("colors")
     enumFields = conf.get("enumFields")
-    quickGeneFname = conf.get("quickGenesFile")
 
     geneIdType = conf.get("geneIdType")
     if geneIdType==None:
@@ -1538,8 +1507,13 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         geneIdTable = fnames[0]
         geneToSym = readGeneToSym(geneIdTable)
 
-    quickGenes = parseGeneInfo(geneToSym, quickGeneFname)
-    conf["quickGenesFile"] = quickGenes
+    quickGeneFname = conf.get("quickGenesFile")
+    if quickGeneFname:
+        fname = makeAbs(inDir, quickGeneFname)
+        quickGenes = parseGeneInfo(geneToSym, fname)
+        del conf["quickGenesFile"]
+        conf["quickGenes"] = quickGenes
+        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
 
     # these don't exist / are not needed in the output json file
     del conf["meta"]
@@ -1553,24 +1527,26 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         logging.info("Quick-mode: re-using config file %s" % descJsonFname)
         oldConf = json.load(open(descJsonFname))
         for k, v in oldConf.iteritems():
-            conf[k] = v
+            if k not in conf:
+                conf[k] = v
 
     # convert the meta data to binary
     metaDir = join(outDir, "metaFields")
     makeDir(metaDir)
     metaIdxFname = join(outDir, "meta.index")
 
-    finalMeta = join(outDir, "meta.tsv")
+    finalMetaFname = join(outDir, "meta.tsv")
     if isfile(metaIdxFname) and options.quick:
         logging.info("quick-mode: %s already exists, not recreating" % metaIdxFname)
-        sampleNames = readSampleNames(finalMeta)
+        sampleNames = readSampleNames(finalMetaFname)
         needFilterMatrix = conf["matrixWasFiltered"]
     else:
-        sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMeta)
+        # create a meta file for downloads, same order as expression matrix
+        sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMetaFname)
         conf["sampleCount"] = len(sampleNames)
         conf["matrixWasFiltered"] = needFilterMatrix
-        conf = metaToBin(finalMeta, colorFname, metaDir, enumFields, conf)
-        indexMeta(finalMeta, metaIdxFname)
+        conf = metaToBin(finalMetaFname, colorFname, metaDir, enumFields, conf)
+        indexMeta(finalMetaFname, metaIdxFname)
     logging.info("Kept %d cells present in both meta data file and expression matrix" % len(sampleNames))
 
     writeJson(conf, descJsonFname)
@@ -1602,13 +1578,13 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
 
     # step2: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
     # convert the coordinates
+    useTwoBytes = conf.get("useTwoBytes", False)
     newCoords = []
     for coordIdx, coordInfo in enumerate(coordFnames):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
-        coords = parseScaleCoordsAsDict(coordFname, options.useTwoBytes)
+        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes)
         coordName = "coords_%d" % coordIdx
-        #coordName = cleanString(coordLabel)
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
         coordBin = join(coordDir, "coords.bin")
@@ -1616,14 +1592,14 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
         coordInfo["shortLabel"] = coordLabel
-        coordInfo, xVals, yVals = writeCoords(coords, sampleNames, coordBin, coordJson, options.useTwoBytes, coordInfo)
+        coordInfo, xVals, yVals = writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo)
         newCoords.append( coordInfo )
         conf["coords"] = newCoords
 
         if "labelField" in conf:
             clusterLabelField = conf["labelField"]
-            labelVec, labelVals = parseTsvColumn(metaFname, clusterLabelField)
-            clusterMids = makeMids(xVals, yVals, labelVec, labelVals)
+            labelVec, labelVals = parseTsvColumn(finalMetaFname, clusterLabelField)
+            clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
 
             midFname = join(coordDir, "clusterLabels.json")
             midFh = open(midFname, "w")
@@ -1631,12 +1607,15 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
             logging.info("Wrote cluster labels and midpoints to %s" % midFname)
 
     # save the acronyms
-    if "acroFname" in conf:
-        fname = conf["acroFname"]
+    fname = conf.get("acroFname")
+    if fname is not None:
+        fname = makeAbs(inDir, fname)
         if not isfile(fname):
             logging.warn("%s specified in config file, but does not exist, skipping" % fname)
         else:
-            conf["acronyms"] = parseDict(fname)
+            acronyms = parseDict(fname)
+            logging.info("Read %d acronyms from %s" % (len(acronyms), fname))
+            conf["acronyms"] = acronyms
         del conf["acroFname"]
 
     # convert the markers
@@ -1666,24 +1645,21 @@ def main():
     args, options = parseArgs()
 
     if options.test:
-        #testMetaIndex(args[0])
         doctest.testmod()
         sys.exit(0)
 
-    if options.inConf is None:
-        errAbort("You have to specify at least an input config file.", showHelp=True)
+    if not isfile(options.inConf):
+        errAbort("File %s does not exist." % options.inConf, showHelp=True)
     if options.outDir is None:
         errAbort("You have to specify at least the output directory.", showHelp=True)
+
 
     inDir, conf, filesToCopy = findInputFiles(options)
 
     outDir = options.outDir
 
-
-    #if outDir is None or metaFname is None or matrixFname is None or len(coordFnames)==0:
-        #errAbort("You have to specify at least a meta file, an expression matrix, a coordinate file  and one output directory")
     if outDir is None:
-        errAbort("You have to specify at least the output directory.")
+        errAbort("You have to specify at least the output directory or set the env. variable CBOUT.")
 
     datasetDir = join(outDir, conf["name"])
     makeDir(datasetDir)

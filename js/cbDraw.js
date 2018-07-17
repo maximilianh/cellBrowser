@@ -43,10 +43,11 @@ function CbCanvas(top, left, width, height) {
     addProgressBars(top+Math.round(height*0.3), left+30);
     
     // callbacks when user clicks or hovers over label or cell 
-    self.onLabelClick = null; // gets text of label and event
-    self.onCellClick = null; // gets array of cellIds and event
-    self.onCellHover = null; // gets array of cellIds
-    self.onNoCellHover = null; // called to clear whatever old cell info client is showing
+    self.onLabelClick = null; // called on label click, args: text of label and event
+    self.onCellClick = null; // called on cell click, args: array of cellIds and event
+    self.onCellHover = null; // called on cell hover, arg: array of cellIds
+    self.onNoCellHover = null; // called on hover over empty background
+    self.onSelChange = null; // called when the selection has been changed, arg: array of cell Ids
     // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
 
     // timer that is reset on every mouse move
@@ -144,9 +145,9 @@ function CbCanvas(top, left, width, height) {
         var htmls = [];
         //htmls.push('<div id="tpIcons" style="display:inline-block">');
         htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
+        htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0; display:block"><img src="img/select.png"></button>');
         htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="display: block; margin-right:0"><img src="img/zoom.png"></button>');
         htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" class="tpModeButton" style="margin-right:0"><img src="img/move.png"></button>');
-        htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0; display:block"><img src="img/select.png"></button>');
         //htmls.push('</div>');
         htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="margin-top: 2px; margin-right:0; display:block"><img style="width:22px; height:22px" src="img/center.png"></button>');
 
@@ -372,6 +373,13 @@ function CbCanvas(top, left, width, height) {
        }
     }
 
+    function intersectRect(r1left, r1right, r1top, r1bottom, r2left, r2right, r2top, r2bottom) {
+      /* return true if two rectangles overlap, 
+       https://stackoverflow.com/questions/2752349/fast-rectangle-to-rectangle-intersection
+	*/
+      return !(r2left > r1right || r2right < r1left || r2top > r1bottom || r2bottom < r1top);
+    }
+
     function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
         /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
         ctx.save();
@@ -390,7 +398,7 @@ function CbCanvas(top, left, width, height) {
         ctx.textAlign = "left";
 
         var addMargin = 1; // how many pixels to extend the bbox around the text, make clicking easier
-        var bboxArr = [];
+        var bboxArr = []; // array of click hit boxes
 
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
@@ -398,24 +406,47 @@ function CbCanvas(top, left, width, height) {
             var y = coord[1];
             var text = coord[2];
 
-            var textWidth = ctx.measureText(text).width;
+            var textWidth = Math.round(ctx.measureText(text).width);
             // move x to the left, so text is centered on x
-            x = x - (textWidth*0.5);
+            x = x - Math.round(textWidth*0.5);
 
-            // at 100% zoom, make some minimal effort to keep labels on screen
+            var textX1 = x;
+            var textY1 = y;
+            var textX2 = Math.round(x+textWidth);
+            var textY2 = y+gTextSize;
+
             if (zoomFact===1.0) {
+                // at 100% zoom, make some minimal effort to keep labels on screen
                 if (x < 0)
                     x = 0;
                 if ((x + textWidth) > winWidth)
                     x = winWidth - textWidth;
                 if (y+gTextSize > winHeight)
                     y = winHeight-gTextSize;
+
+                // also only at 100% zoom, make a minimal effort to avoid label overlaps
+                // a perfect solution would take much more time
+                for (var j=0; j < bboxArr.length; j++) {
+                    var bbox = bboxArr[j];
+                    var bx1 = bbox[0];
+                    var by1 = bbox[1];
+                    var bx2 = bbox[2];
+                    var by2 = bbox[3];
+                    if (intersectRect(textX1, textX2, textY1, textY2, bx1, bx2, by1, by2)) {
+                            // push the overlapping label away a little
+                            var diff = Math.round(0.75*gTextSize);
+                            if (textY1 < by1)
+                                y -= diff;
+                            else
+                                y += diff;
+                        }
+                }
             }
 
             ctx.strokeText(text,x,y); 
             ctx.fillText(text,x,y); 
 
-            bboxArr.push( [x-addMargin, y-addMargin, x+textWidth+addMargin, y+gTextSize+addMargin] );
+            bboxArr.push( [textX1-addMargin, textY1-addMargin, textX2+addMargin, textY2+addMargin] );
         }
         ctx.restore();
         return bboxArr;
@@ -710,7 +741,7 @@ function CbCanvas(top, left, width, height) {
         self.initRadius = self.radius;                      // circle radius at full zoom
 
         // mouse drag is modal: can be "select", "move" or "zoom"
-        self.dragMode = "zoom";
+        self.dragMode = "select";
          
         // for zooming and panning
         self.mouseDownX = null;
@@ -799,8 +830,10 @@ function CbCanvas(top, left, width, height) {
        setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
 
        self.scaleData();
-       if (self.radius===null || self.radius==undefined)
+       if (self.radius===null || self.radius==undefined) {
            self.radius = guessRadius(coords.length);
+           self.initRadius = self.radius;
+           }
     };
 
     this.setColorArr = function(colorArr) {
@@ -824,24 +857,9 @@ function CbCanvas(top, left, width, height) {
 
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
 
-        // we make the circles only half as wide as expected
-        //self.radius = Math.floor((Math.max(0.8, self.initRadius) * self.zoomFact) * 0.4);
+        // make the circles a bit smaller than expected
         self.radius = Math.sqrt(self.initRadius * self.zoomFact);
 
-        // at high zoom levels, make the circles a bit smaller, to reduce overlap
-        //var drawRadius = self.radius;
-        //if (self.radius > 30)
-            //drawRadius = Math.round(drawRadius*0.3);
-        //else if (self.radius > 18)
-            //drawRadius = Math.round(drawRadius*0.4);
-        //else if (self.radius > 5)
-            //drawRadius= Math.round(drawRadius*0.7);
-        //if (drawRadius > 6)
-            //drawRadius = Math.round(drawRadius*0.6);
-        //console.log("Theoretical radius "+self.radius+", corrected radius "+drawRadius);
-        self.radius = drawRadius;
-                
-        console.log("drawing, zoom factor "+self.zoomFact+", radius "+self.radius+", alpha "+self.alpha);
         console.time("draw");
 
         self.clear();
@@ -856,19 +874,16 @@ function CbCanvas(top, left, width, height) {
         }
         else {
             // the higher the zoom factor, the higher the alpha value
-            var alpha = self.alpha;
-            if (self.radius>4)
-                alpha *= 2.0;
-            else if (self.radius>10)
-                alpha = 0.8;
+            var zoomFrac = Math.min(1.0, self.zoomFact/100.0); // zoom as fraction, max is 1.0
+            var alpha = self.alpha + 3.0*zoomFrac*(1.0 - self.alpha);
             alpha = Math.min(1.0, alpha);
 
             switch (self.mode) {
                 case 0:
-                    drawCirclesStupid(self.ctx, self.pxCoords, self.colorArr, self.colors, drawRadius, alpha, self.selCells);
+                    drawCirclesStupid(self.ctx, self.pxCoords, self.colorArr, self.colors, self.radius, alpha, self.selCells);
                     break;
                 case 1:
-                    drawCirclesDrawImage(self.ctx, self.pxCoords, self.colorArr, self.colors, drawRadius, alpha, self.selCells);
+                    drawCirclesDrawImage(self.ctx, self.pxCoords, self.colorArr, self.colors, self.radius, alpha, self.selCells);
                     break;
                 case 2:
                     break;
@@ -876,8 +891,12 @@ function CbCanvas(top, left, width, height) {
         }
 
         console.timeEnd("draw");
-        if (self.doDrawLabels===true)
+
+        if (self.doDrawLabels===true) {
+            console.time("draw labels");
             self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels, self.canvas.width, self.canvas.height, self.zoomFact);
+            console.timeEnd("draw labels");
+        }
     };
 
     this.cellsAtPixel = function(x, y) {
@@ -1035,6 +1054,7 @@ function CbCanvas(top, left, width, height) {
         /* clear selection */
         self.selCells = null;
         setStatus("");
+        self.onSelChange([]);
     };
 
     this.selectAdd = function(cellIdx) {
@@ -1051,7 +1071,7 @@ function CbCanvas(top, left, width, height) {
         else
             self.selCells.splice(foundIdx, 1);
         console.time("selectAdd");
-        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
+        self._selUpdate();
     };
 
     this.selectVisible = function() {
@@ -1069,7 +1089,7 @@ function CbCanvas(top, left, width, height) {
             selCells.push(i);
         }
         self.selCells = selCells;
-        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
+        self._selUpdate();
     }
 
     this.selectByColor = function(colIdx) {
@@ -1084,7 +1104,7 @@ function CbCanvas(top, left, width, height) {
         }
         self.selCells = selCells;
         console.log(self.selCells.length+" cells selected, by color");
-        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
+        self._selUpdate();
     };
 
     this.selectInRect = function(x1, y1, x2, y2) {
@@ -1110,9 +1130,16 @@ function CbCanvas(top, left, width, height) {
             }
 
         }
-        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
         console.timeEnd("select");
+        self._selUpdate();
     };
+
+    this._selUpdate = function() {
+        /* called after the selection has been updated, calls the onSelChange callback */
+        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
+        if (self.onSelChange!=null)
+            self.onSelChange(self.selCells);
+    }
 
     this.moveBy = function(xDiff, yDiff) {
         /* update the pxCoords by a certain x/y distance and redraw */
@@ -1189,6 +1216,10 @@ function CbCanvas(top, left, width, height) {
         }
     }
 
+    this.getSelection = function() {
+        /* return selected cells as a list of ints */
+        return self.selCells;
+    }
     this.drawMarquee = function(x1, y1, x2, y2) {
         /* draw the selection or zooming marquee using the DIVs created by setupMouse */
         var selectWidth = Math.abs(x1 - x2);
@@ -1238,8 +1269,11 @@ function CbCanvas(top, left, width, height) {
             var labelInfo = self.labelAt(xCanvas, yCanvas);
             if (labelInfo===null)
                 self.canvas.style.cursor = self.canvasCursor;
-            else
+            else {
                 self.canvas.style.cursor = 'pointer'; // not 'hand' anymore ! and not 'grab' yet!
+                if (self.onLabelHover!==null)
+                    self.onLabelHover(labelInfo, ev);
+                }
         }
 
         if (self.mouseDownX!==null) {
