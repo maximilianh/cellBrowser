@@ -1,12 +1,13 @@
 /* tsneViewer.js class definitions */
 /* * {padding: 0; margin: 0} */ /* important, otherwise precise placement is impossible */ 
 /* body { font-family: Roboto, sans-serif } */
-body { font-family: Arial,Helvetica,sans-serif; overflow:hidden; }
+body { font-family: Arial,Helvetica,sans-serif; overflow:hidden; line-height:1.0}
 canvas { user-select: none }
 
 #tpLegendBar { cursor:default; overflow-y: scroll; padding-left: 2px; border-left: 1px solid #D7D7D7; height:100%}
 
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
+.tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
 #tpLegendHeader { background-color:#eee; color: #777 }
 #tpLegendCol1 { padding-left: 2px}
 #tpLegendCol2 { float: right; padding-right: 2px}
@@ -34,7 +35,7 @@ canvas { user-select: none }
 /* modify bootstrap tooltip defaults */
 .tooltip-inner { min-width: 220px; border-radius: 0}
 
-.ui-widget-header { background: white !important; border: 0px } */ /* DO NOT !important here. Is used by the progressbar */
+/* .ui-widget-header { background: white !important; border: 0px } */ /* DO NOT !important here. Is used by the progressbar */
 .ui-state-active { background: green }
 
 .ui-progressbar { position: relative; }
@@ -56,7 +57,7 @@ canvas { user-select: none }
 .tpSidebarHeader { font-weight: bold; padding-left: 2px; font-size: 16px; padding-top: 2px; height: 25px}
 #tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
 #tpSideMeta { padding-left: 2px}
-#tpMetaPanel { background-color: #EEE; margin-top: 10px}
+#tpMetaPanel { background-color: white}
 #tpLeftTabs { border: 0}
 #tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px }
 

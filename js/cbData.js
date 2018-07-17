@@ -192,6 +192,8 @@ function CbDbFile(url) {
     self.url = url;
     self.geneOffsets = null;
 
+    self.exprCache = {}; // cached compressed expression vectors
+
     this.conf = null;
 
     this.loadConfig = function(onDone) {
@@ -393,10 +395,9 @@ function CbDbFile(url) {
         return {"dArr":dArr, "binCounts":binCounts};
     }
 
-    function discretizeArray(arr) {
+    function discretizeArray(arr, maxBinCount) {
         /* discretize numeric values to deciles. return an obj with dArr and binInfo */
         /* ported from Python cbAdd:discretizeArray */
-        var maxBinCount = 10;
         var counts = countAndSort(arr);
 
         // if we have just a few values, do not do any binning, just count
@@ -404,7 +405,12 @@ function CbDbFile(url) {
             return arrToEnum(arr, counts);
 
         // make array of count-indices of the breaks
-        var breakPercs = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+        // e.g. if maxBinCount=10, breakPercs is [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        var breakPercs = [];
+        var binPerc = 1.0/maxBinCount;
+        for (var i=0; i<maxBinCount; i++)
+            breakPercs.push( binPerc*i );
+
         var countLen = counts.length;
         var breakIndices = [];
         for (var i=0; i < breakPercs.length; i++) {
@@ -446,11 +452,13 @@ function CbDbFile(url) {
         return {"dArr": dArr, "binInfo": binInfo};
     }
 
-    this.loadExprVec = function(geneSym, onDone, onProgress) {
+    this.loadExprVec = function(geneSym, onDone, onProgress, binCount) {
     /* given a geneSym (string), retrieve array of deciles and call onDone with the
      * array */
         function onGeneDone(comprData, geneSym) {
             // decompress data and run onDone when ready
+            self.exprCache[geneSym] = comprData;
+
             console.log("Got expression data, size = "+comprData.length+" bytes");
             var buf = pako.inflate(comprData);
 
@@ -486,12 +494,14 @@ function CbDbFile(url) {
             // read the expression array
             var sampleCount = self.conf.sampleCount;
             var matrixType = self.conf.matrixArrType;
+            if (matrixType===undefined)
+                alert("dataset JSON config file: missing matrixArrType attribute");
             var ArrType = cbUtil.makeType(matrixType);
             var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
             var exprArr = new ArrType(arrData.buffer);
 
             console.time("discretize");
-            var da = discretizeArray(exprArr);
+            var da = discretizeArray(exprArr, binCount);
             console.timeEnd("discretize");
 
             onDone(da.dArr, geneSym, geneDesc, da.binInfo);
@@ -509,9 +519,11 @@ function CbDbFile(url) {
         var url = cbUtil.joinPaths([self.url, "exprMatrix.bin"]);
         //cbUtil.loadFile(url+"?"+geneSym, null, onLineDone, onProgress, {'gene':geneSym}, 
          //   start, end);
-        cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
-            start, end);
-
+        if (geneSym in this.exprCache)
+            onGeneDone(this.exprCache[geneSym], geneSym);
+        else
+            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
+                start, end);
     };
 
     this.loadClusterMarkers = function(markerIndex, clusterName, onDone, onProgress) {
