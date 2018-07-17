@@ -125,7 +125,7 @@ def makeIndexHtml(baseDir, datasets, outDir):
     logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
 
 def cbMake(outDir, options):
-    " create index.html in outDir and copy all statis files over "
+    " create index.html in outDir and copy over all static files "
     baseDir = dirname(__file__) # = directory of this script
     copyStatic(baseDir, outDir)
     datasets = findDatasets(outDir)
