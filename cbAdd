@@ -461,6 +461,9 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
+        if fieldName in datasetInfo["metaOpt"]:
+            fieldMeta["opt"] = datasetInfo["metaOpt"][fieldName]
+
         packFmt = fieldMeta["_fmt"]
 
         # write the binary file
@@ -479,6 +482,8 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
             logging.info(("Type: %(type)s, %(diffValCount)d different values" % fieldMeta))
         else:
             logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
+
+    del datasetInfo["metaOpt"] # don't need this anymore
 
     datasetInfo["metaFields"] = fieldInfo
     return datasetInfo
@@ -523,7 +528,7 @@ def iterExprFromFile(fname, matType, geneToSym):
         if geneToSym is None:
             symbol = gene
         else:
-            symbol = geneToSym.get(geneId)
+            symbol = geneToSym.get(gene)
             if symbol is None:
                 skipIds += 1
                 logging.warn("%s is not a valid Ensembl gene ID, check geneIdType setting in dataset.conf" % geneId)
@@ -827,13 +832,17 @@ def exprEncode(geneDesc, exprArr, matType):
     geneDesc = str(geneDesc) # make sure no unicode
     geneIdLen = struct.pack("<H", len(geneDesc))
 
-    if matType=="float":
-        arrType = "f"
-    elif matType=="int":
-        arrType = "I"
+    if numpyLoaded:
+        #exprStr = exprArr.tobytes()
+        assert(false) # this needs some testing
     else:
-        assert(False) # internal error
-    exprStr = array.array(arrType, exprArr).tostring()
+        if matType=="float":
+            arrType = "f"
+        elif matType=="int":
+            arrType = "I"
+        else:
+            assert(False) # internal error
+        exprStr = array.array(arrType, exprArr).tostring()
 
     geneStr = geneIdLen+geneDesc+exprStr
     geneCompr = zlib.compress(geneStr)
@@ -877,7 +886,6 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
             #highCount += 1
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
-
         exprStr = exprEncode(geneId, exprArr, matType)
         exprIndex[sym] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
@@ -889,7 +897,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         #discretOfh.write(discretStr)
 
         if geneCount % 1000 == 0:
-            logging.info("Wrote expression counts for %d genes" % geneCount)
+            logging.info("Wrote expression values for %d genes" % geneCount)
 
     discretOfh.close()
     ofh.close()
@@ -1127,13 +1135,27 @@ def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coor
     logging.info("Wrote %d coordinates to %s" % (len(sampleNames), coordBinFname))
     return coordInfo, xVals, yVals
 
+def runCommand(cmd):
+    " run command "
+    logging.info("Running %s" % cmd)
+    err = os.system(cmd)
+    if err!=0:
+        errAbort("Could not run: %s" % cmd)
+    return 0
+
 def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter:
         logging.info("Copying %s to %s" % (inFname, outFname))
-        shutil.copy(inFname, outFname)
-        if not outFname.endswith(".gz"):
-            os.system("gzip -f %s" % outFname)
+        #shutil.copy(inFname, outFname)
+        cmd = "cp %s %s" % (inFname, outFname)
+        ret = runCommand(cmd)
+        if ret!=0 and isfile(outFname):
+            os.remove(outFname)
+            sys.exit(1)
+
+        if outFname.endswith(".gz"):
+            runCommand("gzip -f %s" % outFname)
         return
 
     sep = "\t"
@@ -1167,6 +1189,9 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
 
     os.rename(tmpFname, outFname)
 
+    if outFname.endswith(".gz"):
+        runCommand("gzip -f %s" % outFname)
+
 def convIdToSym(geneToSym, geneId):
     if geneToSym is None:
         return geneId
@@ -1192,7 +1217,8 @@ def splitMarkerTable(filename, geneToSym, outDir):
         scoreVal = float(row[2])
         otherFields = row[3:]
 
-        geneSym = convIdToSym(geneToSym, geneId)
+        #geneSym = convIdToSym(geneToSym, geneId)
+        geneSym = geneId # let's assume for now that the marker table already has symbols
 
         newRow = []
         newRow.append(geneId)
@@ -1651,7 +1677,6 @@ def main():
         errAbort("File %s does not exist." % options.inConf, showHelp=True)
     if options.outDir is None:
         errAbort("You have to specify at least the output directory.", showHelp=True)
-
 
     inDir, conf, filesToCopy = findInputFiles(options)
 

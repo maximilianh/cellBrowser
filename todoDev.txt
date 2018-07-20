@@ -1,0 +1,58 @@
+? draw labels as divs?
+? Put Layout dropdown under the image? (kate)
+- multi gene selection, gene "signatures" (czi, holly, olena), ideally sum
+- name clusters by top markers (ken harris)
+- size dots by expression (ken)
+- violin plots (dmitry)
+- plot differential expression on x,y, selection versus rest (ken)
+- plot most anticorrelated genes. Performance: do z-Scores first, then dot products. anti-correlation better than correlation (ken) + do scatterplot matrix for a few genes (ken)
+- identify cells by baby-name (ken)
+- get ken harris' clustering to work (ken), it is hierarchical and assigns good names
+- can we get the pluritest source code?
+
+x for cell annotations, confusion between display and highlight feature (kate)
+x Reset and "sort by" should be buttons, not just text (kate)
+x don't show any info if the mouse is not over a cell (kate)
+x Add the word "legend" to right hand box (kate)
+x work around two finger zoom in old viewer (robert jones)
+x make nav tab-active stronger at least (kate)
+
+Ken Harris, phone, May 8 2018:
+
+Ideas:
+
+0) name clusters by top marker gene. assign cluster labels in a hierarchical way
+such that Olig2.Pitx2 is a cluster close to Olig2.Six3 
+
+1) combine glyphs and color to show cluster labels. 
+
+2) change size of dot depending on expression level. Do not show expression by color.
+
+3) show differential gene expression on x/y gene plot, not violin plot. Let user select
+cells and do differential plot. For each gene, plot 90-percentile, not mean. Plot only
+genes that have a high difference in (x-y)/(x+y+1)
+
+4) plot most anti-correlated genes. Correlations can be very fast to calculate, by doing z-Scores
+first and then just dot products on the z-Scores. Anti-correlations are more useful
+than correlations.
+
+5) Use a scatter plot matrix: a few genes on the x, a few genes on the y, and a scatterplot for each
+
+6) use baby names as cell identifiers. Use official published US baby names list
+
+paper: 
+https://www.biorxiv.org/content/biorxiv/early/2018/04/18/143354.full.pdf
+code
+https://github.com/cortex-lab/Transcriptomics
+
+datasets:
+human https://www.ncbi.nlm.nih.gov/pubmed/29727663
+brain, SVZ - https://www.ncbi.nlm.nih.gov/pubmed/?cmd=historysearch&querykey=2
+immune, HIV infection - https://www.ncbi.nlm.nih.gov/pubmed/29694901
+Mouse Brain, Linnarson 600k https://www.biorxiv.org/content/early/2018/04/05/294918 and 
+ - data: http://mousebrain.org/dokuwiki/doku.php?id=downloads
+Mouse brain, McCarroll, 700k http://dropviz.org/
+MCF-7 cell line: https://www.ncbi.nlm.nih.gov/pubmed/29920548
+
+Analysis:
+- add https://pluritest.org/ scores

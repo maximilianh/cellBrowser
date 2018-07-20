@@ -1060,8 +1060,10 @@ var tsnePlot = function() {
         changeUrl({'zoom':null});
         renderer.zoom100();
         renderer.drawDots();
-        $("tpZoom100Button").blur(); // remove focus
+        $("#tpZoom100Button").blur(); // remove focus
+        //#$("#tpZoom100Button").tooltip('hide');
         ev.preventDefault();
+        return false;
     }
 
     function activateMode(modeName) {
@@ -2042,7 +2044,8 @@ var tsnePlot = function() {
             var field = metaFieldInfo[i];
             var fieldName = field.label;
 
-            var isGrey = (field.diffValCount>100);
+            // fields without binning and with too many unique values are greyed out
+            var isGrey = (field.diffValCount>100 && field.binMethod!==undefined);
 
             var addClass = "";
             var addTitle="";
@@ -2052,7 +2055,15 @@ var tsnePlot = function() {
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
             htmls.push("<div id='tpMetaLabel_"+i+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldName+"</div>");
-            htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px' id='tpMeta_"+i+"'>&nbsp;</div>");
+
+            var styleAdd="";
+            if (field.opt!==undefined) {
+                var opt = field.opt;
+                if (opt.fontSize!==undefined)
+                    styleAdd = ";font-size:"+field.opt.fontSize;
+            }
+
+            htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px"+styleAdd+"' id='tpMeta_"+i+"'>&nbsp;</div>");
             htmls.push("</div>"); // tpMetaBox
         }
         htmls.push("<div style='background-color:white; float:right' id='tpMetaNote' style='display:none; height:1em'></div>");
