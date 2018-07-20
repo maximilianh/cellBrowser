@@ -984,7 +984,7 @@ def parseColors(fname):
         newDict[metaVal] = color
     return newDict
 
-def parseScaleCoordsAsDict(fname, useTwoBytes):
+def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
@@ -996,6 +996,8 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
     maxX = -2^32
     maxY = -2^32
     skipCount = 0
+
+    # parse and find the max values
     for row in lineFileNextRow(fname):
         assert(len(row)==3) # coord file has to have three rows (cellId, x, y), we just ignore the headers
         cellId = row[0]
@@ -1010,21 +1012,18 @@ def parseScaleCoordsAsDict(fname, useTwoBytes):
     if useTwoBytes:
         scaleX = 65535/(maxX-minX)
         scaleY = 65535/(maxY-minY)
-        topY = 65535
 
-    # not flipping coords anymore, is origin at top-left in html ?
     newCoords = {}
     for cellId, x, y in coords:
         if useTwoBytes:
-            #newX = int(scaleX * (maxX - x))
-            #newY = int(65536 - (scaleY * (maxY - y)))
             x = int(scaleX * (x - minX))
-            #newY = int(65536 - (scaleY * (y - minY)))
             y = int(scaleY * (y - minY))
-            #print "XX", x, y, minX, minY, maxX, maxY, scaleX, scaleY, newX, newY
+            if flipY:
+                y = 65535 - y
+            else:
         else:
-            #newY = maxY - y # just flip
-            pass
+            if flipY:
+                y = maxY - y
 
         newCoords[cellId] = (x, y)
 
@@ -1609,7 +1608,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     for coordIdx, coordInfo in enumerate(coordFnames):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
-        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes)
+        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, True)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
