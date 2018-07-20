@@ -35,7 +35,7 @@ canvas { user-select: none }
 /* modify bootstrap tooltip defaults */
 .tooltip-inner { min-width: 220px; border-radius: 0}
 
-/* .ui-widget-header { background: white !important; border: 0px } */ /* DO NOT !important here. Is used by the progressbar */
+ .ui-widget-header { background: #f8f8f8} 
 .ui-state-active { background: green }
 
 .ui-progressbar { position: relative; }
@@ -54,7 +54,7 @@ canvas { user-select: none }
 .tpGeneBarCellSelected { outline: 2px solid black}
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
-.tpSidebarHeader { font-weight: bold; padding-left: 2px; font-size: 16px; padding-top: 2px; height: 25px}
+.tpSidebarHeader { font-weight: bold; padding-left: 4px; font-size: 16px; padding-top: 4px; height: 25px; background-color: #f8f8f8; text-align: center}
 #tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
 #tpSideMeta { padding-left: 2px}
 #tpMetaPanel { background-color: white}
