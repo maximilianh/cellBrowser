@@ -3346,6 +3346,8 @@ var tsnePlot = function() {
 
         if (datasetName===undefined)
             datasetName = datasetList[0].name;
+        if (datasetName==="autism10X")
+            datasetName = "autism"; // temp hack for referees, July 2018
 
         //menuBarHide("#tpShowAllButton");
 
