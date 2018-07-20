@@ -823,6 +823,45 @@ var tsnePlot = function() {
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
     }
 
+    function preloadAllMeta() {
+        /* start loading the full meta value vectors and add them to db.quickMeta */
+        var metaFieldInfo = db.getMetaFields();
+        db.quickMeta = {};
+        for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
+           //var field = metaFieldInfo[i];
+           //var fieldName = field.label;
+           db.loadMetaVec(fieldIdx, function(carr) {db.quickMeta[fieldIdx]=carr} , null);
+        }
+    }
+
+    function preloadQuickGenes() {
+       /* start loading the quick gene expression vectors in the background now 
+        * add them to db.quickExpr */
+       var quickGenes = db.conf.quickGenes;
+       db.quickExpr = {};
+       var validGenes = db.getGenes();
+       var loadCounter = 0;
+       if (quickGenes) {
+           for (var i=0; i<quickGenes.length; i++) {
+               var sym = quickGenes[i][0];
+               if (! (sym in validGenes)) {
+                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
+                  continue;
+               }
+
+               db.loadExprVec(
+                   sym, 
+                   function(exprVec, geneSym, geneDesc, binInfo) {
+                      db.quickExpr[geneSym] = [exprVec, geneDesc, binInfo];
+                      loadCounter++;
+                      if (loadCounter===quickGenes.length)
+                        updateGeneTableColors(null);
+                   },
+                   onProgressConsole, exprBinCount);
+           }
+       }
+    }
+
     function renderData() {
     /* init the renderer, start loading and draw data when ready
      */
@@ -886,30 +925,8 @@ var tsnePlot = function() {
            sel.setTextboxValue(colorBy);
        }
 
-       // start loading the quick gene expression vectors in the background now
-       var quickGenes = db.conf.quickGenes;
-       db.quickExpr = {};
-       var validGenes = db.getGenes();
-       var loadCounter = 0;
-       if (quickGenes) {
-           for (var i=0; i<quickGenes.length; i++) {
-               var sym = quickGenes[i][0];
-               if (! (sym in validGenes)) {
-                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
-                  continue;
-               }
-
-               db.loadExprVec(
-                   sym, 
-                   function(exprVec, geneSym, geneDesc, binInfo) {
-                      db.quickExpr[geneSym] = [exprVec, geneDesc, binInfo];
-                      loadCounter++;
-                      if (loadCounter===quickGenes.length)
-                        updateGeneTableColors(null);
-                   },
-                   onProgressConsole, exprBinCount);
-           }
-       }
+       preloadQuickGenes();
+       preloadAllMeta();
     }
 
     function onTransClick(ev) {
@@ -939,24 +956,24 @@ var tsnePlot = function() {
         buildLegendBar();
     }
         
-    function makeLegendObject(sortBy) {
+    //function makeLegendObject(sortBy) {
     /* create the gLegend object */
-        if (gLegend.type=="meta")
-            {
-            // color by meta attribute
-            gLegend = makeLegendMeta(gLegend.metaFieldIdx, sortBy);
-            }
-        else {
-            // color by gene
-            var geneIdx = gLegend.geneIdx;
-            var geneInfo = gCurrentDataset.preloadExpr.genes[geneIdx];
-            var geneId = geneInfo[0];
-            var geneSym = geneInfo[1];
-            var deciles = gCurrentDataset.preloadExpr.deciles[geneId];
-            var cellExpr = gCurrentDataset.preloadExpr.cellExpr;
-            makeLegendExpr(geneIdx, geneSym, deciles, cellExpr);
-        }
-    }
+        //if (gLegend.type=="meta")
+            //{
+            //// color by meta attribute
+            //gLegend = makeLegendMeta(gLegend.metaFieldIdx, sortBy);
+            //}
+        //else {
+            //// color by gene
+            //var geneIdx = gLegend.geneIdx;
+            //var geneInfo = gCurrentDataset.preloadExpr.genes[geneIdx];
+            //var geneId = geneInfo[0];
+            //var geneSym = geneInfo[1];
+            //var deciles = gCurrentDataset.preloadExpr.deciles[geneId];
+            //var cellExpr = gCurrentDataset.preloadExpr.cellExpr;
+            //makeLegendExpr(geneIdx, geneSym, deciles, cellExpr);
+        //}
+    //}
 
     //function filterCoordsAndUpdate(cellIds, mode) {
     /* hide/show currently selected cell IDs or "show all". Rebuild the legend and the coloring. */
@@ -1346,19 +1363,6 @@ var tsnePlot = function() {
         $('#tpGeneDialogOk').click ( onGeneDialogOkClick );
     }
 
-    function getSortedCellIds() {
-        /* return the cellId names of the expression matrix */
-        // get the sorted list of cell IDs - XX is there a risk that the matrix does not have a sorted order? 
-        // XX Risk of python sorting a different way than javascript?
-        var metaData = gCurrentDataset.metaData;
-        var cellIds = [];
-        for (var cellId in metaData) {
-            cellIds.push(cellId);
-        }
-        cellIds.sort();
-        return cellIds;
-    }
-
     function onGeneLoadComplete() {
         /* called when all gene expression vectors have been loaded */
         console.log("All genes complete");
@@ -1440,25 +1444,6 @@ var tsnePlot = function() {
      */
     function joinPaths(parts, separator) {
       return parts.map(function(part) { return part.trim().replace(/(^[\/]*|[\/]*$)/g, ''); }).join(separator || '/');
-    }
-
-    function getDeciles(arr) {
-    /* return the deciles for an array of floats, line-by-line python->js port from cbPrep */
-        var values = arr.slice(0).sort(); // make sorted copy of array
-        var binSize = ((values.length)-1.0) / 10.0;
-
-        // get deciles from the list of sorted values
-        var deciles = [];
-        var pos = 0;
-        for (var i = 0; i < 11; i++) { // 10 bins means 11 ranges
-            pos = Math.floor(binSize * i); // ? could this ever exceed len(values) due to floating point issues?
-            if (pos > values.length) {
-                console.log("Warning - getDecile: pos > length of vector");
-                pos = values.length;
-            }
-            deciles.push(values[pos]);
-    }
-    return deciles;
     }
 
     //function singleExprDone() {
