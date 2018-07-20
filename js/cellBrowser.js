@@ -3311,6 +3311,30 @@ var tsnePlot = function() {
         return zoomRange;
     }
 
+    function extractDatasetFromUrl() {
+        /* search for the "ds" parameter or a DNS hostname that indicates the dataset */
+        // if ds=xxx was found in the URL, load the respective dataset
+        var datasetName = getVar("ds");
+
+        // at UCSC, the dataset can also be part of the hostname
+        // we got a "* CNAME" in the campus DNS server for this.
+        // it's easier to type, and pretty in manuscripts e.g. 
+        // autism.cells.ucsc.edu
+        var myUrl = window.location.href;
+        myUrl = myUrl.replace("#", "");
+        var urlParts = myUrl.split("?");
+        var hostName = urlParts.split("//");
+        if (hostName.endswith("cells.ucsc.edu")) {
+            var hostParts = hostName.split(".");
+            if (hostParts.length===4)
+                return hostParts[0];
+        }
+
+        if (datasetName===undefined)
+            datasetName = datasetList[0].name;
+        return datasetName;
+    }
+
     /* ==== MAIN ==== ENTRY FUNCTION */
     function loadData(datasetList, globalOpts) {
         /* start the data loaders, show first dataset */
@@ -3326,11 +3350,7 @@ var tsnePlot = function() {
         setupKeyboard();
         buildMenuBar();
 
-        // if ds=xxx was found in the URL, load the respective dataset
-        var datasetName = getVar("ds");
-
-        if (datasetName===undefined)
-            datasetName = datasetList[0].name;
+        var datasetName = extractDatasetFromUrl(datasetList)
 
         //menuBarHide("#tpShowAllButton");
 
