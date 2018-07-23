@@ -1,4 +1,6 @@
-- favorite genes
 - Sub-datasets
 - "Open Dataset"
 - acronyms
+- remove "layout" dropdown if there is only one?
+- make npm65 the default palette
+- add md5s of matrix and meta to dataset config
