@@ -76,6 +76,8 @@ def findDatasets(outDir):
     for subDir in os.listdir(outDir):
         if not isdir(join(outDir, subDir)):
             continue
+        if subDir.endswith(".skip"):
+            continue
         fname = join(outDir, subDir, "dataset.json")
         if not isfile(fname):
             continue
@@ -84,7 +86,7 @@ def findDatasets(outDir):
         assert("shortLabel" in datasetDesc)
         datasetDesc["baseUrl"] = subDir+"/"
         datasets.append(datasetDesc)
-    datasets = list(sorted(datasets, key=lambda k: k.get('priority', 0)))
+    datasets = list(sorted(datasets, key=lambda k: k.get('priority', 10)))
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
@@ -112,7 +114,17 @@ def copyStatic(baseDir, outDir):
 def makeIndexHtml(baseDir, datasets, outDir):
     dsList = []
     for ds in datasets:
-        dsList.append({"shortLabel" : ds["shortLabel"], "sampleCount" : ds["sampleCount"], "name" : ds["name"] })
+        summDs = {
+                "shortLabel" : ds["shortLabel"],
+                "sampleCount" : ds["sampleCount"],
+                "name" : ds["name"]
+                }
+
+        if "tags" in ds:
+            assert(type(ds["tags"])==type([])) # "tags" have to be a list, not a string or dict
+            summDs["tags"] = ds["tags"]
+
+        dsList.append(summDs)
 
     indexFname = join(baseDir, "index.html")
     indexStr = open(indexFname).read()

@@ -461,7 +461,7 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
-        if fieldName in datasetInfo["metaOpt"]:
+        if "metaOpt" in datasetInfo and fieldName in datasetInfo["metaOpt"]:
             fieldMeta["opt"] = datasetInfo["metaOpt"][fieldName]
 
         packFmt = fieldMeta["_fmt"]
@@ -483,7 +483,8 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
         else:
             logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
-    del datasetInfo["metaOpt"] # don't need this anymore
+    if "metaOpt" in datasetInfo:
+        del datasetInfo["metaOpt"] # don't need this anymore
 
     datasetInfo["metaFields"] = fieldInfo
     return datasetInfo
@@ -504,7 +505,8 @@ def iterLineOffsets(ifh):
 def iterExprFromFile(fname, matType, geneToSym):
     " yield (gene, symbol, array) tuples from gene expression file "
     if fname.endswith(".gz"):
-        ifh = gzip.open(fname)
+        #ifh = gzip.open(fname)
+        ifh = os.popen("zcat -q "+fname+" 2> /dev/null") # faster, especially with two CPUs
     else:
         ifh = open(fname)
     
@@ -512,13 +514,18 @@ def iterExprFromFile(fname, matType, geneToSym):
     if ".csv" in fname.lower():
         sep = ","
 
+    if matType == "float":
+        npType = "float32"
+    else:
+        npType = "int32"
+
     headLine = ifh.readline()
     skipIds = 0
     doneGenes = set()
     for line in ifh:
         gene, rest = string.split(line, sep, maxsplit=1)
         if numpyLoaded:
-            a = np.fromstring(rest, sep=sep, dtype=matType)
+            a = np.fromstring(rest, sep=sep, dtype=npType)
         else:
             if matType=="int":
                 a = [int(x) for x in rest.split(sep)]
@@ -832,9 +839,9 @@ def exprEncode(geneDesc, exprArr, matType):
     geneDesc = str(geneDesc) # make sure no unicode
     geneIdLen = struct.pack("<H", len(geneDesc))
 
+    # on cortex-dev, numpy was around 30% faster. Not a huge difference.
     if numpyLoaded:
-        #exprStr = exprArr.tobytes()
-        assert(false) # this needs some testing
+        exprStr = exprArr.tobytes()
     else:
         if matType=="float":
             arrType = "f"
@@ -1020,7 +1027,6 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
             y = int(scaleY * (y - minY))
             if flipY:
                 y = 65535 - y
-            else:
         else:
             if flipY:
                 y = maxY - y
@@ -1154,8 +1160,6 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
             os.remove(outFname)
             sys.exit(1)
 
-        if outFname.endswith(".gz"):
-            runCommand("gzip -f %s" % outFname)
         return
 
     sep = "\t"
@@ -1189,9 +1193,6 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
 
     os.rename(tmpFname, outFname)
 
-    if outFname.endswith(".gz"):
-        runCommand("gzip -f %s" % outFname)
-
 def convIdToSym(geneToSym, geneId):
     if geneToSym is None:
         return geneId
@@ -1212,7 +1213,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
     data = defaultdict(list)
     for line in ifh:
         row = line.rstrip("\n").split('\t')
-        markerName = row[0]
+        clusterName = row[0]
         geneId = row[1]
         scoreVal = float(row[2])
         otherFields = row[3:]
@@ -1226,16 +1227,16 @@ def splitMarkerTable(filename, geneToSym, outDir):
         newRow.append(scoreVal)
         newRow.extend(otherFields)
 
-        data[markerName].append(newRow)
+        data[clusterName].append(newRow)
 
     newHeaders = ["id", "symbol"]
     newHeaders.extend(otherHeaders)
 
     fileCount = 0
-    for markerName, rows in data.iteritems():
+    for clusterName, rows in data.iteritems():
         #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
-        markerName = markerName.replace("/","_")
-        outFname = join(outDir, markerName+".tsv")
+        clusterName = clusterName.replace("/","_")
+        outFname = join(outDir, clusterName+".tsv")
         logging.debug("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
@@ -1291,27 +1292,39 @@ def guessConfig(options):
             #otherFiles["markerLists"] = [markerFname]
     return conf
 
-def mapFilenames(inDir, conf):
-    # replace file names in config files with file names in the output directory
+def copyHtmlFiles(inDir, conf):
+    " copy description html files to output directory "
     copyFiles = []
 
-    if "description" in conf:
-        fname = makeAbs(inDir, conf["description"])
-        if not isfile(fname):
-            logging.error("%s referred to in config file does not exist, skipping" % fname)
-            conf["summary"] = None
-        else:
-            copyFiles.append( (fname, "description.html") )
-            conf["summary"] = "summary.html"
+    conf["desc"] = {}
 
-    if "makeDoc" in conf:
-        fname = makeAbs(inDir, conf["makeDoc"])
-        if not isfile(fname):
-            logging.error("%s referred to in config file does not exist, skipping" % fname)
-            conf["methods"] = None
-        else:
-            copyFiles.append( (fname, "methods.html") )
-            conf["methods"] = "methods.html"
+    fname = makeAbs(inDir, "summary.html")
+    if not isfile(fname):
+        logging.warn("%s does not exist" % fname)
+    else:
+        copyFiles.append( (fname, "summary.html") )
+        conf["desc"]["summary"] = "summary.html"
+
+    fname = makeAbs(inDir, "methods.html")
+    if not isfile(fname):
+        logging.warn("%s does not exist" % fname)
+    else:
+        copyFiles.append( (fname, "methods.html") )
+        conf["desc"]["methods"] = "methods.html"
+
+    fname = makeAbs(inDir, "downloads.html")
+    if not isfile(fname):
+        logging.warn("%s does not exist" % fname)
+    else:
+        copyFiles.append( (fname, "downloads.html") )
+        conf["desc"]["downloads"] = "downloads.html"
+
+    fname = makeAbs(inDir, "thumb.png")
+    if not isfile(fname):
+        logging.warn("%s does not exist" % fname)
+    else:
+        copyFiles.append( (fname, "thumb.png") )
+        conf["desc"]["thumbnail"] = "thumb.png"
 
     return conf, copyFiles
 
@@ -1330,7 +1343,7 @@ def findInputFiles(options):
     else:
         conf = guessConfig(options)
 
-    conf, copyFiles = mapFilenames(inDir, conf)
+    conf, copyFiles = copyHtmlFiles(inDir, conf)
 
     return inDir, conf, copyFiles
 
@@ -1507,8 +1520,9 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     json.dump(conf, open(confName, "w"))
 
     for src, dest in fileToCopy:
-        logging.info("Copying %s -> %s" % (src, dest))
-        shutil.copy(src, join(outDir, dest))
+        outPath = join(outDir, dest)
+        logging.info("Copying %s -> %s" % (src, outPath))
+        shutil.copy(src, outPath)
 
     matrixFname = makeAbs(inDir, conf["exprMatrix"])
     metaFname = makeAbs(inDir, conf["meta"])
@@ -1523,7 +1537,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     if geneIdType==None:
         errAbort("geneIdType must have a value in dataset.conf")
 
-    if geneIdType == 'symbols':
+    if geneIdType == 'symbols' or geneIdType=="symbol":
         geneToSym = None
     else:
         searchMask = join(dataDir, geneIdType+".*.tab")
@@ -1546,6 +1560,8 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     del conf["colors"]
     if "enumFields" in conf:
         del conf["enumFields"]
+    if "tags" in conf and type(conf["tags"])!=type([]):
+        errAbort("'tags' in config file must be a list")
 
     # in quick mode, reuse the old config file
     if options.quick and isfile(descJsonFname):
@@ -1577,9 +1593,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     writeJson(conf, descJsonFname)
     # process the expression matrix: two steps
 
-    myMatrixFname = join(outDir, "exprMatrix.tsv")
-    if matrixFname.endswith(".gz"):
-        myMatrixFname += ".gz"
+    myMatrixFname = join(outDir, "exprMatrix.tsv.gz")
 
     binMat = join(outDir, "exprMatrix.bin")
     binMatIndex = join(outDir, "exprMatrix.json")
@@ -1587,9 +1601,11 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     discretMatrixIndex = join(outDir, "discretMat.json")
 
     if options.quick and isfile(myMatrixFname):
-        logging.info("quick-mode: Not copying+reordering raw expression matrix %s" % myMatrixFname)
+        logging.info("quick-mode: Not copying+reordering expression matrix %s" % myMatrixFname)
     else:
-        copyMatrix(matrixFname, myMatrixFname, sampleNames, needFilterMatrix)
+        nozipFname = join(outDir, "exprMatrix.tsv")
+        copyMatrix(matrixFname, nozipFname, sampleNames, needFilterMatrix)
+        runCommand("gzip -f %s" % nozipFname)
 
     # step1: discretize expression matrix for the viewer
     if options.quick and isfile(binMat):
@@ -1649,13 +1665,13 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
         markerFname = markerInfo["file"]
         markerLabel = markerInfo["shortLabel"]
 
-        markerName = "markers_%d" % coordIdx # use sha1 of input file ?
-        markerDir = join(outDir, "markers", markerName)
+        clusterName = "markers_%d" % markerIdx # use sha1 of input file ?
+        markerDir = join(outDir, "markers", clusterName)
         makeDir(markerDir)
 
         splitMarkerTable(markerFname, geneToSym, markerDir)
 
-        newMarkers.append( {"name" : markerName, "shortLabel" : markerLabel})
+        newMarkers.append( {"name" : clusterName, "shortLabel" : markerLabel})
     conf["markers"] = newMarkers
 
     writeJson(conf, descJsonFname)

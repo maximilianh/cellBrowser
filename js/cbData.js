@@ -266,6 +266,7 @@ function CbDbFile(url) {
      * and an object with some info about the field. call onDone(arr, metaInfo) when done. */
         //var metaInfo = cbUtil.findObjWhereEq(self.conf.metaFields, "name", fieldName);
         var metaInfo = self.conf.metaFields[fieldIdx];
+        console.log(metaInfo);
         var fieldName = metaInfo.name;
         var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin"]);
         var arrType = cbUtil.makeType(metaInfo.arrType);

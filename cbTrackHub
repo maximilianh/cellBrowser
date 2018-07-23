@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import logging, sys, optparse, re, unicodedata, string, glob
+import logging, sys, optparse, re, unicodedata, string, glob, distutils
 from collections import defaultdict, namedtuple
 from os.path import join, basename, dirname, isfile
 import os
@@ -94,9 +94,11 @@ def lineFileNextRow(inFile):
 
 def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
     " make track hub given meta file and directory with bam files "
+    # parse meta file
     logging.info("Parsing and using first field as the cell ID in file %s" % metaFname)
     clusterToCells = defaultdict(list)
     metaCellIds = set()
+    skipCount = 0
     for row in lineFileNextRow(metaFname):
         clusterName = row._asdict()[clusterFieldName]
         cellId = row[0]
@@ -105,11 +107,16 @@ def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
 
         # skip all cells assigned to the "" cluster
         if clusterName=="":
+            skipCount +=1
             continue
 
         metaCellIds.add(cellId)
         clusterToCells[clusterName].append(cellId)
-    
+
+    logging.info("Got %d clusters and %d cell IDs assigned to them" % (len(clusterToCells), len(metaCellIds)))
+    if skipCount!=0:
+        logging.info("Skipped %d meta rows with empty cluster names" % skipCount)
+
     if options.jobList:
         jlFh = open("jobList", "w")
 
@@ -120,6 +127,7 @@ def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
     cellIdToBamFnames = defaultdict(list)
     for bamPath in bamPaths:
         cellId = basename(bamPath).split(".")[0]
+        cellId = cellId.replace("_R1", "").replace("_R2", "")
         cellIdToBamFnames[cellId].append(bamPath)
 
     logging.info("Got %s BAM files and %s cell ids in the meta data" % (len(metaCellIds), len(cellIdToBamFnames)))
@@ -148,7 +156,6 @@ trackDb hub.txt
     i = 0
     for clusterName, cellIds in clusterToCells.iteritems():
         saneClusterName = filter(str.isalnum, clusterName).replace(" ", "_") # remove non alpha chars
-        outBam = join(outDir, saneClusterName+".bam")
         inFnames = []
         logging.info("Cluster %s, %d cellIds, examples: %s" % (clusterName, len(cellIds), cellIds[0]))
         for cellId in cellIds:
@@ -166,9 +173,6 @@ trackDb hub.txt
                 notFound.append(fn)
             else:
                 filtFnames.append(fn)
-        #logging.warn("Could not find these filenames: %s" % " ".join(notFound))
-        logging.warn("Cluster: %s, %d cell IDs, found %d BAM files, example %s" % (clusterName, len(cellIds), len(filtFnames), filtFnames[0]))
-
         if len(filtFnames)==0:
             logging.error("No single BAM file left for cluster %s. Stopping." % clusterName)
             sys.exit(1)
@@ -176,9 +180,16 @@ trackDb hub.txt
         if len(filtFnames)==1:
             logging.warn("Only 1 BAM file for cluster %s?" % clusterName)
 
+        logging.warn("Cluster: %s, %d cell IDs, found %d BAM files, example %s" % (clusterName, len(cellIds), len(filtFnames), filtFnames[0]))
+
         # -r construct read groups
         # -f overwrite output files if needed
+        outBam = join(outDir, saneClusterName+".bam")
         cmd = "samtools merge -r -f %s %s" % (outBam, " ".join(filtFnames))
+
+        #bamCovPath = distutils.spawn.find_executable("bamCoverage")
+        #outBw = join(outDir, saneClusterName+".bw")
+
         cmd2 = "samtools index %s" % outBam
         if options.jobList:
             jobFn = "job-%d.sh" % i
@@ -195,7 +206,8 @@ trackDb hub.txt
             assert(os.system(cmd2)==0)
 
         saneClusterName = filter(str.isalnum, clusterName) # remove non alpha chars
-        tfh.write("""track %s\nshortLabel %s\nlongLabel %s\n""" % (saneClusterName, clusterName, clusterName))
+        tfh.write("""track %s\nshortLabel %s\n""" % (saneClusterName, clusterName))
+        tfh.write("""longLabel %s (%d cells)\n""" % (clusterName, len(cellIds)))
         tfh.write("type bam\n")
         tfh.write("bigDataUrl %s\n" % (saneClusterName+".bam"))
         tfh.write("visibility dense\n")

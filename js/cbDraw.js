@@ -149,7 +149,8 @@ function CbCanvas(top, left, width, height) {
         htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="display: block; margin-right:0"><img src="img/zoom.png"></button>');
         htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" class="tpModeButton" style="margin-right:0"><img src="img/move.png"></button>');
         //htmls.push('</div>');
-        htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="margin-top: 2px; margin-right:0; display:block"><img style="width:22px; height:22px" src="img/center.png"></button>');
+        htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="font-size:10px; font-weight: bold; margin-top: 4px; margin-right:0; display:block; padding:0">100%</button>');
+        //<img style="width:22px; height:22px" src="img/center.png">
 
         var ctrlDiv = makeCtrlContainer(top, left);
         ctrlDiv.innerHTML = htmls.join("");
@@ -160,7 +161,7 @@ function CbCanvas(top, left, width, height) {
         gebi('tpIconModeMove').addEventListener('click', function() { self.activateMode("move");}, false);
         gebi('tpIconModeZoom').addEventListener ('click', function() { self.activateMode("zoom")}, false);  
         gebi('tpIconModeSelect').addEventListener ('click',  function() { self.activateMode("select")}, false);
-        gebi('tpZoom100Button').addEventListener ('click', function(ev) { self.onZoom100Click(ev) } );
+        gebi('tpZoom100Button').addEventListener ('click', function(ev) { return self.onZoom100Click(ev) } );
     }
 
     function setStatus(text) {
@@ -489,9 +490,9 @@ function CbCanvas(top, left, width, height) {
        ctx.save();
        console.log("Drawing "+coordColors.length+" coords with drawImg renderer, radius="+radius);
        var off = document.createElement('canvas'); // not added to DOM, will be gc'ed
-       var diam = 2 * radius;
+       var diam = Math.round(2 * radius);
        var tileWidth = diam + 2; // must add one pixel on each side, space for antialising
-       var tileHeight = diam + 2; // otherwise circles look cut off
+       var tileHeight = tileWidth; // otherwise circles look cut off
        off.width = (colors.length+1) * tileWidth;
        off.height = tileHeight;
        var ctxOff = off.getContext('2d');  
@@ -857,26 +858,31 @@ function CbCanvas(top, left, width, height) {
 
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
 
+        console.log("Zoom factor: "+self.zoomFact);
         // make the circles a bit smaller than expected
-        self.radius = Math.sqrt(self.initRadius * self.zoomFact);
+        var baseRadius = self.initRadius;
+        if (baseRadius===0)
+            baseRadius = 0.8;
+        self.radius = Math.round(Math.sqrt(baseRadius * self.zoomFact));
 
         console.time("draw");
 
         self.clear();
 
+        // the higher the zoom factor, the higher the alpha value
+        var zoomFrac = Math.min(1.0, self.zoomFact/100.0); // zoom as fraction, max is 1.0
+        var alpha = self.alpha + 3.0*zoomFrac*(1.0 - self.alpha);
+        alpha = Math.min(1.0, alpha);
+
         if (self.radius===0) {
             drawPixels(self.ctx, self.canvas.width, self.canvas.height, self.pxCoords, 
-                self.colorArr, self.colors, self.alpha, self.selCells);
+                self.colorArr, self.colors, alpha, self.selCells);
         }
 
         else if (self.radius===1 || self.radius===2) {
             drawRect(self.ctx, self.pxCoords, self.colorArr, self.colors, self.radius, self.alpha, self.selCells);
         }
         else {
-            // the higher the zoom factor, the higher the alpha value
-            var zoomFrac = Math.min(1.0, self.zoomFact/100.0); // zoom as fraction, max is 1.0
-            var alpha = self.alpha + 3.0*zoomFrac*(1.0 - self.alpha);
-            alpha = Math.min(1.0, alpha);
 
             switch (self.mode) {
                 case 0:
@@ -1061,6 +1067,7 @@ function CbCanvas(top, left, width, height) {
         /* add a single cell to the selection. If it already exists, remove it. */
         if (self.selCells===null) {
             self.selCells = [cellIdx];
+            self._selUpdate();
             return;
         }
 

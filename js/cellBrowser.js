@@ -6,7 +6,8 @@
 "use strict";
 
 var tsnePlot = function() {
-    var db = null;
+    var db = null; // the cbData object from cbData.js. Loads coords,
+                   // annotations and gene expression pattersn.
     
     var gDatasetList = null; // array of dataset descriptions (objects)
 
@@ -249,8 +250,46 @@ var tsnePlot = function() {
          //$("#tpHideLabels").text(SHOWLABELSNAME);
     }
 
-    function onOpenDatasetClick(selectedUrl) {
-    /* user clicks on File - Open Dataset or on the <Info> button after the dataset */
+    function prettyNumber(/*int*/ count) /*str*/ {
+        /* convert a number to a shorter string, e.g. 1200 -> 1.2k, 1200000 -> 1.2M, etc */
+        if (count>1000000) {
+            var f = (count / 1000000);
+            return f.toFixed(1)+"M";
+        }
+        if (count>1000) {
+            var f = (count / 1000);
+            return f.toFixed(1)+"k";
+        }
+    }
+
+    function openDatasetLoadPane(selDatasetIdx) {
+        /* open dataset dialog: load html into the three panes  */
+        var datasetName = gDatasetList[selDatasetIdx].name;
+        var descUrl = joinPaths([datasetName, "summary.html"]);
+        $("#pane1").load(descUrl, function( response, status, xhr ) {
+            if ( status === "error" ) {
+                $( "#pane1" ).html("File "+descUrl+" was not found");
+            }
+            $("#tabLink1").tab("show");
+        });
+
+        var methodsUrl = joinPaths([datasetName, "methods.html"]);
+        $("#pane2").load(methodsUrl, function( response, status, xhr ) {
+            if ( status === "error" ) {
+                $( "#pane2" ).html("File "+methodsUrl+" was not found");
+            }
+        });
+
+        var downloadUrl = joinPaths([datasetName, "downloads.html"]);
+        $("#pane3").load(downloadUrl, function( response, status, xhr ) {
+            if ( status === "error" ) {
+                $( "#pane3" ).html("File "+downloadUrl+" was not found");
+            }
+        });
+    }
+
+    function openDatasetDialog() {
+    /* build dataset open dialog */
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
@@ -265,12 +304,20 @@ var tsnePlot = function() {
             var dataset = gDatasetList[i];
             var line = "<button id='tpDatasetButton_"+i+"' type='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
+
             if (dataset.sampleCount!==undefined) {
-                line = "<span class='badge'>"+dataset.sampleCount+" cells</span>";
-                htmls.push(line);
+                var countDesc = prettyNumber(dataset.sampleCount);
+                htmls.push("<span class='badge'>"+countDesc+"</span>");
+            }
+
+            if (dataset.tags!==undefined) {
+                for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
+                var tag = dataset.tags[tagI];
+                htmls.push("<span class='badge'>"+tag+"</span>");
+                }
             }
             htmls.push(dataset.shortLabel+"</button>");
-            if (dataset.baseUrl===selectedUrl)
+            if (db!==null && db.name===dataset.name)
                 activeIdx = i;
         }
         htmls.push("</div>"); // list-group
@@ -278,19 +325,24 @@ var tsnePlot = function() {
         htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: 340px; top: 10px;'>");
         htmls.push("<div id='tpOpenDialogTabs'>");
         htmls.push("<ul class='nav nav-tabs'>");
-        htmls.push("<li class='active'><a id='tabLink1' data-toggle='tab' href='#pane1'>Description</a></li>");
-        htmls.push("<li><a id='tabLink2' data-toggle='tab' href='#pane2'>Data Processing</a></li>");
+        htmls.push("<li class='active'><a id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
+        htmls.push("<li><a id='tabLink2' data-toggle='tab' href='#pane2'>Methods</a></li>");
+        htmls.push("<li><a id='tabLink3' data-toggle='tab' href='#pane3'>Data Download</a></li>");
         htmls.push("</ul>");
         htmls.push("</div>");
 
         htmls.push("<div class='tab-content'>");
 
         htmls.push("<div id='pane1' class='tab-pane'>");
-        htmls.push("<p>Dataset description placeholder</p>");
+        htmls.push("<p>Loading abstract...</p>");
         htmls.push("</div>");
 
         htmls.push("<div id='pane2' class='tab-pane'>");
-        htmls.push("<p>Dataset technical makedoc placeholder</p>");
+        htmls.push("<p>Loading methods...</p>");
+        htmls.push("</div>");
+
+        htmls.push("<div id='pane3' class='tab-pane'>");
+        htmls.push("<p>Loading data download...</p>");
         htmls.push("</div>");
 
         htmls.push("</div>"); // tab-content
@@ -301,24 +353,25 @@ var tsnePlot = function() {
         var selDatasetIdx = 0;
 
         var buttons = {
-        "Cancel" :
-            function() {
-                $( this ).dialog( "close" );
-            },
         "Open Dataset" :
             function(event) {
-                loadDataset(selDatasetIdx);
                 $( this ).dialog( "close" );
+                var datasetName = gDatasetList[selDatasetIdx].name;
+                loadDataset(datasetName);
             }
         };
 
-        showDialogBox(htmls, "Open Dataset", {width: winWidth, height:winHeight, "buttons":buttons});
+        if (db!==null)
+            buttons["Cancel"] = function() { $( this ).dialog( "close" ); };
+
+        showDialogBox(htmls, "Open Cell Browser Dataset", {width: winWidth, height:winHeight, "buttons":buttons});
 
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
             // load the current dataset when the user presses Return
             if (e.which == '13') {
-                loadDataset(selDatasetIdx);
+                var datasetName = gDatasetList[selDatasetIdx].name;
+                loadDataset(datasetName);
                 $(".ui-dialog-content").dialog("close");
             }
         });
@@ -327,27 +380,13 @@ var tsnePlot = function() {
             selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
             $(".list-group-item").removeClass("active");
             $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in .html
+            openDatasetLoadPane(selDatasetIdx);
         });
 
         $("#tabLink1").tab("show");
 
         $(".list-group-item").focus( function (event) {
             selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
-            var baseUrl = gDatasetList[selDatasetIdx].baseUrl;
-            var descUrl = joinPaths([baseUrl, "description.html"]);
-            $("#pane1").load(descUrl, function( response, status, xhr ) {
-                if ( status === "error" ) {
-                    $( "#pane1" ).html("File "+descUrl+" was not found");
-                }
-                $("#tabLink1").tab("show");
-            });
-
-            var makeDocUrl = joinPaths([baseUrl, "makeDoc.html"]);
-            $("#pane2").load(makeDocUrl, function( response, status, xhr ) {
-                if ( status === "error" ) {
-                    $( "#pane2" ).html("File "+makeDocUrl+" was not found");
-                }
-            });
             // bootstrap has a bug where the blue selection frame is hidden by neighboring buttons
             // we're working around this here by bumping up the current z-index.
             $("button.list-group-item").css("z-index", "0");
@@ -361,8 +400,9 @@ var tsnePlot = function() {
         $("#tpOpenDialogTabs a:last").tab("show");
         $("#tpOpenDialogTabs a:first").tab("show");
 
-        // finally, activate the default pane
+        // finally, activate the default pane and load its html
         $("button.list-group-item").eq(activeIdx).trigger("focus");
+        openDatasetLoadPane(activeIdx);
     }
 
     function drawLayoutMenu() {
@@ -574,12 +614,12 @@ var tsnePlot = function() {
            htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">File</a>');
            htmls.push('<ul class="dropdown-menu">');
              htmls.push('<li><a href="#" id="tpOpenDatasetLink"><span class="dropmenu-item-label">Open Dataset...</span><span class="dropmenu-item-content">o</span></a></li>');
-             htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Download Data</a>');
-               htmls.push('<ul class="dropdown-menu" id="tpDownloadMenu">');
-                 htmls.push('<li><a href="#" id="tpDownload_matrix">Gene Expression Matrix</a></li>');
-                 htmls.push('<li><a href="#" id="tpDownload_meta">Cell Metadata</a></li>');
+             //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Download Data</a>');
+               //htmls.push('<ul class="dropdown-menu" id="tpDownloadMenu">');
+                 //htmls.push('<li><a href="#" id="tpDownload_matrix">Gene Expression Matrix</a></li>');
+                 //htmls.push('<li><a href="#" id="tpDownload_meta">Cell Metadata</a></li>');
                  //htmls.push('<li><a href="#" id="tpDownload_coords">Visible coordinates</a></li>');
-               htmls.push('</ul>'); // Download sub-menu
+               //htmls.push('</ul>'); // Download sub-menu
              htmls.push('<li><a href="#" id="tpSaveImage">Download current image</a></li>');
              htmls.push('</li>');   // sub-menu container
 
@@ -669,7 +709,7 @@ var tsnePlot = function() {
        $('#tpMark').click( onMarkClick );
        $('#tpMarkClear').click( onMarkClearClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
-       $('#tpOpenDatasetLink').click( onOpenDatasetClick );
+       $('#tpOpenDatasetLink').click( openDatasetDialog );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
@@ -770,7 +810,7 @@ var tsnePlot = function() {
 
        var fieldInfo = db.getMetaFields()[fieldIdx];
 
-       if (fieldInfo.diffValCount > 100) {
+       if (fieldInfo.diffValCount > 100 && fieldInfo.binMethod===undefined) {
            warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than 100 different values is not supported.");
            return null;
        }
@@ -828,8 +868,9 @@ var tsnePlot = function() {
         var metaFieldInfo = db.getMetaFields();
         db.quickMeta = {};
         for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
-           //var field = metaFieldInfo[i];
-           //var fieldName = field.label;
+           var fieldInfo = metaFieldInfo[fieldIdx];
+           if (fieldInfo.type==="uniqueString")
+               continue
            db.loadMetaVec(fieldIdx, function(carr) {db.quickMeta[fieldIdx]=carr} , null);
         }
     }
@@ -1872,17 +1913,25 @@ var tsnePlot = function() {
         colorByMetaField(fieldName);
     }
 
+    function loadDataset(datasetName) {
+        db = new CbDbFile(datasetName); 
+        changeUrl({"ds":datasetName}, {});
+        db.loadConfig(function() { renderData() });
+        
+        // start the tutorial after a while
+        var introShownBefore = localStorage.getItem("introShown");
+        if (introShownBefore==undefined)
+           setTimeout(function(){ showIntro(true); }, 5000); // show after 5 secs
+
+    }
+
     function onDatasetChange(ev, params) {
         /* user changed the dataset in the dropbox */
         var datasetIdx = parseInt(params.selected);
         var datasetName = gDatasetList[datasetIdx].name;
-
-        db = new CbDbFile(datasetName); 
-        changeUrl({"ds":datasetName}, {});
-        db.loadConfig(function() { renderData() });
-
         $(this).blur();
         removeFocus();
+        loadDataset(datasetName);
     }
 
     function buildLayoutCombo(htmls, files, id, width, left, top) {
@@ -1990,9 +2039,11 @@ var tsnePlot = function() {
         //htmls.push('</div>');
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
-        htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 0, 0);
-        buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
+        //htmls.push("&emsp;");
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 200, 0);
+        //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
+        
+        htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
 
         htmls.push("</div>");
 
@@ -2004,7 +2055,7 @@ var tsnePlot = function() {
         //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );  
         //$('#tpIconModeSelect').click( function() { activateMode("select")} );
         //$('#tpZoom100Button').click( onZoom100Click );
-        $('#tpIconDatasetInfo').click( function() { onOpenDatasetClick(gCurrentDataset.baseUrl)});
+        $('#tpIconDatasetInfo').click( function() { openDatasetDialog()});
 
         //$('#tpIconZoomIn').click( onZoomInClick );
         //$('#tpIconZoomOut').click( onZoomOutClick );
@@ -2027,6 +2078,7 @@ var tsnePlot = function() {
         $("#tpDatasetCombo").val(datasetIdx).trigger("chosen:updated");
         $('#tpLayoutCombo').change(onLayoutChange);
         $('#tpGeneCombo').change(onGeneChange);
+        $('#tpOpenDatasetButton').click(openDatasetDialog);
     }
 
     function metaFieldToLabel(fieldName) {
@@ -2346,7 +2398,7 @@ var tsnePlot = function() {
 
     function setupKeyboard() {
     /* bind the keyboard shortcut keys */
-        Mousetrap.bind('o', onOpenDatasetClick);
+        Mousetrap.bind('o', openDatasetDialog);
         Mousetrap.bind('c m', onMarkClearClick);
         Mousetrap.bind('h m', onMarkClick);
 
@@ -2801,7 +2853,7 @@ var tsnePlot = function() {
         console.time("avgCalc");
         for (var i=0; i<quickGenes.length; i++) {
             var sym = quickGenes[i][0];
-            console.log("updating colors of "+sym+" for "+cellIds.length+" cells");
+            //console.log("updating colors of "+sym+" for "+cellIds.length+" cells");
             var geneExpr = db.quickExpr[sym];
             if (geneExpr===undefined) { // if any gene is not loaded yet, just quit
                 console.log(sym+" is not loaded yet, not updating expr table colors");
@@ -2817,10 +2869,10 @@ var tsnePlot = function() {
                     sum += vec[cellIds[ci]];
                 }
                 avg = Math.round(sum / cellIds.length);
-                console.log("sum "+sum+" avg "+avg);
+                //console.log("sum "+sum+" avg "+avg);
             }
             var color = pal[avg];
-            console.log("color "+color);
+            //console.log("color "+color);
             $("#tpGeneBarCell_"+i).css("background-color", "#"+color);
 	    var fontColor = "#333333";
 	    if (isDark(color))
@@ -3018,14 +3070,14 @@ var tsnePlot = function() {
         var hubUrl = db.conf.hubUrl;
         if (hubUrl!==undefined) {
             htmls.push("<p>");
-            htmls.push("<a target=_blank style='padding:5px' class='link' href='http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
+            htmls.push("<a target=_blank style='padding:5px' class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
         }
 
         if (doTabs) {
             htmls.push("<div id='tabs'>");
             htmls.push("<ul>");
             for (var tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
-                var tabLabel = tabInfo[tabIdx][1];
+                var tabLabel = tabInfo[tabIdx].shortLabel;
                 htmls.push("<li><a href='#tabs-"+tabIdx+"'>"+tabLabel+"</a>");
             }
             htmls.push("</ul>");
@@ -3035,7 +3087,6 @@ var tsnePlot = function() {
             var divName = "tabs-"+tabIdx;
             var tabDir = tabInfo[tabIdx].name;
             var markerTsvUrl = joinPaths([db.name, "markers", tabDir, clusterName.replace("/", "_")+".tsv"]);
-
             htmls.push("<div id='"+divName+"'>");
             htmls.push("Loading...");
             htmls.push("</div>");
@@ -3117,17 +3168,24 @@ var tsnePlot = function() {
 
         var htmls = [];
 
+        htmls.push("Click gene symbols below to color plot by gene<br>");
+
         htmls.push("<table class='table'>");
         htmls.push("<thead>");
         var hprdCol = null;
         var geneListCol = null;
         var exprCol = null;
+        var pValCol = null
         for (var i = 1; i < headerRow.length; i++) {
             var colLabel = headerRow[i];
             var width = null;
             if (colLabel==="_geneLists") {
                 colLabel = "Gene Lists";
                 geneListCol = i;
+            }
+            else if (colLabel==="P_value" || colLabel==="p_val" || colLabel=="pVal") {
+                colLabel = "P-value";
+                pValCol = i;
             }
             else if (colLabel==="_expr") {
                 colLabel = "Expression";
@@ -3136,7 +3194,7 @@ var tsnePlot = function() {
             else if (colLabel==="_hprdClass") {
                 hprdCol = i;
                 colLabel = "Protein Class (HPRD)";
-                width = "100px";
+                width = "200px";
             }
 
             if (width===null)
@@ -3158,6 +3216,7 @@ var tsnePlot = function() {
 
             for (var j = 2; j < row.length; j++) {
                 var val = row[j];
+                console.log(row);
                 htmls.push("<td>");
                 if (val.startsWith("./")) {
                     var imgUrl = val.replace("./", gCurrentDataset.baseUrl);
@@ -3166,6 +3225,8 @@ var tsnePlot = function() {
                 }
                 if (j===geneListCol || j===exprCol)
                     geneListFormat(htmls, val, geneSym);
+                else if (j===pValCol)
+                    htmls.push(parseFloat(val).toFixed(4)); // four digits ought to be enough for everyone
                 else
                     htmls.push(val);
                 htmls.push("</td>");
@@ -3311,33 +3372,52 @@ var tsnePlot = function() {
         return zoomRange;
     }
 
+    function redirectIfSubdomain() {
+        /* rewrite the URL if at ucsc and subdomain is specified 
+         * e.g. autism.cells.ucsc.edu -> cells.ucsc.edu?ds=autism */
+        /* we cannot run in the subdomain, as otherwise localStorage and 
+         * cookies are not shared */
+
+        // at UCSC, the dataset can be part of the hostname
+        // we got a "* CNAME" in the campus DNS server for this.
+        // it's easier to type, and pretty in manuscripts e.g. 
+        // autism.cells.ucsc.edu instead of cells.ucsc.edu?ds=autism
+        var myUrl = new URL(window.location.href);
+        var hostName = myUrl.hostname;
+        if (hostName.endsWith("cells.ucsc.edu")) {
+            var hostParts = hostName.split(".");
+            if (hostParts.length===4) {
+                var datasetName = hostParts[0];
+                hostParts.shift();
+                myUrl.hostname = hostParts.join(".");
+                var newUrl = myUrl+"?ds="+datasetName;
+                window.location.replace(newUrl);
+                return true;
+            }
+        return false;
+        }
+    }
+
     function extractDatasetFromUrl() {
         /* search for the "ds" parameter or a DNS hostname that indicates the dataset */
         // if ds=xxx was found in the URL, load the respective dataset
         var datasetName = getVar("ds");
 
-        // at UCSC, the dataset can also be part of the hostname
-        // we got a "* CNAME" in the campus DNS server for this.
-        // it's easier to type, and pretty in manuscripts e.g. 
-        // autism.cells.ucsc.edu
-        var myUrl = window.location.href;
-        myUrl = myUrl.replace("#", "");
-        var urlParts = myUrl.split("?");
-        var hostName = urlParts.split("//");
-        if (hostName.endswith("cells.ucsc.edu")) {
-            var hostParts = hostName.split(".");
-            if (hostParts.length===4)
-                return hostParts[0];
-        }
-
-        if (datasetName===undefined)
-            datasetName = datasetList[0].name;
+        //if (datasetName===undefined)
+            //datasetName = datasetList[0].name;
+        // hacks for July 2018 and for backwards compatibility with previous version
+        if (datasetName==="autism10X")
+            datasetName = "autism";
+        if (datasetName==="aparna")
+            datasetName = "cortex-dev";
         return datasetName;
     }
 
     /* ==== MAIN ==== ENTRY FUNCTION */
     function loadData(datasetList, globalOpts) {
         /* start the data loaders, show first dataset */
+        if (redirectIfSubdomain())
+            return;
         gDatasetList = datasetList;
 
         if (globalOpts!=undefined) {
@@ -3350,17 +3430,7 @@ var tsnePlot = function() {
         setupKeyboard();
         buildMenuBar();
 
-<<<<<<< HEAD
-        // if ds=xxx was found in the URL, load the respective dataset
-        var datasetName = getVar("ds");
-
-        if (datasetName===undefined)
-            datasetName = datasetList[0].name;
-        if (datasetName==="autism10X")
-            datasetName = "autism"; // temp hack for referees, July 2018
-=======
         var datasetName = extractDatasetFromUrl(datasetList)
->>>>>>> f5303092d1de8c0ff8fcfdc80c84d2c21506a98a
 
         //menuBarHide("#tpShowAllButton");
 
@@ -3387,14 +3457,11 @@ var tsnePlot = function() {
         renderer.onZoom100Click = onZoom100Click;
         renderer.onSelChange = onSelChange;
 
-        db = new CbDbFile(datasetName); 
-        db.loadConfig(function() { renderData() });
+        if (datasetName===undefined)
+            openDatasetDialog();
+        else 
+            loadDataset(datasetName);
        
-        // start the tutorial after a while
-        var introShownBefore = localStorage.getItem("introShown");
-        if (introShownBefore==undefined)
-           setTimeout(function(){ showIntro(true); }, 5000); // show after 5 secs
-
     }
 
     // only export these functions 
