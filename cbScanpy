@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+
+# run a single cell matrix through scanpy and output 
+# everything as tab-sep files
+
+import logging, sys, optparse, re, timeit, datetime
+from time import gmtime, strftime
+from collections import defaultdict, namedtuple, Counter
+from os.path import join, basename, dirname, isfile, isdir, abspath, splitext
+from os import makedirs
+
+# directory to static data files, e.g. gencode tables
+dataDir = join(dirname(__file__), "static", "human")
+mitoFname = join(dataDir, "gencode22Plus.mitoGenes.txt")
+
+import scanpy.api as sc
+import pandas as pd
+import numpy as np
+
+import warnings
+warnings.filterwarnings("ignore")
+
+# ==== functions =====
+# for iphython debug command line
+def excepthook(type, value, traceback):
+    from IPython import embed
+    embed()
+
+def parseArgs():
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] -e matrixFile -o outDir - run scanpy and output .tsv files
+
+    If exceptions occur, will automatically start the debugger.
+    """)
+
+    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
+            help="gene-cell expression matrix file, possible formats: .h5ad, .csv, .xlsx, .h5, .loom, .mtx, .txt, .tab, .data")
+    #parser.add_option("-m", "--metaData", dest="metaData", action="store",
+            #help="meta data table file, .gz is OK")
+
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+            help="output directory")
+
+    parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
+            help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
+
+    parser.add_option("", "--test",
+        dest="test",
+        action="store_true", help="run doctests")
+    parser.add_option("-d", "--debug", dest="debug", action="store_true", help="open an iPython shell when an exception occurs. also output debug messages")
+
+    (options, args) = parser.parse_args()
+
+    if options.test:
+        import doctest
+        doctest.testmod()
+        sys.exit(0)
+
+    if options.exprMatrix is None and options.outDir is None:
+        parser.print_help()
+        exit(1)
+
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG)
+        #import sys
+        #import IPython # just making sure that ipython is installed. install with 'pip install ipython'
+        #sys.excepthook = excepthook
+
+    else:
+        logging.basicConfig(level=logging.INFO)
+    return args, options
+
+def errAbort(msg):
+        logging.error(msg)
+        sys.exit(1)
+
+def cbScanpy(args, options):
+    " run expr matrix through scanpy, output "
+    matrixFname = options.exprMatrix
+    outDir = options.outDir
+    
+    if not isdir(outDir):
+        logging.info("Creating output directory %s" % outDir)
+        makedirs(outDir)
+
+    clusterFname = join(outDir, "clusters.tsv")
+    tsneFname = join(outDir, "tsne.tsv")
+    markerFname = join(outDir, "markers.tsv")
+
+    sc.settings.set_figure_params(dpi=200)
+    sc.settings.file_format_figs = 'pdf'
+    sc.settings.plot_suffix=''
+
+    print("cbScanpy $Id$")
+    print("Input file: %s" % matrixFname)
+    print("Output directory: %s" % outDir)
+    print("Start time: %s" % datetime.datetime.now())
+    sc.logging.print_versions()
+
+    start = timeit.default_timer()
+    print("Loading data")
+    adata = sc.read(matrixFname, cache=True , first_column_names=True)
+    if not options.samplesOnRows:
+        print("Transposing the expression matrix")
+        adata = adata.T
+    print("Data has %d samples/observations" % len(adata.obs))
+    print("Data has %d genes/variables" % len(adata.var))
+
+    minGenes = 200
+    minCells = 3
+    print("Basic filtering: keep only cells with min %d genes and genes seen in at least %d cells" % (minGenes, minCells))
+    sc.pp.filter_cells(adata, min_genes=minGenes)
+    sc.pp.filter_genes(adata, min_cells=minCells)
+
+    #### PARAMETERS FOR GATING CELLS (must be changed) #####
+    thrsh_mito=0.05
+    up_thrsh_genes=10000
+    low_thrsh_genes=10
+    print("Remove cells with more than",thrsh_mito,"percent of mitochondrial genes")
+    print("Remove cells with less than", low_thrsh_genes, "and more than", up_thrsh_genes, "genes")
+
+    print("Computing percentage of mitochondrial genes")
+    mito_genes = [name for name in adata.var_names if name.startswith('MT.') or name.startswith('MT-')]
+    if len(mito_genes)==0:
+        print("Reading mitochondrial genes from %s" % mitoFname)
+        gencodeMitos = open(mitoFname).read().splitlines()
+        gencodeMitos = set([x.split(".")[0] for x in gencodeMitos]) # strip version number
+        mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
+
+    if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
+        print("WARNING - No single mitochondrial gene was found in the expression matrix.")
+        print("Dying cells cannot be removed - please check your expression matrix")
+        doMito = False
+    else:
+        doMito = True
+        adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
+        adata.obs['n_counts'] = np.sum(adata.X, axis=1)
+
+        fig1=sc.pl.scatter(adata, x='n_counts', y='percent_mito')
+        fig2=sc.pl.scatter(adata, x='n_counts', y='n_genes')
+
+        adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
+
+    #Filtering out cells according to filter parameters
+    print('Filtering cells')
+    adata = adata[adata.obs['n_genes'] < up_thrsh_genes, :]
+    adata = adata[adata.obs['n_genes'] > low_thrsh_genes, :]
+
+    countsPerCell = 10000
+    print('Expression normalization, counts per cell = %d' % countsPerCell)
+    sc.pp.normalize_per_cell(adata, counts_per_cell_after=countsPerCell)
+
+    minMean = 0.0125
+    maxMean = 3
+    minDisp = 0.5
+    print('Finding highly variable genes: min_mean=%f, max_mean=%f, min_disp=%f' % (minMean, maxMean, minDisp))
+    filter_result = sc.pp.filter_genes_dispersion(adata.X, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
+    fig=sc.pl.filter_genes_dispersion(filter_result)
+    adata = adata[:, filter_result.gene_subset]
+
+    sc.pp.log1p(adata)
+
+    #Regress out variables nUMI, percent_mito
+    print('Number of variable genes identified:', sum(filter_result.gene_subset))
+    if doMito:
+        print('Regressing out percent_mito and number of UMIs')
+        sc.pp.regress_out(adata, ['n_counts', 'percent_mito'])
+    else:
+        print('Regressing out only number of UMIs')
+        sc.pp.regress_out(adata, ['n_counts'])
+
+    #Scaling after regression 
+    maxValue = 10
+    print('Scaling data, max_value=%d' % maxValue)
+    sc.pp.scale(adata, max_value=maxValue)
+
+    pcCount = 100
+    print('Performing PCA, number of PCs: %d' % pcCount)
+    sc.tl.pca(adata, n_comps=pcCount)
+    #Multiply by -1 to compare with Seurat
+    #adata.obsm['X_pca'] *= -1
+    #Plot of pca variance ratio to see if formula matches visual determination of pc_nb to use
+    fig=sc.pl.pca_variance_ratio(adata, log=True )
+
+    #Computing number of PCs to be used in clustering
+    pc_cutoff= (np.sqrt((adata.n_vars/adata.n_obs))+1)**2
+    pc_nb=0
+    for i in adata.uns['pca']['variance']:
+        if i>pc_cutoff:
+            pc_nb+=1
+    print(pc_nb,' PCs will be used for tSNE and clustering')
+
+    print('Performing tSNE')
+    sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
+
+    #Save tsne coords of cells
+    tsne_coord=pd.DataFrame(adata.obsm.X_tsne,index=adata.obs.index)
+    tsne_coord.columns=['tsne_1','tsne_2']
+    tsne_coord.to_csv(tsneFname,sep='\t')
+
+    neighbors = 5
+    print('Performing Louvain Clustering, using %d neighbors' % neighbors)
+    sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
+    sc.tl.louvain(adata, resolution=2.5)
+    fig=sc.pl.tsne(adata, color='louvain')
+
+    #Clustering. Default Resolution: 1
+    res = 1.0
+    print('Performing Louvain Clustering, resolution = %f' % res)
+    sc.pp.neighbors(adata, n_pcs=int(pc_nb))
+    sc.tl.louvain(adata, resolution=res)
+    fig=sc.pl.tsne(adata, color='louvain')
+
+    #Finding Top Markers, according to z-score
+    print('Finding top markers for each cluster')
+    sc.tl.rank_genes_groups(adata, 'louvain')
+
+    #Saving top 100 for each cluster to CSV
+    print('Saving results')
+    nb_marker=100
+    top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
+    top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
+    marker_df= pd.DataFrame()
+    for i in range(len(top_score.columns)):
+        concat=pd.concat([top_score[[str(i)]],top_gene[[str(i)]]],axis=1,ignore_index=True)
+        concat['cluster_number']=i
+        col=list(concat.columns)
+        col[0],col[-2]='z_score','gene'
+        concat.columns=col
+        marker_df=marker_df.append(concat)
+
+    #Rearranging columns for Max -> Cluster, gene, score
+    #cols=marker_df.columns.tolist()
+    cols=marker_df.columns
+    cols=cols[::-1]
+    marker_df=marker_df[cols]
+    #save to tsv format
+    pd.DataFrame.to_csv(marker_df,markerFname,sep='\t',index=False)
+
+    #Save cells <-> cluster in tsv
+    adata.obs[['louvain']].to_csv(clusterFname,sep='\t')
+
+
+    #Label Clusters with top markers NOT USED
+    #top_mark=pd.DataFrame(adata.uns['rank_genes_groups_gene_names']).loc[:0].values.tolist()
+    #top_mark=top_mark[0]
+    #adata.obs['louvain_groups'].cat.categories = top_mark
+    #axs = sc.pl.tsne(adata, size=10,legend_fontsize=8, legend_fontweight='bold',color='louvain_groups',legend_loc='on data')
+
+    #Diffusion Map
+    #sc.tl.diffmap(adata, n_comps=15)
+    #sc.pl.diffmap(adata, color='louvain',projection='2d')
+
+    #Generate PAGA (Graph Abstraction, ~Trajectory)
+    #sc.tl.paga(adata)
+    #sc.pl.paga(adata)
+
+    #Stop Timer
+    stop= timeit.default_timer()
+    print("Running time:",stop-start)
+# ----------- main --------------
+def main():
+    global options
+    args, options = parseArgs()
+
+    try:
+        cbScanpy(args, options)
+    # on an exception, automatically bring up the debugger - avoids having to reload the data file
+    except:
+        extype, value, tb = sys.exc_info()
+        import traceback, pdb
+        traceback.print_tb(tb)
+        pdb.post_mortem(tb)
+
+main()

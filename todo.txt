@@ -1,0 +1,6 @@
+- optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
+- sub-datasets
+- acronyms
+- make npm65 the default palette
+- add md5s of matrix and meta to dataset config
+- split.js

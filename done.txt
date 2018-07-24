@@ -1,0 +1,6 @@
+- avoid label overlaps
+- Color palette menu
+- link to github
+- favorite genes
+- "Open Dataset"
+- remove "layout" dropdown if there is only one?
