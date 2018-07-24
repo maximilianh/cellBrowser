@@ -8,3 +8,5 @@ wget 'http://api.brain-map.org/api/v2/data/Gene/query.xml?criteria=products[id$e
 # gene ID mapping for developing mouse brain links
 #wget 'http://api.brain-map.org/api/v2/data/SectionDataSet/query.csv?criteria=products[name$eq'Developing Mouse Brain'][failed$eqfalse]&include=probes(gene)&tabular=data_sets.id as data_set_id,probes.id as probe_id,probes.name as probe_name,genes.id as gene_id,genes.acronym as gene_acronym&num_rows=25000' > devMouseBrainIds.csv
 wget http://api.brain-map.org/api/v2/structure_graph_download/112755225.json -O abaManualOntology.json
+
+grep  $'\t'MT- /hive/data/outside/gencode/release_22/transToGene.tab  | cut -f2  | sort -u > static/human.mitoGenes.txt

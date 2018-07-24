@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 
+# works on python3 and python2.6/python2.7
+
 import logging, sys, optparse, struct, json, os, glob, shutil
 from collections import defaultdict, namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir

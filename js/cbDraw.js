@@ -137,7 +137,7 @@ function CbCanvas(top, left, width, height) {
         document.body.appendChild(ctrlDiv);
 
         gebi("tpCtrlZoomMinus").addEventListener('click', function() { self.zoomBy(0.75); self.drawDots(); });
-        gebi("tpCtrlZoomPlus").addEventListener('click', function() { self.zoomBy(1.25); self.drawDots(); });
+        gebi("tpCtrlZoomPlus").addEventListener('click', function() { self.zoomBy(1.333); self.drawDots(); });
     }
     
     function addModeButtons(top, left, self) {
@@ -235,6 +235,7 @@ function CbCanvas(top, left, width, height) {
 
         document.body.appendChild(canv); // adds the canvas to the body element
         self.canvas = canv;
+        // alpha:false recommended by https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas
         self.ctx = self.canvas.getContext("2d", { alpha: false });
         // by default, the canvas background is transparent+black
         // we use alpha=false, so we need to initialize the canvas with white pixels
@@ -383,6 +384,7 @@ function CbCanvas(top, left, width, height) {
 
     function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
         /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
+        console.time("labels");
         ctx.save();
         ctx.font = "bold "+gTextSize+"px Sans-serif"
         ctx.globalAlpha = 1.0;
@@ -410,6 +412,10 @@ function CbCanvas(top, left, width, height) {
             var textWidth = Math.round(ctx.measureText(text).width);
             // move x to the left, so text is centered on x
             x = x - Math.round(textWidth*0.5);
+
+            // don't draw labels where the midpoint is off-screen
+            if (x<0 || y<0 || x>winWidth || y>winWidth)
+                continue;
 
             var textX1 = x;
             var textY1 = y;
@@ -450,6 +456,7 @@ function CbCanvas(top, left, width, height) {
             bboxArr.push( [textX1-addMargin, textY1-addMargin, textX2+addMargin, textY2+addMargin] );
         }
         ctx.restore();
+        console.timeEnd("labels");
         return bboxArr;
     }
 
@@ -849,6 +856,8 @@ function CbCanvas(top, left, width, height) {
 
     this.drawDots = function() {
         /* draw coordinates to canvas with current colors */
+        console.time("draw");
+
         if (self.alpha===undefined)
              alert("internal error: alpha is not defined");
         if (self.pxCoords===null)
@@ -862,10 +871,8 @@ function CbCanvas(top, left, width, height) {
         // make the circles a bit smaller than expected
         var baseRadius = self.initRadius;
         if (baseRadius===0)
-            baseRadius = 0.8;
-        self.radius = Math.round(Math.sqrt(baseRadius * self.zoomFact));
-
-        console.time("draw");
+            baseRadius = 0.7;
+        self.radius = Math.floor(Math.sqrt(baseRadius * self.zoomFact));
 
         self.clear();
 
@@ -873,6 +880,7 @@ function CbCanvas(top, left, width, height) {
         var zoomFrac = Math.min(1.0, self.zoomFact/100.0); // zoom as fraction, max is 1.0
         var alpha = self.alpha + 3.0*zoomFrac*(1.0 - self.alpha);
         alpha = Math.min(1.0, alpha);
+        console.log("Radius: "+self.radius+", alpha: "+alpha);
 
         if (self.radius===0) {
             drawPixels(self.ctx, self.canvas.width, self.canvas.height, self.pxCoords, 
@@ -880,7 +888,7 @@ function CbCanvas(top, left, width, height) {
         }
 
         else if (self.radius===1 || self.radius===2) {
-            drawRect(self.ctx, self.pxCoords, self.colorArr, self.colors, self.radius, self.alpha, self.selCells);
+            drawRect(self.ctx, self.pxCoords, self.colorArr, self.colors, self.radius, alpha, self.selCells);
         }
         else {
 
@@ -899,9 +907,7 @@ function CbCanvas(top, left, width, height) {
         console.timeEnd("draw");
 
         if (self.doDrawLabels===true) {
-            console.time("draw labels");
             self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels, self.canvas.width, self.canvas.height, self.zoomFact);
-            console.timeEnd("draw labels");
         }
     };
 

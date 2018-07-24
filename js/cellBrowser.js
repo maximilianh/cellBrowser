@@ -55,15 +55,12 @@ var tsnePlot = function() {
     // height of bottom gene bar
     var geneBarHeight = 100;
     var geneBarMargin = 5;
-    // current transparency and circle size
-    const transparency = 0.6;
-    var circleSize = 4.0;
     // color for missing value when coloring by expression value
     //var cNullColor = "CCCCCC";
     const cNullColor = "DDDDDD";
     const cNullForeground = "#AAAAAA";
 
-    const cDefGradPalette = "blues";  // default legend gradient palette for numeric ranges
+    const cDefGradPalette = "reds";  // default legend gradient palette for numeric ranges
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
 
     const exprBinCount = 10; //number of expression bins for genes
@@ -238,8 +235,8 @@ var tsnePlot = function() {
      //else
          //menuBarShow("#tpShowAllButton");
 
-     $("#tpTrans"+(transparency*100)).addClass("active");
-     $("#tpSize"+circleSize).addClass("active");
+     //$("#tpTrans"+(transparency*100)).addClass("active");
+     //$("#tpSize"+circleSize).addClass("active");
 
      // the "hide labels" menu entry is only shown if there are labels
      //if (gCurrentDataset.labelField === null)
@@ -633,8 +630,8 @@ var tsnePlot = function() {
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
-         htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
-         htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
+         //htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
+         //htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
          htmls.push('</ul>'); // View dropdown
          htmls.push('</li>'); // View dropdown
 
@@ -654,27 +651,27 @@ var tsnePlot = function() {
          htmls.push('<li><a href="#" id="tpHideShowLabels">Hide labels<span class="dropmenu-item-content">c l</span></a></li>');
          htmls.push('<li><hr class="half-rule"></li>');
 
-         htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
-           htmls.push('<ul class="dropdown-menu" id="tpTransMenu">');
-             htmls.push('<li id="tpTrans0"><a href="#">0%</a></li>');
-             htmls.push('<li id="tpTrans40"><a href="#">40%</a></li>');
-             htmls.push('<li id="tpTrans60"><a href="#">60%</a></li>');
-             htmls.push('<li id="tpTrans80"><a href="#">80%</a></li>');
-           htmls.push('</ul>'); // Transparency sub-menu
-         htmls.push('</li>');   // sub-menu container
+         //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
+           //htmls.push('<ul class="dropdown-menu" id="tpTransMenu">');
+             //htmls.push('<li id="tpTrans0"><a href="#">0%</a></li>');
+             //htmls.push('<li id="tpTrans40"><a href="#">40%</a></li>');
+             //htmls.push('<li id="tpTrans60"><a href="#">60%</a></li>');
+             //htmls.push('<li id="tpTrans80"><a href="#">80%</a></li>');
+           //htmls.push('</ul>'); // Transparency sub-menu
+         //htmls.push('</li>');   // sub-menu container
 
-         htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Circle size</a>');
-           htmls.push('<ul class="dropdown-menu" id="tpSizeMenu">');
-             htmls.push('<li id="tpSize1"><a href="#">1 px</a></li>');
-             htmls.push('<li id="tpSize2"><a href="#">2 px</a></li>');
-             htmls.push('<li id="tpSize3"><a href="#">3 px</a></li>');
-             htmls.push('<li id="tpSize4"><a href="#">4 px</a></li>');
-             htmls.push('<li id="tpSize5"><a href="#">5 px</a></li>');
-             htmls.push('<li id="tpSize6"><a href="#">6 px</a></li>');
-             htmls.push('<li id="tpSize7"><a href="#">7 px</a></li>');
-             htmls.push('<li id="tpSize8"><a href="#">8 px</a></li>');
-           htmls.push('</ul>'); // Circle size sub-menu
-         htmls.push('</li>');   // sub-menu container
+         //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Circle size</a>');
+           //htmls.push('<ul class="dropdown-menu" id="tpSizeMenu">');
+             //htmls.push('<li id="tpSize1"><a href="#">1 px</a></li>');
+             //htmls.push('<li id="tpSize2"><a href="#">2 px</a></li>');
+             //htmls.push('<li id="tpSize3"><a href="#">3 px</a></li>');
+             //htmls.push('<li id="tpSize4"><a href="#">4 px</a></li>');
+             //htmls.push('<li id="tpSize5"><a href="#">5 px</a></li>');
+             //htmls.push('<li id="tpSize6"><a href="#">6 px</a></li>');
+             //htmls.push('<li id="tpSize7"><a href="#">7 px</a></li>');
+             //htmls.push('<li id="tpSize8"><a href="#">8 px</a></li>');
+           //htmls.push('</ul>'); // Circle size sub-menu
+         //htmls.push('</li>');   // sub-menu container
 
          htmls.push('</ul>'); // View dropdown-menu
          htmls.push('</li>'); // View dropdown container
@@ -903,6 +900,13 @@ var tsnePlot = function() {
        }
     }
 
+   function gotCoords(coords, info, clusterMids) {
+       /* called when the coordinates have been loaded */
+       if (coords.length===0)
+           alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
+       renderer.setCoords(coords, clusterMids);
+   }
+
     function renderData() {
     /* init the renderer, start loading and draw data when ready
      */
@@ -918,11 +922,9 @@ var tsnePlot = function() {
            }
        }
 
-       function gotCoords(coords, info, clusterMids) {
-           /* called when the coordinates have been loaded */
-           if (coords.length===0)
-               alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
-           renderer.setCoords(coords, clusterMids);
+       function gotFirstCoords(coords, info, clusterMids) {
+           /* very ugly way to implement promises. Need a better approach one day. */
+           gotCoords(coords, info, clusterMids);
            doneOnePart();
        }
 
@@ -932,7 +934,7 @@ var tsnePlot = function() {
        buildToolBar(db.conf.coords, db.conf.name, metaBarWidth+metaBarMargin, toolBarHeight);
        activateMode("select");
 
-       db.loadCoords(0, gotCoords, onProgress);
+       db.loadCoords(0, gotFirstCoords, onProgress);
 
        var colorByInfo = db.getDefaultColorField();
        var colorType = colorByInfo[0];
@@ -1877,9 +1879,12 @@ var tsnePlot = function() {
     }
 
     function loadCoordSet(coordIdx) {
-        var coordUrl = gCurrentDataset.coordFiles[coordIdx].url;
-        console.log("Loading coordinates from "+coordUrl);
-        startLoadTsv("coords", coordUrl, loadCoordsFromTsv);
+        //var coordUrl = gCurrentDataset.coordFiles[coordIdx].url;
+        //console.log("Loading coordinates from "+coordUrl);
+        //startLoadTsv("coords", coordUrl, loadCoordsFromTsv);
+        db.loadCoords(coordIdx, 
+                function(a,b,c) { gotCoords(a,b,c); renderer.drawDots();},
+                onProgress);
     }
 
     function onLayoutChange(ev, params) {
@@ -1887,8 +1892,6 @@ var tsnePlot = function() {
         var coordIdx = parseInt(params.selected);
         loadCoordSet(coordIdx);
         changeUrl({"layout":coordIdx, "zoom":null});
-        gCurrentDataset.coordIdx = coordIdx;
-
         // remove the focus from the combo box
         removeFocus();
     }
@@ -3067,11 +3070,16 @@ var tsnePlot = function() {
 
         var htmls = [];
 
+        htmls.push("<div id='tpPaneHeader' style='padding:8px'>");
         var hubUrl = db.conf.hubUrl;
         if (hubUrl!==undefined) {
             htmls.push("<p>");
-            htmls.push("<a target=_blank style='padding:5px' class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
+            htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
         }
+
+        htmls.push("Click gene symbols below to color plot by gene<br>");
+
+        htmls.push("</div>");
 
         if (doTabs) {
             htmls.push("<div id='tabs'>");
@@ -3168,7 +3176,6 @@ var tsnePlot = function() {
 
         var htmls = [];
 
-        htmls.push("Click gene symbols below to color plot by gene<br>");
 
         htmls.push("<table class='table'>");
         htmls.push("<thead>");
@@ -3218,10 +3225,12 @@ var tsnePlot = function() {
                 var val = row[j];
                 console.log(row);
                 htmls.push("<td>");
+                // added for the autism dataset, allows to add mouse overs with images
+                // field has to start with ./
                 if (val.startsWith("./")) {
-                    var imgUrl = val.replace("./", gCurrentDataset.baseUrl);
+                    var imgUrl = val.replace("./", db.url+"/");
                     var imgHtml = '<img width="100px" src="'+imgUrl+'">';
-                    val = "<a data-toggle='tooltip' data-placement='auto' class='tpPlots' target=_blank title='"+imgHtml+"' href='"+ imgUrl + "'>link</a>";
+                    val = "<a data-toggle='tooltip' data-placement='auto' class='tpPlots link' target=_blank title='"+imgHtml+"' href='"+ imgUrl + "'>plot</a>";
                 }
                 if (j===geneListCol || j===exprCol)
                     geneListFormat(htmls, val, geneSym);
@@ -3406,7 +3415,7 @@ var tsnePlot = function() {
         //if (datasetName===undefined)
             //datasetName = datasetList[0].name;
         // hacks for July 2018 and for backwards compatibility with previous version
-        if (datasetName==="autism10X")
+        if (datasetName==="autism10X" || datasetName==="autism10x")
             datasetName = "autism";
         if (datasetName==="aparna")
             datasetName = "cortex-dev";

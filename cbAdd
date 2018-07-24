@@ -1105,11 +1105,16 @@ def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coor
     xVals = []
     yVals = []
 
+    #print coords['Hi_GW21_4.Hi_GW21_4']
+    #print len(sampleNames)
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            errAbort("sample name %s is in meta file but not in coordinate file" % sampleName)
-        x, y = coordTuple
+            logging.warn("sample name %s is in meta file but not in coordinate file" % sampleName)
+            x = 0
+            y = 0
+        else:
+            x, y = coordTuple
         minX = min(x, minX)
         minY = min(y, minY)
         maxX = max(x, maxX)

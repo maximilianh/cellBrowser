@@ -1,6 +1,6 @@
-- Sub-datasets
-- "Open Dataset"
+- optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
+- sub-datasets
 - acronyms
-- remove "layout" dropdown if there is only one?
 - make npm65 the default palette
 - add md5s of matrix and meta to dataset config
+- split.js
