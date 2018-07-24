@@ -1798,7 +1798,10 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
     if 'louvain' in anndata.obs:
         #Export cell <-> cluster identity
         fname = join(path, 'cell_to_cluster.tsv')
-        anndata.obs[['louvain']].to_csv(fname,sep='\t')
+        # add prefix to make sure that it's not treated as a number
+        anndata.obs[['louvain']] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
+        
+        anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["cellId", "Louvain Cluster"])
     else:
         errAbort('Couldnt find clustering information')
 
