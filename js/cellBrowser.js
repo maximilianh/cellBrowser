@@ -843,6 +843,8 @@ var tsnePlot = function() {
 
         function gotGeneVec(exprVec, geneSym, geneDesc, binInfo) {
             /* called when the expression vector has been loaded */
+            if (exprVec===null)
+                return;
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
             _dump(binInfo);
             makeLegendExpr(geneSym, geneDesc, binInfo);

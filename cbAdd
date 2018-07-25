@@ -297,7 +297,7 @@ def discretizeArray(numVals, fieldMeta):
         values = [x for x,y in counts]
 
         valToBin = {}
-        for i, x in values:
+        for i, x in enumerate(values):
             valToBin[x] = i
 
         dArr = [valToBin[x] for x in numVals]
@@ -977,6 +977,9 @@ def testMetaIndex(outDir):
 
 def parseColors(fname):
     " parse color table and return as dict value -> color "
+    if fname==None:
+        return {}
+
     if not isfile(fname):
         logging.warn("File %s does not exist" % fname)
         return None
@@ -1562,7 +1565,8 @@ def addDataset(inDir, conf, fileToCopy, outDir, options):
     # these don't exist / are not needed in the output json file
     del conf["meta"]
     del conf["exprMatrix"]
-    del conf["colors"]
+    if "colors" in conf:
+        del conf["colors"]
     if "enumFields" in conf:
         del conf["enumFields"]
     if "tags" in conf and type(conf["tags"])!=type([]):

@@ -26,7 +26,7 @@ function CbCanvas(top, left, width, height) {
 
     // --- object variables 
     
-    const gTextSize = 15;
+    const gTextSize = 16;
     const gStatusHeight = 12;
     const gZoomButtonSize = 30;
     const gZoomFromRight = 60;
@@ -390,8 +390,8 @@ function CbCanvas(top, left, width, height) {
         ctx.globalAlpha = 1.0;
 
         ctx.strokeStyle = '#EEEEEE'; 
-        ctx.lineWidth = 4; 
-        ctx.miterLimit=2;
+        ctx.lineWidth = 5; 
+        ctx.miterLimit =2;
         ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
         ctx.textBaseline = "top";
 

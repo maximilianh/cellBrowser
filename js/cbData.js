@@ -509,8 +509,10 @@ function CbDbFile(url) {
         }
 
         var offsData = self.geneOffsets[geneSym];
-        if (offsData===undefined)
+        if (offsData===undefined) {
+            alert("cbData.js: "+geneSym+" is not in the expression matrix");
             onDone(null);
+        }
 
         var start = offsData[0];
         var lineLen = offsData[1];
