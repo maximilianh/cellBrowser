@@ -1,6 +1,18 @@
-- optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
-- sub-datasets
-- acronyms
 - make npm65 the default palette
+- sub-datasets
 - add md5s of matrix and meta to dataset config
+
+- make browsers:
+  - Bob Jones
+  - Aparna
+  - Tabula Muris
+
+- example datasets:
+  - cellranger output  -> cbCellranger
+  - Seurat converter as R file -> cbSeurat
+  - pbmc3k -> cbScanpy
+  - get the paga sample datasets?
+
+- optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
+- acronyms
 - split.js

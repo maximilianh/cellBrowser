@@ -1,0 +1,11 @@
+#!/usr/bin/env python2
+
+# tested with python 2.6 and python3, see cellbrowser.py
+
+import sys
+from os.path import join, dirname
+
+import sys
+sys.path.append( join(dirname(__file__), "cbLib") )
+import cellbrowser
+cellbrowser.cbMake_cli()

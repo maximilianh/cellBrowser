@@ -1,0 +1,12 @@
+cp /hive/data/outside/gencode/release_22/transToGene.tab gencode22.ens79-80.tab
+cp /hive/data/outside/gencode/release_23/geneInfo.tab gencode23.ens81-82.tab
+cp /hive/data/outside/gencode/release_24/geneInfo.tab gencode24.ens83-84.tab
+wget https://omim.org/static/omim/data/mim2gene.txt
+wget http://www.informatics.jax.org/downloads/reports/HGNC_homologene.rpt
+wget 'http://api.brain-map.org/api/v2/data/Gene/query.xml?criteria=products[id$eq3]&num_rows=all' -O - | tr -d ' ' | egrep '<entrez-id|<id>' | awk '/entrez/ { split($1, a, /[<>]/); eId=a[3];} /<id>/ { split($1, a, /[<>]/); id=a[3]; print eId, id}' > brainspanMouse_9Dec17.txt
+#wget 'http://api.brain-map.org/api/v2/data/Gene/query.xml?criteria=products[id$eq3]&num_rows=all' -O - | tr -d ' ' | egrep '<entrez-id|<id>' | awk '/entrez/ { split($1, a, /[<>]/); eId=a[3];} /<id>/ { split($1, a, /[<>]/); id=a[3]; print eId, id}' > brainspanMouse_9Dec17.txt
+# gene ID mapping for developing mouse brain links
+#wget 'http://api.brain-map.org/api/v2/data/SectionDataSet/query.csv?criteria=products[name$eq'Developing Mouse Brain'][failed$eqfalse]&include=probes(gene)&tabular=data_sets.id as data_set_id,probes.id as probe_id,probes.name as probe_name,genes.id as gene_id,genes.acronym as gene_acronym&num_rows=25000' > devMouseBrainIds.csv
+wget http://api.brain-map.org/api/v2/structure_graph_download/112755225.json -O abaManualOntology.json
+
+grep  $'\t'MT- /hive/data/outside/gencode/release_22/transToGene.tab  | cut -f2  | sort -u > static/human.mitoGenes.txt

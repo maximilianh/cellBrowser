@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+
+import logging, sys, optparse, string, glob
+from collections import defaultdict
+from os.path import join, basename, dirname, isfile
+
+
+# ==== functions =====
+    
+# directory to static data files, e.g. gencode tables
+dataDir = join(dirname(__file__), "cbData/genes")
+
+def parseArgs():
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("usage: %prog [options] filename - guess Gencode version based on files created by gtfToTransTab")
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
+    parser.add_option("-g", "--gencodeDir", dest="gencodeDir", action="store",
+            help="base directory with gencode releases, default %default",
+            default=dataDir)
+    #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
+    #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
+    (options, args) = parser.parse_args()
+
+    if args==[]:
+        parser.print_help()
+        exit(1)
+
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    return args, options
+# ----------- main --------------
+def parseGencode(baseDir):
+    ret = {}
+    logging.info("Parsing gene tables")
+    for fname in glob.glob(join(baseDir, "gencode*.tab")):
+        logging.info("Parsing %s" % fname)
+        genes = set()
+        for line in open(fname):
+            if "geneId" in line:
+                continue
+            row = line.rstrip("\n").split('\t')
+            geneId = row[1].split(".")[0]
+            genes.add(geneId)
+
+        version = basename(fname).split(".")[0]
+        ret[version] = genes
+    return ret
+        
+def guessGencodeVersion(relGenes, fname):
+    fileGenes = set()
+    headDone = False
+    logging.info("Parsing expression matrix %s" % fname)
+    for line in open(fname):
+        if not headDone:
+            headDone = True
+            continue
+        geneId, rest = string.split(line[:50], "\t", 1)
+        fileGenes.add(geneId.split('.')[0])
+
+    logging.info("Genes in matrix but not in...")
+    diffs = []
+    for version, relGenes in relGenes.iteritems():
+        #overlap = float(len(relGenes.intersection(fileGenes))) / len(relGenes)
+        notInRel = list(fileGenes - relGenes)
+        #print version, "overlap:", overlap, "in file but not in gencode:", len(notInRel), notInRel[:10]
+        logging.info(version+": %d (e.g. %s)" % (len(notInRel), notInRel[:3]))
+        diffs.append((notInRel, version))
+
+    diffs.sort()
+    bestVersion = diffs[0][1]
+    print "Best Gencode version:\t%s" % bestVersion
+
+def main():
+    args, options = parseArgs()
+
+    relGenes = parseGencode(options.gencodeDir)
+    for fname in args:
+        guessGencodeVersion(relGenes, fname)
+    #if options.test:
+        #logging.debug("test is set")
+        #f = open(options.file, "r")
+
+main()
