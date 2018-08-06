@@ -268,6 +268,7 @@ function CbCanvas(top, left, width, height) {
             var text = annot[2];
             // XX ignore anything outside of current zoom range. Performance?
             if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
+                pxLabels.push(null);
                 continue;
             var xPx = Math.round((x-minX)*xMult)+borderSize;
             var yPx = Math.round((y-minY)*yMult)+borderSize;
@@ -405,6 +406,8 @@ function CbCanvas(top, left, width, height) {
 
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
+            if (coord===null) // outside of view range
+                continue
             var x = coord[0];
             var y = coord[1];
             var text = coord[2];
