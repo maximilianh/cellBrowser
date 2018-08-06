@@ -42,7 +42,7 @@ if sys.version_info >= (3, 0):
     isPy3 = True
 
 # directory to static data files, e.g. gencode tables
-dataDir = join(dirname(__file__), "static")
+dataDir = join(dirname(__file__), "..", "cbData")
 
 defOutDir = os.environ.get("CBOUT")
 
@@ -165,10 +165,11 @@ def lineFileNextRow(inFile):
         # skip special chars in meta data and keep only ASCII
         #line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
         line = line.rstrip("\n").rstrip("\r")
-        if isPy3:
-            fields = line.split(sep, maxsplit=len(headers)-1)
-        else:
-            fields = string.split(line, sep, maxsplit=len(headers)-1)
+        #if isPy3:
+            #fields = line.split(sep, maxsplit=len(headers)-1)
+        #else:
+            #fields = string.split(line, sep, maxsplit=len(headers)-1)
+        fields = line.split("\t")
 
         try:
             rec = Record(*fields)
@@ -179,6 +180,8 @@ def lineFileNextRow(inFile):
             logging.error("Does number of fields match headers?")
             logging.error("Headers are: %s" % headers)
             raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
+        if sep==",":
+            rec = [x.lstrip('"').rstrip('"') for x in rec]
         yield rec
 
 def parseOneColumn(fname, colName):
@@ -1031,9 +1034,10 @@ def indexMeta(fname, outFname):
             continue
 
         if isPy3:
-            field1, _ = line.split(sep, maxsplit=1)
+            row = line.split(sep, maxsplit=1)
         else:
-            field1, _ = string.split(line, sep, 1)
+            row = string.split(line, sep, maxsplit=1)
+        field1 = row[0]
 
         lineLen = end - start
         assert(lineLen!=0)
@@ -1126,8 +1130,12 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     expression matrix, write to fixedMetaFname """
 
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
-    matrixSampleNames = readHeaders(matrixFname)[1:]
     metaSampleNames = readSampleNames(metaFname)
+
+    if matrixFname is not None:
+        matrixSampleNames = readHeaders(matrixFname)[1:]
+    else:
+        matrixSampleNames=metaSampleNames
 
     # check that there is a 1:1 sampleName relationship
     mat = set(matrixSampleNames)
@@ -1450,6 +1458,8 @@ def findInputFiles(inConf):
 
 def makeAbs(inDir, fname):
     " return absolute path of fname under inDir "
+    if fname is None:
+        return None
     return abspath(join(inDir, fname))
 
 def makeAbsDict(inDir, dicts):
@@ -1562,7 +1572,10 @@ def readHeaders(fname):
     ifh = openFile(fname, "rt")
     line1 = ifh.readline().rstrip("\n").rstrip("\r")
     sep = sepForFile(fname)
-    return line1.split(sep)
+    row = line1.split(sep)
+    row = [x.rstrip('"').lstrip('"') for x in row]
+    logging.debug("Found %d fields, e.g. %s" % (len(row), row[:3]))
+    return row
 
 def parseGeneInfo(geneToSym, fname):
     """ parse a file with three columns: symbol, desc (optional), pmid (optional).
@@ -1617,6 +1630,7 @@ def readSampleNames(fname):
         doneNames.add(metaName)
         sampleNames.append(row[0])
         i+=1
+    logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
 
 def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
@@ -1646,9 +1660,11 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
     if geneIdType == 'symbols' or geneIdType=="symbol":
         geneToSym = None
     else:
-        searchMask = join(dataDir, geneIdType+".*.tab")
+        searchMask = join(dataDir, "genes", geneIdType+".*.tab")
         fnames = glob.glob(searchMask)
-        assert(len(fnames)==1)
+        assert(len(fnames)<=1)
+        if(len(fnames)==0):
+            errAbort("Could not find any files matching %s" % searchMask)
         geneIdTable = fnames[0]
         geneToSym = readGeneToSym(geneIdTable)
 
@@ -1701,31 +1717,32 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
     writeJson(conf, descJsonFname)
     # process the expression matrix: two steps
 
-    myMatrixFname = join(outDir, "exprMatrix.tsv.gz")
 
-    binMat = join(outDir, "exprMatrix.bin")
-    binMatIndex = join(outDir, "exprMatrix.json")
-    discretBinMat = join(outDir, "discretMat.bin")
-    discretMatrixIndex = join(outDir, "discretMat.json")
-
-    if quickMode and isfile(myMatrixFname):
-        logging.info("quick-mode: Not copying+reordering expression matrix %s" % myMatrixFname)
-    else:
-        nozipFname = join(outDir, "exprMatrix.tsv")
-        copyMatrix(matrixFname, nozipFname, sampleNames, needFilterMatrix)
-        runCommand("gzip -f %s" % nozipFname)
-
-    # step1: discretize expression matrix for the viewer
+    # step1: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
     if quickMode and isfile(binMat):
-        logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
-    else:
-        matType = matrixToBin(myMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
-        if matType=="int":
-            conf["matrixArrType"] = "Uint32"
-        elif matType=="float":
-            conf["matrixArrType"] = "Float32"
+        # XX new function processMatrix()
+        myMatrixFname = join(outDir, "exprMatrix.tsv.gz")
+        binMat = join(outDir, "exprMatrix.bin")
+        binMatIndex = join(outDir, "exprMatrix.json")
+        discretBinMat = join(outDir, "discretMat.bin")
+        discretMatrixIndex = join(outDir, "discretMat.json")
+        if matrixFname is not None:
+            if quickMode and isfile(myMatrixFname):
+                logging.info("quick-mode: Not copying+reordering expression matrix %s" % myMatrixFname)
+            else:
+                nozipFname = join(outDir, "exprMatrix.tsv")
+                copyMatrix(matrixFname, nozipFname, sampleNames, needFilterMatrix)
+                runCommand("gzip -f %s" % nozipFname)
 
-    # step2: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
+        # step2: discretize expression matrix for the viewer
+            logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
+        else:
+            matType = matrixToBin(myMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
+            if matType=="int":
+                conf["matrixArrType"] = "Uint32"
+            elif matType=="float":
+                conf["matrixArrType"] = "Float32"
+
     # convert the coordinates
     useTwoBytes = conf.get("useTwoBytes", False)
     newCoords = []
@@ -1745,7 +1762,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
         newCoords.append( coordInfo )
         conf["coords"] = newCoords
 
-        if "labelField" in conf:
+        if "labelField" in conf and conf["labelField"] is not None:
             clusterLabelField = conf["labelField"]
             labelVec, labelVals = parseTsvColumn(finalMetaFname, clusterLabelField)
             clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)

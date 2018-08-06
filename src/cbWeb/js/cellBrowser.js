@@ -374,7 +374,7 @@ var tsnePlot = function() {
         });
 
         $(".list-group-item").click( function (ev) {
-            selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
+            selDatasetIdx = parseInt($(ev.target).data('datasetid')); // index of clicked dataset
             $(".list-group-item").removeClass("active");
             $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in .html
             openDatasetLoadPane(selDatasetIdx);
@@ -791,6 +791,18 @@ var tsnePlot = function() {
        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad */
        if (doneLoad===undefined)
            doneLoad = function() { renderer.drawDots() };
+
+       if (fieldName===null) {
+           // obscure hacky option: you can set the default color field to "None"
+           // so there is no coloring at all on startup
+           renderer.setColors(["black"]);
+           var cellCount = db.conf.sampleCount;
+           renderer.setColorArr(new Uint8Array(cellCount)); 
+           gLegend.rows = [];
+           gLegend.rows.push( [ "000000", null, "No Value", cellCount, 0, null] );
+           doneLoad();
+           return;
+       }
 
        var fieldIdx  = db.fieldNameToIndex(fieldName);
        console.log("Color by meta field "+fieldName);

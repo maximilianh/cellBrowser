@@ -850,7 +850,7 @@ function CbCanvas(top, left, width, height) {
     };
 
     this.setColors = function(colors) {
-    /* set the colors, one for each value of the color array. Values are hex strings. */
+    /* set the colors, one for each value of a in setColorArr(a). colors is an array of hex strings. */
        self.colors = colors;
     };
 
@@ -906,7 +906,7 @@ function CbCanvas(top, left, width, height) {
 
         console.timeEnd("draw");
 
-        if (self.doDrawLabels===true) {
+        if (self.doDrawLabels===true && self.pxLabels!==null) {
             self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels, self.canvas.width, self.canvas.height, self.zoomFact);
         }
     };
