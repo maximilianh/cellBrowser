@@ -4,6 +4,16 @@
 # should work with python2.5, not tested
 # works on python3, version tested was 3.6.5
 
+# imports from the future come first, they differ by python version
+try:
+    from future.utils import iteritems # should work on python2.7 and python3
+except:
+    try:
+        from six import iteritems # < python2.7: error? pip2 install six
+    except:
+        logging.warn("Python-install problem? Cannot find an iteritems() function")
+
+# now all others
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time
 from collections import namedtuple, OrderedDict
@@ -16,11 +26,6 @@ try:
 except:
     from backport_collections import defaultdict # error? -> pip2 install backport-collections
     from backport_collections import Counter # error? -> pip2 install backport-collections
-
-try:
-    from future.utils import iteritems
-except:
-    from six import iteritems # error? pip2 install six
 
 # Does not require numpy but numpy is around 30-40% faster in serializing arrays
 numpyLoaded = True
@@ -1073,7 +1078,7 @@ def parseColors(fname):
 
     colDict = parseDict(fname)
     newDict = {}
-    for metaVal, color in colDict.iteritems():
+    for metaVal, color in iteritems(colDict):
         color = color.strip().strip("#") # hbeale had a file with trailing spaces
         assert(len(color)<=6) # colors can be no more than six hex digits
         for c in color:
@@ -1586,7 +1591,7 @@ def parseGeneInfo(geneToSym, fname):
     validSyms = None
     if geneToSym is not None:
         validSyms = set()
-        for gene, sym in geneToSym.iteritems():
+        for gene, sym in iteritems(geneToSym):
             validSyms.add(sym)
 
     geneInfo = []
