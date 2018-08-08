@@ -4,16 +4,6 @@
 # should work with python2.5, not tested
 # works on python3, version tested was 3.6.5
 
-# imports from the future come first, they differ by python version
-try:
-    from future.utils import iteritems # should work on python2.7 and python3
-except:
-    try:
-        from six import iteritems # < python2.7: error? pip2 install six
-    except:
-        logging.warn("Python-install problem? Cannot find an iteritems() function")
-
-# now all others
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time
 from collections import namedtuple, OrderedDict
@@ -124,6 +114,13 @@ def errAbort(msg):
         logging.error(msg)
         sys.exit(1)
 
+def iterItems(d):
+    " wrapper for iteritems for all python versions "
+    if isPy3:
+        return d.items()
+    else:
+        return d.iteritems()
+
 def lineFileNextRow(inFile):
     """
     parses tab-sep file with headers in first line
@@ -176,6 +173,9 @@ def lineFileNextRow(inFile):
             #fields = string.split(line, sep, maxsplit=len(headers)-1)
         fields = line.split("\t")
 
+        if sep==",":
+            fields = [x.lstrip('"').rstrip('"') for x in fields]
+
         try:
             rec = Record(*fields)
         except Exception as msg:
@@ -185,8 +185,6 @@ def lineFileNextRow(inFile):
             logging.error("Does number of fields match headers?")
             logging.error("Headers are: %s" % headers)
             raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
-        if sep==",":
-            rec = [x.lstrip('"').rstrip('"') for x in rec]
         yield rec
 
 def parseOneColumn(fname, colName):
@@ -1078,7 +1076,7 @@ def parseColors(fname):
 
     colDict = parseDict(fname)
     newDict = {}
-    for metaVal, color in iteritems(colDict):
+    for metaVal, color in iterItems(colDict):
         color = color.strip().strip("#") # hbeale had a file with trailing spaces
         assert(len(color)<=6) # colors can be no more than six hex digits
         for c in color:
@@ -1337,7 +1335,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
     newHeaders.extend(otherHeaders)
 
     fileCount = 0
-    for clusterName, rows in iteritems(data):
+    for clusterName, rows in iterItems(data):
         #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
         clusterName = clusterName.replace("/","_")
         outFname = join(outDir, clusterName+".tsv")
@@ -1491,7 +1489,7 @@ def parseTsvColumn(fname, colName):
 
     # inverse key/val dict
     intToVal = {}
-    for k, v in iteritems(valToInt):
+    for k, v in iterItems(valToInt):
         intToVal[v] = k
 
     valArr = []
@@ -1591,7 +1589,7 @@ def parseGeneInfo(geneToSym, fname):
     validSyms = None
     if geneToSym is not None:
         validSyms = set()
-        for gene, sym in iteritems(geneToSym):
+        for gene, sym in iterItems(geneToSym):
             validSyms.add(sym)
 
     geneInfo = []
@@ -1696,7 +1694,7 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
     if quickMode and isfile(descJsonFname):
         logging.info("Quick-mode: re-using config file %s" % descJsonFname)
         oldConf = json.load(open(descJsonFname))
-        for k, v in iteritems(oldConf):
+        for k, v in iterItems(oldConf):
             if k not in conf:
                 conf[k] = v
 
