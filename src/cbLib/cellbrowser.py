@@ -1977,7 +1977,10 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
-        assert("shortLabel" in datasetDesc)
+        #assert("shortLabel" in datasetDesc)
+        if not "shortLabel" in datasetDesc:
+            datasetDesc["shortLabel"] = datasetDesc["name"]
+
         datasetDesc["baseUrl"] = subDir+"/"
         datasets.append(datasetDesc)
     datasets = list(sorted(datasets, key=lambda k: k.get('priority', 10)))
