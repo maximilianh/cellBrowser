@@ -1650,7 +1650,11 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
     matrixFname = makeAbs(inDir, conf["exprMatrix"])
     metaFname = makeAbs(inDir, conf["meta"])
     coordFnames = makeAbsDict(inDir, conf["coords"])
-    markerFnames = makeAbsDict(inDir, conf["markers"])
+
+    markerFnames = []
+    if "markers" in conf:
+        markerFnames = makeAbsDict(inDir, conf["markers"])
+
     descJsonFname = join(outDir, "dataset.json")
 
     colorFname = conf.get("colors")
