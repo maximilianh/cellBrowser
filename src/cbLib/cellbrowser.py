@@ -1727,6 +1727,8 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
 
     # step1: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
     if quickMode and isfile(binMat):
+        logging.info("Not processing expression matrix, %s exists" % binMat)
+    else:
         # XX new function processMatrix()
         myMatrixFname = join(outDir, "exprMatrix.tsv.gz")
         binMat = join(outDir, "exprMatrix.bin")
