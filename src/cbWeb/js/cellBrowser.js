@@ -942,7 +942,7 @@ var tsnePlot = function() {
            doneOnePart();
        }
 
-       renderer.initDataset(db.conf);
+       renderer.initPlot(db.conf);
 
        buildLeftSidebar(db.getMetaFields());
        buildToolBar(db.conf.coords, db.conf.name, metaBarWidth+metaBarMargin, toolBarHeight);
@@ -1113,7 +1113,7 @@ var tsnePlot = function() {
     }
 
     function onZoom100Click(ev) {
-    /* in addition to zooming (done by cbDraw already), reset the URL */
+    /* in addition to zooming (done by maxPlot already), reset the URL */
         changeUrl({'zoom':null});
         renderer.zoom100();
         renderer.drawDots();
@@ -2241,13 +2241,20 @@ var tsnePlot = function() {
         activateTab("meta");
         var intro = introJs();
         intro.setOption("hintAnimation", false);
-        intro.setOption("exitOnEst", true);
+        intro.setOption("exitOnEsc", true);
         intro.setOption("exitOnOverlayClick", true);
-        if (addFirst)
+        intro.setOption("scrollToElement", false);
+
+        intro.setOption("doneLabel", "Close this window");
+        intro.setOption("skipLabel", "Stop the tutorial");
+
+        if (addFirst) {
+            intro.setOption("skipLabel", "I know. Do not show the tutorial.");
             intro.addStep({
                 element: document.querySelector('#tpHelpButton'),
-                intro: "Are you here for the first time and wondering what this is?<br>The tutorial takes only 1 minute. To skip the tutorial now, click 'Skip' or press Esc.<br>You can always show it again by clicking 'Tutorial'.",
+                intro: "Are you here for the first time and wondering what this is?<br>The tutorial takes only 1 minute. To skip the tutorial now, click 'I know' below or press Esc.<br>You can always show it again by clicking 'Help > Tutorial'.",
               });
+        }
 
         intro.addSteps(
             [
@@ -2259,7 +2266,7 @@ var tsnePlot = function() {
               {
                 element: document.querySelector('#tpLeftSidebar'),
                 intro: "Info and color control: move the mouse over a circle to show its annotation data.<br>Pick an annotation field or a gene to color on it.<br>",
-                position: 'right'
+                position: 'auto'
               },
               //{
                 //element: document.querySelector('#tpGeneBar'),
@@ -3464,8 +3471,12 @@ var tsnePlot = function() {
         var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
         var canvHeight = window.innerHeight - menuBarHeight - toolBarHeight;
 
-        if (renderer===null)
-           renderer = new CbCanvas(canvTop, canvLeft, canvWidth, canvHeight);
+        if (renderer===null) {
+           var div = document.createElement('div');
+           div.id = "tpMaxPlot";
+           renderer = new MaxPlot(div, canvTop, canvLeft, canvWidth, canvHeight);
+           document.body.appendChild(div);
+       }
 
         buildEmptyLegendBar(metaBarWidth+metaBarMargin+renderer.width, toolBarHeight);
 

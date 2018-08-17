@@ -81,7 +81,7 @@ canvas { user-select: none }
 .tpMetaTipPerc { display: inline-block; position: relative; left:0; z-index: 3; }
 .tpMetaTipName { display: inline-block; position: relative; left:20px; z-index: 3; }
 
-#tpSelectBox { border: 1px dotted black; }
+/* #tpSelectBox { border: 1px dotted black; } */
 
 button { line-height: 12px }
 
