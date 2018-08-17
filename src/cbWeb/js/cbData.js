@@ -36,7 +36,7 @@ var cbUtil = (function () {
     
     my.loadFile = function(url, arrType, onDone, onProgress, otherInfo, start, end) {
         /* load text or binary file with HTTP GET into fileData variable and call function
-         * onDone(fileData, otherInfo) when done, 
+         * onDone(fileData, otherInfo) when done. .gz URLs are automatically decompressed.
          * optional: return as an object of arrType. 
          * If it is a text file, specify arrType=null.
          * optional: byte range request for start-end (0-based, inclusive).
@@ -82,7 +82,7 @@ var cbUtil = (function () {
     };
 
     my.onDoneBinaryData = function(oEvent) {
-        /* called when binary file has been loaded */
+        /* called when binary file has been loaded. gunzips .gz URLs. */
         var url = this._url;
         // 200 = OK, 206 = Partial Content OK
         if (this.status !== 200 && this.status !== 206) {
@@ -96,6 +96,9 @@ var cbUtil = (function () {
           alert("internal error when loading "+url+": no reponse from server?");
           return;
         }
+
+        if (url.endsWith(".gz"))
+            binData = pako.ungzip(binData);
 
         // if the user wants only a byte range...
         if (this._start!==undefined) {
@@ -268,7 +271,7 @@ function CbDbFile(url) {
         var metaInfo = self.conf.metaFields[fieldIdx];
         console.log(metaInfo);
         var fieldName = metaInfo.name;
-        var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin"]);
+        var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
         var arrType = cbUtil.makeType(metaInfo.arrType);
         cbUtil.loadFile(binUrl, arrType, onDone, onProgress, metaInfo);
     };

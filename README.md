@@ -1,7 +1,9 @@
 UCSC Single Cell Browser
 ========================
 
-For a demo, see http://cells.ucsc.edu
+Sponsored by the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
+
+For a demo of the browser, see http://cells.ucsc.edu
 
 This repo contains many different pieces in Python and Javascript, but the main script is
 cbBuild. It is a Python script that takes a gene expression matrix and related files and

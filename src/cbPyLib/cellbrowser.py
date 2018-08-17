@@ -5,9 +5,11 @@
 # works on python3, version tested was 3.6.5
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
-import zlib, math, operator, doctest, copy, bisect, array, glob, io, time
+import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
+import hashlib
+from distutils import spawn
 from collections import namedtuple, OrderedDict
-from os.path import join, basename, dirname, isfile, isdir, relpath, abspath
+from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime
 
 # python2.6 has no defaultdict or Counter yet
 try:
@@ -17,13 +19,14 @@ except:
     from backport_collections import defaultdict # error? -> pip2 install backport-collections
     from backport_collections import Counter # error? -> pip2 install backport-collections
 
-# Does not require numpy but numpy is around 30-40% faster in serializing arrays
+# We do not require numpy but numpy is around 30-40% faster in serializing arrays
+# So use it if it's present
 numpyLoaded = True
 try:
     import numpy as np
 except:
     numpyLoaded = False
-    logging.error("Numpy could not be loaded. The script should work, but it will be a lot slower to process the matrix.")
+    logging.error("Numpy could not be loaded. The script should work, but it will be somwhat slower when processing the matrix.")
 
 # older numpy versions don't have tobytes()
 try:
@@ -45,22 +48,29 @@ defOutDir = os.environ.get("CBOUT")
     
 def cbBuild_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] -i cellbrowser.conf -o outputDir - add a dataset to the single cell viewer directory")
+    parser = optparse.OptionParser("""usage: %prog [options] -i cellbrowser.conf -o outputDir - add a dataset to the single cell viewer directory
+
+    If you have previously built into the same output directory with the same dataset and the
+    expression matrix has not changed its filesize, this will be detected and the expression
+    matrix will not be copied again. This means that an update of a few meta data attributes
+    is quite quick.
+
+    """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
 
-    parser.add_option("-i", "--inConf", dest="inConf", action="store",
-        help="a cellbrowser.conf file that specifies labels and all input files, default %default", default="cellbrowser.conf")
+    parser.add_option("-i", "--inConf", dest="inConf", action="append",
+        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times", default=["cellbrowser.conf"])
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
     parser.add_option("-p", "--port", dest="port", action="store", 
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
 
-    parser.add_option("-q", "--quick",
-        dest="quick",
-        action="store_true", help="Do not rebuild the big gene expression files, if they already exist")
+    #parser.add_option("", "--onlyMeta",
+        #dest="onlyMeta",
+        #action="store_true", help="Do not convert everything, just update the meta data. Useful if you have made a small meta change and the output directory also has the expression matrix.")
     #parser.add_option("", "--test",
         #dest="test",
         #action="store_true", help="run a few tests")
@@ -505,10 +515,11 @@ def cleanString(s):
             newS.append(c)
     return "".join(newS)
 
-def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
+def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     """ convert meta table to binary files. outputs fields.json and one binary file per field. 
-    adds names of metadata fields to datasetInfo and returns datasetInfo
+    adds names of metadata fields to outConf and returns outConf
     """
+    logging.info("Converting to numbers and compressing meta data fields")
     makeDir(outDir)
 
     colData = parseIntoColumns(fname)
@@ -531,8 +542,8 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
-        if "metaOpt" in datasetInfo and fieldName in datasetInfo["metaOpt"]:
-            fieldMeta["opt"] = datasetInfo["metaOpt"][fieldName]
+        if "metaOpt" in inConf and fieldName in inConf["metaOpt"]:
+            fieldMeta["opt"] = inConf["metaOpt"][fieldName]
 
         packFmt = fieldMeta["_fmt"]
 
@@ -549,6 +560,9 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
                     binFh.write("%s\n" % x)
         binFh.close()
 
+        cmd = "gzip -f %s" % binName
+        runCommand(cmd)
+
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
         if "type" in fieldMeta:
@@ -556,11 +570,7 @@ def metaToBin(fname, colorFname, outDir, enumFields, datasetInfo):
         else:
             logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
-    if "metaOpt" in datasetInfo:
-        del datasetInfo["metaOpt"] # don't need this anymore
-
-    datasetInfo["metaFields"] = fieldInfo
-    return datasetInfo
+    return fieldInfo
 
 def iterLineOffsets(ifh):
     """ parse a text file and yield tuples of (line, startOffset, endOffset).
@@ -596,6 +606,7 @@ def iterExprFromFile(fname, matType, geneToSym):
     headLine = ifh.readline()
     skipIds = 0
     doneGenes = set()
+    lineNo = 0
     for line in ifh:
         if isPy3:
             gene, rest = line.split(sep, maxsplit=1)
@@ -616,17 +627,19 @@ def iterExprFromFile(fname, matType, geneToSym):
             symbol = geneToSym.get(gene)
             if symbol is None:
                 skipIds += 1
-                logging.warn("%s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % geneId)
+                logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
                 continue
             if symbol.isdigit():
-                logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." (geneCount, symbol))
+                logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
 
         if symbol in doneGenes:
-            logging.warn("Gene %s/%s is duplicated in matrix, using only first occurence" % (geneId, symbol))
+            logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence" % (lineNo, gene, symbol))
             skipIds += 1
             continue
 
         doneGenes.add(gene)
+
+        lineNo += 1
 
         yield gene, symbol, a
     
@@ -1245,28 +1258,26 @@ def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coor
 
 def runCommand(cmd):
     " run command "
-    logging.info("Running %s" % cmd)
+    logging.debug("Running %s" % cmd)
     err = os.system(cmd)
     if err!=0:
         errAbort("Could not run: %s" % cmd)
     return 0
 
-def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
+def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter:
         logging.info("Copying %s to %s" % (inFname, outFname))
-        #shutil.copy(inFname, outFname)
         cmd = "cp %s %s" % (inFname, outFname)
         ret = runCommand(cmd)
         if ret!=0 and isfile(outFname):
             os.remove(outFname)
             sys.exit(1)
-
         return
 
     sep = "\t"
 
-    logging.info("Copying %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
+    logging.info("Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
 
     ifh = openFile(inFname)
 
@@ -1281,6 +1292,7 @@ def copyMatrix(inFname, outFname, filtSampleNames, doFilter):
 
     tmpFname = outFname+".tmp"
     ofh = openFile(tmpFname, "w")
+    ofh.write("gene\t")
     ofh.write("\t".join(filtSampleNames))
     ofh.write("\n")
 
@@ -1348,11 +1360,16 @@ def splitMarkerTable(filename, geneToSym, outDir):
             ofh.write("\t".join(row))
             ofh.write("\n")
         ofh.close()
+
+        cmd = 'gzip -f %s' % outFname
+        runCommand(cmd)
+
         fileCount += 1
-    logging.info("Wrote %d .tsv files into directory %s" % (fileCount, outDir))
+    logging.info("Wrote %d .tsv.gz files into directory %s" % (fileCount, outDir))
 
 def execfile(filepath, globals=None, locals=None):
     " version of execfile for both py2 and py3 "
+    logging.debug("Executing %s" % filepath)
     if globals is None:
         globals = {}
     globals.update({
@@ -1362,8 +1379,12 @@ def execfile(filepath, globals=None, locals=None):
     with open(filepath, 'rb') as file:
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
-def loadConfig(fname):
-    " parse python in fname and return variables as dictionary "
+def loadConfig(fname, outDir):
+    """ parse python in fname and return variables as dictionary. 
+    add the directory of fname to the dict as 'inDir'.
+    Keep a copy of the config in outDir.
+    """
+    logging.debug("Loading config from %s" % fname)
     g = {}
     l = OrderedDict()
     execfile(fname, g, l)
@@ -1376,6 +1397,11 @@ def loadConfig(fname):
         errAbort("The input configuration has to define the 'meta' statement")
     if not "exprMatrix" in conf:
         errAbort("The input configuration has to define the 'exprMatrix' statement")
+    if "tags" in conf and type(conf["tags"])!=type([]):
+        errAbort("'tags' in input config file must be a list")
+
+
+    conf["inDir"] = dirname(fname)
 
     return conf
 
@@ -1404,60 +1430,24 @@ def loadConfig(fname):
             #otherFiles["markerLists"] = [markerFname]
     #return conf
 
-def copyHtmlFiles(inDir, conf):
-    " copy description html files to output directory "
-    copyFiles = []
+def copyDatasetHtmls(inDir, outConf, datasetDir):
+    " copy dataset description html files to output directory "
+    filesToCopy = []
 
-    conf["desc"] = {}
+    outConf["desc"] = {}
 
-    fname = makeAbs(inDir, "summary.html")
-    if not isfile(fname):
-        logging.warn("%s does not exist" % fname)
-    else:
-        copyFiles.append( (fname, "summary.html") )
-        conf["desc"]["summary"] = "summary.html"
+    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumbnail.png"]:
+        inFname = makeAbs(inDir, fileBase)
+        if not isfile(inFname):
+            logging.info("%s does not exist" % inFname)
+        else:
+            #copyFiles.append( (fname, "summary.html") )
+            outPath = join(datasetDir, fileBase)
+            logging.debug("Copying %s -> %s" % (inFname, outPath))
+            shutil.copy(inFname, outPath)
 
-    fname = makeAbs(inDir, "methods.html")
-    if not isfile(fname):
-        logging.warn("%s does not exist" % fname)
-    else:
-        copyFiles.append( (fname, "methods.html") )
-        conf["desc"]["methods"] = "methods.html"
-
-    fname = makeAbs(inDir, "downloads.html")
-    if not isfile(fname):
-        logging.warn("%s does not exist" % fname)
-    else:
-        copyFiles.append( (fname, "downloads.html") )
-        conf["desc"]["downloads"] = "downloads.html"
-
-    fname = makeAbs(inDir, "thumb.png")
-    if not isfile(fname):
-        logging.warn("%s does not exist" % fname)
-    else:
-        copyFiles.append( (fname, "thumb.png") )
-        conf["desc"]["thumbnail"] = "thumb.png"
-
-    return conf, copyFiles
-
-def findInputFiles(inConf):
-    """ find all input files and return them
-    returns these:
-    metaFname = file name meta data
-    matrixFname = file name expression matrix
-    coordFnames = list of (filename, label)
-    markerFnames = list of (filename, label)
-    filesToCopy = list of (origFname, copyToFname)
-    """
-    #if inConf:
-    conf = loadConfig(inConf)
-    inDir = dirname(inConf)
-    #else:
-        #conf = guessConfig(options)
-
-    conf, copyFiles = copyHtmlFiles(inDir, conf)
-
-    return inDir, conf, copyFiles
+            fileDesc = fileBase.split(".")[0]
+            outConf["desc"][fileDesc] = fileBase
 
 def makeAbs(inDir, fname):
     " return absolute path of fname under inDir "
@@ -1465,8 +1455,10 @@ def makeAbs(inDir, fname):
         return None
     return abspath(join(inDir, fname))
 
-def makeAbsDict(inDir, dicts):
-    " given list of dicts with key 'file', make paths absolute "
+def makeAbsDict(conf, key):
+    " given list of dicts with key 'file', assume they are relative to inDir and make their paths absolute "
+    inDir = conf["inDir"]
+    dicts = conf[key]
     for d in dicts:
         d["file"] = makeAbs(inDir, d["file"])
     return dicts
@@ -1636,119 +1628,56 @@ def readSampleNames(fname):
     logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
 
-def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
-    " write config to outDir and copy over all files in fileToCopy "
-    # keep a copy of the original config in the output directory for debugging later
-    confName = join(outDir, "origConf.json")
-    json.dump(conf, open(confName, "w"))
+def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
+    """ trim a copy of the expression matrix for downloads, also create an indexed
+    and compressed version
+    """
 
-    for src, dest in fileToCopy:
-        outPath = join(outDir, dest)
-        logging.info("Copying %s -> %s" % (src, outPath))
-        shutil.copy(src, outPath)
+    # step1: copy expression matrix, so people can download it, potentially
+    # removing those sample names that are not in the meta data
+    nozipFname = outMatrixFname.replace(".gz", "")
+    matrixFname = getAbsPath(inConf, "exprMatrix")
+    outConf["fileVersions"]["inMatrix"] = getFileVersion(matrixFname)
+    copyMatrixTrim(matrixFname, nozipFname, metaSampleNames, needFilterMatrix)
+    runCommand("gzip -f %s" % nozipFname)
 
-    matrixFname = makeAbs(inDir, conf["exprMatrix"])
-    metaFname = makeAbs(inDir, conf["meta"])
-    coordFnames = makeAbsDict(inDir, conf["coords"])
-    markerFnames = makeAbsDict(inDir, conf["markers"])
-    descJsonFname = join(outDir, "dataset.json")
+    # step2: discretize expression matrix for the viewer, compress and index to file
+    #logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
+    binMat = join(outDir, "exprMatrix.bin")
+    binMatIndex = join(outDir, "exprMatrix.json")
+    discretBinMat = join(outDir, "discretMat.bin")
+    discretMatrixIndex = join(outDir, "discretMat.json")
 
-    colorFname = conf.get("colors")
-    enumFields = conf.get("enumFields")
+    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
 
-    geneIdType = conf.get("geneIdType")
-    if geneIdType==None:
-        errAbort("geneIdType must have a value in cellbrowser.conf")
-
-    if geneIdType == 'symbols' or geneIdType=="symbol":
-        geneToSym = None
+    if matType=="int":
+        outConf["matrixArrType"] = "Uint32"
+    elif matType=="float":
+        outConf["matrixArrType"] = "Float32"
     else:
-        searchMask = join(dataDir, "genes", geneIdType+".*.tab")
-        fnames = glob.glob(searchMask)
-        assert(len(fnames)<=1)
-        if(len(fnames)==0):
-            errAbort("Could not find any files matching %s" % searchMask)
-        geneIdTable = fnames[0]
-        geneToSym = readGeneToSym(geneIdTable)
+        assert(False)
 
-    quickGeneFname = conf.get("quickGenesFile")
-    if quickGeneFname:
-        fname = makeAbs(inDir, quickGeneFname)
-        quickGenes = parseGeneInfo(geneToSym, fname)
-        del conf["quickGenesFile"]
-        conf["quickGenes"] = quickGenes
-        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
+    outConf["fileVersions"]["outMatrix"] = getFileVersion(outMatrixFname)
 
-    # these don't exist / are not needed in the output json file
-    del conf["meta"]
-    del conf["exprMatrix"]
+def copyConf(inConf, outConf, keyName):
+    " copy value of keyName from inConf dict to outConf dict "
+    if keyName in inConf:
+        outConf[keyName] = inConf[keyName]
 
-    if 'colors' in conf:
-        del conf["colors"]
-    if "enumFields" in conf:
-        del conf["enumFields"]
-    if "tags" in conf and type(conf["tags"])!=type([]):
-        errAbort("'tags' in config file must be a list")
+def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
+    " convert the coordinates "
+    coordFnames = makeAbsDict(inConf, "coords")
 
-    # in quick mode, reuse the old config file
-    if quickMode and isfile(descJsonFname):
-        logging.info("Quick-mode: re-using config file %s" % descJsonFname)
-        oldConf = json.load(open(descJsonFname))
-        for k, v in iterItems(oldConf):
-            if k not in conf:
-                conf[k] = v
-
-    # convert the meta data to binary
-    metaDir = join(outDir, "metaFields")
-    makeDir(metaDir)
-    metaIdxFname = join(outDir, "meta.index")
-
-    finalMetaFname = join(outDir, "meta.tsv")
-    if isfile(metaIdxFname) and quickMode:
-        logging.info("quick-mode: %s already exists, not recreating" % metaIdxFname)
-        sampleNames = readSampleNames(finalMetaFname)
-        needFilterMatrix = conf["matrixWasFiltered"]
-    else:
-        # create a meta file for downloads, same order as expression matrix
-        sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMetaFname)
-        conf["sampleCount"] = len(sampleNames)
-        conf["matrixWasFiltered"] = needFilterMatrix
-        conf = metaToBin(finalMetaFname, colorFname, metaDir, enumFields, conf)
-        indexMeta(finalMetaFname, metaIdxFname)
-    logging.info("Kept %d cells present in both meta data file and expression matrix" % len(sampleNames))
-
-    writeJson(conf, descJsonFname)
-    # process the expression matrix: two steps
-
-
-    # step1: copy expression matrix, so people can download (potentially removing the sample names missing from the meta data)
-    if quickMode and isfile(binMat):
-        # XX new function processMatrix()
-        myMatrixFname = join(outDir, "exprMatrix.tsv.gz")
-        binMat = join(outDir, "exprMatrix.bin")
-        binMatIndex = join(outDir, "exprMatrix.json")
-        discretBinMat = join(outDir, "discretMat.bin")
-        discretMatrixIndex = join(outDir, "discretMat.json")
-        if matrixFname is not None:
-            if quickMode and isfile(myMatrixFname):
-                logging.info("quick-mode: Not copying+reordering expression matrix %s" % myMatrixFname)
-            else:
-                nozipFname = join(outDir, "exprMatrix.tsv")
-                copyMatrix(matrixFname, nozipFname, sampleNames, needFilterMatrix)
-                runCommand("gzip -f %s" % nozipFname)
-
-        # step2: discretize expression matrix for the viewer
-            logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
-        else:
-            matType = matrixToBin(myMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
-            if matType=="int":
-                conf["matrixArrType"] = "Uint32"
-            elif matType=="float":
-                conf["matrixArrType"] = "Float32"
-
-    # convert the coordinates
-    useTwoBytes = conf.get("useTwoBytes", False)
+    useTwoBytes = inConf.get("useTwoBytes", False)
     newCoords = []
+
+    hasLabels = False
+    if "labelField" in inConf and inConf["labelField"] is not None:
+        hasLabels = True
+        clusterLabelField = inConf["labelField"]
+        labelVec, labelVals = parseTsvColumn(outMeta, clusterLabelField)
+        outConf["labelField"] = clusterLabelField
+
     for coordIdx, coordInfo in enumerate(coordFnames):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
@@ -1763,11 +1692,8 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
         coordInfo["shortLabel"] = coordLabel
         coordInfo, xVals, yVals = writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo)
         newCoords.append( coordInfo )
-        conf["coords"] = newCoords
 
-        if "labelField" in conf and conf["labelField"] is not None:
-            clusterLabelField = conf["labelField"]
-            labelVec, labelVals = parseTsvColumn(finalMetaFname, clusterLabelField)
+        if hasLabels:
             clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
 
             midFname = join(coordDir, "clusterLabels.json")
@@ -1775,8 +1701,14 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
             json.dump(clusterMids, midFh, indent=2)
             logging.info("Wrote cluster labels and midpoints to %s" % midFname)
 
-    # save the acronyms
-    fname = conf.get("acroFname")
+    outConf["coords"] = newCoords
+    copyConf(inConf, outConf, "labelField")
+    copyConf(inConf, outConf, "useTwoBytes")
+
+def readAcronyms(inConf, outConf):
+    " read the acronyms and save them into the config "
+    inDir = inConf["inDir"]
+    fname = inConf.get("acroFname")
     if fname is not None:
         fname = makeAbs(inDir, fname)
         if not isfile(fname):
@@ -1784,10 +1716,14 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
         else:
             acronyms = parseDict(fname)
             logging.info("Read %d acronyms from %s" % (len(acronyms), fname))
-            conf["acronyms"] = acronyms
-        del conf["acroFname"]
+            outConf["acronyms"] = acronyms
 
-    # convert the markers
+def convertMarkers(inConf, outConf, geneToSym, outDir):
+    " split the marker tables into one file per cluster "
+    markerFnames = []
+    if "markers" in inConf:
+        markerFnames = makeAbsDict(inConf, "markers")
+
     newMarkers = []
     for markerIdx, markerInfo in enumerate(markerFnames):
         markerFname = markerInfo["file"]
@@ -1800,9 +1736,195 @@ def addDataset(inDir, conf, fileToCopy, outDir, quickMode):
         splitMarkerTable(markerFname, geneToSym, markerDir)
 
         newMarkers.append( {"name" : clusterName, "shortLabel" : markerLabel})
-    conf["markers"] = newMarkers
+    outConf["markers"] = newMarkers
 
-    writeJson(conf, descJsonFname)
+def readQuickGenes(inConf, geneToSym, outConf):
+    quickGeneFname = inConf.get("quickGenesFile")
+    if quickGeneFname:
+        fname = getAbsPath(inConf, "quickGenesFile")
+        quickGenes = parseGeneInfo(geneToSym, fname)
+        outConf["quickGenes"] = quickGenes
+        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
+
+def getFileVersion(fname):
+    metaVersion = {}
+    metaVersion["fname"] = fname
+    metaVersion["md5"] = md5ForFile(fname)
+    metaVersion["size"] = getsize(fname)
+    metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
+    return metaVersion
+
+def convertMeta(inConf, outConf, outDir):
+    """ convert the meta data to binary files. The new meta is re-ordered, so it's in the same
+    order as the samples in the expression matrix.
+    """
+    if not "fileVersions" in outConf:
+        outConf["fileVersions"] = {}
+
+    metaFname = getAbsPath(inConf, "meta")
+    outConf["fileVersions"]["inMeta"] = getFileVersion(metaFname)
+
+    metaDir = join(outDir, "metaFields")
+    makeDir(metaDir)
+    metaIdxFname = join(outDir, "meta.index")
+
+    finalMetaFname = join(outDir, "meta.tsv")
+
+    matrixFname = getAbsPath(inConf, "exprMatrix")
+    sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMetaFname)
+
+    outConf["sampleCount"] = len(sampleNames)
+    outConf["matrixWasFiltered"] = needFilterMatrix
+
+    colorFname = inConf.get("colors")
+    enumFields = inConf.get("enumFields")
+    fieldConf = metaToBin(inConf, outConf, finalMetaFname, colorFname, metaDir, enumFields)
+    outConf["metaFields"] = fieldConf
+
+    indexMeta(finalMetaFname, metaIdxFname)
+
+    logging.info("Kept %d cells present in both meta data file and expression matrix" % len(sampleNames))
+
+    outConf["fileVersions"]["outMeta"] = getFileVersion(finalMetaFname)
+
+    return sampleNames, needFilterMatrix, finalMetaFname
+
+def readGeneSymbols(inConf):
+    " return geneToSym, based on gene tables "
+    geneIdType = inConf.get("geneIdType")
+    if geneIdType==None:
+        logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
+        geneIdType = "symbols"
+
+    if geneIdType == 'symbols' or geneIdType=="symbol":
+        return None
+
+    searchMask = join(dataDir, "genes", geneIdType+".*.tab")
+    fnames = glob.glob(searchMask)
+    assert(len(fnames)<=1)
+    if(len(fnames)==0):
+        errAbort("Could not find any files matching %s" % searchMask)
+    geneIdTable = fnames[0]
+    geneToSym = readGeneToSym(geneIdTable)
+    return geneToSym
+
+def getAbsPath(conf, key):
+    " get assume that value of key in conf is a filename and use the inDir value to make it absolute "
+    return abspath(join(conf["inDir"], conf[key]))
+
+def getMd5Using(md5Cmd, fname):
+    " posix command line tool is much faster than python "
+    logging.debug("Getting md5 of %s using md5sum command line tool" % fname)
+    cmd = [md5Cmd, fname]
+    logging.debug("Cmd: %s" % cmd)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    md5 = proc.stdout.readline()
+    proc.stdout.close()
+    stat = os.waitpid(proc.pid, 0)
+    err = stat[1]
+    assert(err==0)
+    return md5
+
+def md5ForFile(fname):
+    " return the md5sum of a file "
+    logging.info("Getting md5 of %s" % fname)
+    if spawn.find_executable("md5sum")!=None:
+        md5 = getMd5Using("md5sum", fname)
+    elif spawn.find_executable("md5")!=None:
+        md5 = getMd5Using("md5", fname).split()[-1]
+    #else:
+    if True:
+        hash_md5 = hashlib.md5()
+        with open(fname, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hash_md5.update(chunk)
+        pyHash = hash_md5.hexdigest()
+        #return pyHash
+    assert(md5==pyHash)
+    return md5
+
+def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf):
+    """ compare filesize stored in datasetDir/cellbrowser.json.bak with file
+    size of inMatrixFname and also compare the sample names with the sample names in
+    outMatrixFname
+    """
+    logging.info("Determining if %s needs to created" % outMatrixFname)
+    confName = join(datasetDir, "dataset.json")
+    if not isfile(confName):
+        logging.info("%s does not exist. This looks like the first run with this output directory" % confName)
+        return True
+
+    lastConf = json.load(open(confName))
+    if not "fileVersions" in lastConf or not "inMatrix" in lastConf["fileVersions"] \
+        or not "outMatrix" in lastConf["fileVersions"]:
+            logging.warn("Internal error? Missing 'fileVersions' tag in %s" % confName)
+            return True
+
+    oldMatrixInfo = lastConf["fileVersions"]["inMatrix"]
+    origSize = oldMatrixInfo ["size"]
+    nowSize = getsize(inMatrixFname)
+    matrixIsSame = (origSize==nowSize)
+
+    if not matrixIsSame:
+        logging.info("input matrix has input file size that is different from prevously processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" % (oldMatrixInfo, nowSize))
+        return True
+    outConf["fileVersions"]["inMatrix"] = oldMatrixInfo
+    outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
+    outConf["matrixArrType"] = lastConf["matrixArrType"]
+
+    # this obscure command gets the cell identifiers in the dataset directory
+    sampleNameFname = join(datasetDir, "metaFields", outConf["metaFields"][0]["name"]+".bin.gz")
+    logging.debug("Reading meta sample names from %s" % sampleNameFname)
+    metaSampleNames = gzip.open(sampleNameFname).read().splitlines()
+
+    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+    matrixSampleNames = readHeaders(outMatrixFname)[1:]
+
+    if metaSampleNames!=matrixSampleNames:
+        logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
+        return True
+
+    logging.info("current input matrix looks identical to previously processed matrix, same file size, same sample names")
+    return False
+
+def convertDataset(inConf, outConf, datasetDir):
+    """ convert everything needed for a dataset to datasetDir, write config to outConf.
+    If the expression matrix has not changed since the last run, and the sampleNames are the same,
+    it won't be converted again.
+    """
+    copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
+
+    # some config settings are passed through unmodified to the javascript
+    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
+        "clusterField", "hubUrl", "showLabels"]:
+        copyConf(inConf, outConf, tag)
+
+    # convertMeta also compares the sample IDs between meta and matrix
+    # outMeta is a reordered/trimmed tsv version of the meta table
+    sampleNames, needFilterMatrix, outMeta = convertMeta(inConf, outConf, datasetDir)
+
+    geneToSym = None
+
+    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+    geneToSym = -1 # None means "there are no gene symbols to map to"
+    inMatrixFname = getAbsPath(inConf, "exprMatrix")
+    doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
+
+    if doMatrix:
+        geneToSym = readGeneSymbols(inConf)
+        convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
+    else:
+        logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
+
+    convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
+
+    if geneToSym==-1:
+        geneToSym = readGeneSymbols(inConf)
+    convertMarkers(inConf, outConf, geneToSym, datasetDir)
+
+    readAcronyms(inConf, outConf)
+
+    readQuickGenes(inConf, geneToSym, outConf)
 
 def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName):
     #if 'X_draw_graph_fa' in anndata.obsm.dtype.names:
@@ -1895,11 +2017,20 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
-def writeJson(conf, descJsonFname):
-    # write dataset summary info
-    descJsonFh = open(descJsonFname, "w")
-    json.dump(conf, descJsonFh, indent=2)
-    logging.info("Wrote %s" % descJsonFname)
+def writeConfig(inConf, outConf, datasetDir):
+    " write dataset summary info to json file. Also keep a copy of the input config. "
+    # keep a copy of the original config in the output directory for debugging later
+    confName = join(datasetDir, "cellbrowser.json.bak")
+    ofh = open(confName, "w")
+    json.dump(inConf, ofh, indent=2)
+    logging.info("Wrote %s" % confName)
+    ofh.close()
+
+    outConfFname = join(datasetDir, "dataset.json")
+    descJsonFh = open(outConfFname, "w")
+    json.dump(outConf, descJsonFh, indent=2)
+    logging.info("Wrote %s" % outConfFname)
+    descJsonFh.close()
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
@@ -1925,36 +2056,46 @@ def startHttpServer(outDir, port):
     sys.stderr = open("/dev/null", "w")
     httpd.serve_forever()
 
-def cbBuild(confFname, outDir, port=None, quickMode=False):
-    " build browser from config file confFname into directory outDir and serve on port "
-    inDir, conf, filesToCopy = findInputFiles(confFname)
+def convertAndCopy(confFnames, outDir, port):
+    " build browser from config files confFnames into directory outDir and serve on port "
+    for inConfFname in confFnames:
+        inConf = loadConfig(inConfFname, outDir)
+        datasetDir = join(outDir, inConf["name"])
+        makeDir(datasetDir)
 
-    datasetDir = join(outDir, conf["name"])
-    makeDir(datasetDir)
+        outConfFname = join(outDir, "dataset.conf")
+        #if onlyMeta:
+            #outConf = json.parse(open(outConfFname)) # reuse the old config
+        #else:
+        outConf = OrderedDict()
 
-    addDataset(inDir, conf, filesToCopy, datasetDir, quickMode)
+        convertDataset(inConf, outConf, datasetDir)
+
+        writeConfig(inConf, outConf, datasetDir)
+
     cbMake(outDir)
 
     if port:
         startHttpServer(outDir, port)
 
-def cbBuildCli():
-    " command line interface for dataset converter "
+def convertAndCopyCli():
+    " command line interface for dataset converter, also copies the html/js/etc files "
     args, options = cbBuild_parseArgs()
 
-    if not isfile(options.inConf):
-        cbBuild_parseArgs(showHelp=True)
-        errAbort("File %s does not exist." % options.inConf)
+    for fname in options.inConf:
+        if not isfile(fname):
+            logging.error("File %s does not exist." % fname)
+            cbBuild_parseArgs(showHelp=True)
     if options.outDir is None:
+        logging.error("You have to specify at least the output directory or set the env. variable CBOUT.")
         cbBuild_parseArgs(showHelp=True)
-        errAbort("You have to specify at least the output directory or set the env. variable CBOUT.")
 
-    confFname = options.inConf
+    confFnames = options.inConf
     outDir = options.outDir
-    quickMode = options.quick
+    #onlyMeta = options.onlyMeta
     port = options.port
 
-    cbBuild(confFname, outDir, port, quickMode)
+    convertAndCopy(confFnames, outDir, port)
 
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
@@ -1973,7 +2114,10 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
-        assert("shortLabel" in datasetDesc)
+        #assert("shortLabel" in datasetDesc)
+        if not "shortLabel" in datasetDesc:
+            datasetDesc["shortLabel"] = datasetDesc["name"]
+
         datasetDesc["baseUrl"] = subDir+"/"
         datasets.append(datasetDesc)
     datasets = list(sorted(datasets, key=lambda k: k.get('priority', 10)))
@@ -2047,12 +2191,12 @@ def cbMake_cli():
     if outDir is None:
         errAbort("You have to specify at least the output directory or set the environment variable CBOUT.")
 
-    cbMake(outDir, options)
+    cbMake(outDir)
 
-if __name__=="__main__":
+#if __name__=="__main__":
     #main()
-    import scanpy.api as sc
-    ad = sc.read("sampleData/quakeBrainGeo1.old/geneMatrix.tsv")
-    ad = ad.T
-    convScanpy(ad, "temp", "./")
+    #import scanpy.api as sc
+    #ad = sc.read("sampleData/quakeBrainGeo1.old/geneMatrix.tsv")
+    #ad = ad.T
+    #convScanpy(ad, "temp", "./")
 

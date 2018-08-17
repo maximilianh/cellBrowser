@@ -1,6 +1,12 @@
 'use strict';
-// CbCanvas: mostly a class for drawing circles onto a canvas
+// maxPlot: a fast scatter plot class
 /*jshint globalstrict: true*/
+
+// TODO:
+// remove onNoHover
+// fix mouseout into body -> marquee stays
+// fix the aspect ratio of the zoom marquee
+// fix radius 30 being actually 8, do not use sqrt
 
 function getAttr(obj, attrName, def) {
     var val = obj[attrName];
@@ -17,44 +23,136 @@ function cloneObj(d) {
 }
 
 
-function CbCanvas(top, left, width, height) {
-    // a class that draws circles onto a canvas
-    // width and height includes the status line and half-transprent +/- zoom buttons
+function MaxPlot(div, top, left, width, height, args) {
+    // a class that draws circles onto a canvas, like a scatter plot
+    // div is a div DOM element under which the canvas will be created
+    // top, left: position in pixels, integers
+    // width and height: integers, in pixels, includes the status line
     
     var self = this; // 'this' has two conflicting meanings in javascript. 
-    // I use 'self' to refer to object variables and 'this' to refer to the caller context
-
-    // --- object variables 
+    // I use 'self' to refer to object variables, so I can use 'this' to refer to the caller context
     
-    const gTextSize = 16;
-    const gStatusHeight = 12;
-    const gZoomButtonSize = 30;
-    const gZoomFromRight = 60;
-    const gZoomFromBottom = 100;
+    const gTextSize = 16; // size of cluster labels
+    const gStatusHeight = 12; // height of status bar
+    const gZoomButtonSize = 30; // size of zoom buttons
+    const gZoomFromRight = 60;  // position of zoom buttons from right
+    const gZoomFromBottom = 120;  // position of zoom buttons from bottom
+    const gButtonBackground = "rgb(230, 230, 230, 0.6)" // grey level of buttons
+    const gButtonBackgroundClicked = "rgb(180, 180, 180, 0.6)"; // grey of buttons when clicked
 
-    self.gSampleDescription = "cell"; 
+    // the rest of the initialization is done at the end of this file,
+    // because the init involves many functions that are not defined yet here
 
-    self.ctx = null; // the canvas context
-    self.canvas = addCanvasToBody( top, left, width, height-gStatusHeight );
+    this.initCanvas = function (div, top, left, width, height) {
+        /* initialize a new Canvas */
 
-    addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
-    addModeButtons(top+5, left+5, self);
-    addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
-    addProgressBars(top+Math.round(height*0.3), left+30);
+        self.div = div;
+        self.gSampleDescription = "cell"; 
+        self.ctx = null; // the canvas context
+        self.canvas = addCanvasToDiv(div, top, left, width, height-gStatusHeight );
+
+        addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
+        addModeButtons(top+10, left+10, self);
+        addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
+        addProgressBars(top+Math.round(height*0.3), left+30);
+
+        /* add the div used for the mouse selection/zoom rectangle to the DOM */
+        var selectDiv = document.createElement('div');
+        selectDiv.id = "mpSelectBox";
+        selectDiv.style.border = "1px dotted black";
+        selectDiv.style.position = "absolute";
+        selectDiv.style.display  = "none";
+        selectDiv.pointerEvents = "none";
+        self.div.appendChild(selectDiv);
+        self.selectBox = selectDiv; // we need this later
+
+        self.setupMouse();
+        
+        // callbacks when user clicks or hovers over label or cell 
+        self.onLabelClick = null; // called on label click, args: text of label and event
+        self.onCellClick = null; // called on cell click, args: array of cellIds and event
+        self.onCellHover = null; // called on cell hover, arg: array of cellIds
+        self.onNoCellHover = null; // called on hover over empty background
+        self.onSelChange = null; // called when the selection has been changed, arg: array of cell Ids
+        // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
+
+        // timer that is reset on every mouse move
+        self.timer = null;
+
+        // all other object variables are added by the "initPlot(args)" function below
+
+        // when the user starts to select but lifts the mouse button outside
+        // the canvas, the current selection must be reset
+        //self.canvas.addEventListener("mouseleave", function() {self.resetMarquee();});
+
+        //document.body.addEventListener("mouseup", function(evt) {
+            //var targetId = evt.target.id;
+            //console.log("mouseup on body");
+            //if(targetId !== "mpCanvas" && targetId!=="mpSelectBox") {  // do nothing on the canvas
+                //console.log("mouseup outside of canvas, resetting marquee");
+                //self.resetMarquee();
+                //evt.stopPropagation();
+            //}
+        //});
+        // for this to work, the body has to really cover the whole page
+        //document.body.style.height = "100vh";
+    }
     
-    // callbacks when user clicks or hovers over label or cell 
-    self.onLabelClick = null; // called on label click, args: text of label and event
-    self.onCellClick = null; // called on cell click, args: array of cellIds and event
-    self.onCellHover = null; // called on cell hover, arg: array of cellIds
-    self.onNoCellHover = null; // called on hover over empty background
-    self.onSelChange = null; // called when the selection has been changed, arg: array of cell Ids
-    // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
+    this.initPlot = function(args) {
+        /* create a new scatter plot on the canvas */
+        if (args===undefined)
+            args = {};
 
-    // timer that is reset on every mouse move
-    self.timer = null;
+        self.mode = 1;   // drawing mode
 
-    // all other object variables are added by the "initDataset(args)" function below
+        self.zoomRange = null; // object with keys minX, , maxX, minY, maxY
+        self.coords     = null;
+        self.clusterLabels = null; // cluster labels, array of [x,y,text]
+
+        self.pxCoords   = null;   // coordinates of cells as screen pixels or 0,0 if not shown
+        self.pxLabels   = null;   // cluster labels in pixels, array of [x,y,text] 
+        self.pxLabelBbox = null;   // cluster label bounding boxes, array of [x1,x2,x2,y2]
+
+        self.doDrawLabels = true;  // should cluster labels be drawn?
+
+        self.colors     = null;   // list of six-digit hex codes
+        self.colorArr   = null;   // length is pxCoords/2, one byte per cell = index into self.colors
+        self.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
+        self.alpha      = getAttr(args, "alpha", 0.3);
+        self.selCells   = null;  // IDs of cells that are "selected" and as such highlighted in some way
+
+        // we keep a copy of the 'initial' arguments at 100% zoom
+        self.initZoom   = cloneObj(self.zoomRange);
+        self.initRadius = self.radius;                      // circle radius at full zoom
+
+        // mouse drag is modal: can be "select", "move" or "zoom"
+        self.dragMode = "select";
+         
+        // for zooming and panning
+        self.mouseDownX = null;
+        self.mouseDownY = null;
+        self.panCopy    = null;
+
+        // to detect if user just clicked on a dot
+        self.dotClickX = null;
+        self.dotClickY = null;
+
+        self.activateMode(getAttr(args, "mode", "select"));
+    };
     
+    // call the constructor
+    //self.newObject(div, top, left, width, height, args);
+    
+    this.clear = function() {
+        clearCanvas(self.ctx, self.width, self.height);
+    };
+
+    this.setPos = function(left, top) {
+       /* position the canvas on the page */
+       self.canvas.style.left = left+"px";
+       self.canvas.style.top = top+"px";
+    };
+
     // -- (private) helper functions
     // -- these are normal functions, not methods, they do not access "self"
 
@@ -72,7 +170,7 @@ function CbCanvas(top, left, width, height) {
     function activateTooltip(selector) {
         /* uses bootstrap tooltip. Use noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery 
          */
-        if ($.fn.bsTooltip!==undefined) {
+        if (window.jQuery && $.fn.bsTooltip!==undefined) {
             var ttOpt = {"html": true, "animation": false, "delay":{"show":400, "hide":100}, container:"body"}; 
             $(selector).bsTooltip(ttOpt);
         }
@@ -90,25 +188,55 @@ function CbCanvas(top, left, width, height) {
             return 5;
     }
 
-    function addCtrlButton(width, height, id, text) {
+    function createButton(width, height, id, title, text, imgFname, paddingTop, addSep) {
+        /* make a light-grey div that behaves like a button, with text and/or an image on it 
+         * Images are hard to vertically center, so padding top can be specified.
+         * */
         var div = document.createElement('div');
         div.id = id;
-        //div.style.border = "1px solid #DDDDDD";
-        div.style.backgroundColor = "rgb(230, 230, 230, 0.6)";
+        div.style.backgroundColor = gButtonBackground;
         div.style.width = width+"px";
         div.style.height = height+"px";
         div.style["text-align"]="center";
         div.style["vertical-align"]="middle";
         div.style["line-height"]=height+"px";
+        if (text!==null)
+            if (text.length>3)
+                div.style["font-size"]="11px";
+            else
+                div.style["font-size"]="14px";
+        div.style["font-weight"]="bold";
+        div.style["font-family"]="sans-serif";
 
-        div.innerHTML = "<span style='font-size: 14px; font-weight:bold'>"+text+"</span>";  
+        if (title!==null)
+            div.title = title;
+        if (text!==null)
+            div.textContent = text;
+        if (imgFname!==null && imgFname!=undefined) {
+            var img = document.createElement('img');
+            img.src = imgFname;
+            if (paddingTop!==null && paddingTop!=undefined)
+                img.style.paddingTop = paddingTop+"px";
+            div.appendChild(img);
+        }
+        if (addSep===true)
+            div.style["border-bottom"] = "1px solid #D7D7D7";
+
+        // make color dark grey when mouse is pressed
+        div.addEventListener("mousedown", function() { 
+                this.style.backgroundColor = gButtonBackgroundClicked;
+        });
+
+        div.addEventListener("mouseup", function() { 
+                this.style.backgroundColor = gButtonBackground;
+        });
         return div;
     }
 
     function makeCtrlContainer(top, left) {
         /* make a container for half-transprent ctrl buttons over the canvas */
         var ctrlDiv = document.createElement('div');
-        ctrlDiv.id = "tpCtrls";
+        ctrlDiv.id = "mpCtrls";
         ctrlDiv.style.position = "absolute";
         ctrlDiv.style.left = left+"px";
         ctrlDiv.style.top = top+"px";
@@ -126,52 +254,84 @@ function CbCanvas(top, left, width, height) {
         var width = gZoomButtonSize;
         var height = gZoomButtonSize;
 
-        var plusDiv = addCtrlButton(width, height, "tpCtrlZoomPlus", "+");
-        plusDiv.style["border-bottom"] = "1px solid #D7D7D7";
+        var plusDiv = createButton(width, height, "mpCtrlZoomPlus", "Zoom in", "+", null, null, true);
+        //plusDiv.style["border-bottom"] = "1px solid #D7D7D7";
 
-        var minusDiv = addCtrlButton(width, height, "tpCtrlZoomMinus", "-");
+        var fullDiv = createButton(width, height, "mpCtrlZoom100", "Zoom in", "100%", null, null, true);
+        //full.style["border-bottom"] = "1px solid #D7D7D7";
+
+        var minusDiv = createButton(width, height, "mpCtrlZoomMinus", "Zoom out", "-");
 
         var ctrlDiv = makeCtrlContainer(top, left);
         ctrlDiv.appendChild(plusDiv);
+        ctrlDiv.appendChild(fullDiv);
         ctrlDiv.appendChild(minusDiv);
-        document.body.appendChild(ctrlDiv);
 
-        gebi("tpCtrlZoomMinus").addEventListener('click', function() { self.zoomBy(0.75); self.drawDots(); });
-        gebi("tpCtrlZoomPlus").addEventListener('click', function() { self.zoomBy(1.333); self.drawDots(); });
+        self.div.appendChild(ctrlDiv);
+
+        minusDiv.addEventListener('click', function() { self.zoomBy(0.75); self.drawDots(); });
+        fullDiv.addEventListener('click', function() { self.zoom100(); self.drawDots()});
+        plusDiv.addEventListener('click', function() { self.zoomBy(1.333); self.drawDots(); });
     }
     
+    function appendButton(parentDiv, id, title, imgName) {
+        /* add a div styled like a button under div */
+        var div = document.createElement('div');
+        div.title = title;
+        div.id = id;
+
+    }
+
     function addModeButtons(top, left, self) {
         /* add the zoom/move/select control buttons to the DOM */
-        var htmls = [];
-        //htmls.push('<div id="tpIcons" style="display:inline-block">');
-        htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
-        htmls.push('<button data-placement="bottom" title="Select mode.<br>Keyboard: shift or s" id="tpIconModeSelect" class="ui-button tpIconButton" style="margin-right:0; display:block"><img src="img/select.png"></button>');
-        htmls.push('<button data-placement="bottom" data-toggle="tooltip" title="Zoom-to-rectangle mode.<br>Keyboard: Windows/Command or z" id="tpIconModeZoom" class="ui-button tpIconButton" style="display: block; margin-right:0"><img src="img/zoom.png"></button>');
-        htmls.push('<button data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="tpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" class="tpModeButton" style="margin-right:0"><img src="img/move.png"></button>');
+        //var htmls = [];
+        //htmls.push('<div id="mpIcons" style="display:inline-block">');
+        //htmls.push('<div style="vertical-align:top">');
+        //htmls.push('<div title="Select mode.<br>Keyboard: shift or s" id="mpIconModeSelect"><img src="img/select.png"></button>');
+        //htmls.push('<div title="Zoom-to-rectangle mode. Keyboard: Windows/Command or z" id="mpIconModeZoom" style="display: block; margin-right:0"><img src="img/zoom.png"></button>');
+        //htmls.push('<div data-placement="bottom" title="Move mode. Keyboard: Alt or m" id="mpIconModeMove" data-toggle="tooltip" class="ui-button tpIconButton" class="mpModeButton" style="margin-right:0"><img src="img/move.png"></button>');
         //htmls.push('</div>');
-        htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="tpZoom100Button" class="ui-button tpIconButton" style="font-size:10px; font-weight: bold; margin-top: 4px; margin-right:0; display:block; padding:0">100%</button>');
+        //htmls.push('<button title="Zoom to 100%, showing all data, keyboard: space" data-placement="bottom" data-toggle="tooltip" id="mpZoom100Button" class="ui-button tpIconButton" style="font-size:10px; font-weight: bold; margin-top: 4px; margin-right:0; display:block; padding:0">100%</button>');
         //<img style="width:22px; height:22px" src="img/center.png">
 
         var ctrlDiv = makeCtrlContainer(top, left);
-        ctrlDiv.innerHTML = htmls.join("");
-        document.body.appendChild(ctrlDiv);
 
-        activateTooltip('.tpIconButton');
+        var bSize = gZoomButtonSize;
 
-        gebi('tpIconModeMove').addEventListener('click', function() { self.activateMode("move");}, false);
-        gebi('tpIconModeZoom').addEventListener ('click', function() { self.activateMode("zoom")}, false);  
-        gebi('tpIconModeSelect').addEventListener ('click',  function() { self.activateMode("select")}, false);
-        gebi('tpZoom100Button').addEventListener ('click', function(ev) { return self.onZoom100Click(ev) } );
+        var selectButton = createButton(bSize, bSize, "mpIconModeSelect", "Select mode. Keyboard: shift or s", null, "img/select.png", 4, true);
+        selectButton.addEventListener ('click',  function() { self.activateMode("select")}, false);
+
+        var zoomButton = createButton(bSize, bSize, "mpIconModeZoom", "Zoom-to-rectangle mode. Keyboard: Windows/Command or z", null, "img/zoom.png", 4, true);
+        zoomButton.addEventListener ('click', function() { self.activateMode("zoom")}, false);  
+
+        var moveButton = createButton(bSize, bSize, "mpIconModeMove", "Move mode. Keyboard: Alt or m", null, "img/move.png", 4);
+        moveButton.addEventListener('click', function() { self.activateMode("move");}, false);
+
+        self.icons = {};
+        self.icons["move"] = moveButton;
+        self.icons["select"] = selectButton;
+        self.icons["zoom"] = zoomButton;
+
+        //ctrlDiv.innerHTML = htmls.join("");
+        ctrlDiv.appendChild(selectButton);
+        ctrlDiv.appendChild(zoomButton);
+        ctrlDiv.appendChild(moveButton);
+
+        self.div.appendChild(ctrlDiv);
+
+        activateTooltip('.mpIconButton');
+
+        //gebi('mpZoom100Button').addEventListener ('click', function(ev) { return self.onZoom100Click(ev) } );
     }
 
     function setStatus(text) {
-        document.getElementById("tpStatus").innerHTML = text;
+        self.statusLine.innerHTML = text;
     }
 
     function addStatusLine(top, left, width, height) {
         /* add a status line div */
         var div = document.createElement('div');
-        div.id = "tpStatus";
+        div.id = "mpStatus";
         div.style.backgroundColor = "rgb(240, 240, 240)";
         div.style.position = "absolute";
         div.style.top = top+"px";
@@ -188,33 +348,35 @@ function CbCanvas(top, left, width, height) {
         //div.style["box-shadow"]="0px 2px 4px rgba(0,0,0,0.3)";
         //div.style["border-radius"]="2px";
         div.style["cursor"]="pointer";
-        document.body.appendChild(div);
+        div.style["font-family"] = "sans-serif";
+        self.div.appendChild(div);
+        self.statusLine = div;
     }
 
     function addProgressBars(top, left) {
        /* add the progress bar DIVs to the DOM */
        var div = document.createElement('div');
-       div.id = "tpProgressBars";
+       div.id = "mpProgressBars";
        div.style.top = top+"px";
        div.style.left = left+"px";
        div.style.position = "absolute";
 
        var htmls = [];
        for (var i=0; i<3; i++) {
-           htmls.push('<div id="tpProgressDiv'+i+'" style="display:none; height:17px; width:300px; background-color: rgba(180, 180, 180, 0.3)" style="">');
-           htmls.push('<div id="tpProgress'+i+'" style="background-color:#666; height:17px; width:10%"></div>');
-           htmls.push('<div id="tpProgressLabel'+i+'" style="color:white; line-height:17px; position:absolute; top:'+(i*17)+'px;left:100px">Loading...</div>');
+           htmls.push('<div id="mpProgressDiv'+i+'" style="display:none; height:17px; width:300px; background-color: rgba(180, 180, 180, 0.3)" style="">');
+           htmls.push('<div id="mpProgress'+i+'" style="background-color:#666; height:17px; width:10%"></div>');
+           htmls.push('<div id="mpProgressLabel'+i+'" style="color:white; line-height:17px; position:absolute; top:'+(i*17)+'px;left:100px">Loading...</div>');
            htmls.push('</div>');
        }
 
        div.innerHTML = htmls.join("");
-       document.body.appendChild(div);
+       self.div.appendChild(div);
     }
 
-    function addCanvasToBody(top, left, width, height) {
+    function addCanvasToDiv(div, top, left, width, height) {
         /* add a canvas element to the body element of the current page and keep left/top/width/eight in self */
         var canv = document.createElement('canvas');
-        canv.id = 'tpCanvas';
+        canv.id = 'mpCanvas';
         //canv.style.border = "1px solid #AAAAAA";
         canv.style.backgroundColor = "white";
         canv.style.position = "absolute";
@@ -233,7 +395,7 @@ function CbCanvas(top, left, width, height) {
         self.top = top; // location of the canvas in pixels
         self.left = left;
 
-        document.body.appendChild(canv); // adds the canvas to the body element
+        div.appendChild(canv); // adds the canvas to the div element
         self.canvas = canv;
         // alpha:false recommended by https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas
         self.ctx = self.canvas.getContext("2d", { alpha: false });
@@ -279,8 +441,11 @@ function CbCanvas(top, left, width, height) {
 
     function scaleCoords(coords, borderSize, zoomRange, winWidth, winHeight, annots) {
     /* scale list of [x (float),y (float)] to integer pixels on screen and
-     * annots is an array with on-screen annotations in the format (x, y, otherInfo) that is also scaled.
-     * return [array of (x (int), y (int)), scaled annots array]. Take into account the current zoom range.  
+     * annots is an array with on-screen annotations in the format (x, y,
+     * otherInfo) that is also scaled.  return [array of (x (int), y (int)),
+     * scaled annots array]. Take into account the current zoom range.      *
+     * Canvas origin is top-left, but usually plotting origin is bottom-left,
+     * so also flip the Y axis.
      * */
         console.time("scale");
         var minX = zoomRange.minX;
@@ -298,32 +463,21 @@ function CbCanvas(top, left, width, height) {
 
         // transform from data floats to screen pixel coordinates
         var pixelCoords = new Uint16Array(coords.length);
-        //var pixelCoords = [];
-        //var pixelCount = 0;
-        //var borderAdd = 2*borderSize;
         for (var i = 0; i < coords.length/2; i++) {
             var x = coords[i*2];
             var y = coords[i*2+1];
-            // XX ignore anything outside of current zoom range. Performance?
+            // simply ignore anything outside of current zoom range.
             if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
                 continue;
             var xPx = Math.round((x-minX)*xMult)+borderSize;
-            var yPx = Math.round((y-minY)*yMult)+borderSize;
+            // flipY: y-axis is flipped, so we do winHeight - pixel value
+            var yPx = winHeight - Math.round((y-minY)*yMult)+borderSize;
             pixelCoords[2*i] = xPx;
             pixelCoords[2*i+1] = yPx;
-            //pixelCount++;
-            //pixelCoords.push(xPx);
-            //pixelCoords.push(yPx);
         }
-        //if (pixelCount!==coords.length/2)
-            //pixelCoords = pixelCoords.slice(0, pixelCount*2);
 
         console.timeEnd("scale");
         return pixelCoords;
-        //var ret = [];
-        //ret[0] = pixelCoords;
-        //ret[1] = newAddCoords;
-        //return ret;
     }
 
     function drawRect(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
@@ -725,67 +879,13 @@ function CbCanvas(top, left, width, height) {
 
     // -- object methods (=access the self object)
  
-    this.initDataset = function(args) {
-        if (args===undefined)
-            args = {};
-
-        self.mode = 1;   // drawing mode
-
-        self.zoomRange = null; // object with keys minX, , maxX, minY, maxY
-        self.coords     = null;
-        self.clusterLabels = null; // cluster labels, array of [x,y,text]
-
-        self.pxCoords   = null;   // coordinates of cells as screen pixels or 0,0 if not shown
-        self.pxLabels   = null;   // cluster labels in pixels, array of [x,y,text] 
-        self.pxLabelBbox = null;   // cluster label bounding boxes, array of [x1,x2,x2,y2]
-
-        self.doDrawLabels = true;  // should cluster labels be drawn?
-
-        self.colors     = null;   // list of six-digit hex codes
-        self.colorArr   = null;   // length is pxCoords/2, one byte per cell = index into self.colors
-        self.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
-        self.alpha      = getAttr(args, "alpha", 0.3);
-        self.selCells   = null;  // IDs of cells that are "selected" and as such highlighted in some way
-
-        // we keep a copy of the 'initial' arguments at 100% zoom
-        self.initZoom   = cloneObj(self.zoomRange);
-        self.initRadius = self.radius;                      // circle radius at full zoom
-
-        // mouse drag is modal: can be "select", "move" or "zoom"
-        self.dragMode = "select";
-         
-        // for zooming and panning
-        self.mouseDownX = null;
-        self.mouseDownY = null;
-        self.panCopy    = null;
-
-        // to detect if user just clicked on a dot
-        self.dotClickX = null;
-        self.dotClickY = null;
-
-    };
-    
-    this.clear = function() {
-        clearCanvas(self.ctx, self.width, self.height);
-    };
-
-    this.setPos = function(left, top) {
-       /* position the canvas on the page */
-       self.canvas.style.left = left+"px";
-       self.canvas.style.top = top+"px";
-    };
-
     this.onZoom100Click = function(ev) {
         self.zoom100();
         self.drawDots();
-        gebi('tpZoom100Button').blur();
     };
 
     this.scaleData = function() {
-       /* scale coords and labels to current zoom range */
-       //var s = scaleData(self.coords, self.radius, self.zoomRange, self.width, self.height, self.clusterLabels);
-       //self.pxCoords = s[0];
-
+       /* scale coords and labels to current zoom range, write results to pxCoords and pxLabels */
        var borderMargin = self.radius;
        self.pxCoords = scaleCoords(self.coords, borderMargin, self.zoomRange, self.canvas.width, self.canvas.height);
 
@@ -808,11 +908,11 @@ function CbCanvas(top, left, width, height) {
        self.width = width;
        self.height = height;
 
-       var zoomDiv = gebi('tpCtrls');
+       var zoomDiv = gebi('mpCtrls');
        zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
        zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
 
-       var statusDiv = gebi('tpStatus');
+       var statusDiv = self.statusLine;
        statusDiv.style.top = (self.top+height-gStatusHeight)+"px";
        statusDiv.style.width = width+"px";
 
@@ -853,7 +953,8 @@ function CbCanvas(top, left, width, height) {
     };
 
     this.setColors = function(colors) {
-    /* set the colors, one for each value of a in setColorArr(a). colors is an array of hex strings. */
+    /* set the colors, one for each value of a in setColorArr(a). colors is an
+     * array of six-digit hex strings. Not #-prefixed! */
        self.colors = colors;
     };
 
@@ -865,8 +966,8 @@ function CbCanvas(top, left, width, height) {
              alert("internal error: alpha is not defined");
         if (self.pxCoords===null)
              alert("internal error: cannot draw if coordinates are not set yet");
-        if (self.colorArr.length !== self.pxCoords.length*0.5)
-            alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+self.colorArr.length+" color values but coordinates for "+(self.pxCoords.length/2)+" cells.");
+        if (self.colorArr.length !== (self.pxCoords.length>>1))
+            alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+self.colors.length+" color values but coordinates for "+(self.pxCoords.length/2)+" cells.");
 
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
 
@@ -875,14 +976,14 @@ function CbCanvas(top, left, width, height) {
         var baseRadius = self.initRadius;
         if (baseRadius===0)
             baseRadius = 0.7;
-        self.radius = Math.floor(Math.sqrt(baseRadius * self.zoomFact));
+        self.radius = Math.floor(baseRadius * Math.sqrt(self.zoomFact));
 
         self.clear();
 
         // the higher the zoom factor, the higher the alpha value
         var zoomFrac = Math.min(1.0, self.zoomFact/100.0); // zoom as fraction, max is 1.0
         var alpha = self.alpha + 3.0*zoomFrac*(1.0 - self.alpha);
-        alpha = Math.min(1.0, alpha);
+        alpha = Math.min(0.8, alpha);
         console.log("Radius: "+self.radius+", alpha: "+alpha);
 
         if (self.radius===0) {
@@ -1019,8 +1120,9 @@ function CbCanvas(top, left, width, height) {
         newRange.minX = zr.minX - (xRange*scale*minWeightX);
         newRange.maxX = zr.maxX + (xRange*scale*(1-minWeightX));
 
-        newRange.minY = zr.minY - (yRange*scale*minWeightY);
-        newRange.maxY = zr.maxY + (yRange*scale*(1-minWeightY));
+        // inversed, because we flip the Y axis (flipY)
+        newRange.minY = zr.minY - (yRange*scale*(1-minWeightY));
+        newRange.maxY = zr.maxY + (yRange*scale*(minWeightY));
 
         // extreme zoom factors don't make sense, at some point we reach
         // the limit of the floating point numbers
@@ -1059,7 +1161,7 @@ function CbCanvas(top, left, width, height) {
 
     this.panEnd = function() {
         /* end a sequence of panBy calls, called when the mouse is released */
-        self.moveBy(self.panDiffX, self.panDiffY);
+        self.moveBy(self.panDiffX, -self.panDiffY); // -1 because of flipY
         self.panCopy = null;
         self.panDiffX = null;
         self.panDiffY = null;
@@ -1069,7 +1171,8 @@ function CbCanvas(top, left, width, height) {
         /* clear selection */
         self.selCells = null;
         setStatus("");
-        self.onSelChange([]);
+        if (self.onSelChange!==null)
+            self.onSelChange([]);
     };
 
     this.selectAdd = function(cellIdx) {
@@ -1153,7 +1256,7 @@ function CbCanvas(top, left, width, height) {
     this._selUpdate = function() {
         /* called after the selection has been updated, calls the onSelChange callback */
         setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
-        if (self.onSelChange!=null)
+        if (self.onSelChange!==null)
             self.onSelChange(self.selCells);
     }
 
@@ -1178,6 +1281,8 @@ function CbCanvas(top, left, width, height) {
         /* return the text of the label at position x,y or null if nothing there */
         //console.time("labelCheck");
         var clusterLabels = self.clusterLabels;
+        if (clusterLabels===null || clusterLabels===undefined)
+            return null;
         var labelCoords = self.pxLabels;
         var boxes = self.pxLabelBbox;
 
@@ -1230,36 +1335,47 @@ function CbCanvas(top, left, width, height) {
             }
             return ret;
         }
-    }
+    };
 
     this.getSelection = function() {
         /* return selected cells as a list of ints */
         return self.selCells;
-    }
+    };
+
+    this.resetMarquee = function() {
+       /* make the marquee disappear and reset its internal status */
+       self.mouseDownX = null;
+       self.mouseDownY = null;
+       self.lastPanX = null;
+       self.lastPanY = null;
+       self.selectBox.style.display = "none";
+       self.selectBox.style.width = 0;
+       self.selectBox.style.height = 0;
+    };
+
     this.drawMarquee = function(x1, y1, x2, y2) {
         /* draw the selection or zooming marquee using the DIVs created by setupMouse */
         var selectWidth = Math.abs(x1 - x2);
         var selectHeight = Math.abs(y1 - y2);
         var minX = Math.min(x1, x2);
         var minY = Math.min(y1, y2);
-        var posCss = {
-             "left":minX, 
-             "top": minY,
-             "width":selectWidth,
-             "height":selectHeight
-        };
-        $("#tpSelectBox").css(posCss).show();
-    }
+        var div = self.selectBox;
+        div.style.left = minX+"px";
+        div.style.top = minY+"px";
+        div.style.width = selectWidth+"px";
+        div.style.height = selectHeight+"px";
+        div.style.display = "block";
+    };
 
-    this.onMouseWheel = function(ev, delta, deltaX, deltaY) {
-      console.log(delta, deltaX, deltaY);
-      console.log(ev);
-      var pxX = ev.originalEvent.clientX - self.left;
-      var pxY = ev.originalEvent.clientY - self.top;
-      self.zoomBy(1+(0.01*delta), pxX, pxY);
-      self.drawDots();
-      ev.preventDefault();
-    }
+    //this.onHamster = function(ev, delta, deltaX, deltaY) {
+      //console.log(delta, deltaX, deltaY);
+      //console.log(ev);
+      //var pxX = ev.originalEvent.clientX - self.left;
+      //var pxY = ev.originalEvent.clientY - self.top;
+      //self.zoomBy(1+(0.01*delta), pxX, pxY);
+      //self.drawDots();
+      //ev.preventDefault();
+    //};
 
     this.onMouseMove = function(ev) {
         /* called when the mouse is moved over the Canvas */
@@ -1301,8 +1417,7 @@ function CbCanvas(top, left, width, height) {
             else 
                 self.drawMarquee(self.mouseDownX, self.mouseDownY, clientX, clientY);
         }
-        ev.preventDefault(); 
-    }
+    };
 
     this.onNoMouseMove = function() {
         /* called after some time has elapsed and the mouse has not been moved */
@@ -1327,12 +1442,12 @@ function CbCanvas(top, left, width, height) {
        } 
        self.mouseDownX = clientX;
        self.mouseDownY = clientY;
-       ev.preventDefault(); 
     };
 
     this.onMouseUp = function(ev) {
        console.log("background mouse up");
        if (self.panCopy!==null) {
+           console.log("ending panning operation");
            self.panEnd();
            self.mouseDownX = null;
            self.mouseDownY = null;
@@ -1364,8 +1479,11 @@ function CbCanvas(top, left, width, height) {
                 self.onLabelClick(clickedLabel, ev);
             else {
                 var clickedCellIds = self.cellsAt(x2, y2);
-                if (clickedCellIds!==null)
+                if (clickedCellIds!==null && self.onCellClick!==null) {
+                    self.selCells = clickedCellIds;
                     self.onCellClick(clickedCellIds, ev);
+                    self.drawDots();
+                }
                 else {
                 // user clicked onto background:
                 // reset selection and redraw
@@ -1377,19 +1495,15 @@ function CbCanvas(top, left, width, height) {
                 self.lastPanX = null;
                 self.lastPanY = null;
             }
-            //$("#tpSelectBox").hide();
             self.mouseDownX = null;
             self.mouseDownY = null;
             return;
        }
        //console.log("moved: reset "+x+" "+mouseDownX+" "+mouseDownY+" "+y);
 
+       // it wasn't a click, so it was a drag
        var anyKey = (ev.metaKey || ev.altKey || ev.shiftKey);
 
-       // panning
-       //if ((self.dragMode==="move" && !anyKey) || ev.altKey ) {
-           //self.moveTo(x1, y1, x2, y2);
-       //}
        // zooming
        if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey )
            self.zoomTo(x1, y1, x2, y2);
@@ -1403,35 +1517,41 @@ function CbCanvas(top, left, width, height) {
            console.log("Internal error: no mode?");
        }
 
-       self.mouseDownX = null;
-       self.mouseDownY = null;
-       self.lastPanX = null;
-       self.lastPanY = null;
-       $("#tpSelectBox").hide();
-       $("#tpSelectBox").css({"width":0, "height":0});
+       self.resetMarquee();
 
        self.drawDots();
-       ev.preventDefault(); 
-    }
+    };
+
+    this.onWheel = function(ev) {
+        /* called when the user moves the mouse wheel */
+        console.log(ev);
+        var normWheel = normalizeWheel(ev);
+        console.log(normWheel);
+        var pxX = ev.clientX - self.left;
+        var pxY = ev.clientY - self.top;
+        var zoomFact = 1+(0.10*normWheel.spinY);
+        console.log("Wheel Zoom by "+zoomFact);
+        self.zoomBy(zoomFact, pxX, pxY);
+        self.drawDots();
+        ev.preventDefault();
+        ev.stopPropagation();
+    };
 
     this.setupMouse = function() {
-       // add the div used for the mouse selection/zoom rectangle to the DOM
-       var htmls = [];
-       htmls.push("<div style='position:absolute; display:none; pointer-events:none;' id='tpSelectBox'></div>");
-       $(document.body).append(htmls.join(""));
-       // setup the mouse zooming callbacks
-       self.canvas.onmousedown = self.onMouseDown;
-       self.canvas.onmousemove = self.onMouseMove;
-       self.canvas.onmouseup = self.onMouseUp;
+       // setup the mouse callbacks
+       self.canvas.addEventListener('mousedown', self.onMouseDown);
+       self.canvas.addEventListener("mousemove", self.onMouseMove);
+       self.canvas.addEventListener("mouseup", self.onMouseUp);
+       // when the user moves the mouse, the mouse is often NOT on the canvas,
+       // but on the marquee box, so connect this one, too.
+       self.selectBox.addEventListener("mouseup", self.onMouseUp);
 
-       // mouse wheel
-       var hamster = Hamster(self.canvas);
-       hamster.wheel(self.onMouseWheel);
+       self.canvas.addEventListener("wheel", self.onWheel);
     };
 
     this.setShowLabels = function(doShow) {
         self.doDrawLabels = doShow;
-    }
+    };
 
     this.activateMode = function(modeName) {
     /* switch to one of the mouse drag modes: zoom, select or move */
@@ -1448,9 +1568,16 @@ function CbCanvas(top, left, width, height) {
 
         self.canvas.style.cursor=cursor;
         self.canvasCursor = cursor;
-        $(".tpIconButton").removeClass('tpClicked'); 
-        var upModeName = modeName[0].toUpperCase() + modeName.slice(1);
-        $("#tpIconMode"+upModeName).blur().addClass("tpClicked"); 
+
+        self.resetMarquee();
+
+        self.icons["move"].style.backgroundColor = gButtonBackground; 
+        self.icons["zoom"].style.backgroundColor = gButtonBackground; 
+        self.icons["select"].style.backgroundColor = gButtonBackground; 
+        self.icons[modeName].style.backgroundColor = gButtonBackgroundClicked; 
+
+        //var upModeName = modeName[0].toUpperCase() + modeName.slice(1);
+        //var buttonId = "mpIconMode"+upModeName;
     }
 
     this.randomDots = function(n, radius, mode) {
@@ -1468,13 +1595,18 @@ function CbCanvas(top, left, width, height) {
             self.mode = mode;
         self.radius = radius;
 	self.setCoords(randomArray(Uint16Array, 2*n, 65535));
-	self.setColors(randomArray(Uint8Array, n, 5), ["FF0000", "00FF00", "0000FF", "CC00CC", "008800"]);
+	self.setColors(["FF0000", "00FF00", "0000FF", "CC00CC", "008800"]);
+	self.setColorArr(randomArray(Uint8Array, n, 4));
 
         console.time("draw");
         self.drawDots();
         console.timeEnd("draw");
         return self;
+
     };
 
+    // object constructor code
+    self.initCanvas(div, top, left, width, height);
+    self.initPlot(args);
 
 }
