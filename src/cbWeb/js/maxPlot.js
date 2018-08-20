@@ -429,15 +429,12 @@ function MaxPlot(div, top, left, width, height, args) {
             var y = annot[1];
             var text = annot[2];
             // XX ignore anything outside of current zoom range. Performance?
-            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
+            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
                 pxLabels.push(null);
                 continue;
-            }
-            else {
-                var xPx = Math.round((x-minX)*xMult)+borderSize;
-                var yPx = Math.round((y-minY)*yMult)+borderSize;
-                pxLabels.push([xPx, yPx, text]);
-            }
+            var xPx = Math.round((x-minX)*xMult)+borderSize;
+            var yPx = Math.round((y-minY)*yMult)+borderSize;
+            pxLabels.push([xPx, yPx, text]);
         }
         return pxLabels;
     }
@@ -541,7 +538,9 @@ function MaxPlot(div, top, left, width, height, args) {
     }
 
     function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
-        /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
+        /* given an array of [x, y, text], draw the text. returns bounding
+         * boxes as array of [x1, y1, x2, y2]  */
+
         console.time("labels");
         ctx.save();
         ctx.font = "bold "+gTextSize+"px Sans-serif"
@@ -563,8 +562,11 @@ function MaxPlot(div, top, left, width, height, args) {
 
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
-            if (coord===null) // outside of view range
+            if (coord===null) { // outside of view range
+                bboxArr.push( null );
                 continue
+            }
+
             var x = coord[0];
             var y = coord[1];
             var text = coord[2];
@@ -922,7 +924,6 @@ function MaxPlot(div, top, left, width, height, args) {
        self.scaleData();
        //clearCanvas(self.ctx, width, height);
        self.drawDots();
-
     };
 
     this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY) {
@@ -979,7 +980,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var baseRadius = self.initRadius;
         if (baseRadius===0)
             baseRadius = 0.7;
-        self.radius = Math.floor(Math.sqrt(baseRadius * self.zoomFact));
+        self.radius = Math.floor(baseRadius * Math.sqrt(self.zoomFact));
 
         self.clear();
 
