@@ -11,19 +11,33 @@ converts the output to JSON and binary files to the output webserver directory.
 
 Requirements: Python2.6+ or Python3+
 
-There is a sample dataset in sampleData/sample1, it's a minimal expression matrix for a few thousand cells and only the first 100 genes and a bit of meta data for the cells..
+There is a sample dataset in sampleData/sample1, it's a minimal expression
+matrix for a few thousand cells and only the first 100 genes and a bit of meta
+data for the cells..
 
-A viewer was created from it with these commands:
+You can build a viewer for it in the directory ~/cells and serve that directory on port 8888:
 
     cd sampleData/sample1/
-    ../../src/cbBuild -o ~/public_html/cbTest -p 8888
+    ../../src/cbBuild -o ~/cells -p 8888
 
-Then point your web browser to http://localhost:8888
+Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
+You will have to re-run cbBuild again with -p8888 to look at it again.
 
-To deploy the result onto a real webserver, copy all files and directories under ~/public_html/cbTest to
-an empty directory on a webserver and point your web browser to it.
+The -p 8888 is optional. A more permanent alternative to the -p option is to
+run a webserver on your machine and build directly into its web directory, e.g.
+on a Mac you can use the Apache that ships with OSX:
 
-=== Process an expression matrix ===
+    sudo /usr/sbin/apachectl start
+    sudo ../../src/cbBuild -o /Library/WebServer/Documents/cells/
+
+Now you should be able to access your viewer at http://localhost/cells
+
+To deploy the result onto a real webserver, simply copy all files and directories
+under "cells" to an empty directory on a webserver and point your
+web browser to it. E.g. many universities give their employees homepage
+directories, sometimes in a directory called "~/public_html".
+
+### Process an expression matrix
 
 Requirements: python3 with Scanpy installed.
 
@@ -35,14 +49,22 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
     rsync -Lavzp hgwdev.soe.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
     ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o cbScanpyOut/ -n pbmc3k
 
-=== Convert a Scanpy object ===
+### Convert a Scanpy object
 
 From Jupyter or Python3:
 
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
+    # convert to tsv files, create a cellbrowser.conf
     scanpyToTsv(adata, "scanpyOut")
 
-=== Convert a CellRanger directory ===
+    # create the html directory from this
+    cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
 
-=== Convert a Seurat object ===
+### Convert a CellRanger directory
+
+    todo
+
+### Convert a Seurat object
+
+    todo
