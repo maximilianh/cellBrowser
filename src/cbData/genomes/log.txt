@@ -1,0 +1,2 @@
+twoBitInfo /gbdb/mm10/mm10.2bit mm10.sizes
+#wget https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as

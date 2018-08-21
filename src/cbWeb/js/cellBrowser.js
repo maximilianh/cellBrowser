@@ -918,7 +918,7 @@ var tsnePlot = function() {
        /* called when the coordinates have been loaded */
        if (coords.length===0)
            alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
-       renderer.setCoords(coords, clusterMids);
+       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY);
    }
 
     function renderData() {
@@ -2357,44 +2357,10 @@ var tsnePlot = function() {
         return pal;
     }
 
-    //function setZoomRange() {
-        /* find range of data and set variables related to it */
-        //gCurrentDataset.zoomFullRange = findMinMax(allCoords);
-        //var zoomRange = getZoomRangeFromUrl();
-        //if (zoomRange===null)
-            //zoomRange = cloneObj(gCurrentDataset.zoomFullRange)
-        //gCurrentDataset.zoomRange = zoomRange;
-    //}
-
     function colorByCluster() {
     /* called when meta and coordinates have been loaded: scale data and color by meta field  */
         //setZoomRange();
     }
-
-    //function initInfoBarsAndPlot() {
-    //    /* setup all the basic DIVs and listeners of the UI */
-    //    // check that the label field is a valid field
-    //    console.log("init UI");
-    //    if (gCurrentDataset.labelField!==undefined) {
-    //        gCurrentDataset.labelIndex = gCurrentDataset.metaFields.indexOf(gCurrentDataset.labelField);
-    //        if (gCurrentDataset.showLabels === undefined)
-    //            gCurrentDataset.showLabels = true;
-    //        if (gCurrentDataset.labelIndex==undefined) {
-    //            warn("The labelField "+gCurrentDataset.labelField+"is not a valid field in meta.tsv. Deactivating labels now.");
-    //            gCurrentDataset.labelIndex = null;
-    //            gCurrentDataset.showLabels = false;
-    //        } 
-    //    }
-    //    buildLeftSidebar();
-    //    scaleDataAndColorByCluster();
-    //    resizeDivs();
-
-    //    plotDots();
-    //    renderer.render(stage);
-    //    updateMenu();
-    //    updateToolbar();
-    //    activateMode("zoom");
-    //}
 
     function startLoadTsv(fileType, fullUrl, func, addInfo) {
     /* load a tsv file relative to baseUrl and call a function when done */
@@ -2440,8 +2406,6 @@ var tsnePlot = function() {
         Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('g', function() {$("#tpGeneCombo").selectize()[0].selectize.focus(); return false;});
         Mousetrap.bind('c l', onHideShowLabelsClick );
-
-        //$(document).keyup(function(e) { if (e.keyCode == 27) stopZoom(); });
 
     }
 

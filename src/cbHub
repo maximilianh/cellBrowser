@@ -1,19 +1,40 @@
 #!/usr/bin/env python
 
-import logging, sys, optparse, re, unicodedata, string, glob, distutils
+# create a track hub from an expression matrix
+
+import subprocess
+import logging, sys, optparse, re, unicodedata, string, glob, distutils.spawn, gzip
 from collections import defaultdict, namedtuple
 from os.path import join, basename, dirname, isfile
 import os
+
+import sys
+sys.path.append( join(dirname(__file__), "cbPyLib") )
+
+import cellbrowser
+from colorblind import colorblind
 
 # ==== functions =====
     
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] db bamDir metaFname clusterField outDir - create a track hub for a single cell dataset given meta data table and a directory full of bam files. Merges small BAM files into one per cell cluster.")
+    parser = optparse.OptionParser("""usage: %prog [options] ucscDb metaFname clusterField exprMatrix outDir - create a track hub for a single cell dataset given meta data table and a directory full of bam files. 
+
+    ucscDb is a ucsc assembly code, like hg19, hg38 or mm10.
+    metaFname is a csv or tsv matrix, one row per cell
+    clusterField is the name of the cell cluster from metaFname
+    exprMatrix is a tsv or csv expression matrix, one line per cell
+    outDir will be filled with e.g. hub.txt and related files.
+    """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     parser.add_option("", "--fixDot", dest="fixDot", action="store_true", help="replace dots in IDs with dashes (for R)")
     parser.add_option("-j", "--jobList", dest="jobList", action="store_true", help="do not run commands, just write jobList text file with commands and shell scripts to current directory")
+    parser.add_option("-g", "--geneType", dest="geneType", help="type of gene IDs in expression matrix. values like 'symbols', or 'gencode22', 'gencode28' or 'gencode-m13'. Default %default", default="symbols")
+    parser.add_option("", "--bamDir", dest="bamDir", help="directory with BAM files, one per cell. Merges small BAM files into one per cell cluster.")
+    parser.add_option("", "--clusterOrder", dest="clusterOrder", help="file with cluster names in the order that they should appear in the track. default is alphabetical order.")
+    parser.add_option("", "--name", dest="name", help="name of track hub. Default is %s", default="singleCell")
+    parser.add_option("", "--email", dest="email", help="contact email for track hub. Default is %s", default="unknown")
     #parser.add_option("-f", "--file", dest="file", action="store", help="run on file") 
     #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
     (options, args) = parser.parse_args()
@@ -22,87 +43,19 @@ def parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    cellbrowser.setDebug(options)
     return args, options
-# ----------- main --------------
-def openFile(fname):
-    if fname.endswith(".gz"):
-        fh = gzip.open(fname)
-    else:
-        fh = open(fname)
-    return fh
 
-def lineFileNextRow(inFile):
-    """
-    parses tab-sep file with headers in first line
-    yields collection.namedtuples
-    strips "#"-prefix from header line
-    """
-
-    sep = "\t"
-    if isinstance(inFile, str):
-        fh = openFile(inFile)
-        if inFile.endswith(".csv"):
-            sep = ","
-    else:
-        fh = inFile
-
-    line1 = fh.readline()
-    line1 = line1.strip("\n").lstrip("#")
-    headers = line1.split(sep)
-    headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
-    headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
-    #headers = [x if x!="" else "noName" for x in headers]
-    if headers[0]=="": # R does not name the first column by default
-        headers[0]="rowName"
-
-    if "" in headers:
-        logging.error("Found empty cells in header line of %s" % inFile)
-        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to fix it.")
-        assert(False)
-
-    filtHeads = []
-    for h in headers:
-        if h[0].isdigit():
-            filtHeads.append("x"+h)
-        else:
-            filtHeads.append(h)
-    headers = filtHeads
-
-    Record = namedtuple('tsvRec', headers)
-    for line in fh:
-        if line.startswith("#"):
-            continue
-        line = line.decode("latin1")
-        # skip special chars in meta data and keep only ASCII
-        line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        line = line.rstrip("\n").rstrip("\r")
-        fields = string.split(line, sep, maxsplit=len(headers)-1)
-        try:
-            rec = Record(*fields)
-        except Exception, msg:
-            logging.error("Exception occured while parsing line, %s" % msg)
-            logging.error("Filename %s" % fh.name)
-            logging.error("Line was: %s" % line)
-            logging.error("Does number of fields match headers?")
-            logging.error("Headers are: %s" % headers)
-            raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
-        yield rec
-
-def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
-    " make track hub given meta file and directory with bam files "
-    # parse meta file
+def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
+    " parse cluster -> cellId assignment from meta file, return as dict clusterName -> list of cellIds "
     logging.info("Parsing and using first field as the cell ID in file %s" % metaFname)
     clusterToCells = defaultdict(list)
     metaCellIds = set()
     skipCount = 0
-    for row in lineFileNextRow(metaFname):
+    for row in cellbrowser.lineFileNextRow(metaFname):
         clusterName = row._asdict()[clusterFieldName]
         cellId = row[0]
-        if options.fixDot:
+        if fixDot:
             cellId = cellId.replace(".", "-")
 
         # skip all cells assigned to the "" cluster
@@ -116,14 +69,31 @@ def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
     logging.info("Got %d clusters and %d cell IDs assigned to them" % (len(clusterToCells), len(metaCellIds)))
     if skipCount!=0:
         logging.info("Skipped %d meta rows with empty cluster names" % skipCount)
+    return metaCellIds, clusterToCells
 
+# ----------- main --------------
+
+def writeHubGenome(tfh, hubName, db, email):
+    "  write a single-file hub.txt "
+    tfh.write("""hub scHub
+shortLabel %s single-cell hub
+longLabel %s single cell hub, generated by cbTrackHub
+useOneFile on
+email %s
+descriptionUrl hub.txt
+
+genome %s
+
+""" % (hubName, hubName, email, db))
+
+def mergeBams(bamDir, clusterToCells):
     if options.jobList:
         jlFh = open("jobList", "w")
 
     logging.info("Getting list of BAM files")
+
     bamPaths = glob.glob(join(bamDir, "*.bam"))
     bamPaths.sort()
-    #bamCellIds = [basename(x).replace(".bam", "") for x in bamPaths]
     cellIdToBamFnames = defaultdict(list)
     for bamPath in bamPaths:
         cellId = basename(bamPath).split(".")[0]
@@ -133,25 +103,26 @@ def cbTrackHub(options, db, bamDir, metaFname, clusterFieldName, outDir):
     logging.info("Got %s BAM files and %s cell ids in the meta data" % (len(metaCellIds), len(cellIdToBamFnames)))
     missMeta = set(cellIdToBamFnames) - metaCellIds
     missBam = set(metaCellIds) - set(cellIdToBamFnames)
+    allCellIds = set(cellIdToBamFnames).intersection(metaCellIds)
     logging.info("%d BAM cell ids have no meta data. Examples: %s" % (len(missMeta), " ".join(list(missMeta)[:10])))
     logging.info("%d meta cell ids have no BAM file. Examples: %s" % (len(missBam), " ".join(list(missBam)[:10])))
 
     logging.info("Merging BAM files and writing hub")
-    # now write a single-file hub.txt
-    tdbFname = join(outDir, "hub.txt")
+    tfh.write("""track %sReads\n""" % (hubName))
+    tfh.write("""shortLabel %s Reads\n""" % (hubName))
+    tfh.write("""longLabel %s Sequencing Reads - %d cells\n""" % (hubName, len(allCellIds)))
+    tfh.write("compositeTrack on\n")
+    tfh.write("type bam\n")
+    tfh.write("visibility dense\n")
+    tfh.write("\n")
 
-    tfh = open(tdbFname, "w")
-    tfh.write("""hub scHub
-shortLabel Single-cell read hub
-longLabel Auto-generated by cbTrackHub
-genomesFile hub.txt
-email max@soe.ucsc.edu
-descriptionUrl hub.txt
-
-genome %s
-trackDb hub.txt
-
-""" % db)
+    tfh.write("""track %sCov\n""" % (hubName))
+    tfh.write("""shortLabel %s Coverage\n""" % (hubName))
+    tfh.write("""longLabel %s Read Coverage - %d cells\n""" % (hubName, len(allCellIds)))
+    tfh.write("compositeTrack on\n")
+    tfh.write("type bigWig\n")
+    tfh.write("visibility dense\n")
+    tfh.write("\n")
 
     i = 0
     for clusterName, cellIds in clusterToCells.iteritems():
@@ -187,31 +158,66 @@ trackDb hub.txt
         outBam = join(outDir, saneClusterName+".bam")
         cmd = "samtools merge -r -f %s %s" % (outBam, " ".join(filtFnames))
 
-        #bamCovPath = distutils.spawn.find_executable("bamCoverage")
-        #outBw = join(outDir, saneClusterName+".bw")
-
         cmd2 = "samtools index %s" % outBam
+
+        bamCovPath = distutils.spawn.find_executable("bamCoverage")
+        outBw = join(outDir, saneClusterName+".bw")
+        cmd3 = " ".join([bamCovPath,"-b", outBam, "-o", outBw,  "-p1", "--binSize=10"])
+
+        if isfile(outBw):
+            logging.info("Not running anything for %s, file %s already exists" % (saneClusterName, outBw))
+            continue
+
         if options.jobList:
             jobFn = "job-%d.sh" % i
             jlFh.write("/bin/sh %s {check out exists %s.bai}\n" % (jobFn, outBam))
             jobFh = open(jobFn, "w")
-            jobFh.write(cmd+"\n")
-            jobFh.write(cmd2)
+            #jobFh.write(cmd+"\n")
+            #jobFh.write(cmd2+"\n")
+            jobFh.write(cmd3+"\n")
+
             logging.info("Wrote cluster job script %s" % jobFn)
             i+=1
         else:
-            logging.info("Running %s ..." % cmd[:100])
-            assert(os.system(cmd)==0)
-            logging.info("Running %s ..." % cmd2)
-            assert(os.system(cmd2)==0)
+            if isfile(outBam):
+                logging.info("Not running merging for %s, file %s already exists" % (saneClusterName, outBam))
+            else:
+                logging.info("Merging. Command: %s ..." % cmd[:200])
+                ret = subprocess.call(cmd.split(" "))
+                if (ret!=0):
+                    logging.error("Could not run %s" % cmd)
+                    logging.error("Error code was: %d" % ret)
+                    sys.exit(ret)
+
+            logging.info("Making coverage. Command: %s ..." % cmd2)
+            ret = subprocess.call(cmd2.split(" "))
+            if (ret!=0):
+                logging.error("Could not run %s" % cmd2)
+                logging.error("Error code was: %d" % ret)
+                sys.exit(ret)
+                
+            logging.info("Running %s ..." % cmd3)
+            assert(os.system(cmd3)==0)
+
 
         saneClusterName = filter(str.isalnum, clusterName) # remove non alpha chars
-        tfh.write("""track %s\nshortLabel %s\n""" % (saneClusterName, clusterName))
+
+        tfh.write("""track %sReads\nshortLabel %s\n""" % (saneClusterName, clusterName))
         tfh.write("""longLabel %s (%d cells)\n""" % (clusterName, len(cellIds)))
         tfh.write("type bam\n")
+        tfh.write("parent %sReads\n" % hubName)
         tfh.write("bigDataUrl %s\n" % (saneClusterName+".bam"))
         tfh.write("visibility dense\n")
         tfh.write("\n")
+
+        tfh.write("""track %sCov\nshortLabel %s\n""" % (saneClusterName, clusterName))
+        tfh.write("""longLabel %s (%d cells)\n""" % (clusterName, len(cellIds)))
+        tfh.write("type bigWig\n")
+        tfh.write("parent %sCov\n" % hubName)
+        tfh.write("bigDataUrl %s\n" % (saneClusterName+".bw"))
+        tfh.write("visibility dense\n")
+        tfh.write("\n")
+
 
     if options.jobList:
         jlFh.close()
@@ -219,6 +225,105 @@ trackDb hub.txt
 
     tfh.close()
     logging.info("Wrote %s" % tfh.name)
+
+def clamp(x): 
+    return max(0, min(x, 255))
+
+def toHex(rgb):
+    r = rgb[0]
+    g = rgb[1]
+    b = rgb[2]
+    return "#{0:02x}{1:02x}{2:02x}".format(clamp(r), clamp(g), clamp(b))
+
+def writeBarChartTdb(tfh, bbFname, clusterNames):
+    " write the barChart tdb stanza "
+    stepSize = 1.0 / len(clusterNames)
+    colorCodes = []
+    x = 0
+    while x < 1.0:
+        colorCodes.append(colorblind.diverging_colormap(x))
+        x+=stepSize
+
+    hexCodes = [toHex(x) for x in colorCodes]
+
+    tfh.write('track barChart\n')
+    tfh.write('type bigBarChart\n')
+    tfh.write('visibility full\n')
+    tfh.write('shortLabel Cluster expression\n')
+    tfh.write('longLabel Median Cluster expression\n')
+    tfh.write('barChartBars %s\n' % " ".join(clusterNames))
+    tfh.write('barChartColors %s\n' % " ".join(hexCodes))
+    tfh.write('barChartMetric=median\n')
+    tfh.write('barChartUnit=TPM\n')
+    tfh.write('barChartMatrixUrl=exprMatrix.tsv\n')
+    tfh.write('barChartSampleUrl=clusters.tsv\n\n')
+
+def to_camel_case(snake_str):
+    components = snake_str.split('_')
+    # We capitalize the first letter of each component except the first one
+    # with the 'title' method and join them together.
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+def sanitizeClusterNames(clusterToCells):
+    " remove spaces and weird chars from clusterNames "
+    newDict = {}
+    for clusterName, cellIds in clusterToCells.iteritems():
+        # 'cell type #3' -> 'cellType3'
+        newName = to_camel_case(clusterName.replace(" ", "_"))
+        newName = ''.join(ch for ch in newName if ch.isalnum())
+        newDict[newName] = cellIds
+    return newDict
+
+def writeCatFile(clusterToCells, catFname):
+    " write file with cellId<tab>clusterName "
+    logging.info("Writing %s" % catFname)
+    ofh = open(catFname, "w")
+    for clusterName, cellIds in clusterToCells.iteritems():
+        for cellId in cellIds:
+            ofh.write("%s\t%s\n" % (cellId, clusterName))
+    ofh.close()
+
+def cbTrackHub(options, db, metaFname, clusterFieldName, inMatrixFname, outDir):
+    " make track hub given meta file and directory with bam files "
+    # parse meta file
+    bamDir = options.bamDir
+    geneType = options.geneType
+    clusterOrderFile = options.clusterOrder
+
+
+    metaCellIds, clusterToCells = parseClustersFromMeta(metaFname, clusterFieldName, options.fixDot)
+    clusterToCells = sanitizeClusterNames(clusterToCells)
+
+    if clusterOrderFile is None:
+        clusterOrder = list(sorted(clusterToCells.keys()))
+        logging.info("No cluster order specified, using clusters in alphabetical order")
+    else:
+        loggin.info("Reading cluster order from %s" % clusterOrderFile)
+        clusterOrder = open(clusterOrderFile).read().splitlines()
+
+    assert(set(clusterOrder)==set(clusterToCells)) # cluster order has to match actual cluster names
+
+    tdbFname = join(outDir, "hub.txt")
+    logging.info("Creating %s" % tdbFname)
+    tfh = open(tdbFname, "w")
+
+    hubName = options.name
+    email = options.email
+    writeHubGenome(tfh, hubName, db, email)
+
+    matrixFname = join(outDir, "exprMatrix.tsv")
+    cellbrowser.extractMatrix(inMatrixFname, matrixFname)
+
+    bbFname = join(outDir, 'barChart.bb')
+    cellbrowser.makeBarGraphBigBed(db, matrixFname, geneType, clusterToCells, clusterOrder, bbFname)
+
+    catFname = join(outDir, 'clusters.tsv')
+    writeCatFile(clusterToCells, catFname)
+
+    writeBarChartTdb(tfh, bbFname, clusterOrder)
+
+    if bamDir:
+        mergeBams(tfh, options.bamDir, clusterToCells)
 
 def main():
     args, options = parseArgs()

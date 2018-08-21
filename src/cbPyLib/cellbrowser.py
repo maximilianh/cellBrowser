@@ -26,14 +26,15 @@ try:
     import numpy as np
 except:
     numpyLoaded = False
-    logging.error("Numpy could not be loaded. The script should work, but it will be somwhat slower when processing the matrix.")
+    logging.error("Numpy could not be loaded. The script will work, but it will be somwhat slower when processing the matrix.")
 
 # older numpy versions don't have tobytes()
-try:
-    np.ndarray.tobytes
-except:
-    numpyLoaded = False
-    logging.error("Numpy version too old. Falling back to normal Python array handling.")
+if numpyLoaded:
+    try:
+        np.ndarray.tobytes
+    except:
+        numpyLoaded = False
+        logging.error("Numpy version too old. Falling back to normal Python array handling.")
 
 isPy3 = False
 if sys.version_info >= (3, 0):
@@ -46,6 +47,15 @@ defOutDir = os.environ.get("CBOUT")
 
 # ==== functions =====
     
+def setDebug(options):
+    " activate debugging if needed "
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger().setLevel(logging.INFO)
+
 def cbBuild_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] -i cellbrowser.conf -o outputDir - add a dataset to the single cell viewer directory
@@ -81,10 +91,7 @@ def cbBuild_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options)
 
     return args, options
 
@@ -109,10 +116,7 @@ def cbMake_parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options)
     return args, options
 
 def makeDir(outDir):
@@ -131,11 +135,12 @@ def iterItems(d):
     else:
         return d.iteritems()
 
-def lineFileNextRow(inFile):
+def lineFileNextRow(inFile, utfHacks=False):
     """
     parses tab-sep file with headers in first line
     yields collection.namedtuples
     strips "#"-prefix from header line
+    utfHacks forces all chars to latin1 and removes anything that doesn't fit into latin1
     """
 
     if isinstance(inFile, str):
@@ -148,6 +153,10 @@ def lineFileNextRow(inFile):
 
     line1 = fh.readline()
     line1 = line1.strip("\n").lstrip("#")
+    if utfHacks:
+        line1 = line1.decode("latin1")
+        # skip special chars in meta data and keep only ASCII
+        line1 = unicodedata.normalize('NFKD', line1).encode('ascii','ignore')
     headers = line1.split(sep)
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
     headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
@@ -173,6 +182,10 @@ def lineFileNextRow(inFile):
     for line in fh:
         if line.startswith("#"):
             continue
+        if utfHacks:
+            line = line.decode("latin1")
+            # skip special chars in meta data and keep only ASCII
+            line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
         #line = line.decode("latin1")
         # skip special chars in meta data and keep only ASCII
         #line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
@@ -181,7 +194,7 @@ def lineFileNextRow(inFile):
             #fields = line.split(sep, maxsplit=len(headers)-1)
         #else:
             #fields = string.split(line, sep, maxsplit=len(headers)-1)
-        fields = line.split("\t")
+        fields = line.split(sep)
 
         if sep==",":
             fields = [x.lstrip('"').rstrip('"') for x in fields]
@@ -262,22 +275,27 @@ def readGeneToSym(fname):
     logging.info("Reading gene,symbol mapping from %s" % fname)
 
     # Jim's files and CellRanger files have no headers, they are just key-value
-    line1 = open(fname).readline()
+    line1 = open(fname).readline().rstrip("\n")
+    fieldCount = line1.split('\t')
     if "geneId" not in line1:
         d = parseDict(fname)
-    # my new gencode tables contain a symbol for ALL genes
+    # my gencode tables contain a symbol for all genes
+    # the old format
     elif line1=="transcriptId\tgeneId\tsymbol":
         for row in lineFileNextRow(fname):
             if row.symbol=="":
                 continue
             d[row.geneId.split(".")[0]]=row.symbol
-    # my own files have headers
-    else:
+    # my new files are smaller and have headers
+    elif line1=="geneId\tsymbol" or fieldCount==2:
         d = {}
         for row in lineFileNextRow(fname):
             if row.symbol=="":
                 continue
             d[row.geneId.split(".")[0]]=row.symbol
+    else:
+        assert(False)
+    logging.debug("Found symbols for %d genes" % len(d))
     return d
 
 def getDecilesList_np(values):
@@ -585,91 +603,127 @@ def iterLineOffsets(ifh):
            yield line, start, end
        start = ifh.tell()
 
-def iterExprFromFile(fname, matType, geneToSym):
-    " yield (gene, symbol, array) tuples from gene expression file "
-    if fname.endswith(".gz"):
-        #ifh = gzip.open(fname)
-        ifh = os.popen("gunzip -c "+fname+" 2> /dev/null") # faster, especially with two CPUs
-    else:
-        ifh = open(fname)
+class MatrixTsvReader:
+    " open a .tsv file and yield rows via iterRows. gz and csv OK."
+
+    def __init__(self, geneToSym=None):
+        self.geneToSym = geneToSym
+
+    def open(self, fname, matType=None):
+        " return something for iterMatrixTsv "
+        self.fname = fname
+        if fname.endswith(".gz"):
+            #ifh = gzip.open(fname)
+            self.ifh = os.popen("gunzip -c "+fname+" 2> /dev/null") # faster, especially with two CPUs
+        else:
+            self.ifh = open(fname)
+        
+        self.sep = "\t"
+        if ".csv" in fname.lower():
+            self.sep = ","
+
+        self.npType = None
+
+        headLine = self.ifh.readline()
+        self.sampleNames = headLine.split(self.sep)[1:]
+
+        if matType is None:
+            self.matType = "float"
+            self.matType = self.autoDetectMatType(10)
+            logging.info("Numbers in matrix are of type '%s'", self.matType)
+        else:
+            self.matType = matType
+
+        if matType == "float":
+            self.npType = "float32"
+        else:
+            self.npType = "int32"
+
+    def getMatType(self):
+        return self.matType
     
-    sep = "\t"
-    if ".csv" in fname.lower():
-        sep = ","
+    def getSampleNames(self):
+        return self.sampleNames
 
-    npType = None
-    if matType == "float":
-        npType = "float32"
-    else:
-        npType = "int32"
+    def autoDetectMatType(self, n):
+        " check if matrix has 'int' or 'float' data type by looking at the first n genes"
+        # auto-detect the type of the matrix: int vs float
+        logging.info("Auto-detecting number type of %s" % self.fname)
+        geneCount = 0
 
-    headLine = ifh.readline()
-    skipIds = 0
-    doneGenes = set()
-    lineNo = 0
-    for line in ifh:
-        if isPy3:
-            gene, rest = line.split(sep, maxsplit=1)
-        else:
-            gene, rest = string.split(line, sep, maxsplit=1)
-
-        if numpyLoaded:
-            a = np.fromstring(rest, sep=sep, dtype=npType)
-        else:
-            if matType=="int":
-                a = [int(x) for x in rest.split(sep)]
-            else:
-                a = [float(x) for x in rest.split(sep)]
-
-        if geneToSym is None:
-            symbol = gene
-        else:
-            symbol = geneToSym.get(gene)
-            if symbol is None:
-                skipIds += 1
-                logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
-                continue
-            if symbol.isdigit():
-                logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
-
-        if symbol in doneGenes:
-            logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence" % (lineNo, gene, symbol))
-            skipIds += 1
-            continue
-
-        doneGenes.add(gene)
-
-        lineNo += 1
-
-        yield gene, symbol, a
-    
-    if skipIds!=0:
-        logging.warn("Skipped %d expression matrix lines because of duplication/unknown ID" % skipIds)
-
-
-def autoDetectMatType(matIter, n):
-    " check if matrix has 'int' or 'float' data type by looking at the first n genes"
-    # auto-detect the type of the matrix: int vs float
-    geneCount = 0
-
-    for geneId, sym, a in matIter:
-        if numpyLoaded:
-            a_int = a.astype(int)
-            hasOnlyInts = np.array_equal(a, a_int)
-            if not hasOnlyInts:
-                return "float"
-        else:
-            for x in a:
-                frac, whole = math.modf(x)
-                if frac != 0.0:
+        for geneId, sym, a in self.iterRows():
+            if numpyLoaded:
+                a_int = a.astype(int)
+                hasOnlyInts = np.array_equal(a, a_int)
+                if not hasOnlyInts:
                     return "float"
-        if geneCount==n:
-            break
-        geneCount+=1
+            else:
+                for x in a:
+                    frac, whole = math.modf(x)
+                    if frac != 0.0:
+                        return "float"
+            if geneCount==n:
+                break
+            geneCount+=1
 
-    if geneCount==0:
-        errAbort("empty expression matrix?")
-    return "int"
+        if geneCount==0:
+            errAbort("empty expression matrix?")
+        return "int"
+
+    def iterRows(self):
+        " yield (geneId, symbol, array) tuples from gene expression file. "
+        skipIds = 0
+        doneGenes = set()
+        lineNo = 0
+        sep = self.sep
+        geneToSym = self.geneToSym
+        for line in self.ifh:
+            self.lineLen = len(line)
+
+            if isPy3:
+                gene, rest = line.split(sep, maxsplit=1)
+            else:
+                gene, rest = string.split(line, sep, maxsplit=1)
+
+            if numpyLoaded:
+                a = np.fromstring(rest, sep=sep, dtype=self.npType)
+            else:
+                if self.matType=="int":
+                    a = [int(x) for x in rest.split(sep)]
+                else:
+                    a = [float(x) for x in rest.split(sep)]
+
+            if geneToSym is None:
+                symbol = gene
+            else:
+                symbol = geneToSym.get(gene)
+                if symbol is None:
+                    skipIds += 1
+                    logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
+                    continue
+                if symbol.isdigit():
+                    logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
+
+            if symbol in doneGenes:
+                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence" % (lineNo, gene, symbol))
+                skipIds += 1
+                continue
+
+            doneGenes.add(gene)
+
+            lineNo += 1
+
+            yield gene, symbol, a
+        
+        if skipIds!=0:
+            logging.warn("Skipped %d expression matrix lines because of duplication/unknown ID" % skipIds)
+
+    def iterRowsWithOffsets(self):
+        " like iterRows, but also return offset and line length "
+        offset = self.ifh.tell()
+        for gene, sym, row in self.iterRows():
+            yield gene, sym, row, offset, self.lineLen
+            offset = self.ifh.tell()
 
 def getDecilesList(values):
     """ given a list of values, return the 10 values that define the 10 ranges for the deciles
@@ -976,15 +1030,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     skipIds = 0
     highCount = 0
 
-    logging.info("Auto-detecting number type of %s" % fname)
-    geneIter = iterExprFromFile(fname, "float", None)
-    matType = autoDetectMatType(geneIter, 10)
-    logging.info("Numbers in matrix are of type '%s'", matType)
-
-    geneIter = iterExprFromFile(fname, matType, geneToSym)
+    matReader = MatrixTsvReader(geneToSym)
+    matType, sampleNames = matReader.open(fname)
 
     geneCount = 0
-    for geneId, sym, exprArr in geneIter:
+    for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
 
         #if maxVal(exprArr) > 200:
@@ -994,12 +1044,6 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         exprStr = exprEncode(geneId, exprArr, matType)
         exprIndex[sym] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
-
-        #digArr, binInfo = digitizeArr(exprArr, matType)
-        #discretStr = discretExprRowEncode(geneId, binInfo, digArr)
-
-        #discretIndex[sym] = (discretOfh.tell(), len(discretStr))
-        #discretOfh.write(discretStr)
 
         if geneCount % 1000 == 0:
             logging.info("Wrote expression values for %d genes" % geneCount)
@@ -1013,7 +1057,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         #sys.exit(1)
 
     if len(exprIndex)==0:
-        errAbort("No genes from the expression matrix could be mapped to symbols in the input file."
+        errAbort("No genes from the expression matrix could be mapped to symbols."
             "Are you sure these are Ensembl IDs? Adapt geneIdType in cellbrowser.conf. Example ID: %s" % geneId)
 
     jsonOfh = open(jsonFname, "w")
@@ -1031,9 +1075,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
 def sepForFile(fname):
     if ".csv" in fname:
-        return ","
+        sep = ","
     else:
-        return "\t"
+        sep = "\t"
+    logging.debug("Separator for %s is %s" %  (fname, repr(sep)))
+    return sep
 
 def indexMeta(fname, outFname):
     """ index a tsv by its first field. Writes binary data to outFname.
@@ -1200,7 +1246,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
 
     return matrixSampleNames, mustFilterMatrix
 
-def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo):
+def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo):
     """ write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames
     Also return as a list.
     """
@@ -1215,12 +1261,10 @@ def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coor
     xVals = []
     yVals = []
 
-    #print coords['Hi_GW21_4.Hi_GW21_4']
-    #print len(sampleNames)
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            logging.warn("sample name %s is in meta file but not in coordinate file" % sampleName)
+            logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (0,0)" % (sampleName, coordName))
             x = 0
             y = 0
         else:
@@ -1240,7 +1284,7 @@ def writeCoords(coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coor
 
         xVals.append(x)
         yVals.append(y)
-    
+
     binFh.close()
     os.rename(tmpFname, coordBinFname)
 
@@ -1690,7 +1734,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
         coordInfo["shortLabel"] = coordLabel
-        coordInfo, xVals, yVals = writeCoords(coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo)
+        coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo)
         newCoords.append( coordInfo )
 
         if hasLabels:
@@ -1799,11 +1843,11 @@ def readGeneSymbols(inConf):
     if geneIdType == 'symbols' or geneIdType=="symbol":
         return None
 
-    searchMask = join(dataDir, "genes", geneIdType+".*.tab")
+    searchMask = join(dataDir, "genes", geneIdType+".symbols.tsv")
     fnames = glob.glob(searchMask)
     assert(len(fnames)<=1)
     if(len(fnames)==0):
-        errAbort("Could not find any files matching %s" % searchMask)
+        errAbort("Could not find any files matching %s. Possible files that were found: %s" % (searchMask, searchMask))
     geneIdTable = fnames[0]
     geneToSym = readGeneToSym(geneIdTable)
     return geneToSym
@@ -1814,7 +1858,7 @@ def getAbsPath(conf, key):
 
 def getMd5Using(md5Cmd, fname):
     " posix command line tool is much faster than python "
-    logging.debug("Getting md5 of %s using md5sum command line tool" % fname)
+    logging.debug("Getting md5 of %s using %s command line tool" % (fname, md5Cmd))
     cmd = [md5Cmd, fname]
     logging.debug("Cmd: %s" % cmd)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -1826,21 +1870,18 @@ def getMd5Using(md5Cmd, fname):
     return md5
 
 def md5ForFile(fname):
-    " return the md5sum of a file "
+    " return the md5sum of a file. Use a command line tool, if possible. "
     logging.info("Getting md5 of %s" % fname)
     if spawn.find_executable("md5sum")!=None:
-        md5 = getMd5Using("md5sum", fname)
+        md5 = getMd5Using("md5sum", fname).split()[0]
     elif spawn.find_executable("md5")!=None:
         md5 = getMd5Using("md5", fname).split()[-1]
-    #else:
-    if True:
+    else:
         hash_md5 = hashlib.md5()
         with open(fname, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 hash_md5.update(chunk)
-        pyHash = hash_md5.hexdigest()
-        #return pyHash
-    assert(md5==pyHash)
+        md5 = hash_md5.hexdigest()
     return md5
 
 def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf):
@@ -1849,6 +1890,10 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outMatrixFname
     """
     logging.info("Determining if %s needs to created" % outMatrixFname)
+    if not isfile(outMatrixFname):
+        logging.info("%s does not exist." % outMatrixFname)
+        return True
+
     confName = join(datasetDir, "dataset.json")
     if not isfile(confName):
         logging.info("%s does not exist. This looks like the first run with this output directory" % confName)
@@ -1879,6 +1924,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
     matrixSampleNames = readHeaders(outMatrixFname)[1:]
+    assert(matrixSampleNames!=0)
 
     if metaSampleNames!=matrixSampleNames:
         logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
@@ -2192,6 +2238,105 @@ def cbMake_cli():
         errAbort("You have to specify at least the output directory or set the environment variable CBOUT.")
 
     cbMake(outDir)
+
+def parseGeneLocs(geneType):
+    """
+    return dict with geneId -> list of bedRows
+    bedRows have (chrom, start, end, geneId, score, strand)
+    """
+    fname = join(dataDir, "genes", geneType+".genes.bed")
+    ret = defaultdict(list)
+    for line in open(fname):
+        row = line.rstrip("\n").split('\t')
+        name = row[3].split(".")[0]
+        ret[name].append(row)
+    return ret
+
+def extractMatrix(inMatrixFname, hubMatrixFname):
+    if isfile(hubMatrixFname):
+        logging.info("Not extracting to %s, file already exists" % hubMatrixFname)
+    else:
+        logging.info("Extracting matrix to %s" % hubMatrixFname)
+        cmd = "gunzip -c %s > %s" % (inMatrixFname, hubMatrixFname)
+        runCommand(cmd)
+
+def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterOrder, bbFname):
+    """ create a barGraph bigBed file for an expression matrix
+    clusterToCells is a dict clusterName -> list of cellIDs
+    clusterOrder is a list of the clusterNames in the right order
+    """
+    if geneType.lower() in ['symbols', 'symbol']:
+        # create a mapping from symbol -> gene locations
+        geneToSym = readGeneSymbols({'geneIdType':"gencode24"})
+        geneLocsId = parseGeneLocs('gencode24')
+        geneLocs = {}
+        for geneId, locs in geneLocsId.iteritems():
+            sym = geneToSym[geneId]
+            geneLocs[sym] = locs
+    else:
+        geneToSym = readGeneSymbols({'geneIdType':geneType})
+        geneLocs = parseGeneLocs(geneType)
+
+    mr = MatrixTsvReader()
+    mr.open(inMatrixFname)
+    matType, cellNames = mr.matType, mr.sampleNames
+
+    cellIds = range(0, len(cellNames))
+    cellNameToId = dict(zip(cellNames, cellIds))
+
+    # make a list of lists of cellIds, one per cluster, in the right order
+    clusterCellIds = [] # list of tuples with cell-indexes, one per cluster
+    for cluster in clusterOrder:
+        cellIdxList = []
+        for cellName in clusterToCells[cluster]:
+            if cellName not in cellNameToId:
+                logging.warn("%s is in meta but not in expression matrix" % cellName)
+                continue
+            idx = cellNameToId[cellName]
+            cellIdxList.append(idx)
+        clusterCellIds.append(tuple(cellIdxList))
+
+    # make the barchart bed file. format:
+    # chr14 95086227 95158010 ENSG00000100697.10 999 - DICER1 5 10.94,11.60,8.00,6.69,4.89 93153 26789
+    #bedFname = join(outDir, "barchart.bed")
+    bedFname = bbFname.replace(".bb", ".bed")
+    assert(bedFname!=bbFname)
+
+    bedFh = open(bedFname, "w")
+
+    for geneId, sym, exprArr, offset, lineLen in mr.iterRowsWithOffsets():
+        logging.debug("Writing BED line for %s" % geneId)
+        medianList = []
+        for cellIds in clusterCellIds:
+            exprList = []
+            for cellId in cellIds:
+                exprList.append(exprArr[cellId])
+            n = len(cellIds)
+            median = sorted(exprList)[n//2] # approx OK, no special case for even n's
+            medianList.append(str(median))
+
+        if geneId not in geneLocs:
+            logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
+            continue
+
+        bedRow = geneLocs[geneId]
+
+        sym = geneToSym.get(geneId, geneId)
+        bedRow.append(sym)
+        bedRow.append(str(len(medianList)))
+        bedRow.append(",".join(medianList))
+        bedRow.append(str(offset))
+        bedRow.append(str(lineLen))
+
+    bedFh.close()
+
+    # convert to .bb using .as file
+    # from https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
+    asFname = join(dataDir, "genomes", "barChartBed.as")
+    sizesFname = join(dataDir, "genomes", genome+".sizes")
+
+    cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname, sizesFname, bbFname)
+    runCommand(cmd)
 
 #if __name__=="__main__":
     #main()
