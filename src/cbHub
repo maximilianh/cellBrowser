@@ -2,17 +2,16 @@
 
 # create a track hub from an expression matrix
 
-import subprocess
+import subprocess, colorsys
 import logging, sys, optparse, re, unicodedata, string, glob, distutils.spawn, gzip
 from collections import defaultdict, namedtuple
-from os.path import join, basename, dirname, isfile
+from os.path import join, basename, dirname, isfile, isdir
 import os
 
 import sys
 sys.path.append( join(dirname(__file__), "cbPyLib") )
 
 import cellbrowser
-from colorblind import colorblind
 
 # ==== functions =====
     
@@ -20,7 +19,7 @@ def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] ucscDb metaFname clusterField exprMatrix outDir - create a track hub for a single cell dataset given meta data table and a directory full of bam files. 
 
-    ucscDb is a ucsc assembly code, like hg19, hg38 or mm10.
+    ucscDb is a ucsc assembly identifier, like hg19, hg38 or mm10.
     metaFname is a csv or tsv matrix, one row per cell
     clusterField is the name of the cell cluster from metaFname
     exprMatrix is a tsv or csv expression matrix, one line per cell
@@ -227,13 +226,13 @@ def mergeBams(bamDir, clusterToCells):
     logging.info("Wrote %s" % tfh.name)
 
 def clamp(x): 
-    return max(0, min(x, 255))
+    return max(0, min(int(x), 255))
 
 def toHex(rgb):
     r = rgb[0]
     g = rgb[1]
     b = rgb[2]
-    return "#{0:02x}{1:02x}{2:02x}".format(clamp(r), clamp(g), clamp(b))
+    return "#{0:02x}{1:02x}{2:02x}".format(clamp(r*255), clamp(g*255), clamp(b*255))
 
 def writeBarChartTdb(tfh, bbFname, clusterNames):
     " write the barChart tdb stanza "
@@ -241,7 +240,7 @@ def writeBarChartTdb(tfh, bbFname, clusterNames):
     colorCodes = []
     x = 0
     while x < 1.0:
-        colorCodes.append(colorblind.diverging_colormap(x))
+        colorCodes.append(colorsys.hsv_to_rgb(x, 1.0, 1.0))
         x+=stepSize
 
     hexCodes = [toHex(x) for x in colorCodes]
@@ -285,6 +284,10 @@ def writeCatFile(clusterToCells, catFname):
 
 def cbTrackHub(options, db, metaFname, clusterFieldName, inMatrixFname, outDir):
     " make track hub given meta file and directory with bam files "
+    if not isdir(outDir):
+        logging.info("Making %s" % outDir)
+        os.makedirs(outDir)
+
     # parse meta file
     bamDir = options.bamDir
     geneType = options.geneType

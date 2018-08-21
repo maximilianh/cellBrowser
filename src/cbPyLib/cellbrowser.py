@@ -622,22 +622,14 @@ class MatrixTsvReader:
         if ".csv" in fname.lower():
             self.sep = ","
 
-        self.npType = None
-
         headLine = self.ifh.readline()
         self.sampleNames = headLine.split(self.sep)[1:]
 
         if matType is None:
-            self.matType = "float"
             self.matType = self.autoDetectMatType(10)
             logging.info("Numbers in matrix are of type '%s'", self.matType)
         else:
             self.matType = matType
-
-        if matType == "float":
-            self.npType = "float32"
-        else:
-            self.npType = "int32"
 
     def getMatType(self):
         return self.matType
@@ -651,6 +643,7 @@ class MatrixTsvReader:
         logging.info("Auto-detecting number type of %s" % self.fname)
         geneCount = 0
 
+        self.matType = "float"
         for geneId, sym, a in self.iterRows():
             if numpyLoaded:
                 a_int = a.astype(int)
@@ -672,10 +665,16 @@ class MatrixTsvReader:
 
     def iterRows(self):
         " yield (geneId, symbol, array) tuples from gene expression file. "
+        if self.matType == "float":
+            npType = "float32"
+        else:
+            npType = "int32"
+
         skipIds = 0
         doneGenes = set()
         lineNo = 0
         sep = self.sep
+        sampleCount = len(self.sampleNames)
         geneToSym = self.geneToSym
         for line in self.ifh:
             self.lineLen = len(line)
@@ -686,12 +685,14 @@ class MatrixTsvReader:
                 gene, rest = string.split(line, sep, maxsplit=1)
 
             if numpyLoaded:
-                a = np.fromstring(rest, sep=sep, dtype=self.npType)
+                arr = np.fromstring(rest, dtype=npType, sep=sep, count=sampleCount)
             else:
                 if self.matType=="int":
-                    a = [int(x) for x in rest.split(sep)]
+                    #a = [int(x) for x in rest.split(sep)]
+                    arr = map(int, rest.split(sep))
                 else:
-                    a = [float(x) for x in rest.split(sep)]
+                    #a = [float(x) for x in rest.split(sep)]
+                    arr = map(float, rest.split(sep))
 
             if geneToSym is None:
                 symbol = gene
@@ -713,7 +714,7 @@ class MatrixTsvReader:
 
             lineNo += 1
 
-            yield gene, symbol, a
+            yield gene, symbol, arr
         
         if skipIds!=0:
             logging.warn("Skipped %d expression matrix lines because of duplication/unknown ID" % skipIds)
@@ -2267,8 +2268,19 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
     """
     if geneType.lower() in ['symbols', 'symbol']:
         # create a mapping from symbol -> gene locations
-        geneToSym = readGeneSymbols({'geneIdType':"gencode24"})
-        geneLocsId = parseGeneLocs('gencode24')
+        if genome=="hg38":
+            defGenes = "gencode24"
+        elif genome=="hg19":
+            defGenes = "gencode19"
+        elif genome=="mm10":
+            defGenes = "gencode-m13"
+        else:
+            errAbort("Unclear how to map symbols to genome for db %s. Please adapt cellbrowser.py" % genome)
+
+        logging.info("Using %s to map symbols to genome" % defGenes)
+
+        geneToSym = readGeneSymbols({'geneIdType':defGenes})
+        geneLocsId = parseGeneLocs(defGenes)
         geneLocs = {}
         for geneId, locs in geneLocsId.iteritems():
             sym = geneToSym[geneId]
@@ -2314,28 +2326,39 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
             n = len(cellIds)
             median = sorted(exprList)[n//2] # approx OK, no special case for even n's
             medianList.append(str(median))
+            bedScore = len([x for x in exprList if x!=0]) # score = non-zero medians
 
         if geneId not in geneLocs:
             logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
             continue
 
-        bedRow = geneLocs[geneId]
+        bedRows = geneLocs[geneId]
 
-        sym = geneToSym.get(geneId, geneId)
-        bedRow.append(sym)
-        bedRow.append(str(len(medianList)))
-        bedRow.append(",".join(medianList))
-        bedRow.append(str(offset))
-        bedRow.append(str(lineLen))
+        # one geneId may have multiple placements, e.g. Ensembl's rule for duplicate genes
+        for bedRow in bedRows:
+            sym = geneToSym.get(geneId, geneId)
+            bedRow[4] = str(bedScore) # 4 = score field
+            bedRow.append(sym)
+            bedRow.append(str(len(medianList)))
+            bedRow.append(",".join(medianList))
+            bedRow.append(str(offset))
+            bedRow.append(str(lineLen))
+
+            bedFh.write("\t".join(bedRow))
+            bedFh.write("\n")
 
     bedFh.close()
+
+    bedFname2 = bedFname.replace(".bed", ".sorted.bed") 
+    cmd = "LC_COLLATE=C sort -k1,1 -k2,2n %s > %s" % (bedFname, bedFname2)
+    runCommand(cmd)
 
     # convert to .bb using .as file
     # from https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
     asFname = join(dataDir, "genomes", "barChartBed.as")
     sizesFname = join(dataDir, "genomes", genome+".sizes")
 
-    cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname, sizesFname, bbFname)
+    cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname2, sizesFname, bbFname)
     runCommand(cmd)
 
 #if __name__=="__main__":
