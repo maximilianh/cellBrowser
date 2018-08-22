@@ -123,6 +123,16 @@ def mergeBams(bamDir, clusterToCells):
     tfh.write("visibility dense\n")
     tfh.write("\n")
 
+    tfh.write("""track %sJunc\n""" % (hubName))
+    tfh.write("""shortLabel %s Splice Junctions\n""" % (hubName))
+    tfh.write("""longLabel %s Splice Junctions - %d cells\n""" % (hubName, len(allCellIds)))
+    tfh.write("compositeTrack on\n")
+    tfh.write("type bigBed\n")
+    tfh.write("visibility dense\n")
+    tfh.write("\n")
+
+    chromSizes = cellbrowser.getSizesFname(db)
+
     i = 0
     for clusterName, cellIds in clusterToCells.iteritems():
         saneClusterName = filter(str.isalnum, clusterName).replace(" ", "_") # remove non alpha chars
@@ -131,9 +141,6 @@ def mergeBams(bamDir, clusterToCells):
         for cellId in cellIds:
             newFnames = cellIdToBamFnames[cellId]
             inFnames.extend(newFnames)
-            #print "newFnames", newFnames
-            #print "inFnames", len(inFnames)
-        #inFnames = [join(bamDir, cellId)+".bam" for cellId in cellIds]
 
         # only keep files that actually exist
         filtFnames = []
@@ -152,16 +159,49 @@ def mergeBams(bamDir, clusterToCells):
 
         logging.warn("Cluster: %s, %d cell IDs, found %d BAM files, example %s" % (clusterName, len(cellIds), len(filtFnames), filtFnames[0]))
 
+        cmds = []
         # -r construct read groups
         # -f overwrite output files if needed
         outBam = join(outDir, saneClusterName+".bam")
-        cmd = "samtools merge -r -f %s %s" % (outBam, " ".join(filtFnames))
+        outCalls = join(outDir, saneClusterName+".calls.tsv")
+        junctionBed = join(outDir, saneClusterName+".junctions.bed")
+        intronBed = join(outDir, saneClusterName+".introns.bed")
 
-        cmd2 = "samtools index %s" % outBam
+        junctionBedSorted = junctionBed.replace(".bed", ".sorted.bed")
+        intronBedSorted = intronBed.replace(".bed", ".sorted.bed")
+
+        junctionBb = junctionBed.replace(".bed", ".bb")
+        intronBb = intronBed.replace(".bed", ".bb")
+
+        cmd = "samtools merge -f -r %s %s" % (outBam, " ".join(filtFnames))
+        cmds.append(cmd)
+        
+        cmd = "cat %s | intronProspector -c %s -j %s -n %s " % \
+            (outBam, outCalls, junctionBed, intronBed)
+        cmds.append(cmd)
+
+        cmd = "samtools index %s" % outBam
+        cmds.append(cmd)
+
+        cmd = "samtools index %s" % outBam
+        cmds.append(cmd)
+
+        cmd = "export LC_COLLATE=C; cat %s | grep -v ^M | sort -k1,1 -k2,2n > %s" % (junctionBed, junctionBedSorted)
+        cmds.append(cmd)
+
+        cmd = "LC_COLLATE=C; cat %s | grep -v ^M | sort -k1,1 -k2,2n > %s" % (intronBed, intronBedSorted)
+        cmds.append(cmd)
+
+        cmd = "bedToBigBed %s %s %s -type=bed12 -tab" % (intronBedSorted, chromSizes, intronBb)
+        cmds.append(cmd)
+
+        cmd = "bedToBigBed %s %s %s -type=bed12 -tab" % (junctionBedSorted, chromSizes, junctionBb)
+        cmds.append(cmd)
 
         bamCovPath = distutils.spawn.find_executable("bamCoverage")
         outBw = join(outDir, saneClusterName+".bw")
-        cmd3 = " ".join([bamCovPath,"-b", outBam, "-o", outBw,  "-p1", "--binSize=10"])
+        cmd = " ".join([bamCovPath,"-b", outBam, "-o", outBw,  "-p1", "--binSize=10"])
+        cmds.append(cmd)
 
         if isfile(outBw):
             logging.info("Not running anything for %s, file %s already exists" % (saneClusterName, outBw))
@@ -169,11 +209,13 @@ def mergeBams(bamDir, clusterToCells):
 
         if options.jobList:
             jobFn = "job-%d.sh" % i
-            jlFh.write("/bin/sh %s {check out exists %s.bai}\n" % (jobFn, outBam))
+            jlFh.write("/bin/bash %s {check out exists %s.bai}\n" % (jobFn, outBam))
             jobFh = open(jobFn, "w")
-            #jobFh.write(cmd+"\n")
-            #jobFh.write(cmd2+"\n")
-            jobFh.write(cmd3+"\n")
+            jobFh.write("#!/bin/sh\n")
+            jobFh.write("set -e # = abort on error\n")
+            jobFh.write("set -o pipefail # = even in pipes\n")
+            for cmd in cmds:
+                jobFh.write(cmd+"\n")
 
             logging.info("Wrote cluster job script %s" % jobFn)
             i+=1
@@ -182,22 +224,21 @@ def mergeBams(bamDir, clusterToCells):
                 logging.info("Not running merging for %s, file %s already exists" % (saneClusterName, outBam))
             else:
                 logging.info("Merging. Command: %s ..." % cmd[:200])
+                # can be thousands of files, so run without using shell
+                cmd = cmds[0]
                 ret = subprocess.call(cmd.split(" "))
                 if (ret!=0):
                     logging.error("Could not run %s" % cmd)
                     logging.error("Error code was: %d" % ret)
                     sys.exit(ret)
 
-            logging.info("Making coverage. Command: %s ..." % cmd2)
-            ret = subprocess.call(cmd2.split(" "))
-            if (ret!=0):
-                logging.error("Could not run %s" % cmd2)
-                logging.error("Error code was: %d" % ret)
-                sys.exit(ret)
+            for cmd in cmds[1:]:
+                ret = subprocess.call(cmd, shell=True)
+                if (ret!=0):
+                    logging.error("Could not run %s" % cmd2)
+                    logging.error("Error code was: %d" % ret)
+                    sys.exit(ret)
                 
-            logging.info("Running %s ..." % cmd3)
-            assert(os.system(cmd3)==0)
-
 
         saneClusterName = filter(str.isalnum, clusterName) # remove non alpha chars
 

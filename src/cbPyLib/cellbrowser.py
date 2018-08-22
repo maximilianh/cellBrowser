@@ -2261,6 +2261,12 @@ def extractMatrix(inMatrixFname, hubMatrixFname):
         cmd = "gunzip -c %s > %s" % (inMatrixFname, hubMatrixFname)
         runCommand(cmd)
 
+def getSizesFname(genome):
+    " return chrom.sizes filename for db "
+    fname = join(dataDir, "genomes", genome+".sizes")
+    assert(isfile(fname))
+    return fname
+
 def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterOrder, bbFname):
     """ create a barGraph bigBed file for an expression matrix
     clusterToCells is a dict clusterName -> list of cellIDs
@@ -2349,14 +2355,14 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
 
     bedFh.close()
 
-    bedFname2 = bedFname.replace(".bed", ".sorted.bed") 
+    bedFname2 = bedFname.replace(".bed", ".sorted.bed")
     cmd = "LC_COLLATE=C sort -k1,1 -k2,2n %s > %s" % (bedFname, bedFname2)
     runCommand(cmd)
 
     # convert to .bb using .as file
     # from https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
     asFname = join(dataDir, "genomes", "barChartBed.as")
-    sizesFname = join(dataDir, "genomes", genome+".sizes")
+    sizesFname = getSizesFname(genome)
 
     cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname2, sizesFname, bbFname)
     runCommand(cmd)
