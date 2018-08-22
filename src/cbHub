@@ -252,10 +252,11 @@ def writeBarChartTdb(tfh, bbFname, clusterNames):
     tfh.write('longLabel Median Cluster expression\n')
     tfh.write('barChartBars %s\n' % " ".join(clusterNames))
     tfh.write('barChartColors %s\n' % " ".join(hexCodes))
-    tfh.write('barChartMetric=median\n')
-    tfh.write('barChartUnit=TPM\n')
-    tfh.write('barChartMatrixUrl=exprMatrix.tsv\n')
-    tfh.write('barChartSampleUrl=clusters.tsv\n\n')
+    tfh.write('barChartMetric median\n')
+    tfh.write('barChartUnit TPM\n')
+    tfh.write('barChartMatrixUrl exprMatrix.tsv\n')
+    tfh.write('barChartSampleUrl clusters.tsv\n')
+    tfh.write('bigDataUrl barChart.bb\n\n')
 
 def to_camel_case(snake_str):
     components = snake_str.split('_')
