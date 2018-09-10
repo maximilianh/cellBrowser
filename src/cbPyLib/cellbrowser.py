@@ -1203,7 +1203,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
-    logging.info("Parsing coordinates from %s" % fname)
+    logging.info("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
     coords = []
     maxY = 0
     minX = 2^32
@@ -1810,8 +1810,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     " convert the coordinates "
     coordFnames = makeAbsDict(inConf, "coords")
 
+    flipY = inConf.get("flipY", False)
     useTwoBytes = inConf.get("useTwoBytes", False)
-    newCoords = []
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -1820,10 +1820,11 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         labelVec, labelVals = parseTsvColumn(outMeta, clusterLabelField)
         outConf["labelField"] = clusterLabelField
 
+    newCoords = []
     for coordIdx, coordInfo in enumerate(coordFnames):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
-        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, True)
+        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -2040,7 +2041,7 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb"]:
         copyConf(inConf, outConf, tag)
 
     # convertMeta also compares the sample IDs between meta and matrix

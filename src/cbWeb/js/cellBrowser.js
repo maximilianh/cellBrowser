@@ -2044,6 +2044,35 @@ var tsnePlot = function() {
         db.searchGenes(query.toLowerCase(), callback);
     }
 
+    function arrayBufferToString(buf, callback) {
+        /* https://stackoverflow.com/questions/8936984/uint8array-to-string-in-javascript */
+         var bb = new Blob([new Uint8Array(buf)]);
+         var f = new FileReader();
+         f.onload = function(e) {
+           callback(e.target.result);
+         };
+         f.readAsText(bb);
+    }
+
+
+    function makeHubUrl(geneSym) {
+        /* return URL of the hub.txt file, possibly jumping to a given gene  */
+            var hubUrl = db.conf.hubUrl;
+            if (hubUrl==undefined)
+                return null;
+            var ucscDb = db.conf.ucscDb;
+            if (ucscDb===undefined) {
+                alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
+                return "";
+            }
+            var fullUrl = "http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+
+            if (geneSym!==undefined)
+                fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
+
+            return fullUrl;
+    }
+
     function buildToolBar (coordInfo, datasetName, fromLeft, fromTop) {
     /* add the tool bar with icons of tools and add under body to the DOM */
         $("#tpToolBar").remove();
@@ -2077,12 +2106,8 @@ var tsnePlot = function() {
 
         var hubUrl = db.conf.hubUrl;
         if (hubUrl!==undefined) {
-            var ucscDb = db.conf.ucscDb;
-                //alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
-            var fullUrl = "http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl;
-            if (ucscDb!==undefined)
-                fullUrl += "&genome="+ucscDb
-            htmls.push('<a href="'+fullUrl+' id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Genome Browser</a>');
+            var fullUrl = makeHubUrl();
+            htmls.push('<a target=_blank href="'+fullUrl+'" id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Genome Browser</a>');
         }
 
         htmls.push("</div>");
@@ -2390,13 +2415,7 @@ var tsnePlot = function() {
 
     function startLoadTsv(fullUrl, func, addInfo) {
     /* load a tsv file relative to baseUrl and call a function when done */
-        function onTsvLoadDone(res) {
-            var data = res.target.response;
-            if (res.target.responseURL.endsWith(".gz")) {
-                data = pako.ungzip(data);
-                data = String.fromCharCode.apply(null, data);
-            }
-
+        function conversionDone(data) {
             Papa.parse(data, {
                     complete: function(results, localFile) {
                                 func(results, localFile, addInfo);
@@ -2406,6 +2425,17 @@ var tsnePlot = function() {
                                     alert("could not load "+fullUrl);
                             }
                     });
+        }
+
+        function onTsvLoadDone(res) {
+            var data = res.target.response;
+            if (res.target.responseURL.endsWith(".gz")) {
+                data = pako.ungzip(data);
+                //data = String.fromCharCode.apply(null, data); // only good for short strings
+                data = arrayBufferToString(data, conversionDone);
+            }
+            else
+                conversionDone(data);
         }
 
     var req = new XMLHttpRequest();
@@ -3100,11 +3130,11 @@ var tsnePlot = function() {
         var htmls = [];
 
         htmls.push("<div id='tpPaneHeader' style='padding:8px'>");
-        var hubUrl = db.conf.hubUrl;
-        if (hubUrl!==undefined) {
-            htmls.push("<p>");
-            htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
-        }
+        //var hubUrl = db.conf.hubUrl;
+        //if (hubUrl!==undefined) {
+            //htmls.push("<p>");
+            //htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
+        //}
 
         htmls.push("Click gene symbols below to color plot by gene<br>");
 
@@ -3244,14 +3274,20 @@ var tsnePlot = function() {
                 width = "200px";
             }
 
+            var addStr = "";
+            if (isNumber)
+                addStr = " data-sort-method='number'";
+
             if (width===null)
-                htmls.push("<th>");
+                htmls.push("<th"+addStr+">");
             else
-                htmls.push("<th style='width:"+width+"'>");
+                htmls.push("<th style='width:"+width+"'"+addStr+">");
             htmls.push(colLabel);
             htmls.push("</th>");
         }
         htmls.push("</thead>");
+
+        var hubUrl = makeHubUrl();
 
         htmls.push("<tbody>");
         for (var i = 1; i < rows.length; i++) {
@@ -3262,7 +3298,12 @@ var tsnePlot = function() {
             htmls.push("<tr>");
             var geneId = row[0];
             var geneSym = row[1];
-            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a></td>");
+            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
+            if (fullHubUrl!==null) {
+                var fullHubUrl = hubUrl+"&position="+geneSym+"&singleSearch=knownCanonical";
+                htmls.push("<a target=_blank class='link' style='margin-left: 10px' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>UCSC</a>");
+            }
+            htmls.push("</td>");
 
             for (var j = 2; j < row.length; j++) {
                 var val = row[j];
