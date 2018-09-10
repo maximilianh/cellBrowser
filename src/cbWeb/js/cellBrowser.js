@@ -1272,9 +1272,8 @@ var tsnePlot = function() {
         var rows = legend.rows;
         var n = rows.length;
         var pal = null;
-        if (metaFieldIndex!==undefined) {
-            var predefColors = db.conf.metaFields[metaFieldIndex].colors;
-            if (predefColors!==undefined)
+        var predefColors = db.conf.metaFields[metaFieldIndex].colors;
+        if (metaFieldIndex!==undefined && predefColors!==undefined) {
                 pal = predefColors;
         } else {
             pal = makeColorPalette(palName, n);
