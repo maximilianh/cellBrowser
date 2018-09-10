@@ -2071,14 +2071,27 @@ var tsnePlot = function() {
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 200, 0);
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 280, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
         
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
 
+        var hubUrl = db.conf.hubUrl;
+        if (hubUrl!==undefined) {
+            var ucscDb = db.conf.ucscDb;
+                //alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
+            var fullUrl = "http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl;
+            if (ucscDb!==undefined)
+                fullUrl += "&genome="+ucscDb
+            htmls.push('<a href="'+fullUrl+' id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Genome Browser</a>');
+        }
+
         htmls.push("</div>");
 
         $(document.body).append(htmls.join(""));
+
+        //var el = document.getElementById('tpOpenUcsc');
+        //el.addEventListener("click"
 
         activateTooltip('.tpIconButton');
 
