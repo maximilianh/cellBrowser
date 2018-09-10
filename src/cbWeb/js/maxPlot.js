@@ -576,8 +576,10 @@ function MaxPlot(div, top, left, width, height, args) {
             x = x - Math.round(textWidth*0.5);
 
             // don't draw labels where the midpoint is off-screen
-            if (x<0 || y<0 || x>winWidth || y>winWidth)
-                continue;
+            //if (x<0 || y<0 || x>winWidth || y>winWidth) {
+                //bboxArr.push( null );
+                //continue;
+            //}
 
             var textX1 = x;
             var textY1 = y;
@@ -617,7 +619,7 @@ function MaxPlot(div, top, left, width, height, args) {
             ctx.strokeText(text,x,y); 
             ctx.fillText(text,x,y); 
 
-            bboxArr.push( [textX1-addMargin, textY1-addMargin, textX2+addMargin, textY2+addMargin] );
+            bboxArr.push( [textX1-addMargin, textY1-addMargin, textX2+addMargin, textY2+addMargin, text] );
         }
         ctx.restore();
         console.timeEnd("labels");
@@ -931,6 +933,7 @@ function MaxPlot(div, top, left, width, height, args) {
     this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY) {
        /* specify new coordinates of circles to draw, an array of (x,y) coordinates */
        /* Scale data to current screen dimensions */
+       /* clusterLabels is optional: array of [x, y, labelString]*/
        /* minX, maxX, etc are optional */
        // "==null" checks for both undefined and null
        if (coords.length === 0)
@@ -1445,7 +1448,7 @@ function MaxPlot(div, top, left, width, height, args) {
        var clientX = ev.clientX;
        var clientY = ev.clientY;
        if (ev.altKey || self.dragMode==="move") {
-           console.log("background mouse down, with meta");
+           console.log("alt key or move mode: starting panning");
            self.panStart();
        } 
        self.mouseDownX = clientX;
@@ -1454,7 +1457,12 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.onMouseUp = function(ev) {
        console.log("background mouse up");
-       if (self.panCopy!==null) {
+       // these are screen coordinates
+       var clientX = ev.clientX;
+       var clientY = ev.clientY;
+       var mouseDidNotMove = (self.mouseDownX === clientX && self.mouseDownY === clientY);
+
+       if (self.panCopy!==null && !mouseDidNotMove) {
            console.log("ending panning operation");
            self.panEnd();
            self.mouseDownX = null;
@@ -1468,10 +1476,7 @@ function MaxPlot(div, top, left, width, height, args) {
            console.log("first click must have been outside of canvas");
            return;
        }
-       // these are screen coordinates
-       var clientX = ev.clientX;
-       var clientY = ev.clientY;
-       
+
        // the subsequent operations require canvas coordinates x/y
        var canvasTop = self.top;
        var canvasLeft = self.left;
@@ -1481,7 +1486,7 @@ function MaxPlot(div, top, left, width, height, args) {
        var y2 = clientY - canvasTop;
 
        // user did not move the mouse, so this is a click
-       if (self.mouseDownX === clientX && self.mouseDownY === clientY) {
+       if (mouseDidNotMove) {
             var clickedLabel = self.labelAt(x2, y2);
             if (clickedLabel!==null)
                 self.onLabelClick(clickedLabel, ev);
@@ -1539,7 +1544,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var pxY = ev.clientY - self.top;
         var spinFact = 0.1;
         if (ev.ctrlKey) // = OSX pinch and zoom gesture
-            spinFact = 0.01;  // is too fast, so slow it down a little
+            spinFact = 0.02;  // is too fast, so slow it down a little
         var zoomFact = 1-(spinFact*normWheel.spinY);
         console.log("Wheel Zoom by "+zoomFact);
         self.zoomBy(zoomFact, pxX, pxY);

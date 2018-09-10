@@ -131,6 +131,8 @@ var cbUtil = (function () {
             return Float64Array;
         if ((typeStr==="float" || typeStr=="float32"))
             return Float32Array;
+        else if (typeStr==="uint32" || typeStr=="dword")
+            return Uint32Array;
         else if (typeStr==="uint16" || typeStr=="word")
             return Uint16Array;
         else if (typeStr==="uint8" || typeStr==="byte")
@@ -523,8 +525,7 @@ function CbDbFile(url) {
         var end = start + lineLen - 1; // end pos is inclusive
 
         var url = cbUtil.joinPaths([self.url, "exprMatrix.bin"]);
-        //cbUtil.loadFile(url+"?"+geneSym, null, onLineDone, onProgress, {'gene':geneSym}, 
-         //   start, end);
+
         if (geneSym in this.exprCache)
             onGeneDone(this.exprCache[geneSym], geneSym);
         else
@@ -585,6 +586,5 @@ function CbDbFile(url) {
         var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", self.conf.clusterField);
         return idx;
     };
-
 
 }

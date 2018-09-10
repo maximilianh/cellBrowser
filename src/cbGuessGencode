@@ -8,7 +8,7 @@ from os.path import join, basename, dirname, isfile
 # ==== functions =====
     
 # directory to static data files, e.g. gencode tables
-dataDir = join(dirname(__file__), "cbData/genes")
+dataDir = join(dirname(__file__), "cbData","genes")
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -35,14 +35,19 @@ def parseArgs():
 def parseGencode(baseDir):
     ret = {}
     logging.info("Parsing gene tables")
-    for fname in glob.glob(join(baseDir, "gencode*.tab")):
+    fnames = glob.glob(join(baseDir, "gencode*.symbols.tsv"))
+    if len(fnames)==0:
+        logging.error("No gencode input files found. Please check source code.")
+        sys.exit(1)
+
+    for fname in fnames:
         logging.info("Parsing %s" % fname)
         genes = set()
         for line in open(fname):
             if "geneId" in line:
                 continue
             row = line.rstrip("\n").split('\t')
-            geneId = row[1].split(".")[0]
+            geneId = row[0].split(".")[0]
             genes.add(geneId)
 
         version = basename(fname).split(".")[0]
@@ -77,6 +82,7 @@ def main():
     args, options = parseArgs()
 
     relGenes = parseGencode(options.gencodeDir)
+    assert(len(relGenes)!=0)
     for fname in args:
         guessGencodeVersion(relGenes, fname)
     #if options.test:
