@@ -1998,7 +1998,11 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         logging.info("%s does not exist. This looks like the first run with this output directory" % confName)
         return True
 
-    lastConf = json.load(open(confName))
+    try:
+        lastConf = json.load(open(confName))
+    except json.decoder.JSONDecodeError:
+        errAbort("Is the file %s broken? Please remove the file and run this command again." % confName)
+
     if not "fileVersions" in lastConf or not "inMatrix" in lastConf["fileVersions"] \
         or not "outMatrix" in lastConf["fileVersions"]:
             logging.warn("Internal error? Missing 'fileVersions' tag in %s" % confName)
