@@ -1272,12 +1272,10 @@ var tsnePlot = function() {
         var rows = legend.rows;
         var n = rows.length;
         var pal = null;
-        var predefColors = db.conf.metaFields[metaFieldIndex].colors;
-        if (metaFieldIndex!==undefined && predefColors!==undefined) {
-                pal = predefColors;
-        } else {
+        if (metaFieldIndex!==undefined && db.conf.metaFields[metaFieldIndex].colors!==undefined)
+            pal = db.conf.metaFields[metaFieldIndex].colors;
+        else
             pal = makeColorPalette(palName, n);
-        }
 
         if (pal===null) {
             alert("Sorry, this palette does not have "+rows.length+" different colors");
