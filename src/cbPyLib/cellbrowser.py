@@ -2178,10 +2178,12 @@ def writeConfig(inConf, outConf, datasetDir):
     ofh.close()
 
     outConfFname = join(datasetDir, "dataset.json")
-    descJsonFh = open(outConfFname, "w")
+    tmpName = outConfFname+".tmp"
+    descJsonFh = open(tmpName, "w")
     json.dump(outConf, descJsonFh, indent=2)
-    logging.info("Wrote %s" % outConfFname)
     descJsonFh.close()
+    os.rename(tmpName, outConfFname)
+    logging.info("Wrote %s" % outConfFname)
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
