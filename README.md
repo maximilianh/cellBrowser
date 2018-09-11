@@ -56,7 +56,7 @@ From Jupyter or Python3:
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
     # convert to tsv files, create a cellbrowser.conf
-    scanpyToTsv(adata, "scanpyOut")
+    cellbrowser.scanpyToTsv(adata, "scanpyOut")
 
     # create the html directory from this
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
