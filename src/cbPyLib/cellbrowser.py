@@ -2197,7 +2197,7 @@ def writeConfig(inConf, outConf, datasetDir):
 
     outConfFname = join(datasetDir, "dataset.json")
     writeJson(outConf, outConfFname)
-    logging.info("Wrote %s" % outConfName)
+    logging.info("Wrote %s" % outConfFname)
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
