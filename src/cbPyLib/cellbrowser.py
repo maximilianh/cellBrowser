@@ -2064,20 +2064,39 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
+    confName = join(path, "cellbrowser.conf")
+    ofh = open(confName, "w")
+
+def writeJson(data, outFname):
+    """ https://stackoverflow.com/a/37795053/233871 """
+    # Make it work for Python 2+3 and with Unicode
+    try:
+        to_unicode = unicode
+    except NameError:
+        to_unicode = str
+
+    # Write JSON file
+    with io.open(outFname, 'w', encoding='utf8') as outfile:
+        #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
+        str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
+        outfile.write(to_unicode(str_))
+
 def writeConfig(inConf, outConf, datasetDir):
     " write dataset summary info to json file. Also keep a copy of the input config. "
     # keep a copy of the original config in the output directory for debugging later
     confName = join(datasetDir, "cellbrowser.json.bak")
-    ofh = open(confName, "w")
-    json.dump(inConf, ofh, indent=2)
+    writeJson(inConf, confName)
+    #ofh = open(confName, "w")
+    #json.dump(inConf, ofh, indent=2)
+    #ofh.close()
     logging.info("Wrote %s" % confName)
-    ofh.close()
 
     outConfFname = join(datasetDir, "dataset.json")
-    descJsonFh = open(outConfFname, "w")
-    json.dump(outConf, descJsonFh, indent=2)
+    #descJsonFh = open(outConfFname, "w")
+    #json.dump(outConf, descJsonFh, indent=2)
+    #descJsonFh.close()
+    writeJson(outConf, outConfFname)
     logging.info("Wrote %s" % outConfFname)
-    descJsonFh.close()
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
