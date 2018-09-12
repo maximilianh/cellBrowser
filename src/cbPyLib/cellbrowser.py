@@ -1951,6 +1951,20 @@ def readGeneSymbols(inConf):
     geneToSym = readGeneToSym(geneIdTable)
     return geneToSym
 
+def readMitos(org):
+    ' return the gene IDs of all mitochondrial genes. 37 for human for all gencode versions '
+    if org=="human":
+        geneToSym = readGeneSymbols({'geneIdType':"gencode22"})
+    else:
+        assert(False) # not doing mouse just yet
+
+    mitos = []
+    for geneId, sym in iterItems(geneToSym):
+        if sym.startswith("MT-"):
+            mitos.append(geneId)
+    logging.debug("Found %d mitochondrial genes for %s, e.g. %s" % (len(mitos), org, mitos[0]))
+    return mitos
+
 def getAbsPath(conf, key):
     " get assume that value of key in conf is a filename and use the inDir value to make it absolute "
     return abspath(join(conf["inDir"], conf[key]))
@@ -2077,19 +2091,64 @@ def convertDataset(inConf, outConf, datasetDir):
 
     readQuickGenes(inConf, geneToSym, outConf)
 
-def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName):
+def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     #if 'X_draw_graph_fa' in anndata.obsm.dtype.names:
     import pandas as pd
-    fname = join(outDir, filePrefix+"_coords.tsv")
+    fileBase = filePrefix+"_coords.tsv"
+    fname = join(outDir, fileBase)
     if fieldName in anndata.obsm.dtype.names:
         logging.info("Writing %s coords to %s" % (fullName, fname))
         fa2_coord=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
         fa2_coord.columns=['x','y']
         fa2_coord.to_csv(fname,sep='\t')
+        desc.append( {'file':fileBase, 'shortLabel': fullName} )
     else:
         logging.warn('Couldnt find %s coordinates' % fullName)
 
-def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
+def writeCellbrowserConf(name, coordsList, fname):
+    for c in name:
+        assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
+
+    #coords = [
+        #("tsne", "Scanpy t-SNE"),
+        #("umap", "Scanpy UMAP"),
+        #("fa2", "Scanpy ForceAtlas2"),
+        #("phate", "Scanpy PHATE"),
+        #("pagaFa2", "Scanpy PAGA+ForceAtlas2"),
+    #]
+
+    #coordsList = []
+    #for prefix, label in coords:
+        #fname = prefix+"_coords.tsv"
+        #if isfile(join(outDir, fname)):
+            #coordsList.append({"file":fname, "shortLabel" : label})
+
+    conf = """
+name='%(name)s'
+shortLabel='%(name)s'
+exprMatrix='exprMatrix.tsv'
+#tags = ["10x", 'smartseq2']
+meta='cell_to_cluster.tsv'
+geneIdType='symbols'
+clusterField='Louvain Cluster'
+labelField='Louvain Cluster'
+enumFields=['Louvain Cluster']
+markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]
+coords=%(coordsList)s
+radius=5
+alpha=0.6
+""" % locals()
+
+    #fname = join(outDir, 'cellbrowser.conf')
+    if isfile(fname):
+        logging.info("Not overwriting %s, file already exists." % fname)
+        return
+
+    ofh = open(fname, "w")
+    ofh.write(conf)
+    ofh.close()
+
+def scanpyToTsv(anndata, path, meta_option=None, nb_marker=50, datasetName='cbScanpy-Data'):
     """
     Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2103,6 +2162,10 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
     :param nb_marker: number of cluster markers to store. Default: 100
     
     """
+    confName = join(path, "cellbrowser.conf")
+    if isfile(confName):
+        errAbort("File %s already exists. Cowardly refusing to overwrite it. Please move the file and re-run this command" % confName)
+
     import numpy as np
     import pandas as pd
     import scanpy.api as sc
@@ -2116,12 +2179,13 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
     data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
     data_matrix.to_csv(join(path, 'exprMatrix.tsv'),sep='\t',index=True)
 
-    writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE")
-    writeAnndataCoords(anndata, "X_umap", path, "umap", "UMAP")
-    writeAnndataCoords(anndata, "X_draw_graph_fa", path, "fa2", "ForceAtlas2")
-    writeAnndataCoords(anndata, "X_pagaFa2", path, "pagaFa2", "PAGA+ForceAtlas2")
-    writeAnndataCoords(anndata, "X_pagaUmap", path, "pagaUmap", "PAGA+UMAP")
-    writeAnndataCoords(anndata, "X_phate", path, "phate", "PHATE")
+    coordDescs = []
+    writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE", coordDescs)
+    writeAnndataCoords(anndata, "X_umap", path, "umap", "UMAP", coordDescs)
+    writeAnndataCoords(anndata, "X_draw_graph_fa", path, "fa2", "ForceAtlas2", coordDescs)
+    writeAnndataCoords(anndata, "X_pagaFa2", path, "pagaFa2", "PAGA+ForceAtlas2", coordDescs)
+    writeAnndataCoords(anndata, "X_pagaUmap", path, "pagaUmap", "PAGA+UMAP", coordDescs)
+    writeAnndataCoords(anndata, "X_phate", path, "phate", "PHATE", coordDescs)
 
     ##Check for louvain clustering
     if 'louvain' in anndata.obs:
@@ -2168,8 +2232,13 @@ def scanpyToTsv(anndata, path , meta_option=None, nb_marker=100):
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
-    confName = join(path, "cellbrowser.conf")
-    ofh = open(confName, "w")
+    writeCellbrowserConf(datasetName, coordDescs, confName)
+    #ofh = open(confName, "w")
+    #ofh.write("coords = %s\n" % repr(coordDescs))
+    #ofh.write("meta = 'meta.tsv'\n")
+    #ofh.write("name = %s" % repr(datasetName))
+    #ofh.write("exprMatrix = 'exprMatrix.tsv'")
+    #ofh.close()
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """

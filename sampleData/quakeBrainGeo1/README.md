@@ -9,6 +9,6 @@ meta.tsv.
 
 A viewer was then created with these commands:
 
-    ../../cbPrep matrix -e geneMatrix.tsv --log2 --skip -m meta.tsv -o ~/public_html/cbTest/ -g markerSymbols.txt -l biosample_cell_type
-
-    ../../cbPrep html -o ~/public_html/cbTest
+    ../../src/cbScanpy -e exprMatrix.tsv.gz -o scanPy -d
+    cd scanPy
+    ../../../cbBuild -p 8888
