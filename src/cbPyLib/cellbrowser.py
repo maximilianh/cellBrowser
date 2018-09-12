@@ -1892,7 +1892,8 @@ def readQuickGenes(inConf, geneToSym, outConf):
 def getFileVersion(fname):
     metaVersion = {}
     metaVersion["fname"] = fname
-    metaVersion["md5"] = md5ForFile(fname)
+    hexHash = md5ForFile(fname).decode("ascii")
+    metaVersion["md5"] = hexHash
     metaVersion["size"] = getsize(fname)
     metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
     return metaVersion
