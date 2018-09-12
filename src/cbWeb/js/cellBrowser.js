@@ -253,6 +253,10 @@ var tsnePlot = function() {
             var f = (count / 1000000);
             return f.toFixed(1)+"M";
         }
+        if (count>10000) {
+            var f = (count / 1000);
+            return f.toFixed(0)+"k";
+        }
         if (count>1000) {
             var f = (count / 1000);
             return f.toFixed(1)+"k";
@@ -1155,7 +1159,7 @@ var tsnePlot = function() {
     function changeLegendPalette(palName) {
         /* change the legend color palette and put it into the URL */
         var rows = gLegend.rows;
-        var success = legendSetPalette(gLegend, palName);
+        var success = legendSetPalette(gLegend, palName, legend.metaFieldIdx);
         if (success) {
             if (palName==="default")
                 changeUrl({"pal":null});
@@ -1243,8 +1247,11 @@ var tsnePlot = function() {
         return colArr;
     }
 
-    function legendSetPalette(legend, palName) {
-    /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors. */
+    function legendSetPalette(legend, palName, metaFieldIndex) {
+    /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors. 
+     * metaFieldIndex is optional. If it is set, will use the predefined colors that are
+     * in the field configuration.
+     * */
         if (palName==="default") {
             legendResetColors();
             changeUrl({"pal":null});
@@ -1264,7 +1271,11 @@ var tsnePlot = function() {
 
         var rows = legend.rows;
         var n = rows.length;
-        var pal = makeColorPalette(palName, n);
+        var pal = null;
+        if (metaFieldIndex!==undefined && db.conf.metaFields[metaFieldIndex].colors!==undefined)
+            pal = db.conf.metaFields[metaFieldIndex].colors;
+        else
+            pal = makeColorPalette(palName, n);
 
         if (pal===null) {
             alert("Sorry, this palette does not have "+rows.length+" different colors");
@@ -1705,7 +1716,7 @@ var tsnePlot = function() {
             var binInfo = numMetaToBinInfo(fieldInfo);
             legend.rows = makeLegendRowsNumeric(binInfo);
             legend.rowType = "range";
-            legendSetPalette(legend, "qual");
+            legendSetPalette(legend, "qual", metaIndex);
             return legend;
         }
 
@@ -1774,7 +1785,7 @@ var tsnePlot = function() {
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
         legend.rowType = "category";
-        legendSetPalette(legend, "qual");
+        legendSetPalette(legend, "qual", metaIndex);
         return legend;
     }
 
@@ -2031,6 +2042,35 @@ var tsnePlot = function() {
         db.searchGenes(query.toLowerCase(), callback);
     }
 
+    function arrayBufferToString(buf, callback) {
+        /* https://stackoverflow.com/questions/8936984/uint8array-to-string-in-javascript */
+         var bb = new Blob([new Uint8Array(buf)]);
+         var f = new FileReader();
+         f.onload = function(e) {
+           callback(e.target.result);
+         };
+         f.readAsText(bb);
+    }
+
+
+    function makeHubUrl(geneSym) {
+        /* return URL of the hub.txt file, possibly jumping to a given gene  */
+            var hubUrl = db.conf.hubUrl;
+            if (hubUrl==undefined)
+                return null;
+            var ucscDb = db.conf.ucscDb;
+            if (ucscDb===undefined) {
+                alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
+                return "";
+            }
+            var fullUrl = "http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+
+            if (geneSym!==undefined)
+                fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
+
+            return fullUrl;
+    }
+
     function buildToolBar (coordInfo, datasetName, fromLeft, fromTop) {
     /* add the tool bar with icons of tools and add under body to the DOM */
         $("#tpToolBar").remove();
@@ -2057,14 +2097,23 @@ var tsnePlot = function() {
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 200, 0);
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 280, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
         
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
 
+        var hubUrl = db.conf.hubUrl;
+        if (hubUrl!==undefined) {
+            var fullUrl = makeHubUrl();
+            htmls.push('<a target=_blank href="'+fullUrl+'" id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Genome Browser</a>');
+        }
+
         htmls.push("</div>");
 
         $(document.body).append(htmls.join(""));
+
+        //var el = document.getElementById('tpOpenUcsc');
+        //el.addEventListener("click"
 
         activateTooltip('.tpIconButton');
 
@@ -2249,7 +2298,7 @@ var tsnePlot = function() {
         intro.setOption("skipLabel", "Stop the tutorial");
 
         if (addFirst) {
-            intro.setOption("skipLabel", "I know. Do not show the tutorial.");
+            intro.setOption("skipLabel", "I know. Close this window.");
             intro.addStep({
                 element: document.querySelector('#tpHelpButton'),
                 intro: "Are you here for the first time and wondering what this is?<br>The tutorial takes only 1 minute. To skip the tutorial now, click 'I know' below or press Esc.<br>You can always show it again by clicking 'Help > Tutorial'.",
@@ -2362,19 +2411,36 @@ var tsnePlot = function() {
         //setZoomRange();
     }
 
-    function startLoadTsv(fileType, fullUrl, func, addInfo) {
+    function startLoadTsv(fullUrl, func, addInfo) {
     /* load a tsv file relative to baseUrl and call a function when done */
-    //var fullUrl = joinPaths([gCurrentDataset.baseUrl,path]);
-    Papa.parse(fullUrl, {
-            download: true,
-            complete: function(results, localFile) {
-                        func(results, localFile, addInfo);
-                    },
-            error: function(err, file) {
-                        if (addInfo!==undefined)
-                            alert("could not load "+path);
-                    }
-            });
+        function conversionDone(data) {
+            Papa.parse(data, {
+                    complete: function(results, localFile) {
+                                func(results, localFile, addInfo);
+                            },
+                    error: function(err, file) {
+                                if (addInfo!==undefined)
+                                    alert("could not load "+fullUrl);
+                            }
+                    });
+        }
+
+        function onTsvLoadDone(res) {
+            var data = res.target.response;
+            if (res.target.responseURL.endsWith(".gz")) {
+                data = pako.ungzip(data);
+                //data = String.fromCharCode.apply(null, data); // only good for short strings
+                data = arrayBufferToString(data, conversionDone);
+            }
+            else
+                conversionDone(data);
+        }
+
+    var req = new XMLHttpRequest();
+    req.addEventListener("load", onTsvLoadDone);
+    req.open('GET', fullUrl, true);
+    req.responseType = "arraybuffer";
+    req.send();
     }
 
     function removeFocus() {
@@ -2620,14 +2686,14 @@ var tsnePlot = function() {
     /* user right-clicks on a meta field */
         var metaIdx = parseInt(options.$trigger[0].id.split("_")[1]);
 
+        //if (key==0) {
+            //gCurrentDataset.labelField = gCurrentDataset.metaFields[metaIdx];
+            //gClusterMids = null; // force recalc
+            //plotDots();
+            //renderer.render(stage);
+            //updateMenu();
+        //}
         if (key==0) {
-            gCurrentDataset.labelField = gCurrentDataset.metaFields[metaIdx];
-            gClusterMids = null; // force recalc
-            plotDots();
-            renderer.render(stage);
-            updateMenu();
-        }
-        else if (key==1) {
             copyToClipboard("#tpMeta_"+metaIdx);
             //$("textarea").select();
             //document.execCommand('copy');
@@ -3045,6 +3111,12 @@ var tsnePlot = function() {
        console.log("Hover over "+clusterName);
     }
 
+    function sanitizeName(name) {
+        /* ported from cellbrowser.py: remove non-alpha, allow underscores */
+        var newName = name.replace(/[^a-zA-Z_0-9+]/g, "");
+        return newName;
+    }
+
     function onClusterNameClick(clusterName) {
         /* build and open the dialog with the marker genes table for a given cluster */
         console.log("building marker genes window for "+clusterName);
@@ -3056,11 +3128,11 @@ var tsnePlot = function() {
         var htmls = [];
 
         htmls.push("<div id='tpPaneHeader' style='padding:8px'>");
-        var hubUrl = db.conf.hubUrl;
-        if (hubUrl!==undefined) {
-            htmls.push("<p>");
-            htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
-        }
+        //var hubUrl = db.conf.hubUrl;
+        //if (hubUrl!==undefined) {
+            //htmls.push("<p>");
+            //htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
+        //}
 
         htmls.push("Click gene symbols below to color plot by gene<br>");
 
@@ -3079,12 +3151,13 @@ var tsnePlot = function() {
         for (var tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
             var divName = "tabs-"+tabIdx;
             var tabDir = tabInfo[tabIdx].name;
-            var markerTsvUrl = joinPaths([db.name, "markers", tabDir, clusterName.replace("/", "_")+".tsv"]);
+            var sanName = sanitizeName(clusterName);
+            var markerTsvUrl = joinPaths([db.name, "markers", tabDir, sanName+".tsv.gz"]);
             htmls.push("<div id='"+divName+"'>");
             htmls.push("Loading...");
             htmls.push("</div>");
 
-            startLoadTsv("markers", markerTsvUrl, loadMarkersFromTsv, divName);
+            startLoadTsv(markerTsvUrl, loadMarkersFromTsv, divName);
         }
 
         htmls.push("</div>"); // tabs
@@ -3162,7 +3235,7 @@ var tsnePlot = function() {
         var htmls = [];
 
 
-        htmls.push("<table class='table'>");
+        htmls.push("<table class='table' id='tpMarkerTable'>");
         htmls.push("<thead>");
         var hprdCol = null;
         var geneListCol = null;
@@ -3170,6 +3243,16 @@ var tsnePlot = function() {
         var pValCol = null
         for (var i = 1; i < headerRow.length; i++) {
             var colLabel = headerRow[i];
+            var isNumber = false;
+
+            if (colLabel.indexOf('|') > -1) {
+                var parts = colLabel.split("|");
+                colLabel = parts[0];
+                var colType = parts[1];
+                if (colType==="int" || colType==="float")
+                    isNumber = true;
+            }
+
             var width = null;
             if (colLabel==="_geneLists") {
                 colLabel = "Gene Lists";
@@ -3189,26 +3272,39 @@ var tsnePlot = function() {
                 width = "200px";
             }
 
+            var addStr = "";
+            if (isNumber)
+                addStr = " data-sort-method='number'";
+
             if (width===null)
-                htmls.push("<th>");
+                htmls.push("<th"+addStr+">");
             else
-                htmls.push("<th style='width:"+width+"'>");
+                htmls.push("<th style='width:"+width+"'"+addStr+">");
             htmls.push(colLabel);
             htmls.push("</th>");
         }
         htmls.push("</thead>");
 
+        var hubUrl = makeHubUrl();
+
         htmls.push("<tbody>");
         for (var i = 1; i < rows.length; i++) {
-            htmls.push("<tr>");
             var row = rows[i];
+            if ((row.length===1) && row[0]==="") // papaparse sometimes adds empty lines to files
+                continue;
+
+            htmls.push("<tr>");
             var geneId = row[0];
             var geneSym = row[1];
-            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a></td>");
+            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
+            if (fullHubUrl!==null) {
+                var fullHubUrl = hubUrl+"&position="+geneSym+"&singleSearch=knownCanonical";
+                htmls.push("<a target=_blank class='link' style='margin-left: 10px' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>UCSC</a>");
+            }
+            htmls.push("</td>");
 
             for (var j = 2; j < row.length; j++) {
                 var val = row[j];
-                console.log(row);
                 htmls.push("<td>");
                 // added for the autism dataset, allows to add mouse overs with images
                 // field has to start with ./
@@ -3232,6 +3328,7 @@ var tsnePlot = function() {
         htmls.push("</table>");
 
         $("#"+divId).html(htmls.join(""));
+        new Tablesort(document.getElementById('tpMarkerTable'));
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
 

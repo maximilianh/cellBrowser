@@ -56,7 +56,7 @@ From Jupyter or Python3:
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
     # convert to tsv files, create a cellbrowser.conf
-    scanpyToTsv(adata, "scanpyOut")
+    cellbrowser.scanpyToTsv(adata, "scanpyOut")
 
     # create the html directory from this
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
@@ -68,3 +68,35 @@ From Jupyter or Python3:
 ### Convert a Seurat object
 
     todo
+
+### Optional Python modules to install
+
+In cellbrowser.conf you can specify a color file. If this file contains html color names, you
+have to install the module webcolors:
+
+    pip install webcolors
+
+### Adding your dataset
+
+The first step is to copy the file sampleData/sample/cellbrowser.conf to your current directory, where
+the expression matrix and the meta data file is stored. 
+
+Make sure that your files have the correct line endings and fix the line endings if necessary with mac2unix or dos2unix.
+
+    file *.txt *.csv *.tsv *.tab
+
+It's a good idea to gzip your expression matrix at this stage. The expression matrix must have
+only one column for the gene identifiers. Ideally your expression matrix is a
+tab-separated file and has as many sample columns as you have rows in the meta
+data file  and they appear the same order. If this is the case, the conversion of the matrix
+is much quicker.
+
+Edit the file cellbrowser.conf and adapt the values.
+
+From this directory, run 
+
+    cbBuild -o <yourWebserverHtmlDirectory>
+
+Navigate your internet browser to the webserver directory (or supply the -p
+<port> option to have cbBuild run a webserver).
+

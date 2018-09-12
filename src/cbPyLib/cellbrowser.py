@@ -189,7 +189,7 @@ def lineFileNextRow(inFile, utfHacks=False):
         #line = line.decode("latin1")
         # skip special chars in meta data and keep only ASCII
         #line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        line = line.rstrip("\n").rstrip("\r")
+        line = line.rstrip("\r\n")
         #if isPy3:
             #fields = line.split(sep, maxsplit=len(headers)-1)
         #else:
@@ -214,11 +214,11 @@ def parseOneColumn(fname, colName):
     " return a single column from a tsv as a list "
     ifh = open(fname)
     sep = "\t"
-    headers = ifh.readline().rstrip("\n").rstrip("\r").split(sep)
+    headers = ifh.readline().rstrip("\r\n").split(sep)
     colIdx = headers.index(colName)
     vals = []
     for line in ifh:
-        row = line.rstrip("\n").rstrip("\r").split(sep)
+        row = line.rstrip("\r\n").split(sep)
         vals.append(row[colIdx])
     return vals
 
@@ -226,7 +226,7 @@ def parseIntoColumns(fname):
     " parse tab sep file vertically, return as a list of (headerName, list of values) "
     ifh = open(fname)
     sep = "\t"
-    headers = ifh.readline().rstrip("\n").rstrip("\r").split(sep)
+    headers = ifh.readline().rstrip("\r\n").split(sep)
     colsToGet = range(len(headers))
 
     columns = []
@@ -234,7 +234,7 @@ def parseIntoColumns(fname):
         columns.append([])
 
     for line in ifh:
-        row = line.rstrip("\n").rstrip("\r").split(sep)
+        row = line.rstrip("\r\n").split(sep)
         for colIdx in colsToGet:
             columns[colIdx].append(row[colIdx])
     return zip(headers, columns)
@@ -263,7 +263,7 @@ def parseDict(fname):
         sep = ","
 
     for line in fh:
-        key, val = line.rstrip("\n").split(sep)
+        key, val = line.rstrip("\r\n").split(sep)
         d[key] = val
     return d
 
@@ -275,7 +275,7 @@ def readGeneToSym(fname):
     logging.info("Reading gene,symbol mapping from %s" % fname)
 
     # Jim's files and CellRanger files have no headers, they are just key-value
-    line1 = open(fname).readline().rstrip("\n")
+    line1 = open(fname).readline().rstrip("\r\n")
     fieldCount = line1.split('\t')
     if "geneId" not in line1:
         d = parseDict(fname)
@@ -433,6 +433,26 @@ def discretizeNumField(numVals, fieldMeta, numType):
     fieldMeta["arrType"] = "uint8"
     fieldMeta["_fmt"] = "<B"
     return digArr, fieldMeta
+
+def typeForStrings(strings):
+    """ given a list of strings, determine if they're all ints or floats or strings
+    """
+    floatCount = 0
+    intCount = 0
+    for val in strings:
+        try:
+            newVal = int(val)
+            intCount += 1
+        except:
+            try:
+                newVal = float(val)
+                floatCount += 1
+            except:
+                return "string"
+
+    if floatCount!=0:
+        return "float"
+    return "int"
 
 def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     """ given a list of strings, determine if they're all int, float or
@@ -611,19 +631,24 @@ class MatrixTsvReader:
 
     def open(self, fname, matType=None):
         " return something for iterMatrixTsv "
+        logging.debug("Opening %s" % fname)
         self.fname = fname
         if fname.endswith(".gz"):
             #ifh = gzip.open(fname)
             self.ifh = os.popen("gunzip -c "+fname+" 2> /dev/null") # faster, especially with two CPUs
         else:
-            self.ifh = open(fname)
+            self.ifh = open(fname, "rU")
         
         self.sep = "\t"
         if ".csv" in fname.lower():
             self.sep = ","
+            logging.debug("Field separator is %s" % repr(self.sep))
 
-        headLine = self.ifh.readline()
+        headLine = self.ifh.readline().rstrip("\r\n")
         self.sampleNames = headLine.split(self.sep)[1:]
+        self.sampleNames = [x.strip('"') for x in self.sampleNames]
+        assert(len(self.sampleNames)!=0)
+        logging.debug("Read %d sampleNames, e.g. %s" % (len(self.sampleNames), self.sampleNames[0]))
 
         if matType is None:
             self.matType = self.autoDetectMatType(10)
@@ -643,25 +668,32 @@ class MatrixTsvReader:
         logging.info("Auto-detecting number type of %s" % self.fname)
         geneCount = 0
 
-        self.matType = "float"
+        self.matType = "float" # iterRows needs this attribute
+
+        matType = "int"
         for geneId, sym, a in self.iterRows():
+            geneCount+=1
             if numpyLoaded:
                 a_int = a.astype(int)
                 hasOnlyInts = np.array_equal(a, a_int)
                 if not hasOnlyInts:
-                    return "float"
+                    matType = "float"
+                    break
             else:
                 for x in a:
                     frac, whole = math.modf(x)
                     if frac != 0.0:
-                        return "float"
+                        matType = "float"
+                        break
+                if matType=="float":
+                    break
             if geneCount==n:
                 break
-            geneCount+=1
 
         if geneCount==0:
             errAbort("empty expression matrix?")
-        return "int"
+        logging.debug("Matrix type is: %s" % matType)
+        return matType
 
     def iterRows(self):
         " yield (geneId, symbol, array) tuples from gene expression file. "
@@ -680,9 +712,9 @@ class MatrixTsvReader:
             self.lineLen = len(line)
 
             if isPy3:
-                gene, rest = line.split(sep, maxsplit=1)
+                gene, rest = line.rstrip("\r\n").split(sep, maxsplit=1)
             else:
-                gene, rest = string.split(line, sep, maxsplit=1)
+                gene, rest = string.split(line.rstrip("\r\n"), sep, maxsplit=1)
 
             if numpyLoaded:
                 arr = np.fromstring(rest, dtype=npType, sep=sep, count=sampleCount)
@@ -1032,7 +1064,9 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     highCount = 0
 
     matReader = MatrixTsvReader(geneToSym)
-    matType, sampleNames = matReader.open(fname)
+    matReader.open(fname)
+    matType = matReader.getMatType()
+    sampleNames = matReader.getSampleNames()
 
     geneCount = 0
     for geneId, sym, exprArr in matReader.iterRows():
@@ -1137,10 +1171,31 @@ def parseColors(fname):
     colDict = parseDict(fname)
     newDict = {}
     for metaVal, color in iterItems(colDict):
+        if color.lower()=="color":
+            continue
+
         color = color.strip().strip("#") # hbeale had a file with trailing spaces
-        assert(len(color)<=6) # colors can be no more than six hex digits
-        for c in color:
-            assert(c in "0123456789ABCDEFabcdef") # color must be a hex number
+
+        isHex = True
+        if len(color)!=6: # colors can be no more than six hex digits
+            isHex = False
+        else:
+            for c in color:
+                if (c not in "0123456789ABCDEFabcdef"):
+                    isHex = False
+                    break
+
+        if not isHex:
+            logging.debug("Looking up color %s" % color)
+            import webcolors # error? -> pip install webcolors
+            try:
+                color = webcolors.name_to_hex(color, spec='css3').lstrip("#")
+            except ValueError:
+                # R knows more colors, like deeppink4. We simply map to deeppink for now
+                # there does not seem to be a good table with R colors in Python yet
+                color = "".join([c for c in color if not c.isdigit()])
+                color = webcolors.name_to_hex(color, spec='css3').lstrip("#")
+
         newDict[metaVal] = color
     return newDict
 
@@ -1148,7 +1203,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
-    logging.info("Parsing coordinates from %s" % fname)
+    logging.info("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
     coords = []
     maxY = 0
     minX = 2^32
@@ -1236,7 +1291,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         if lNo==0:
             ofh.write(line)
             continue
-        row = line.rstrip("\n").rstrip("\r").split("\t")
+        row = line.rstrip("\r\n").split("\t")
         metaToLine[row[0]] = line
 
     # and write it in the right order
@@ -1311,10 +1366,16 @@ def runCommand(cmd):
 
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
-    if not doFilter:
+    if not doFilter and not ".csv" in inFname.lower():
         logging.info("Copying %s to %s" % (inFname, outFname))
-        cmd = "cp %s %s" % (inFname, outFname)
+
+        # XX stupid heuristics... 
+        if inFname.endswith(".gz"):
+            cmd = "cp %s %s" % (inFname, outFname)
+        else:
+            cmd = "cat %s | gzip -c > %s" % (inFname, outFname)
         ret = runCommand(cmd)
+
         if ret!=0 and isfile(outFname):
             os.remove(outFname)
             sys.exit(1)
@@ -1324,14 +1385,14 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
 
     logging.info("Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
 
-    ifh = openFile(inFname)
+    matIter = MatrixTsvReader()
+    matIter.open(inFname)
 
-    headLine = ifh.readline()
-    headers = headLine.rstrip("\n").rstrip("\r").split(sep)
+    sampleNames = matIter.getSampleNames()
 
     keepFields = set(filtSampleNames)
     keepIdx = [0]
-    for i, name in enumerate(headers):
+    for i, name in enumerate(sampleNames):
         if name in keepFields:
             keepIdx.append(i)
 
@@ -1341,16 +1402,22 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     ofh.write("\t".join(filtSampleNames))
     ofh.write("\n")
 
-    for line in ifh:
-        row = line.rstrip("\n").rstrip("\r").split(sep)
-        newRow = []
+    count = 0
+    for geneId, sym, exprArr in matIter.iterRows():
+        newRow = [geneId]
         for idx in keepIdx:
-            newRow.append(row[idx])
+            newRow.append(str(exprArr[idx]))
         ofh.write("\t".join(newRow))
         ofh.write("\n")
+        count += 1
+        if count%1000==0:
+            logging.info("Wrote %d rows" % count)
     ofh.close()
 
-    os.rename(tmpFname, outFname)
+    tmpFnameGz = outFname+".tmp.gz"
+    runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
+    os.remove(tmpFname)
+    os.rename(tmpFnameGz, outFname)
 
 def convIdToSym(geneToSym, geneId):
     if geneToSym is None:
@@ -1358,20 +1425,39 @@ def convIdToSym(geneToSym, geneId):
     else:
         return geneToSym[geneId]
 
+def to_camel_case(snake_str):
+    components = snake_str.split('_')
+    # We capitalize the first letter of each component except the first one                                     # with the 'title' method and join them together.
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+def sanitizeName(name):
+    " remove all nonalpha chars, allow underscores "
+    assert(name!=None)
+    #newName = to_camel_case(name.replace(" ", "_"))
+    newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
+    assert(len(newName)!=0)
+    logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
+    return newName
+
 def splitMarkerTable(filename, geneToSym, outDir):
-    " split .tsv on first field and create many files in outDir with the non-first columns. Also map geneIds to symbols. "
+    """ split .tsv on first field and create many files in outDir with columns 2-end.
+    """
     if filename is None:
         return
     logging.info("Splitting cluster markers from %s into directory %s" % (filename, outDir))
     #logging.debug("Splitting %s on first field" % filename)
     ifh = openFile(filename)
 
-    headers = ifh.readline().rstrip("\n").split('\t')
+    headers = ifh.readline().rstrip("\r\n").split('\t')
     otherHeaders = headers[2:]
 
     data = defaultdict(list)
+    columns = defaultdict(list)
     for line in ifh:
-        row = line.rstrip("\n").split('\t')
+        row = line.rstrip("\r\n").split('\t')
+        for colIdx, val in enumerate(row[1:]):
+            columns[colIdx].append(val)
+
         clusterName = row[0]
         geneId = row[1]
         scoreVal = float(row[2])
@@ -1388,20 +1474,35 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
         data[clusterName].append(newRow)
 
+    colTypes = {}
+    for colIdx, vals in iterItems(columns):
+        colTypes[colIdx] = typeForStrings(vals)
+
+    headersWithType = []
+    for colIdx, header in enumerate(otherHeaders):
+        if colTypes[colIdx+1]!="string":
+            header = header+"|"+colTypes[colIdx+1]
+        headersWithType.append(header)
+
     newHeaders = ["id", "symbol"]
-    newHeaders.extend(otherHeaders)
+    newHeaders.extend(headersWithType)
 
     fileCount = 0
+    sanNames = set()
     for clusterName, rows in iterItems(data):
         #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
-        clusterName = clusterName.replace("/","_")
-        outFname = join(outDir, clusterName+".tsv")
+        sanName = sanitizeName(clusterName)
+        assert(sanName not in sanNames) # after sanitation, cluster names must be unique
+        sanNames.add(sanName)
+
+        outFname = join(outDir, sanName+".tsv")
         logging.debug("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
         ofh.write("\n")
         for row in rows:
-            row[2] = "%0.3f" % row[2] # limit to 3 digits
+            scoreVal = row[2]
+            row[2] = "%0.4E" % row[2] # limit to 4 digits
             ofh.write("\t".join(row))
             ofh.write("\n")
         ofh.close()
@@ -1424,10 +1525,9 @@ def execfile(filepath, globals=None, locals=None):
     with open(filepath, 'rb') as file:
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
-def loadConfig(fname, outDir):
+def loadConfig(fname):
     """ parse python in fname and return variables as dictionary. 
     add the directory of fname to the dict as 'inDir'.
-    Keep a copy of the config in outDir.
     """
     logging.debug("Loading config from %s" % fname)
     g = {}
@@ -1444,7 +1544,6 @@ def loadConfig(fname, outDir):
         errAbort("The input configuration has to define the 'exprMatrix' statement")
     if "tags" in conf and type(conf["tags"])!=type([]):
         errAbort("'tags' in input config file must be a list")
-
 
     conf["inDir"] = dirname(fname)
 
@@ -1610,7 +1709,7 @@ def readHeaders(fname):
     " return headers of a file "
     logging.info("Reading headers of file %s" % fname)
     ifh = openFile(fname, "rt")
-    line1 = ifh.readline().rstrip("\n").rstrip("\r")
+    line1 = ifh.readline().rstrip("\r\n")
     sep = sepForFile(fname)
     row = line1.split(sep)
     row = [x.rstrip('"').lstrip('"') for x in row]
@@ -1680,11 +1779,9 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
 
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
-    nozipFname = outMatrixFname.replace(".gz", "")
     matrixFname = getAbsPath(inConf, "exprMatrix")
     outConf["fileVersions"]["inMatrix"] = getFileVersion(matrixFname)
-    copyMatrixTrim(matrixFname, nozipFname, metaSampleNames, needFilterMatrix)
-    runCommand("gzip -f %s" % nozipFname)
+    copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix)
 
     # step2: discretize expression matrix for the viewer, compress and index to file
     #logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
@@ -1713,8 +1810,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     " convert the coordinates "
     coordFnames = makeAbsDict(inConf, "coords")
 
+    flipY = inConf.get("flipY", False)
     useTwoBytes = inConf.get("useTwoBytes", False)
-    newCoords = []
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -1723,10 +1820,11 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         labelVec, labelVals = parseTsvColumn(outMeta, clusterLabelField)
         outConf["labelField"] = clusterLabelField
 
+    newCoords = []
     for coordIdx, coordInfo in enumerate(coordFnames):
         coordFname = coordInfo["file"]
         coordLabel = coordInfo["shortLabel"]
-        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, True)
+        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -1780,7 +1878,7 @@ def convertMarkers(inConf, outConf, geneToSym, outDir):
 
         splitMarkerTable(markerFname, geneToSym, markerDir)
 
-        newMarkers.append( {"name" : clusterName, "shortLabel" : markerLabel})
+        newMarkers.append( {"name" : sanitizeName(clusterName), "shortLabel" : markerLabel})
     outConf["markers"] = newMarkers
 
 def readQuickGenes(inConf, geneToSym, outConf):
@@ -1841,7 +1939,7 @@ def readGeneSymbols(inConf):
         logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
         geneIdType = "symbols"
 
-    if geneIdType == 'symbols' or geneIdType=="symbol":
+    if geneIdType.startswith('symbol'):
         return None
 
     searchMask = join(dataDir, "genes", geneIdType+".symbols.tsv")
@@ -1890,7 +1988,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     size of inMatrixFname and also compare the sample names with the sample names in
     outMatrixFname
     """
-    logging.info("Determining if %s needs to created" % outMatrixFname)
+    logging.info("Determining if %s needs to be created" % outMatrixFname)
     if not isfile(outMatrixFname):
         logging.info("%s does not exist." % outMatrixFname)
         return True
@@ -1900,7 +1998,11 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         logging.info("%s does not exist. This looks like the first run with this output directory" % confName)
         return True
 
-    lastConf = json.load(open(confName))
+    try:
+        lastConf = json.load(open(confName))
+    except json.decoder.JSONDecodeError:
+        errAbort("Is the file %s broken? Please remove the file and run this command again." % confName)
+
     if not "fileVersions" in lastConf or not "inMatrix" in lastConf["fileVersions"] \
         or not "outMatrix" in lastConf["fileVersions"]:
             logging.warn("Internal error? Missing 'fileVersions' tag in %s" % confName)
@@ -1943,7 +2045,7 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb"]:
         copyConf(inConf, outConf, tag)
 
     # convertMeta also compares the sample IDs between meta and matrix
@@ -1953,13 +2055,15 @@ def convertDataset(inConf, outConf, datasetDir):
     geneToSym = None
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
-    geneToSym = -1 # None means "there are no gene symbols to map to"
+    geneToSym = -1 # None would mean "there are no gene symbols to map to"
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
 
     if doMatrix:
         geneToSym = readGeneSymbols(inConf)
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
+        # in case script crashes after this, keep the current state of the config
+        writeConfig(inConf, outConf, datasetDir)
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
 
@@ -2076,27 +2180,24 @@ def writeJson(data, outFname):
         to_unicode = str
 
     # Write JSON file
-    with io.open(outFname, 'w', encoding='utf8') as outfile:
+    tmpName = outFname+".tmp"
+    with io.open(tmpName, 'w', encoding='utf8') as outfile:
         #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
         str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
         outfile.write(to_unicode(str_))
+    os.rename(tmpName, outFname)
+    logging.info("Wrote %s" % outFname)
 
 def writeConfig(inConf, outConf, datasetDir):
     " write dataset summary info to json file. Also keep a copy of the input config. "
     # keep a copy of the original config in the output directory for debugging later
     confName = join(datasetDir, "cellbrowser.json.bak")
     writeJson(inConf, confName)
-    #ofh = open(confName, "w")
-    #json.dump(inConf, ofh, indent=2)
-    #ofh.close()
     logging.info("Wrote %s" % confName)
 
     outConfFname = join(datasetDir, "dataset.json")
-    #descJsonFh = open(outConfFname, "w")
-    #json.dump(outConf, descJsonFh, indent=2)
-    #descJsonFh.close()
     writeJson(outConf, outConfFname)
-    logging.info("Wrote %s" % outConfFname)
+    logging.info("Wrote %s" % outConfName)
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
@@ -2110,7 +2211,8 @@ def startHttpServer(outDir, port):
         import SimpleHTTPServer
         from BaseHTTPServer import HTTPServer
 
-    server_address = ('localhost', port)
+    #server_address = ('localhost', port)
+    server_address = ('', port)
     HandlerClass = RangeHTTPServer.RangeRequestHandler
     HandlerClass.protocol_version = "HTTP/1.0"
     httpd = HTTPServer(server_address, HandlerClass)
@@ -2119,13 +2221,13 @@ def startHttpServer(outDir, port):
     os.chdir(outDir)
     print("Serving "+outDir+". Press Ctrl-C to exit.")
     print("Point your internet browser to http://"+sa[0]+":"+str(sa[1])+" (or the address of this server)")
-    sys.stderr = open("/dev/null", "w")
+    sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 
 def convertAndCopy(confFnames, outDir, port):
     " build browser from config files confFnames into directory outDir and serve on port "
     for inConfFname in confFnames:
-        inConf = loadConfig(inConfFname, outDir)
+        inConf = loadConfig(inConfFname)
         datasetDir = join(outDir, inConf["name"])
         makeDir(datasetDir)
 
@@ -2267,7 +2369,7 @@ def parseGeneLocs(geneType):
     fname = join(dataDir, "genes", geneType+".genes.bed")
     ret = defaultdict(list)
     for line in open(fname):
-        row = line.rstrip("\n").split('\t')
+        row = line.rstrip("\r\n").split('\t')
         name = row[3].split(".")[0]
         ret[name].append(row)
     return ret
@@ -2286,14 +2388,18 @@ def getSizesFname(genome):
     assert(isfile(fname))
     return fname
 
-def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterOrder, bbFname):
+def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterToCells, \
+        clusterOrder, clusterFname, bbFname):
     """ create a barGraph bigBed file for an expression matrix
     clusterToCells is a dict clusterName -> list of cellIDs
     clusterOrder is a list of the clusterNames in the right order
     """
-    if geneType.lower() in ['symbols', 'symbol']:
+    logging.info("*** Creating barChartGraph bigbed file")
+    if geneType.startswith("symbol"):
         # create a mapping from symbol -> gene locations
-        if genome=="hg38":
+        if "/" in geneType:
+            defGenes = geneType.split("/")[1]
+        elif genome=="hg38":
             defGenes = "gencode24"
         elif genome=="hg19":
             defGenes = "gencode19"
@@ -2314,6 +2420,9 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
         geneToSym = readGeneSymbols({'geneIdType':geneType})
         geneLocs = parseGeneLocs(geneType)
 
+    matOfh = open(outMatrixFname, "w")
+    clustOfh = open(clusterFname, "w")
+
     mr = MatrixTsvReader()
     mr.open(inMatrixFname)
     matType, cellNames = mr.matType, mr.sampleNames
@@ -2323,15 +2432,31 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
 
     # make a list of lists of cellIds, one per cluster, in the right order
     clusterCellIds = [] # list of tuples with cell-indexes, one per cluster
-    for cluster in clusterOrder:
+    allCellNames = [] # list for cellIds, with a matrix, meta and with bam file
+    allCellIndices = [] # position of all cellIds in allCellNames
+    for clusterName in clusterOrder:
         cellIdxList = []
-        for cellName in clusterToCells[cluster]:
+        for cellName in clusterToCells[clusterName]:
             if cellName not in cellNameToId:
-                logging.warn("%s is in meta but not in expression matrix" % cellName)
+                logging.warn("%s is in meta but not in expression matrix." % cellName)
                 continue
             idx = cellNameToId[cellName]
             cellIdxList.append(idx)
+            allCellNames.append(cellName)
+            allCellIndices.append(idx)
+            sanClusterName = clusterName.replace(" ", "_")
+            clustOfh.write("%s\t%s\n" % (cellName, sanClusterName))
+
+        if len(cellIdxList)==0:
+            logging.warn("No cells assigned to cluster %s" % clusterName)
+
         clusterCellIds.append(tuple(cellIdxList))
+    clustOfh.close()
+
+    # write header line
+    matOfh.write("#gene\t")
+    matOfh.write("\t".join(allCellNames))
+    matOfh.write("\n")
 
     # make the barchart bed file. format:
     # chr14 95086227 95158010 ENSG00000100697.10 999 - DICER1 5 10.94,11.60,8.00,6.69,4.89 93153 26789
@@ -2341,21 +2466,46 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
 
     bedFh = open(bedFname, "w")
 
-    for geneId, sym, exprArr, offset, lineLen in mr.iterRowsWithOffsets():
-        logging.debug("Writing BED line for %s" % geneId)
+    skipCount = 0
+    for geneId, sym, exprArr in mr.iterRows():
+        logging.debug("Writing BED and matrix line for %s" % geneId)
+
+        # write the new matrix row
+        offset = matOfh.tell()
+        rowHeader = "%s\t" % (geneId)
+        matOfh.write(rowHeader)
+
+        newRow = []
+        for idx in allCellIndices:
+            newRow.append(str(exprArr[idx]))
+        newLine = "\t".join(newRow)
+        matOfh.write(newLine)
+        matOfh.write("\n")
+        lineLen = len(geneId)+len(newLine)+2 # include tab and newline
+
         medianList = []
+
         for cellIds in clusterCellIds:
             exprList = []
             for cellId in cellIds:
                 exprList.append(exprArr[cellId])
             n = len(cellIds)
-            median = sorted(exprList)[n//2] # approx OK, no special case for even n's
+            if len(exprList)==0:
+                median = 0
+            else:
+                median = sorted(exprList)[n//2] # approx OK, no special case for even n's
             medianList.append(str(median))
             bedScore = len([x for x in exprList if x!=0]) # score = non-zero medians
+            bedScore = min(1000, bedScore)
 
         if geneId not in geneLocs:
-            logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
-            continue
+            geneId2 = geneId.replace(".", "-", 1) # does this make sense? (for R)
+            if geneId2 not in geneLocs:
+                logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
+                skipCount += 1
+                continue
+            else:
+                geneId = geneId2
 
         bedRows = geneLocs[geneId]
 
@@ -2373,6 +2523,9 @@ def makeBarGraphBigBed(genome, inMatrixFname, geneType, clusterToCells, clusterO
             bedFh.write("\n")
 
     bedFh.close()
+
+    if skipCount != 0:
+        logging.info("Could not place %d genes, these were skipped" % skipCount)
 
     bedFname2 = bedFname.replace(".bed", ".sorted.bed")
     cmd = "LC_COLLATE=C sort -k1,1 -k2,2n %s > %s" % (bedFname, bedFname2)
