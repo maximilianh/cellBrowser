@@ -211,7 +211,7 @@ def writeParentStanzas(tfh, saneHubName, hubName, cellCount):
     " write tdb entries for the composite parent tracks "
     tfh.write("""track %s\n""" % (saneHubName))
     tfh.write("""shortLabel %s\n""" % (hubName))
-    tfh.write("""longLabel %s Reads - %d cells\n""" % (hubName, cellCount))
+    tfh.write("""longLabel %s - %d cells\n""" % (hubName, cellCount))
     tfh.write("compositeTrack on\n")
     tfh.write("subGroup1 view Views reads=Reads cov=Coverage junc=Junctions\n")
     tfh.write("type bed 3\n")
@@ -223,7 +223,7 @@ def writeParentStanzas(tfh, saneHubName, hubName, cellCount):
     tfh.write("""longLabel %s Reads - %d cells\n""" % (hubName, cellCount))
     tfh.write("parent %s\n" % saneHubName)
     tfh.write("type bam\n")
-    tfh.write("visibility dense\n")
+    tfh.write("visibility hide\n")
     tfh.write("view reads\n")
     tfh.write("\n")
 
@@ -238,8 +238,9 @@ def writeParentStanzas(tfh, saneHubName, hubName, cellCount):
 
     tfh.write("""track %sViewJunc\n""" % (saneHubName))
     tfh.write("""shortLabel Splicing\n""")
-    tfh.write("""longLabel %s Splie Junctions - %d cells\n""" % (hubName, cellCount))
+    tfh.write("""longLabel %s Splice Junctions - %d cells\n""" % (hubName, cellCount))
     tfh.write("parent %s\n" % saneHubName)
+    tfh.write("spectrum on\n")
     tfh.write("type bigBed 12\n")
     tfh.write("visibility dense\n")
     tfh.write("view junc\n")
@@ -318,6 +319,7 @@ def writeTdbStanzas(tfh, clusterName, saneHubName, cellCount):
     tfh.write("""shortLabel %s Junc\n""" % (clusterName))
     tfh.write("""longLabel %s Splice Junctions (%d cells)\n""" % (clusterName, cellCount))
     tfh.write("type bigBed 12 +\n")
+    tfh.write("spectrum on\n")
     tfh.write("scoreLabel Number of supporting reads (max: 1000)\n")
     tfh.write("parent %sViewJunc\n" % saneHubName)
     tfh.write("subGroups view=junc\n")

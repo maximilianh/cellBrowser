@@ -7,10 +7,11 @@
 
 var tsnePlot = function() {
     var db = null; // the cbData object from cbData.js. Loads coords,
-                   // annotations and gene expression pattersn.
+                   // annotations and gene expression vectors
     
     var gDatasetList = null; // array of dataset descriptions (objects)
 
+    var gVersion = "0.3";
     var gCurrentCoordName = null; // currently shown coordinates
 
     // object with all information needed to map to the legend colors
@@ -57,8 +58,8 @@ var tsnePlot = function() {
     var geneBarMargin = 5;
     // color for missing value when coloring by expression value
     //var cNullColor = "CCCCCC";
-    const cNullColor = "DDDDDD";
-    const cNullForeground = "#AAAAAA";
+    //const cNullColor = "DDDDDD";
+    const cNullColor = "87CEFA";
 
     const cDefGradPalette = "reds";  // default legend gradient palette for numeric ranges
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
@@ -653,7 +654,7 @@ var tsnePlot = function() {
          //htmls.push('<li><a href="#" id="tpFilterButton">Hide selected '+gSampleDesc+'s</a></li>');
          //htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
          htmls.push('<li><a href="#" id="tpHideShowLabels">Hide labels<span class="dropmenu-item-content">c l</span></a></li>');
-         htmls.push('<li><hr class="half-rule"></li>');
+         //htmls.push('<li><hr class="half-rule"></li>');
 
          //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
            //htmls.push('<ul class="dropdown-menu" id="tpTransMenu">');
@@ -832,6 +833,7 @@ var tsnePlot = function() {
        if (fieldName!==defaultMetaField)
            changeUrl({"meta":fieldName, "gene":null});
 
+
        buildLegendForMetaIdx(fieldIdx);
        var renderColors = legendGetColors(gLegend.rows);
        renderer.setColors(renderColors);
@@ -839,6 +841,7 @@ var tsnePlot = function() {
        db.loadMetaVec(fieldIdx, function(carr) {renderer.setColorArr(carr); doneLoad(); } , onProgress);
 
        //changeUrl({"gene":null, "meta":fieldName});
+       changeUrl({"pal":null});
        // clear the gene search box
        var select = $('#tpGeneCombo')[0].selectize.clear();
     }
@@ -853,7 +856,7 @@ var tsnePlot = function() {
     }
 
     function loadGeneAndColorByIt(geneSym, onDone) {
-        /* color by a gene, load the array into the renderer and call onDone  */
+        /* color by a gene, load the array into the renderer and call onDone or just redraw */
         if (onDone===undefined)
             onDone = function() { renderer.drawDots() };
 
@@ -870,7 +873,7 @@ var tsnePlot = function() {
             onDone();
         }
 
-        changeUrl({"gene":geneSym, "meta":null});
+        changeUrl({"gene":geneSym, "meta":null, "pal":null});
         console.log("Loading gene expression vector for "+geneSym);
         db.loadExprVec(geneSym, gotGeneVec, onProgress, exprBinCount);
 
@@ -970,6 +973,8 @@ var tsnePlot = function() {
            activateTab("meta");
        }
 
+       var forcePalName = getVar("pal", null);
+
        gLegend = {};
        if (colorType==="meta") {
            colorByMetaField(colorBy, doneOnePart);
@@ -985,6 +990,11 @@ var tsnePlot = function() {
            sel.refreshOptions();
            sel.setTextboxValue(colorBy);
        }
+
+       if (forcePalName!==null) {
+           legendChangePaletteAndRebuild(forcePalName);
+           renderer.drawDots();
+        }
 
        preloadQuickGenes();
        preloadAllMeta();
@@ -1153,23 +1163,8 @@ var tsnePlot = function() {
     function onColorPaletteClick(ev) {
         /* called when users clicks a color palette */
         var palName = ev.target.getAttribute("data-palette");
-        changeLegendPalette(palName);
-    }
-
-    function changeLegendPalette(palName) {
-        /* change the legend color palette and put it into the URL */
-        var rows = gLegend.rows;
-        var success = legendSetPalette(gLegend, palName, legend.metaFieldIdx);
-        if (success) {
-            if (palName==="default")
-                changeUrl({"pal":null});
-            else
-                changeUrl({"pal":palName});
-            buildLegendBar();
-            var colors = legendGetColors(gLegend.rows);
-            renderer.setColors(colors);
-            renderer.drawDots();
-        }
+        legendChangePaletteAndRebuild(palName);
+        renderer.drawDots();
     }
 
     function buildEmptyLegendBar(fromLeft, fromTop) {
@@ -1182,11 +1177,11 @@ var tsnePlot = function() {
         htmls.push("<div style='float:right' class='btn-group btn-group-xs'>");
             htmls.push("<button type='button' class='btn btn-default dropdown-toggle' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false' id='tpChangeColorScheme'>Colors&nbsp;<span class='caret'> </span></button>");
             htmls.push('<ul class="dropdown-menu pull-right">');
-            htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to defaults</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Blues</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Reds</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Default</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow Qualitative</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s Qualitative</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Shades of Blues</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Shades of Reds</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-sq" href="#">Beige to red</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Blue to red</a></li>');
             htmls.push('</ul>');
@@ -1247,34 +1242,48 @@ var tsnePlot = function() {
         return colArr;
     }
 
-    function legendSetPalette(legend, palName, metaFieldIndex) {
+    function legendChangePaletteAndRebuild(palName) {
+        /* change the legend color palette and put it into the URL and redraw */
+        var rows = gLegend.rows;
+        var success = legendSetPalette(gLegend, palName, gLegend.metaFieldIdx);
+        if (success) {
+            if (palName==="default")
+                changeUrl({"pal":null});
+            else
+                changeUrl({"pal":palName});
+            buildLegendBar();
+            var colors = legendGetColors(gLegend.rows);
+            renderer.setColors(colors);
+        }
+    }
+
+    function legendSetPalette(legend, origPalName, metaFieldIndex) {
     /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors. 
      * metaFieldIndex is optional. If it is set, will use the predefined colors that are
      * in the field configuration.
      * */
-        if (palName==="default") {
+        var palName = origPalName;
+
+        //palName = getVar("pal", palName);
+
+        if (origPalName==="default") {
             legendResetColors();
-            changeUrl({"pal":null});
-
+            //changeUrl({"pal":null});
             if (legend.rowType==="category")
-                palName = "qual";
+                palName = cDefQualPalette;
             else
-                palName = "gradient";
+                palName = cDefGradPalette;
         }
-
-        if (palName==="gradient")
-            // default gradiant palette, can be overriden by URL
-            palName = getVar("pal", cDefGradPalette);
-        if (palName==="qual")
-            // default qualitative palette, can be overriden by URL
-            palName = getVar("pal", cDefQualPalette);
 
         var rows = legend.rows;
         var n = rows.length;
         var pal = null;
-        if (metaFieldIndex!==undefined && db.conf.metaFields[metaFieldIndex].colors!==undefined)
+        var usePredefined = false;
+        // if this is a field for which colors were defined manually, use them
+        if (metaFieldIndex!==undefined && db.conf.metaFields[metaFieldIndex].colors!==undefined && origPalName==="default") {
             pal = db.conf.metaFields[metaFieldIndex].colors;
-        else
+            usePredefined = true;
+        } else
             pal = makeColorPalette(palName, n);
 
         if (pal===null) {
@@ -1289,6 +1298,9 @@ var tsnePlot = function() {
 
         // update the dropdown menu
         $('.tpColorLink').parent().removeClass("active");
+        // force the menu to the "defaults" entry if we're using predefined colors
+        if (usePredefined)
+            palName = "default";
         $('.tpColorLink[data-palette="'+palName+'"]').parent().addClass("active");
         return true;
     }
@@ -1361,7 +1373,7 @@ var tsnePlot = function() {
         gLegend.title = "Gene: "+geneSym;
         gLegend.titleHover = geneId;
         gLegend.rowType = "range";
-        legendSetPalette(gLegend, "gradient");
+        legendSetPalette(gLegend, "default");
         return colors;
     }
 
@@ -1716,7 +1728,7 @@ var tsnePlot = function() {
             var binInfo = numMetaToBinInfo(fieldInfo);
             legend.rows = makeLegendRowsNumeric(binInfo);
             legend.rowType = "range";
-            legendSetPalette(legend, "qual", metaIndex);
+            legendSetPalette(legend, "default", metaIndex);
             return legend;
         }
 
@@ -1785,7 +1797,7 @@ var tsnePlot = function() {
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
         legend.rowType = "category";
-        legendSetPalette(legend, "qual", metaIndex);
+        legendSetPalette(legend, "default", metaIndex);
         return legend;
     }
 
@@ -2063,7 +2075,8 @@ var tsnePlot = function() {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
                 return "";
             }
-            var fullUrl = "http://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+            //var fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+            var fullUrl = "https://genome-test.gi.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
 
             if (geneSym!==undefined)
                 fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
@@ -2097,7 +2110,7 @@ var tsnePlot = function() {
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 240, 280, 2);
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 250, 290, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
         
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
@@ -2658,10 +2671,12 @@ var tsnePlot = function() {
     function legendResetColors () {
     /* reset all manual colors in legend to defaults */
         var rows = gLegend.rows;
+        if (rows===undefined)
+            return;
         for (var i = 0; i < rows.length; i++) {
             var colorHex = rows[i][0];
             var defColor = rows[i][1];
-            gLegend.rows[i][0] = defColor;
+            gLegend.rows[i][0] = null;
             var saveKey = rows[i][5];
             // also clear localStorage
             localStorage.removeItem(saveKey);
@@ -3166,7 +3181,7 @@ var tsnePlot = function() {
         "Download as file" :
             function() {
                 //url = joinPaths([baseUrl,"geneMatrix.tsv"]);
-                document.location.href = url;
+                document.location.href = markerTsvUrl;
             },
         };
 
@@ -3297,9 +3312,9 @@ var tsnePlot = function() {
             var geneId = row[0];
             var geneSym = row[1];
             htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
-            if (fullHubUrl!==null) {
+            if (hubUrl!==null) {
                 var fullHubUrl = hubUrl+"&position="+geneSym+"&singleSearch=knownCanonical";
-                htmls.push("<a target=_blank class='link' style='margin-left: 10px' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>UCSC</a>");
+                htmls.push("<a target=_blank class='link' style='margin-left: 10px; font-size:80%; color:#AAA' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>Genome</a>");
             }
             htmls.push("</td>");
 

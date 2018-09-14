@@ -243,9 +243,12 @@ def cbScanpy(matrixFname, figDir, logFname):
 
     info("Performing PAGA+ForceAtlas2")
     sc.tl.paga(adata, groups='louvain')
-    sc.pl.paga(adata, threshold=0.01, show=False)
+    sc.pl.paga(adata, show=False)
     sc.tl.draw_graph(adata, init_pos='paga')
-    adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fa"]
+    if "X_draw_graph_fa" in adata.obsm:
+        adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fa"]
+    else:
+        adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fr"]
 
     info("Performing ForceAtlas2")
     sc.tl.draw_graph(adata)

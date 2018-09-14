@@ -515,11 +515,12 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         fieldMeta["type"] = "enum"
         valArr = list(valCounts.keys())
 
+        valCounts = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True)) # = (label, count)
         if colors!=None:
             colArr = []
             foundColors = 0
             notFound = set()
-            for val in valArr:
+            for val, _ in valCounts:
                 if val in colors:
                     colArr.append(colors[val])
                     foundColors +=1
@@ -531,7 +532,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
                 if len(notFound)!=0:
                     logging.warn("No default color found for field values %s" % notFound)
 
-        valCounts = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True)) # = (label, count)
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
@@ -1186,7 +1186,7 @@ def parseColors(fname):
                     break
 
         if not isHex:
-            logging.debug("Looking up color %s" % color)
+            logging.debug("Not a six-digit hex color code. Trying to map '%s' to a hex color" % color)
             import webcolors # error? -> pip install webcolors
             try:
                 color = webcolors.name_to_hex(color, spec='css3').lstrip("#")
@@ -1391,7 +1391,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     sampleNames = matIter.getSampleNames()
 
     keepFields = set(filtSampleNames)
-    keepIdx = [0]
+    keepIdx = []
     for i, name in enumerate(sampleNames):
         if name in keepFields:
             keepIdx.append(i)
