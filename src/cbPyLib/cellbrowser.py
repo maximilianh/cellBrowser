@@ -1435,8 +1435,8 @@ def sanitizeName(name):
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
-    assert(len(newName)!=0)
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
+    assert(len(newName)!=0)
     return newName
 
 def splitMarkerTable(filename, geneToSym, outDir):
@@ -1491,6 +1491,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
     sanNames = set()
     for clusterName, rows in iterItems(data):
         #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
+        logging.debug("Cluster: %s" % clusterName)
         sanName = sanitizeName(clusterName)
         assert(sanName not in sanNames) # after sanitation, cluster names must be unique
         sanNames.add(sanName)
@@ -1580,7 +1581,7 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
 
     outConf["desc"] = {}
 
-    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumbnail.png"]:
+    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png"]:
         inFname = makeAbs(inDir, fileBase)
         if not isfile(inFname):
             logging.info("%s does not exist" % inFname)
@@ -2038,7 +2039,11 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     # this obscure command gets the cell identifiers in the dataset directory
     sampleNameFname = join(datasetDir, "metaFields", outConf["metaFields"][0]["name"]+".bin.gz")
     logging.debug("Reading meta sample names from %s" % sampleNameFname)
-    metaSampleNames = gzip.open(sampleNameFname).read().splitlines()
+
+    # python3 has 'text mode' but python2 doesn't have that so decode explicitely
+    metaSampleNames = []
+    for line in gzip.open(sampleNameFname, "r"):
+        metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
     matrixSampleNames = readHeaders(outMatrixFname)[1:]
