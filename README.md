@@ -20,6 +20,10 @@ You can build a viewer for it in the directory ~/cells and serve that directory 
     cd sampleData/sample1/
     ../../src/cbBuild -o ~/cells -p 8888
 
+The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
+that are available in this config file. E.g. you can change the colors, add acronym tables,
+add all file names, add more marker gene tables, etc.
+
 Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
 You will have to re-run cbBuild again with -p8888 to look at it again.
 
@@ -35,11 +39,15 @@ Now you should be able to access your viewer at http://localhost/cells
 To deploy the result onto a real webserver, simply copy all files and directories
 under "cells" to an empty directory on a webserver and point your
 web browser to it. E.g. many universities give their employees homepage
-directories, sometimes in a directory called "~/public_html".
+directories, sometimes in a directory called "~/public_html" or on a special server.
 
-### Process an expression matrix
+To add more datasets, simply go to the other data directories and run cbBuild again, with
+the same output directory. cbBuild will then modify the index.html in the output
+directory to show both datasets (or more).
 
-Requirements: python3 with Scanpy installed.
+### Process an expression matrix with ScanPy
+
+Requirements: python3 with Scanpy installed, see https://scanpy.readthedocs.io/en/latest/installation.html.
 
 We provide a wrapper around Scanpy which runs filtering, PCA, nearest-neighbors, clustering, t-SNE and
 UMAP and formats them for cbBuild. An example file is on our downloads server:
@@ -49,16 +57,17 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
     rsync -Lavzp hgwdev.soe.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
     ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o cbScanpyOut/ -n pbmc3k
 
-### Convert a Scanpy object
+### Convert an existing Scanpy object to a cell browser
 
 From Jupyter or Python3:
 
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
-    # convert to tsv files, create a cellbrowser.conf
+    # convert to tsv files and create a cellbrowser.conf
     cellbrowser.scanpyToTsv(adata, "scanpyOut")
 
-    # create the html directory from this
+Then build the cell browser from the Unix shell:
+
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
 
 ### Convert a CellRanger directory
