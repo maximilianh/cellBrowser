@@ -158,6 +158,13 @@ def lineFileNextRow(inFile, utfHacks=False):
         # skip special chars in meta data and keep only ASCII
         line1 = unicodedata.normalize('NFKD', line1).encode('ascii','ignore')
     headers = line1.split(sep)
+
+    if len(headers)>=255:
+        errAbort("Cannot read more than 255 columns. Are you sure that this file is in the correct format?"
+                " It may have the wrong line endings and may require treatment with dos2unix or mac2unix. "
+                " Or it may be the wrong file type for this input, e.g. an expression matrix instead of a "
+                " coordinate file.")
+
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
     headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
     #headers = [x if x!="" else "noName" for x in headers]
