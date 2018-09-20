@@ -1955,7 +1955,7 @@ var tsnePlot = function() {
 
     function loadDataset(datasetName) {
         db = new CbDbFile(datasetName); 
-        changeUrl({"ds":datasetName}, {});
+        changeUrl({"ds":datasetName});
         db.loadConfig(function() { renderData() });
         
         // start the tutorial after a while
