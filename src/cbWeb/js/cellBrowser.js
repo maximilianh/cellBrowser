@@ -2321,7 +2321,7 @@ var tsnePlot = function() {
         intro.addSteps(
             [
               {
-                intro: "In the middle of screen, each circle represents a "+gSampleDesc+".",
+                intro: "In the middle of the screen, each circle represents a "+gSampleDesc+". You can click the cluster label text to show the marker gene lists of the cluster.",
                 element: document.querySelector('#tpCanvas'),
                 position: 'auto'
               },
