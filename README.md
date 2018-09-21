@@ -1,7 +1,7 @@
 UCSC Single Cell Browser
 ========================
 
-Sponsored by the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
+Funded by the California Institute of Regenerative Medicine and the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
