@@ -18,7 +18,7 @@ data for the cells..
 You can build a viewer for it in the directory ~/cells and serve that directory on port 8888:
 
     cd sampleData/sample1/
-    ../../src/cbBuild -o ~/cells -p 8888
+    ../../src/cbBuild -o ~/public_html/cb/ -p 8888
 
 The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
 that are available in this config file. E.g. you can change the colors, add acronym tables,
@@ -55,7 +55,7 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
     mkdir ~/cellData
     cd ~/cellData
     rsync -Lavzp hgwdev.soe.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
-    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o cbScanpyOut/ -n pbmc3k
+    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o ~/public_html/cb/ -n pbmc3k
 
 ### Convert an existing Scanpy object to a cell browser
 
