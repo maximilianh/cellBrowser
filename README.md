@@ -41,9 +41,12 @@ under "cells" to an empty directory on a webserver and point your
 web browser to it. E.g. many universities give their employees homepage
 directories, sometimes in a directory called "~/public_html" or on a special server.
 
-To add more datasets, simply go to the other data directories and run cbBuild again, with
-the same output directory. cbBuild will then modify the index.html in the output
-directory to show both datasets (or more).
+To add more datasets, simply go to the other data directories and run cbBuild
+again, with the same output directory. cbBuild will then modify the index.html
+in the output directory to show both datasets (or more). Note that the
+directory that you provide via -o or the CBOUT environment variable is the html
+directory. The data for each individual dataset will be copied into
+subdirectories, one per dataset.
 
 ### Process an expression matrix with ScanPy
 
@@ -64,11 +67,11 @@ From Jupyter or Python3:
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
     # convert to tsv files and create a cellbrowser.conf
-    cellbrowser.scanpyToTsv(adata, "scanpyOut")
+    cellbrowser.scanpyToTsv(adata, "scanpyOut", "myDataset")
 
 Then build the cell browser from the Unix shell:
 
-    cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
+    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cb/
 
 ### Convert a CellRanger directory
 
