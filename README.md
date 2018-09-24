@@ -62,14 +62,14 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
 
 ### Convert an existing Scanpy object to a cell browser
 
-From Jupyter or Python3:
+From Jupyter or Python3, create a data directory with the tab-sep files:
 
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
     # convert to tsv files and create a cellbrowser.conf
     cellbrowser.scanpyToTsv(adata, "scanpyOut", "myDataset")
 
-Then build the cell browser from the Unix shell:
+Then build the cell browser from the Unix shell into a html directory:
 
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cb/
 
