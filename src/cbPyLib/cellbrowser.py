@@ -2161,7 +2161,7 @@ alpha=0.6
     ofh.write(conf)
     ofh.close()
 
-def scanpyToTsv(anndata, path, meta_option=None, nb_marker=50, datasetName='cbScanpy-Data'):
+def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     """
     Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
