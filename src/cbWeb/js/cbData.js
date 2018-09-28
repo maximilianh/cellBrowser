@@ -510,7 +510,7 @@ function CbDbFile(url) {
             var da = discretizeArray(exprArr, binCount);
             console.timeEnd("discretize");
 
-            onDone(da.dArr, geneSym, geneDesc, da.binInfo);
+            onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
 
         var offsData = self.geneOffsets[geneSym];

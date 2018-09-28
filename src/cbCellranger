@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+
+# converter from cellranger to cellbrowser format
+# uses scanpy to parse hdf5, so works only on python3
+
+import sys
+from os.path import join, dirname
+
+# tested with python 2.6 and python3, see cellbrowser.py
+import sys
+sys.path.append( join(dirname(__file__), "cbPyLib") )
+import cellbrowser
+cellbrowser.cbCellrangerCli()
