@@ -262,6 +262,8 @@ var tsnePlot = function() {
             var f = (count / 1000);
             return f.toFixed(1)+"k";
         }
+
+        return count;
     }
 
     function openDatasetLoadPane(selDatasetIdx) {
@@ -426,6 +428,8 @@ var tsnePlot = function() {
     function onSelChange(cellIds) {
     /* called each time when the selection has been changed */
         updateGeneTableColors(cellIds);
+        if ("geneSym" in gLegend)
+            buildViolinPlot(gLegend.geneSym);
 
         //if (cellIds.length===0)
             //clearMetaAndGene();
@@ -855,21 +859,111 @@ var tsnePlot = function() {
         $( "#tpLeftTabs" ).tabs( "option", "active", idx );
     }
 
-    function loadGeneAndColorByIt(geneSym, onDone) {
+    function splitExpr(exprVec, selCells) {
+        /* split the expression vector into two vectors, one for selected and one for unselected cells */
+        var selMap = {};
+        for (var i = 0; i < selCells.length; i++) {
+            selMap[i] = null;
+        }
+
+        var sel = [];
+        var unsel = [];
+        for (i = 0; i < exprVec.length; i++) {
+            if (i in selMap)
+                sel.push(exprVec[i]);
+            else
+                unsel.push(exprVec[i]);
+        }
+
+        return [sel, unsel]
+    }
+
+    function buildViolinPlot(geneSym) {
+        /* create the violin plot */
+        console.time("violin");
+
+        var quickExpr = db.quickExpr[geneSym];
+        // quickExpr format is: [exprVec, geneDesc, binInfo]
+        var exprVec = quickExpr[0]
+
+        $('#tpViolinCanvas').remove();
+        var htmls = [];
+        htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
+        $('#tpViolin').append(htmls.join(""));
+
+        const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
+
+        var dataList = [];
+        var labelList = [];
+        var selCells = renderer.getSelection();
+        if (selCells===null) {
+            dataList = [Array.prototype.slice.call(exprVec)];
+            labelList = ['All cells'];
+        } else {
+            dataList = splitExpr(exprVec, selCells);
+            labelList = ['Selected', 'Others'];
+        }
+
+ 	var boxplotData = {
+          labels : labelList,
+	  datasets: [{
+            data : dataList,
+	    label: 'Dataset 1',
+	    backgroundColor: 'rgba(255,0,0,0.5)',
+	    borderColor: 'red',
+	    borderWidth: 1,
+	    outlierColor: '#999999',
+	    padding: 7,
+	    itemRadius: 0,
+	    outlierColor: '#999999'
+	}]
+	};
+	
+        if ("violinChart" in window)
+            window.violinChart.destroy();
+
+	window.violinChart = new Chart(ctx, {
+	    type: 'violin',
+	    data: boxplotData,
+	    options: {
+	      //scales: {
+		//xAxes: [{
+		    //ticks: {
+			//autoSkip: false,
+			//maxRotation: 40,
+			//minRotation: 40
+		    //}
+		//}],
+	      //},
+	      //responsive: true,
+              maintainAspectRatio: false,
+	      //legend: {
+		//position: 'top',
+	      //},
+              legend: { display: false },
+	      title: { display: false }
+	    }
+	  });
+        console.timeEnd("violin");
+    }
+
+    function loadGeneAndColor(geneSym, onDone) {
         /* color by a gene, load the array into the renderer and call onDone or just redraw */
         if (onDone===undefined)
             onDone = function() { renderer.drawDots() };
 
-        function gotGeneVec(exprVec, geneSym, geneDesc, binInfo) {
+        function gotGeneVec(exprArr, decArr, geneSym, geneDesc, binInfo) {
             /* called when the expression vector has been loaded */
-            if (exprVec===null)
+            if (decArr===null)
                 return;
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
             _dump(binInfo);
             makeLegendExpr(geneSym, geneDesc, binInfo);
+            db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
             buildLegendBar();
             renderer.setColors(legendGetColors(gLegend.rows));
-            renderer.setColorArr(exprVec);
+            renderer.setColorArr(decArr);
+            buildViolinPlot(geneSym);
             onDone();
         }
 
@@ -983,7 +1077,7 @@ var tsnePlot = function() {
            $('#tpMetaCombo').val(fieldIdx).trigger('chosen:updated');
        }
        else {
-           loadGeneAndColorByIt(colorBy, doneOnePart);
+           loadGeneAndColor(colorBy, doneOnePart);
            // update the gene combo box
            var sel = $('#tpGeneCombo')[0].selectize;
            sel.addOption({text: colorBy, value: colorBy});
@@ -1193,6 +1287,8 @@ var tsnePlot = function() {
         htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
                     htmls.push("<div id='tpLegendContent'>");
                     htmls.push("</div>"); // content 
+                    htmls.push("<div id='tpViolin'>");
+                    htmls.push("</div>"); // content 
         htmls.push("</div>"); // bar 
         $(document.body).append(htmls.join(""));
 
@@ -1372,6 +1468,7 @@ var tsnePlot = function() {
         gLegend.rows = legendRows;
         gLegend.title = "Gene: "+geneSym;
         gLegend.titleHover = geneId;
+        gLegend.geneSym = geneSym;
         gLegend.rowType = "range";
         legendSetPalette(gLegend, "default");
         return colors;
@@ -1384,7 +1481,7 @@ var tsnePlot = function() {
         $('.tpGeneBarCell').removeClass("tpGeneBarCellSelected");
         $('#tpGeneBarCell_'+geneIdx).addClass("tpGeneBarCellSelected");
         var geneSym = db.conf.quickGenes[geneIdx][0];
-        loadGeneAndColorByIt(geneSym);
+        loadGeneAndColor(geneSym);
     }
 
     function showDialogBox(htmlLines, title, options) {
@@ -1938,7 +2035,7 @@ var tsnePlot = function() {
         var geneSym = ev.target.value;
         if (geneSym==="") 
             return; // do nothing if user just deleted the current gene
-        loadGeneAndColorByIt(geneSym);
+        loadGeneAndColor(geneSym);
         $(this).blur(); // remove focus
     }
 
@@ -3238,7 +3335,7 @@ var tsnePlot = function() {
         var geneSym = ev.target.getAttribute("data-gene");
         $(".ui-dialog").remove(); // close marker dialog box
         //loadSingleGeneFromMatrix(geneSym);
-        loadGeneAndColorByIt(geneSym);
+        loadGeneAndColor(geneSym);
     }
 
     function loadMarkersFromTsv(papaResults, url, divId) {
