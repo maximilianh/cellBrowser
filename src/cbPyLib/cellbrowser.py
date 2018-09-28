@@ -76,7 +76,7 @@ def cbBuild_parseArgs(showHelp=False):
         help="show debug messages")
 
     parser.add_option("-i", "--inConf", dest="inConf", action="append",
-        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times", default=["cellbrowser.conf"])
+        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
@@ -597,6 +597,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
+
+        if fieldName=="cluster" or fieldName=="Cluster":
+            forceEnum=True
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
@@ -2105,6 +2108,9 @@ def convertDataset(inConf, outConf, datasetDir):
         "clusterField", "hubUrl", "showLabels", "ucscDb", "unit"]:
         copyConf(inConf, outConf, tag)
 
+    if " " in inConf["name"]:
+        errAbort("Sorry, please no whitespace in the dataset name in the .conf file")
+
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered/trimmed tsv version of the meta table
     sampleNames, needFilterMatrix, outMeta = convertMeta(inConf, outConf, datasetDir)
@@ -2364,7 +2370,11 @@ def convertAndCopyCli():
     " command line interface for dataset converter, also copies the html/js/etc files "
     args, options = cbBuild_parseArgs()
 
-    for fname in options.inConf:
+    confFnames = options.inConf
+    if confFnames==None:
+        confFnames = ["cellbrowser.conf"]
+
+    for fname in confFnames:
         if not isfile(fname):
             logging.error("File %s does not exist." % fname)
             cbBuild_parseArgs(showHelp=True)
@@ -2372,7 +2382,6 @@ def convertAndCopyCli():
         logging.error("You have to specify at least the output directory or set the env. variable CBOUT.")
         cbBuild_parseArgs(showHelp=True)
 
-    confFnames = options.inConf
     outDir = options.outDir
     #onlyMeta = options.onlyMeta
     port = options.port
@@ -2606,6 +2615,7 @@ def findDatasets(outDir):
     The attribute "priority" can be used to enforce an order on the datasets
     """
     datasets = []
+    dsNames = defaultdict(list)
     for subDir in os.listdir(outDir):
         if not isdir(join(outDir, subDir)):
             continue
@@ -2616,6 +2626,14 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
+        assert("name" in datasetDesc) # every dataset has to have a name
+
+        dsName = datasetDesc["name"]
+        if dsName in dsNames:
+            errAbort("Duplicate name: %s appears in these directories: %s and %s" % \
+                  (dsName, dsNames[dsName], subDir))
+        dsNames[dsName].append(subDir)
+
         #assert("shortLabel" in datasetDesc)
         if not "shortLabel" in datasetDesc:
             datasetDesc["shortLabel"] = datasetDesc["name"]

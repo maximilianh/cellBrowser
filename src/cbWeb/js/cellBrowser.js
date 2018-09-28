@@ -361,7 +361,7 @@ var tsnePlot = function() {
             function(event) {
                 $( this ).dialog( "close" );
                 var datasetName = gDatasetList[selDatasetIdx].name;
-                loadDataset(datasetName);
+                loadDataset(datasetName, true);
             }
         };
 
@@ -375,7 +375,7 @@ var tsnePlot = function() {
             // load the current dataset when the user presses Return
             if (e.which == '13') {
                 var datasetName = gDatasetList[selDatasetIdx].name;
-                loadDataset(datasetName);
+                loadDataset(datasetName, true);
                 $(".ui-dialog-content").dialog("close");
             }
         });
@@ -2050,9 +2050,18 @@ var tsnePlot = function() {
         colorByMetaField(fieldName);
     }
 
-    function loadDataset(datasetName) {
+    function loadDataset(datasetName, resetVars) {
+        /* load a dataset and optionally reset all the URL variables.
+         * When a dataset is opened through the UI, the variables have to
+         * be reset, as their values (gene or meta data) may not exist
+         * there. If it's opened via a URL, the variables must stay. */
         db = new CbDbFile(datasetName); 
-        changeUrl({"ds":datasetName});
+
+        var vars = undefined;
+        if (resetVars)
+            vars = {};
+
+        changeUrl({"ds":datasetName}, vars);
         db.loadConfig(function() { renderData() });
         
         // start the tutorial after a while
@@ -2068,7 +2077,7 @@ var tsnePlot = function() {
         var datasetName = gDatasetList[datasetIdx].name;
         $(this).blur();
         removeFocus();
-        loadDataset(datasetName);
+        loadDataset(datasetName, true);
     }
 
     function buildLayoutCombo(htmls, files, id, width, left, top) {
@@ -3667,7 +3676,7 @@ var tsnePlot = function() {
         if (datasetName===undefined)
             openDatasetDialog();
         else 
-            loadDataset(datasetName);
+            loadDataset(datasetName, false);
        
     }
 
