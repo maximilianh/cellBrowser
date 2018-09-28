@@ -1,7 +1,7 @@
 UCSC Single Cell Browser
 ========================
 
-Sponsored by the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
+Funded by the California Institute of Regenerative Medicine and the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
@@ -18,7 +18,7 @@ data for the cells..
 You can build a viewer for it in the directory ~/cells and serve that directory on port 8888:
 
     cd sampleData/sample1/
-    ../../src/cbBuild -o ~/cells -p 8888
+    ../../src/cbBuild -o ~/public_html/cb/ -p 8888
 
 The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
 that are available in this config file. E.g. you can change the colors, add acronym tables,
@@ -41,9 +41,12 @@ under "cells" to an empty directory on a webserver and point your
 web browser to it. E.g. many universities give their employees homepage
 directories, sometimes in a directory called "~/public_html" or on a special server.
 
-To add more datasets, simply go to the other data directories and run cbBuild again, with
-the same output directory. cbBuild will then modify the index.html in the output
-directory to show both datasets (or more).
+To add more datasets, simply go to the other data directories and run cbBuild
+again, with the same output directory. cbBuild will then modify the index.html
+in the output directory to show both datasets (or more). Note that the
+directory that you provide via -o or the CBOUT environment variable is the html
+directory. The data for each individual dataset will be copied into
+subdirectories, one per dataset.
 
 ### Process an expression matrix with ScanPy
 
@@ -55,20 +58,20 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
     mkdir ~/cellData
     cd ~/cellData
     rsync -Lavzp hgwdev.soe.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
-    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o cbScanpyOut/ -n pbmc3k
+    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o ~/public_html/cb/ -n pbmc3k
 
 ### Convert an existing Scanpy object to a cell browser
 
-From Jupyter or Python3:
+From Jupyter or Python3, create a data directory with the tab-sep files:
 
     sys.path.append("cellbrowser/src/cbLib")
     import cellbrowser
     # convert to tsv files and create a cellbrowser.conf
-    cellbrowser.scanpyToTsv(adata, "scanpyOut")
+    cellbrowser.scanpyToTsv(adata, "scanpyOut", "myDataset")
 
-Then build the cell browser from the Unix shell:
+Then build the cell browser from the Unix shell into a html directory:
 
-    cbBuild -i scanpyOut/cellbrowser.conf -o ~/cells/
+    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cb/
 
 ### Convert a CellRanger directory
 
