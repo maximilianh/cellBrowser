@@ -107,19 +107,7 @@ def cbScanpy(matrixFname, figDir, logFname):
     sc.logging.print_versions()
 
     start = timeit.default_timer()
-    if matrixFname.endswith(".mtx"):
-        logging.info("Loading expression matrix: mtx format")
-        adata = sc.read(matrixFname).T
-
-        mtxDir = dirname(matrixFname)
-        adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
-        adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
-
-    else:
-        adata = sc.read(matrixFname, cache=False , first_column_names=True)
-        if not options.samplesOnRows:
-            info("Transposing the expression matrix")
-            adata = adata.T
+    adata = cellbrowser.readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows)
 
     info("Data has %d samples/observations" % len(adata.obs))
     info("Data has %d genes/variables" % len(adata.var))

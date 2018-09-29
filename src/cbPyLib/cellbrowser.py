@@ -1,5 +1,10 @@
 #!/usr/bin/env python2
 
+# this library mostly contains functions that convert tab-sep files
+# (=single cell expression matrix and meta data) into the binary format that is read by the
+# javascript viewer cbWeb/js/cellbrowser.js and cbData.js.
+# Helper functions here allow importing data from other tools, e.g. cellranger or scanpy.
+
 # requires at least python2.6, version tested was 2.6.6
 # should work with python2.5, not tested
 # works on python3, version tested was 3.6.5
@@ -11,11 +16,11 @@ from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime
 
-# python2.6 has no defaultdict or Counter yet
 try:
     from collections import defaultdict
     from collections import Counter
 except:
+    # python2.6 has no defaultdict or Counter yet
     from backport_collections import defaultdict # error? -> pip2 install backport-collections
     from backport_collections import Counter # error? -> pip2 install backport-collections
 
@@ -26,7 +31,7 @@ try:
     import numpy as np
 except:
     numpyLoaded = False
-    logging.error("Numpy could not be loaded. The script will work, but it will be somwhat slower when processing the matrix.")
+    logging.error("Numpy could not be loaded. The script will work, but it will be 30% slower when processing the matrix.")
 
 # older numpy versions don't have tobytes()
 if numpyLoaded:
@@ -71,19 +76,12 @@ def cbBuild_parseArgs(showHelp=False):
         help="show debug messages")
 
     parser.add_option("-i", "--inConf", dest="inConf", action="append",
-        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times", default=["cellbrowser.conf"])
+        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
     parser.add_option("-p", "--port", dest="port", action="store",
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
-
-    #parser.add_option("", "--onlyMeta",
-        #dest="onlyMeta",
-        #action="store_true", help="Do not convert everything, just update the meta data. Useful if you have made a small meta change and the output directory also has the expression matrix.")
-    #parser.add_option("", "--test",
-        #dest="test",
-        #action="store_true", help="run a few tests")
 
     (options, args) = parser.parse_args()
 
@@ -220,7 +218,7 @@ def lineFileNextRow(inFile, utfHacks=False):
 def parseOneColumn(fname, colName):
     " return a single column from a tsv as a list "
     ifh = open(fname)
-    sep = "\t"
+    sep = sepForFile(fname)
     headers = ifh.readline().rstrip("\r\n").split(sep)
     colIdx = headers.index(colName)
     vals = []
@@ -560,6 +558,21 @@ def cleanString(s):
             newS.append(c)
     return "".join(newS)
 
+def runGzip(fname, finalFname=None):
+    logging.debug("Compressing %s" % fname)
+    cmd = "gzip -f %s" % fname
+    runCommand(cmd)
+    gzipFname = fname+".gz"
+
+    if finalFname==None:
+        return gzipFname
+
+    if isfile(finalFname):
+        os.remove(finalFname)
+    logging.debug("Renaming %s to %s" % (gzipFname, finalFname))
+    os.rename(gzipFname, finalFname)
+    return finalFname
+
 def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     """ convert meta table to binary files. outputs fields.json and one binary file per field.
     adds names of metadata fields to outConf and returns outConf
@@ -584,6 +597,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
+
+        if fieldName=="cluster" or fieldName=="Cluster":
+            forceEnum=True
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
@@ -605,8 +621,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
                     binFh.write("%s\n" % x)
         binFh.close()
 
-        cmd = "gzip -f %s" % binName
-        runCommand(cmd)
+        runGzip(binName)
 
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
@@ -737,16 +752,19 @@ class MatrixTsvReader:
                     #a = [float(x) for x in rest.split(sep)]
                     arr = map(float, rest.split(sep))
 
-            if geneToSym is None:
-                symbol = gene
+            if "|" in gene:
+                gene, symbol = gene.split("|")
             else:
-                symbol = geneToSym.get(gene)
-                if symbol is None:
-                    skipIds += 1
-                    logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
-                    continue
-                if symbol.isdigit():
-                    logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
+                if geneToSym is None:
+                    symbol = gene
+                else:
+                    symbol = geneToSym.get(gene)
+                    if symbol is None:
+                        skipIds += 1
+                        logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
+                        continue
+                    if symbol.isdigit():
+                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
 
             if symbol in doneGenes:
                 logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence" % (lineNo, gene, symbol))
@@ -1297,23 +1315,28 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     # slurp in the whole meta data
     tmpFname = fixedMetaFname+".tmp"
     ofh = open(tmpFname, "w")
-    metaToLine = {}
+    metaToRow = {}
+    sep = sepForFile(metaFname)
     for lNo, line in enumerate(open(metaFname)):
+        row = line.rstrip("\r\n").split(sep)
         if lNo==0:
-            ofh.write(line)
+            # copy header over
+            ofh.write("\t".join(row))
+            ofh.write("\n")
             continue
-        row = line.rstrip("\r\n").split("\t")
-        metaToLine[row[0]] = line
+        row = line.rstrip("\r\n").split(sep)
+        metaToRow[row[0]] = row
 
     # and write it in the right order
     for matrixName in matrixSampleNames:
-        ofh.write(metaToLine[matrixName])
+        ofh.write("\t".join(metaToRow[matrixName]))
+        ofh.write("\n")
     ofh.close()
     os.rename(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, mustFilterMatrix
 
-def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo):
+def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo, textOutName):
     """ write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames
     Also return as a list.
     """
@@ -1328,6 +1351,9 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     xVals = []
     yVals = []
 
+    textOutTmp = textOutName+".tmp"
+    textOfh = open(textOutTmp, "w")
+
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
@@ -1336,6 +1362,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
             y = 0
         else:
             x, y = coordTuple
+            textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
         minX = min(x, minX)
         minY = min(y, minY)
         maxX = max(x, maxX)
@@ -1364,7 +1391,10 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     else:
         coordInfo["type"] = "Float32"
 
-    logging.info("Wrote %d coordinates to %s" % (len(sampleNames), coordBinFname))
+    textOfh.close()
+    runGzip(textOutTmp, textOutName)
+
+    logging.info("Wrote %d coordinates to %s and %s" % (len(sampleNames), coordBinFname, textOutName))
     return coordInfo, xVals, yVals
 
 def runCommand(cmd):
@@ -1378,9 +1408,9 @@ def runCommand(cmd):
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter and not ".csv" in inFname.lower():
-        logging.info("Copying %s to %s" % (inFname, outFname))
+        logging.info("Copying/compressing %s to %s" % (inFname, outFname))
 
-        # XX stupid heuristics...
+        # XX stupid .gz heuristics... 
         if inFname.endswith(".gz"):
             cmd = "cp \"%s\" \"%s\"" % (inFname, outFname)
         else:
@@ -1408,6 +1438,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
             keepIdx.append(i)
 
     tmpFname = outFname+".tmp"
+
     ofh = openFile(tmpFname, "w")
     ofh.write("gene\t")
     ofh.write("\t".join(filtSampleNames))
@@ -1425,10 +1456,11 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
             logging.info("Wrote %d rows" % count)
     ofh.close()
 
-    tmpFnameGz = outFname+".tmp.gz"
-    runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
-    os.remove(tmpFname)
-    os.rename(tmpFnameGz, outFname)
+    #tmpFnameGz = outFname+".tmp.gz"
+    #runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
+    #os.remove(tmpFname)
+    #os.rename(tmpFnameGz, outFname)
+    runGzip(tmpFname, outFname)
 
 def convIdToSym(geneToSym, geneId):
     if geneToSym is None:
@@ -1514,13 +1546,12 @@ def splitMarkerTable(filename, geneToSym, outDir):
         ofh.write("\n")
         for row in rows:
             scoreVal = row[2]
-            row[2] = "%0.4E" % row[2] # limit to 4 digits
+            row[2] = "%0.5E" % row[2] # limit to 5 digits
             ofh.write("\t".join(row))
             ofh.write("\n")
         ofh.close()
 
-        cmd = 'gzip -f %s' % outFname
-        runCommand(cmd)
+        runGzip(outFname)
 
         fileCount += 1
     logging.info("Wrote %d .tsv.gz files into directory %s" % (fileCount, outDir))
@@ -1845,7 +1876,9 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
         coordInfo["shortLabel"] = coordLabel
-        coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo)
+        cleanName = sanitizeName(coordLabel.replace(" ", "_"))
+        textOutName = join(outDir, cleanName+".coords.tsv.gz")
+        coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
         newCoords.append( coordInfo )
 
         if hasLabels:
@@ -2076,8 +2109,11 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels", "ucscDb"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit"]:
         copyConf(inConf, outConf, tag)
+
+    if " " in inConf["name"]:
+        errAbort("Sorry, please no whitespace in the dataset name in the .conf file")
 
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered/trimmed tsv version of the meta table
@@ -2122,39 +2158,31 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     else:
         logging.warn('Couldnt find %s coordinates' % fullName)
 
-def writeCellbrowserConf(name, coordsList, fname):
+def writeCellbrowserConf(name, coordsList, fname, args={}):
     for c in name:
         assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
 
-    #coords = [
-        #("tsne", "Scanpy t-SNE"),
-        #("umap", "Scanpy UMAP"),
-        #("fa2", "Scanpy ForceAtlas2"),
-        #("phate", "Scanpy PHATE"),
-        #("pagaFa2", "Scanpy PAGA+ForceAtlas2"),
-    #]
-
-    #coordsList = []
-    #for prefix, label in coords:
-        #fname = prefix+"_coords.tsv"
-        #if isfile(join(outDir, fname)):
-            #coordsList.append({"file":fname, "shortLabel" : label})
+    metaFname = args.get("meta", "cell_to_cluster.tsv")
+    clusterField = args.get("clusterField", "Louvain CLuster")
 
     conf = """
 name='%(name)s'
 shortLabel='%(name)s'
-exprMatrix='exprMatrix.tsv'
+exprMatrix='exprMatrix.tsv.gz'
 #tags = ["10x", 'smartseq2']
-meta='cell_to_cluster.tsv'
+meta='%(metaFname)s'
 geneIdType='symbols'
-clusterField='Louvain Cluster'
-labelField='Louvain Cluster'
-enumFields=['Louvain Cluster']
+clusterField='%(clusterField)s'
+labelField='%(clusterField)s'
+enumFields=['%(clusterField)s']
 markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]
 coords=%(coordsList)s
 radius=5
 alpha=0.6
 """ % locals()
+
+    if "geneToSym" in args:
+        conf += "geneToSym='%s'\n" % args["geneToSym"]
 
     #fname = join(outDir, 'cellbrowser.conf')
     if isfile(fname):
@@ -2164,12 +2192,23 @@ alpha=0.6
     ofh = open(fname, "w")
     ofh.write(conf)
     ofh.close()
+    logging.info("Wrote %s" % ofh.name)
+
+def anndataToTsv(anndata, matFname):
+    " write anndata to .tsv file and gzip it "
+    logging.info("Writing matrix to %s" % matFname)
+    tmpFname = matFname+".tmp"
+    import pandas as pd
+    adT = anndata.T
+    data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
+    data_matrix.to_csv(tmpFname, sep='\t', index=True)
+    os.rename(tmpFname, matFname)
 
 def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     """
     Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
-    Given a scanpy object, write dataset to output directory under path
+    Given a scanpy object, write dataset to output directory under path.
 
     This function export files needed for the ucsc cells viewer from the Scanpy Anndata object
     :param anndata: Scanpy AnnData object where information are stored
@@ -2191,10 +2230,9 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     #if "raw" in dir(anndata):
     #    adT = anndata.raw.T
     #else:
-    adT = anndata.T
-
-    data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
-    data_matrix.to_csv(join(path, 'exprMatrix.tsv'),sep='\t',index=True)
+    matFname = join(path, 'exprMatrix.tsv')
+    anndataToTsv(anndata, matFname)
+    matFname = runGzip(matFname)
 
     coordDescs = []
     writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE", coordDescs)
@@ -2207,7 +2245,7 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     ##Check for louvain clustering
     if 'louvain' in anndata.obs:
         #Export cell <-> cluster identity
-        fname = join(path, 'cell_to_cluster.tsv')
+        fname = join(path, 'meta.tsv')
         # add prefix to make sure that it's not treated as a number
         #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
         anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
@@ -2336,7 +2374,11 @@ def convertAndCopyCli():
     " command line interface for dataset converter, also copies the html/js/etc files "
     args, options = cbBuild_parseArgs()
 
-    for fname in options.inConf:
+    confFnames = options.inConf
+    if confFnames==None:
+        confFnames = ["cellbrowser.conf"]
+
+    for fname in confFnames:
         if not isfile(fname):
             logging.error("File %s does not exist." % fname)
             cbBuild_parseArgs(showHelp=True)
@@ -2344,12 +2386,231 @@ def convertAndCopyCli():
         logging.error("You have to specify at least the output directory or set the env. variable CBOUT.")
         cbBuild_parseArgs(showHelp=True)
 
-    confFnames = options.inConf
     outDir = options.outDir
     #onlyMeta = options.onlyMeta
     port = options.port
 
     convertAndCopy(confFnames, outDir, port)
+
+def cbCellrangerCli_parseArgs(showHelp=False):
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] -i cellRangerDir -o outputDir - convert the cellranger output to cellbrowser format and create a cellranger.conf file
+
+    """)
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true",
+        help="show debug messages")
+
+    parser.add_option("-i", "--inDir", dest="inDir", action="store", help="input folder with the cellranger analysis output. This is the directory with the .h5 file.")
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
+    #parser.add_option("-g", "--geneSet", dest="geneSet", action="store", help="geneset, e.g. gencode28 or gencode-m13 or similar. Default: %default", default="gencode24")
+    parser.add_option("-n", "--name", dest="datasetName", action="store", help="name of the dataset, default is %default", default="cellrangerImport")
+
+    (options, args) = parser.parse_args()
+
+    if showHelp:
+        parser.print_help()
+        exit(1)
+
+    setDebug(options)
+
+    return args, options
+
+def cbCellrangerCli():
+    args, options = cbCellrangerCli_parseArgs()
+
+    if options.outDir is None or options.inDir is None:
+        logging.error("You have to specify at least an input and an output directory.")
+        cbCellrangerCli_parseArgs(showHelp=True)
+
+    crangerToCellbrowser(options.datasetName, options.inDir, options.outDir)
+
+def readMatrixAnndata(matrixFname, samplesOnRows=False):
+    " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
+    import scanpy.api as sc
+    #adata = sc.read(matFname)
+    if matrixFname.endswith(".mtx"):
+        import pandas as pd
+        logging.info("Loading expression matrix: mtx format")
+        adata = sc.read(matrixFname, cache=False).T
+
+        mtxDir = dirname(matrixFname)
+        adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
+        adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
+
+    else:
+        logging.info("Loading expression matrix: tab-sep format")
+        adata = sc.read(matrixFname, cache=False , first_column_names=True)
+        if not samplesOnRows:
+            info("Transposing the expression matrix")
+            adata = adata.T
+
+    return adata
+
+def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
+    " convert mtx to tab-sep without scanpy. gzip if needed "
+    from scipy import io
+    import numpy as np
+    logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
+    mat = io.mmread(mtxFname)
+    genes = [l.strip() for l in open(geneFname)]
+    genes = [g.replace("\t", "|") for g in genes]
+    barcodes = [l.strip() for l in open(barcodeFname)]
+    mat = mat.tocsr()
+
+    logging.info("Writing matrix to text")
+    tmpFname = outFname+".tmp"
+    ofh = open(tmpFname, "w")
+
+    ofh.write("gene\t")
+    ofh.write("\t".join(barcodes))
+    ofh.write("\n")
+
+    geneCount, cellCount = mat.shape
+
+    assert(geneCount==len(genes))
+    assert(cellCount==len(barcodes))
+
+    for i in range(0, geneCount):
+        ofh.write(genes[i])
+        ofh.write("\t")
+        arr = mat[i].toarray()
+        fmt = "%d"
+        assert(arr.dtype==np.int64) # float not supported yet. Email me or open a ticket.
+        # todo for float: when using float, we need to find a way to store 0 as 0 and not as 0+0000
+        np.savetxt(ofh, arr, "%d", "\t", "\n")
+    ofh.close()
+
+    logging.info("Compressing expression matrix...")
+    runGzip(tmpFname, outFname)
+    logging.info("Wrote %s" % outFname)
+
+def crangerToCellbrowser(datasetName, inDir, outDir):
+    " convert cellranger output to a cellbrowser directory "
+    # copy over the clusters
+    clustFname = join(inDir, "analysis/clustering/graphclust/clusters.csv")
+    metaFname = join(outDir, "meta.csv")
+    shutil.copy(clustFname, metaFname)
+
+    # copy over the t-SNE coords
+    tsneFname = join(inDir, "analysis/tsne/2_components/projection.csv")
+    coordFname = join(outDir, "tsne.coords.csv")
+    shutil.copy(tsneFname, coordFname)
+
+    # copy over the markers
+    dgeFname = join(inDir, "analysis/diffexp/graphclust/differential_expression.csv")
+    markerFname = join(outDir, "markers.tsv")
+    geneFname = join(outDir, "gene2sym.tsv")
+    crangerSignMarkers(dgeFname, markerFname, geneFname, 0.01, 100)
+
+    # convert the matrix
+    outExprFname = join(outDir, "exprMatrix.tsv.gz")
+    mask1 = join(inDir, "filtered_gene_bc_matrices/*/matrix.mtx")
+    logging.info("Looking for %s" % mask1)
+    matFnames = glob.glob(mask1)
+    if len(matFnames)!=0:
+        assert(len(matFnames)==1)
+        matFname = matFnames[0]
+        barcodeFname = matFname.replace("matrix.mtx", "barcodes.tsv")
+        geneFname = matFname.replace("matrix.mtx", "genes.tsv")
+        mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
+    else:
+        mask2 = join(inDir, "*_filtered_gene_bc_matrices_h5.h5")
+        logging.info("Looking for %s" % mask2)
+        matFnames = glob.glob(mask2)
+        if len(matFnames)==0:
+            errAbort("Could not find matrix, neither as %s nor as %s" % (mask1, mask2))
+        import scanpy.api as sc
+        logging.info("Reading matrix %s" % matFname)
+        adata = readMatrixAnndata(matFname)
+        anndataToTsv(adata, outExprFname)
+
+    confName = join(outDir, "cellbrowser.conf")
+    coordDescs = [{"file":"tsne.coords.csv", "shortLabel":"CellRanger t-SNE"}]
+    confArgs =  {"meta" : "meta.csv", "clusterField" : "Cluster", "tags" : ["10x"]}
+    writeCellbrowserConf(datasetName, coordDescs, confName, confArgs)
+
+    crangerWriteMethods(inDir, outDir, matFname)
+    crangerWriteDownloads(datasetName, outDir)
+
+def crangerWriteMethods(inDir, outDir, matFname):
+    htmlFname = join(outDir, "methods.html")
+    if isfile(htmlFname):
+        logging.info("%s exists, not overwriting" % htmlFname)
+        return
+
+    import csv
+    csvMask = join(inDir, "*_metrics_summary.csv")
+    csvFnames = glob.glob(csvMask)
+    assert(len(csvFnames)==1)
+    qcVals = list(csv.DictReader(open(csvFnames[0])))[0]
+
+    ofh = open(htmlFname, "w")
+    ofh.write("This dataset was imported from a CellRanger analysis directory with cbCellranger.<p><p>")
+    ofh.write("<p><b>QC metrics reported by CellRanger:</b></p>\n")
+
+    for key, value in iterItems(qcVals):
+        ofh.write("%s: %s<br>\n" % (key, value))
+    ofh.close()
+    logging.info("Wrote %s" % ofh.name)
+
+def crangerWriteDownloads(datasetName, outDir):
+    htmlFname = join(outDir, "downloads.html")
+    if isfile(htmlFname):
+        logging.info("%s exists, not overwriting" % htmlFname)
+        return
+
+    ofh = open(htmlFname, "w")
+    ofh.write("<b>Expression matrix:</b> <a href='%s/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a><p>\n" % datasetName)
+
+    cFname = join(outDir, "cellbrowser.conf")
+    if isfile(cFname):
+        conf = loadConfig(cFname)
+        if "unit" in conf:
+            ofh.write("Unit of expression matrix: %s<p>\n" % conf["unit"])
+
+    ofh.write("<b>Cell meta annotations:</b> <a href='%s/meta.tsv'>meta.tsv</a><p>" % datasetName)
+
+    coordDescs = conf["coords"]
+    for coordDesc in coordDescs:
+        coordLabel = coordDesc["shortLabel"]
+        cleanName = sanitizeName(coordLabel.replace(" ", "_"))
+        coordFname = cleanName+".coords.tsv.gz"
+        ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
+
+def crangerSignMarkers(dgeFname, markerFname, geneFname, maxPval, maxGenes):
+    " convert cellranger diff exp file to markers.tsv file "
+    ofh = open(markerFname, "w")
+    ofh.write("cluster\tgene\tAdj. P-Value\tLog2 fold change\tMean UMI Counts\n")
+
+    clusterToGenes = defaultdict(list)
+
+    # read the significant markers and their p-Values
+    for line in open(dgeFname):
+        if line.startswith("Gene ID"):
+            continue
+        row = line.rstrip("\n\r").split(",")
+        geneId = row[0]
+        sym = row[1]
+        clusterCount = int(len(row) / 3)
+        for clusterIdx in range(0, clusterCount):
+            startField = (clusterIdx*3)+2
+            mean = float(row[startField])
+            fc = float(row[startField+1])
+            pVal = float(row[startField+2])
+            if pVal < maxPval:
+                clusterToGenes[clusterIdx+1].append((fc, mean, pVal, sym))
+
+    # write out the markers
+    for clusterId, clusterGenes in iterItems(clusterToGenes):
+        clusterGenes.sort(key=operator.itemgetter(2)) # sort by fold change
+        maxIdx = min(maxGenes, len(clusterGenes))
+        for i in range(0, maxIdx):
+            fc, mean, pVal, sym = clusterGenes[i]
+            ofh.write("%d\t%s\t%g\t%f\t%f\n" % (clusterId, sym, pVal, fc, mean))
+
+    ofh.close()
+    logging.info("Wrote %s" % ofh.name)
 
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
@@ -2358,6 +2619,7 @@ def findDatasets(outDir):
     The attribute "priority" can be used to enforce an order on the datasets
     """
     datasets = []
+    dsNames = defaultdict(list)
     for subDir in os.listdir(outDir):
         if not isdir(join(outDir, subDir)):
             continue
@@ -2368,6 +2630,14 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
+        assert("name" in datasetDesc) # every dataset has to have a name
+
+        dsName = datasetDesc["name"]
+        if dsName in dsNames:
+            errAbort("Duplicate name: %s appears in these directories: %s and %s" % \
+                  (dsName, dsNames[dsName], subDir))
+        dsNames[dsName].append(subDir)
+
         #assert("shortLabel" in datasetDesc)
         if not "shortLabel" in datasetDesc:
             datasetDesc["shortLabel"] = datasetDesc["name"]
@@ -2499,7 +2769,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
         geneToSym = readGeneSymbols({'geneIdType':defGenes})
         geneLocsId = parseGeneLocs(defGenes)
         geneLocs = {}
-        for geneId, locs in geneLocsId.iteritems():
+        for geneId, locs in iterItems(geneLocsId):
             sym = geneToSym[geneId]
             geneLocs[sym] = locs
     else:

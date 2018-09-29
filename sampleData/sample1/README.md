@@ -1,3 +1,3 @@
-Create a viewer for this dataset like this:
+Create a viewer for this dataset with a command like this:
 
-../../cbAddDataset -i dataset.conf -o /var/www/singleCell -s none
+../../cbBuild -o /tmp/singleCell -p 8888
