@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
 library(argparser, quietly=TRUE)
+require(data.table)
 
 
 loadSeurat <- function(input) {
@@ -30,8 +31,8 @@ saveExpression <- function(seurat, dir) {
 
 saveTSNE <- function(seurat, dir, order) {
   df <- data.frame(
-    cellId=rownames(seurat@dr$tsne@cell.embeddings), 
-    x=seurat@dr$tsne@cell.embeddings[,1], 
+    cellId=rownames(seurat@dr$tsne@cell.embeddings),
+    x=seurat@dr$tsne@cell.embeddings[,1],
     y=seurat@dr$tsne@cell.embeddings[,2]
   )
   write.table(df[order, ], sep="\t", file=file.path(dir, "tsne.coords.tsv"), quote = FALSE, row.names = FALSE)
@@ -39,7 +40,7 @@ saveTSNE <- function(seurat, dir, order) {
 
 checkMeta <- function(seurat, fields) {
   available <- colnames(seurat@meta.data)
-  
+
   if (length(fields) < 1 || is.na(fields)) {
     stop(paste("No meta fields specified. Available:", paste(available, collapse = ", ")))
   }
@@ -60,15 +61,31 @@ saveMeta <- function(seurat, dir, order, fields) {
   write.table(df, sep="\t", file=file.path(dir, "meta.tsv"), quote = FALSE, row.names=FALSE)
 }
 
+saveMarkers <- function(dir, markers_file) {
+  markers <- fread(markers_file)
+  df <- data.frame(
+    cluster = markers$cluster,
+    gene = gsub('"|\'', '', markers$gene),
+    avg_diff = markers$avg_logFC,
+    p_val = markers$p_val_adj
+  )
+  write.table(df, sep="\t", file=file.path(dir, "markers.tsv"), quote = FALSE, row.names=FALSE)
+}
+
 extractTsv <- function(args) {
-  seurat <- loadSeurat(args$file)
-  checkMeta(seurat, args$meta)
-  
-  cell_order <- colnames(seurat@data)
-  
-  saveExpression(seurat, args$outDir)
-  saveTSNE(seurat, args$outDir, cell_order)
-  saveMeta(seurat, args$outDir, cell_order, args$meta)
+  if (!args$markers_only) {
+    seurat <- loadSeurat(args$file)
+    checkMeta(seurat, args$meta)
+
+    cell_order <- colnames(seurat@data)
+
+    saveExpression(seurat, args$outDir)
+    saveTSNE(seurat, args$outDir, cell_order)
+    saveMeta(seurat, args$outDir, cell_order, args$meta)
+  }
+  if (!is.na(args$markers)) {
+    saveMarkers(args$outDir, args$markers)
+  }
 }
 
 main <- function() {
@@ -77,7 +94,9 @@ main <- function() {
   p <- add_argument(p, "--outDir", help="output directory")
   p <- add_argument(p, "--name", help="name of dataset in cell browser", default="cbSeurat-Data")
   p <- add_argument(p, "--meta", help="meta fields to export, space separated", nargs = Inf)
-  
+  p <- add_argument(p, "--markers", help="markers file")
+  p <- add_argument(p, "--markers-only", help="just convert markers file", flag=TRUE)
+
   extractTsv(parse_args(p))
 }
 
