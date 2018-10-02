@@ -2425,6 +2425,48 @@ def cbCellrangerCli():
 
     crangerToCellbrowser(options.datasetName, options.inDir, options.outDir)
 
+def cbToolCli_parseArgs(showHelp=False):
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv -i inputFile -o outputFile - convert various single-cell related files
+    """)
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true",
+        help="show debug messages")
+
+    parser.add_option("-i", "--inDir", dest="inDir", action="store", help="input file")
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
+    #parser.add_option("-g", "--geneSet", dest="geneSet", action="store", help="geneset, e.g. gencode28 or gencode-m13 or similar. Default: %default", default="gencode24")
+    parser.add_option("-n", "--name", dest="datasetName", action="store", help="output file")
+
+    (options, args) = parser.parse_args()
+
+    if showHelp:
+        parser.print_help()
+        exit(1)
+
+    setDebug(options)
+
+    return args, options
+
+def cbToolCli():
+    " run various tools from the command line "
+    args, options = cbToolCli_parseArgs()
+
+    if len(args)==0:
+        cbToolCli_parseArgs(showHelp=True)
+        sys.exit(1)
+
+    cmd = args[0]
+
+    if cmd=="mtxToTsv":
+        mtxFname = args[1]
+        geneFname = args[2]
+        barcodeFname = args[3]
+        outFname = args[4]
+        mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname)
+
+    cbMake(outDir)
+
 def readMatrixAnndata(matrixFname, samplesOnRows=False):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
     import scanpy.api as sc
