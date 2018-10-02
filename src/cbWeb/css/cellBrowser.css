@@ -108,29 +108,6 @@ button { line-height: 12px }
 /* bootstrap's small buttons have a lot of padding, for the toolbar, that's too much */
 .noPad {padding:0 2 0 2}
 
-/* make bootstrap's tabs smaller */
-.nav-tabs>li>a { 
-        padding: 4px; 
-        color: black ;
-        background-color: #CCC;
-        border-top-left-radius: 7px;
-        border-top-right-radius: 7px;
-        border: 1px solid #BBB;
-        border-bottom-color: transparent;
-}
-.nav-tabs>li.active>a {
-        background-color: #DDD;
-        border: 1px solid #CCC;
-        color: black ;
-        border-bottom-color: transparent;
-}
-
-.nav-tabs>li>a:hover { background-color: #DDD; color: black ; }
-.nav-tabs>li.active>a:hover { background-color: #DDD; color: black ; }
-
-.nav-tabs>li>a:focus { background-color: #DDD; color: black ; }
-.nav-tabs>li.active>a:focus { background-color: #DDD; color: black ; }
-
 /* make the navbar dividers smaller */
 .half-rule { 
     margin-left: 0;
@@ -184,6 +161,26 @@ button { line-height: 12px }
 
 /* make bootstrap's navbar show menus on mouse hover */
 /* ul.nav li.dropdown:hover > ul.dropdown-menu { display: block; } */
+
+/* flying-sheep's suggestions */
+.ui-dialog-titlebar { border: none }
+button.list-group-item { background-color: #EEE }
+.nav-tabs > li > a { border-top-left-radius: 4px; border-top-right-radius: 4px; background-color: #EEE; padding-left: 10px; padding-right: 10px; padding-top: 4px; padding-bottom:4px}
+.nav-tabs > li.active > a { background-color: #337ab7; color: white; border: 1px solid #EEE }
+/* .nav-tabs > li { background-color: #E9E9E9 } */
+.ui-corner-all { border-radius: 4px }
+.nav-tabs > li > a:hover { background-color: #EEE;}
+.nav-tabs > li.active > a:hover  { background-color: #397cba; color: white }
+.nav-tabs > li.active > a:focus  { background-color: #397cba; color: white }
+.nav-tabs { border-bottom: none}
+
+/*
+.nav-tabs>li>a:hover { background-color: #DDD; color: black ; }
+.nav-tabs>li.active>a:hover { background-color: #DDD; color: black ; }
+.nav-tabs>li>a:focus { background-color: #DDD; color: black ; }
+.nav-tabs>li.active>a:focus { background-color: #DDD; color: black ; }
+*/
+
 
 /* ----- FOR SORTTABLE.JS ------- */
 th[role=columnheader]:not(.no-sort) {
