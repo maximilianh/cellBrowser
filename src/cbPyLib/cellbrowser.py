@@ -51,7 +51,7 @@ dataDir = join(dirname(__file__), "..", "cbData")
 defOutDir = os.environ.get("CBOUT")
 
 # ==== functions =====
-    
+
 def setDebug(options):
     " activate debugging if needed "
     if options.debug:
@@ -80,7 +80,7 @@ def cbBuild_parseArgs(showHelp=False):
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
-    parser.add_option("-p", "--port", dest="port", action="store", 
+    parser.add_option("-p", "--port", dest="port", action="store",
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
 
     (options, args) = parser.parse_args()
@@ -322,7 +322,7 @@ def bytesAndFmt(x):
 
 #def getDecilesWithZeros(numVals):
 #    """ return a pair of the deciles and their counts.
-#    Counts is 11 elements long, the first element holds the number of zeros, 
+#    Counts is 11 elements long, the first element holds the number of zeros,
 #    which are treated separately
 #
 #    >>> l = [0,0,0,0,0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,8,9,10]
@@ -540,7 +540,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
-        newVals = [valToInt[x] for x in valList] # 
+        newVals = [valToInt[x] for x in valList] #
 
     #fieldMeta["valCount"] = len(valList)
     fieldMeta["diffValCount"] = len(valCounts)
@@ -574,7 +574,7 @@ def runGzip(fname, finalFname=None):
     return finalFname
 
 def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
-    """ convert meta table to binary files. outputs fields.json and one binary file per field. 
+    """ convert meta table to binary files. outputs fields.json and one binary file per field.
     adds names of metadata fields to outConf and returns outConf
     """
     logging.info("Converting to numbers and compressing meta data fields")
@@ -657,10 +657,14 @@ class MatrixTsvReader:
         self.fname = fname
         if fname.endswith(".gz"):
             #ifh = gzip.open(fname)
-            self.ifh = os.popen("gunzip -c "+fname+" 2> /dev/null") # faster, especially with two CPUs
+            self.ifh = subprocess.Popen(
+                ['gunzip', '-c', fname],
+                stdout=subprocess.PIPE,
+                encoding='utf-8',
+            ).stdout # faster, especially with two CPUs
         else:
             self.ifh = open(fname, "rU")
-        
+
         self.sep = "\t"
         if ".csv" in fname.lower():
             self.sep = ","
@@ -680,7 +684,7 @@ class MatrixTsvReader:
 
     def getMatType(self):
         return self.matType
-    
+
     def getSampleNames(self):
         return self.sampleNames
 
@@ -772,7 +776,7 @@ class MatrixTsvReader:
             lineNo += 1
 
             yield gene, symbol, arr
-        
+
         if skipIds!=0:
             logging.warn("Skipped %d expression matrix lines because of duplication/unknown ID" % skipIds)
 
@@ -932,7 +936,7 @@ def binEncode(bins):
     return ret
 
 def digitize_np(arr, matType):
-    """ hopefully the same as digitize(), but using numpy 
+    """ hopefully the same as digitize(), but using numpy
     #>>> digitize_np([1,2,3,4,5,6,4,1,1,1], "int")
     #>>> digitize_np([0,0,0,1,1,1,1,1,2,3,4,5,6,4,5,5,5,5], "float")
     #>>> digitize_np([1,1,1,1,1,2,3,4,5,6,4,5,5,5,5], "float")
@@ -957,7 +961,7 @@ def digitize_np(arr, matType):
             binIdx = 0
             #for val, count in enumerate(binCounts):
                 #if count!=0:
-            for val in posWithValue: 
+            for val in posWithValue:
                 count = binCounts[val]
                 bins.append( (val, val, count) )
                 valToBin[val] = binIdx
@@ -1408,9 +1412,9 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
 
         # XX stupid .gz heuristics... 
         if inFname.endswith(".gz"):
-            cmd = "cp %s %s" % (inFname, outFname)
+            cmd = "cp \"%s\" \"%s\"" % (inFname, outFname)
         else:
-            cmd = "cat %s | gzip -c > %s" % (inFname, outFname)
+            cmd = "cat \"%s\" | gzip -c > %s" % (inFname, outFname)
         ret = runCommand(cmd)
 
         if ret!=0 and isfile(outFname):
@@ -1565,7 +1569,7 @@ def execfile(filepath, globals=None, locals=None):
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
 def loadConfig(fname):
-    """ parse python in fname and return variables as dictionary. 
+    """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
     logging.debug("Loading config from %s" % fname)
@@ -1723,7 +1727,7 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     # make some minimal effort to reduce overlaps
     #spanX = coordInfo['maxX'] - coordInfo['minX']
     #spanY = coordInfo['maxY'] - coordInfo['minY']
-    #tickX = spanX / 1000 # rough guess how much one pixel could be on 
+    #tickX = spanX / 1000 # rough guess how much one pixel could be on
     #tickY = spanY / 1000 # the final screen
     #for i, (midX1, midY1, clusterName1) in enumerate(midInfo):
         #print "first", i, midX1, midY1, clusterName1
@@ -2205,14 +2209,14 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
     Given a scanpy object, write dataset to a dataset directory under path.
-    
+
     This function export files needed for the ucsc cells viewer from the Scanpy Anndata object
     :param anndata: Scanpy AnnData object where information are stored
     :param path : Path to folder where to save data (tsv tables)
     :param meta_option: list of metadata names (string) present
     in the AnnData objects(other than 'louvain' to also save (eg: batches, ...))
     :param nb_marker: number of cluster markers to store. Default: 100
-    
+
     """
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
@@ -2897,4 +2901,3 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
     #ad = sc.read("sampleData/quakeBrainGeo1.old/geneMatrix.tsv")
     #ad = ad.T
     #convScanpy(ad, "temp", "./")
-
