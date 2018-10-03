@@ -653,24 +653,27 @@ class MatrixTsvReader:
 
     def open(self, fname, matType=None):
         " return something for iterMatrixTsv "
+        # Note: The encoding for popen below is utf8. Is this a good choice?
+        # Does performance change if we don't do unicode strings but
+        # byte strings instead? Does unicode eat up the performance gain
+        # of gunzip -c ?
         logging.debug("Opening %s" % fname)
         self.fname = fname
         if fname.endswith(".gz"):
-            #ifh = gzip.open(fname)
-            self.ifh = subprocess.Popen(
-                ['gunzip', '-c', fname],
-                stdout=subprocess.PIPE,
-                encoding='utf-8',
-            ).stdout # faster, especially with two CPUs
+            #ifh = gzip.open(fname) # not doing this anymore
+            cmd = ['gunzip', '-c', fname]
+            proc, stdout = popen(cmd)
+            self.ifh = stdout # always faster and uses 2 CPUs
         else:
-            self.ifh = open(fname, "rU")
+            self.ifh = io.open(fname, "r", encoding="utf8") # speed?
 
         self.sep = "\t"
         if ".csv" in fname.lower():
             self.sep = ","
             logging.debug("Field separator is %s" % repr(self.sep))
 
-        headLine = self.ifh.readline().rstrip("\r\n")
+        headLine = self.ifh.readline()
+        headLine = headLine.rstrip("\r\n")
         self.sampleNames = headLine.split(self.sep)[1:]
         self.sampleNames = [x.strip('"') for x in self.sampleNames]
         assert(len(self.sampleNames)!=0)
@@ -1937,7 +1940,7 @@ def readQuickGenes(inConf, geneToSym, outConf):
 def getFileVersion(fname):
     metaVersion = {}
     metaVersion["fname"] = fname
-    hexHash = md5ForFile(fname).decode("ascii")
+    hexHash = md5ForFile(fname)
     metaVersion["md5"] = hexHash
     metaVersion["size"] = getsize(fname)
     metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
@@ -2015,13 +2018,22 @@ def getAbsPath(conf, key):
     " get assume that value of key in conf is a filename and use the inDir value to make it absolute "
     return abspath(join(conf["inDir"], conf[key]))
 
+def popen(cmd):
+    " run command and return proc object with its stdout attribute  "
+    
+    if isPy3:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, encoding="utf8")
+    else:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    return proc, proc.stdout
+
 def getMd5Using(md5Cmd, fname):
     " posix command line tool is much faster than python "
     logging.debug("Getting md5 of %s using %s command line tool" % (fname, md5Cmd))
     cmd = [md5Cmd, fname]
     logging.debug("Cmd: %s" % cmd)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    md5 = proc.stdout.readline()
+    proc, stdout = popen(cmd)
+    md5 = stdout.readline()
     proc.stdout.close()
     stat = os.waitpid(proc.pid, 0)
     err = stat[1]
