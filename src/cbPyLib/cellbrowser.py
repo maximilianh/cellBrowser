@@ -2458,14 +2458,16 @@ def cbToolCli():
 
     cmd = args[0]
 
-    if cmd=="mtxToTsv":
+    cmds = ["mtx2tsv"]
+
+    if cmd=="mtx2tsv":
         mtxFname = args[1]
         geneFname = args[2]
         barcodeFname = args[3]
         outFname = args[4]
         mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname)
-
-    cbMake(outDir)
+    else:
+        errAbort("Command %s is not a valid command. Valid commands are: %s" % (cmd, ", ".join(cmds)))
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
@@ -2484,7 +2486,7 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False):
         logging.info("Loading expression matrix: tab-sep format")
         adata = sc.read(matrixFname, cache=False , first_column_names=True)
         if not samplesOnRows:
-            info("Transposing the expression matrix")
+            logging.info("Transposing the expression matrix")
             adata = adata.T
 
     return adata
@@ -2514,6 +2516,8 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     assert(cellCount==len(barcodes))
 
     for i in range(0, geneCount):
+        if i%1000==0:
+            logging.info("%d genes written..." % i)
         ofh.write(genes[i])
         ofh.write("\t")
         arr = mat[i].toarray()
@@ -2523,9 +2527,15 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
         np.savetxt(ofh, arr, "%d", "\t", "\n")
     ofh.close()
 
-    logging.info("Compressing expression matrix...")
-    runGzip(tmpFname, outFname)
-    logging.info("Wrote %s" % outFname)
+    if outFname.endswith(".gz"):
+        logging.info("Compressing expression matrix...")
+        runGzip(tmpFname, outFname)
+        logging.info("Wrote %s" % outFname)
+    else:
+        logging.info("%s does not end with .gz, not compressing, just moving output" % outFname)
+        os.rename(tmpName, outFname)
+
+    logging.info("Created %s" % outFname)
 
 def crangerToCellbrowser(datasetName, inDir, outDir):
     " convert cellranger output to a cellbrowser directory "

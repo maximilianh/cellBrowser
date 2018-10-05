@@ -12,7 +12,7 @@ dataDir = join(dirname(__file__), "cbData","genes")
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] filename - guess Gencode version based on files created by gtfToTransTab")
+    parser = optparse.OptionParser("usage: %prog [options] filename - guess Gencode version based on files created by gtfToTransTab. Reads only the first tab-sep field from filename and reports overlap with various gencode files.")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     parser.add_option("-g", "--gencodeDir", dest="gencodeDir", action="store",
@@ -44,7 +44,7 @@ def parseGencode(baseDir):
         logging.info("Parsing %s" % fname)
         genes = set()
         for line in open(fname):
-            if "geneId" in line:
+            if "gene" in line.lower():
                 continue
             row = line.rstrip("\n").split('\t')
             geneId = row[0].split(".")[0]
@@ -62,7 +62,8 @@ def guessGencodeVersion(relGenes, fname):
         if not headDone:
             headDone = True
             continue
-        geneId, rest = string.split(line[:50], "\t", 1)
+        geneId = string.split(line[:50], "\t", 1)[0]
+        geneId = geneId.strip("\n").strip("\r")
         fileGenes.add(geneId.split('.')[0])
 
     logging.info("Genes in matrix but not in...")
