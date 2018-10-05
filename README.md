@@ -64,7 +64,7 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
 
 From Jupyter or Python3, create a data directory with the tab-sep files:
 
-    sys.path.append("cellbrowser/src/cbLib")
+    sys.path.append("cellbrowser/src/cbPyLib")
     import cellbrowser
     # convert to tsv files and create a cellbrowser.conf
     cellbrowser.scanpyToTsv(adata, "scanpyOut", "myDataset")
