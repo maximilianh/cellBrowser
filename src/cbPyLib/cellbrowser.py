@@ -2266,7 +2266,7 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
         #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
         anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
     else:
-        errAbort('Couldn't find clustering information')
+        errAbort('Couldn\'t find clustering information')
 
     ##Check for cluster markers
     if 'rank_genes_groups' in anndata.uns:
