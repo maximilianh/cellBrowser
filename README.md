@@ -57,8 +57,14 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
 
     mkdir ~/cellData
     cd ~/cellData
-    rsync -Lavzp hgwdev.soe.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
-    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o ~/public_html/cb/ -n pbmc3k
+    rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
+    cd pbmc3k
+    ../../cellBrowser/src/cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o scanpyout -n pbmc3k
+    cd scanpyout
+    ../../cellBrowser/src/cbBuild -o ~/public_html/cb
+
+Currently only the genes are exported that were used by Scanpy. This has advantages, but also disadvantages.
+I am looking forward on your feedback on how this should be done ideally.
 
 ### Convert an existing Scanpy object to a cell browser
 
