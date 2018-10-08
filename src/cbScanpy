@@ -45,6 +45,9 @@ def parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output directory")
 
+    parser.add_option("-c", "--confFname", dest="confFname", action="store", default="cellbrowser.conf", 
+            help="config file from which settings are read, default is %default")
+
     parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
             help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
 
@@ -84,12 +87,18 @@ def errAbort(msg):
 def info(msg):
     print(msg)
 
-def cbScanpy(matrixFname, figDir, logFname):
+def cbScanpy(matrixFname, confFname, figDir, logFname):
     " run expr matrix through scanpy, output "
     import scanpy.api as sc
     #from scanpy.logging import info
     import pandas as pd
     import numpy as np
+
+    if isfile(confFname):
+        conf = cellbrowser.loadConfig(confFname)
+    else:
+        logging.debug("Could not find %s, not loading config file" % confFname)
+        conf = {}
 
     sc.settings.set_figure_params(dpi=200)
     sc.settings.file_format_figs = 'png'
@@ -119,6 +128,10 @@ def cbScanpy(matrixFname, figDir, logFname):
     sc.pp.filter_genes(adata, min_cells=minCells)
 
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
+    geneIdType = conf.get("geneIdType")
+    if geneIdType is None:
+        logging.warn("'geneIdType' is not specified in config file. Using 'human' as a default")
+
     thrsh_mito=0.05
     up_thrsh_genes=15000
     low_thrsh_genes=10
@@ -131,7 +144,7 @@ def cbScanpy(matrixFname, figDir, logFname):
         #info("Reading mitochondrial genes from %s" % mitoFname)
         #gencodeMitos = open(mitoFname).read().splitlines()
         #gencodeMitos = set([x.split(".")[0] for x in gencodeMitos]) # strip version number
-        gencodeMitos = cellbrowser.readMitos("human")
+        gencodeMitos = cellbrowser.readMitos(geneIdType)
         mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
     if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
@@ -196,24 +209,28 @@ def cbScanpy(matrixFname, figDir, logFname):
     sc.pl.pca_variance_ratio(adata, log=True )
 
     #Computing number of PCs to be used in clustering
-    info("Estimating number of useful PCs based on Shekar et al, Cell 2016")
-    info("PC weight cutoff used is (sqrt(# of Genes/# of cells) + 1)^2")
-    info("See http://www.cell.com/cell/fulltext/S0092-8674(16)31007-8, STAR methods")
-    pc_cutoff= (np.sqrt((adata.n_vars/adata.n_obs))+1)**2
-    pc_nb=0
-    for i in adata.uns['pca']['variance']:
-        if i>pc_cutoff:
-            pc_nb+=1
-    info('%d PCs will be used for tSNE and clustering' % pc_nb)
+    if "pc_count" in conf:
+        info("Using %d PCs as configured in config" % conf["pc_count"])
+        pc_nb = conf["pc_count"]
+    else:
+        info("Estimating number of useful PCs based on Shekar et al, Cell 2016")
+        info("PC weight cutoff used is (sqrt(# of Genes/# of cells) + 1)^2")
+        info("See http://www.cell.com/cell/fulltext/S0092-8674(16)31007-8, STAR methods")
+        pc_cutoff= (np.sqrt((adata.n_vars/adata.n_obs))+1)**2
+        pc_nb=0
+        for i in adata.uns['pca']['variance']:
+            if i>pc_cutoff:
+                pc_nb+=1
+        info('%d PCs will be used for tSNE and clustering' % pc_nb)
 
     info('Performing tSNE')
     sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
 
-    neighbors = 10
+    neighbors = int(conf.get("louvain_neighbors", 6))
     info('Performing Louvain Clustering, using %d neighbors' % neighbors)
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=2.5)
-    info("Found %d louvain clusters" % len(adata.obs[['louvain']]))
+    info("Found %d louvain clusters" % len(set(adata.obs[['louvain']])))
     sc.pl.tsne(adata, color='louvain')
 
     #Clustering. Default Resolution: 1
@@ -238,7 +255,7 @@ def cbScanpy(matrixFname, figDir, logFname):
     else:
         adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fr"]
 
-    info("Performing ForceAtlas2")
+    info("Performing ForceAtlas2 (draw_graph)")
     sc.tl.draw_graph(adata)
 
     #info("Performing PAGA+UMAP")
@@ -263,6 +280,7 @@ def main():
     #try:
     matrixFname = options.exprMatrix
     outDir = options.outDir
+    confFname = options.confFname
 
     if not isdir(outDir):
         logging.info("Creating output directory %s" % outDir)
@@ -274,7 +292,7 @@ def main():
 
     if not isfile(adFname):
         logFname = join(outDir, "cbScanpy.log")
-        adata = cbScanpy(matrixFname, figDir, logFname)
+        adata = cbScanpy(matrixFname, confFname, figDir, logFname)
         logging.info("Writing anndata object to %s" % adFname)
         adata.write(adFname)
     else:

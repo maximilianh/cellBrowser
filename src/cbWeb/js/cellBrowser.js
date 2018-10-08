@@ -1033,6 +1033,7 @@ var tsnePlot = function() {
            if (loadsDone===2) {
                buildLegendBar();
                renderer.setColors(legendGetColors(gLegend.rows));
+               renderer.setTitle(db.conf.shortLabel);
                renderer.drawDots();
            }
        }
@@ -1047,7 +1048,7 @@ var tsnePlot = function() {
 
        buildLeftSidebar(db.getMetaFields());
        buildToolBar(db.conf.coords, db.conf.name, metaBarWidth+metaBarMargin, toolBarHeight);
-       activateMode("select");
+       activateMode("move");
 
        db.loadCoords(0, gotFirstCoords, onProgress);
 
