@@ -11,30 +11,40 @@ converts the output to JSON and binary files to the output webserver directory.
 
 Requirements: Python2.6+ or Python3+
 
+Feedback? Open a ticket or email us at cells@ucsc.edu
+
 There is a sample dataset in sampleData/sample1, it's a minimal expression
 matrix for a few thousand cells and only the first 100 genes and a bit of meta
 data for the cells..
 
-You can build a viewer for it in the directory ~/cells and serve that directory on port 8888:
+You can build a viewer for it in the directory ~/public_html/cb/ and serve that directory on port 8888:
 
     cd sampleData/sample1/
     ../../src/cbBuild -o ~/public_html/cb/ -p 8888
 
 The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
 that are available in this config file. E.g. you can change the colors, add acronym tables,
-add all file names, add more marker gene tables, etc.
+add file names, add more marker gene tables, etc.
 
 Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
 You will have to re-run cbBuild again with -p8888 to look at it again.
 
 The -p 8888 is optional. A more permanent alternative to the -p option is to
-run a webserver on your machine and build directly into its web directory, e.g.
-on a Mac you can use the Apache that ships with OSX:
+run a webserver on your machine and build directly into its web directory.
+
+On a Mac you can use the Apache that ships with OSX:
 
     sudo /usr/sbin/apachectl start
     sudo ../../src/cbBuild -o /Library/WebServer/Documents/cells/
 
-Now you should be able to access your viewer at http://localhost/cells
+Then you should be able to access your viewer at http://localhost/cells
+
+On Linux, you would use the directory /var/www/ instead:
+
+    sudo ../../src/cbBuild -o /var/www/
+
+We hope you do not use this software on Windows. We could make it work, as it's
+only Python but we would rather avoid making it work on Windows.
 
 To deploy the result onto a real webserver, simply copy all files and directories
 under "cells" to an empty directory on a webserver and point your
@@ -42,11 +52,11 @@ web browser to it. E.g. many universities give their employees homepage
 directories, sometimes in a directory called "~/public_html" or on a special server.
 
 To add more datasets, simply go to the other data directories and run cbBuild
-again, with the same output directory. cbBuild will then modify the index.html
+there, with the same output directory. cbBuild will then modify the index.html
 in the output directory to show both datasets (or more). Note that the
 directory that you provide via -o or the CBOUT environment variable is the html
 directory. The data for each individual dataset will be copied into
-subdirectories, one per dataset.
+subdirectories under this html directory, one directory per dataset.
 
 ### Process an expression matrix with ScanPy
 
@@ -81,11 +91,11 @@ Then build the cell browser from the Unix shell into a html directory:
 
 ### Convert a CellRanger directory
 
-    todo
+    Use src/cbCellranger. More instructions later.
 
 ### Convert a Seurat object
 
-    todo
+    Use src/cbSeurat. More instructions later.
 
 ### Optional Python modules to install
 
@@ -109,12 +119,15 @@ tab-separated file and has as many sample columns as you have rows in the meta
 data file  and they appear the same order. If this is the case, the conversion of the matrix
 is much quicker.
 
-Edit the file cellbrowser.conf and adapt the values.
+Copy sampleData/sample1/cellbrowser.conf into the directory with the data files and adapt
+the values for meta, exprMatrix, labelField, clusterField and coordFiles.
 
 From this directory, run 
 
-    cbBuild -o <yourWebserverHtmlDirectory>
+    cbBuild -o <yourWebserverHtmlDirectory> -p 8888
 
-Navigate your internet browser to the webserver directory (or supply the -p
-<port> option to have cbBuild run a webserver).
+Navigate your internet browser to the name of the server (or localhost, if you're running this on your own machine)
+followed by :8888.
+
+When you run into issues, please open a ticket or send email to cells@ucsc.edu.
 
