@@ -400,7 +400,7 @@ def discretizeArray(numVals, fieldMeta):
         values = [x for x,y in counts]
 
         valToBin = {}
-        for i, x in values:
+        for i, x in enumerate(values):
             valToBin[x] = i
 
         dArr = [valToBin[x] for x in numVals]
@@ -1298,18 +1298,18 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row?")
         sys.exit(1)
 
-    matNotMeta = meta - mat
-    metaNotMat = mat - meta
+    metaNotMatrix = meta - mat
+    matrixNotMeta = mat - meta
     stop = False
     mustFilterMatrix = False
-    if len(metaNotMat)!=0:
-        logging.warn("%d samples names are in the meta data, but not in the expression matrix. Examples: %s" % (len(metaNotMat), list(metaNotMat)[:10]))
+    if len(matrixNotMeta)!=0:
+        logging.warn("%d samples names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
         logging.warn("These samples will be removed from the meta data")
         matrixSampleNames = [x for x in matrixSampleNames if x in meta]
         mustFilterMatrix = True
 
-    if len(matNotMeta)!=0:
-        logging.warn("%d samples names are in the expression matrix, but not in the meta data. Examples: %s" % (len(matNotMeta), list(matNotMeta)[:10]))
+    if len(metaNotMatrix)!=0:
+        logging.warn("%d samples names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
         logging.warn("These samples will be removed from the expression matrix")
 
     # filter the meta data file
@@ -1705,10 +1705,15 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
+        clusterName = labelVals[clustIdx]
         yList = clusterYVals[clustIdx]
         # get the midpoint of this cluster
         midX = sum(xList) / float(len(xList))
         midY = sum(yList) / float(len(yList))
+
+        if len(xList)<3:
+            midInfo.append([midX, midY, clusterName])
+            continue
 
         # take only the best 70% of the points closest to the midpoints
         xyDist = []
@@ -1724,7 +1729,6 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
         fixMidX = xSum / float(len(xyDistBest))
         fixMidY = ySum / float(len(xyDistBest))
 
-        clusterName = labelVals[clustIdx]
         midInfo.append([fixMidX, fixMidY, clusterName])
 
     # make some minimal effort to reduce overlaps
@@ -2015,7 +2019,7 @@ def readMitos(idType):
             mitos.append(geneId)
     if len(mitos)==0:
         errAbort("Could not find any mitochondrial genes for gene ID type %s" % idType)
-    logging.debug("Found %d mitochondrial genes for %s, e.g. %s" % (len(mitos), org, mitos[0]))
+    logging.debug("Found %d mitochondrial genes for %s, e.g. %s" % (len(mitos), idType, mitos[0]))
     return mitos
 
 def getAbsPath(conf, key):

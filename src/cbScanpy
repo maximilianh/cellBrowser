@@ -131,6 +131,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     geneIdType = conf.get("geneIdType")
     if geneIdType is None:
         logging.warn("'geneIdType' is not specified in config file. Using 'human' as a default")
+        geneIdType = "human"
 
     thrsh_mito=0.05
     up_thrsh_genes=15000
