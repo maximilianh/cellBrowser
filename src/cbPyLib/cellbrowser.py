@@ -2000,17 +2000,21 @@ def readGeneSymbols(inConf):
     geneToSym = readGeneToSym(geneIdTable)
     return geneToSym
 
-def readMitos(org):
+def readMitos(idType):
     ' return the gene IDs of all mitochondrial genes. 37 for human for all gencode versions '
-    if org=="human":
-        geneToSym = readGeneSymbols({'geneIdType':"gencode22"})
+    if idType=="human":
+        geneToSym = readGeneSymbols({'geneIdType': "gencode22"})
+    elif idType=="mouse":
+        geneToSym = readGeneSymbols({'geneIdType': "gencode-m13"})
     else:
-        assert(False) # not doing mouse just yet
+        geneToSym = readGeneSymbols({'geneIdType': idType})
 
     mitos = []
     for geneId, sym in iterItems(geneToSym):
         if sym.startswith("MT-"):
             mitos.append(geneId)
+    if len(mitos)==0:
+        errAbort("Could not find any mitochondrial genes for gene ID type %s" % idType)
     logging.debug("Found %d mitochondrial genes for %s, e.g. %s" % (len(mitos), org, mitos[0]))
     return mitos
 
@@ -2174,8 +2178,8 @@ def writeCellbrowserConf(name, coordsList, fname, args={}):
     for c in name:
         assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
 
-    metaFname = args.get("meta", "cell_to_cluster.tsv")
-    clusterField = args.get("clusterField", "Louvain CLuster")
+    metaFname = args.get("meta", "meta.tsv")
+    clusterField = args.get("clusterField", "Louvain Cluster")
 
     conf = """
 name='%(name)s'
@@ -2262,7 +2266,7 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
         #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
         anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
     else:
-        errAbort('Couldnt find clustering information')
+        errAbort('Couldn't find clustering information')
 
     ##Check for cluster markers
     if 'rank_genes_groups' in anndata.uns:
