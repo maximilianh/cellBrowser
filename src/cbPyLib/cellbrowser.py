@@ -8,13 +8,15 @@
 # requires at least python2.6, version tested was 2.6.6
 # should work with python2.5, not tested
 # works on python3, version tested was 3.6.5
+# functions related to cbScanpy require python3, as scanpy requires at least python3
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib
+import hashlib, timeit, datetime
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime
+from time import gmtime, strftime
 
 try:
     from collections import defaultdict
@@ -101,13 +103,6 @@ def cbMake_parseArgs():
         help="show debug messages")
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
 
-    #parser.add_option("-m", "--meta", dest="meta", action="store",
-        #help="meta data tsv file, aka sample sheet. One row per sample, first row has headers, first column has sample name."
-        #)
-    #parser.add_option("-e", "--matrix", dest="matrix", action="store",
-        #help="expression matrix file, one gene per row, one sample per column. First column has gene identifiers (Ensembl or symbol), First row has sample names. ")
-    #parser.add_option("-c", "--coords", dest="coords", action="append", help="tab-sep table with cell coordinates, format: metaId, x, y. Can be specified multiple times, if you have multiple coordinate files.")
-
     (options, args) = parser.parse_args()
 
     if options.outDir==None:
@@ -115,6 +110,56 @@ def cbMake_parseArgs():
         exit(1)
 
     setDebug(options)
+    return args, options
+
+def cbScanpy_parseArgs():
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] -e matrixFile -o outDir - run scanpy and output .tsv files
+
+    If exceptions occur, will automatically start the debugger.
+    """)
+
+    parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
+            help="gene-cell expression matrix file, possible formats: .h5ad, .csv, .xlsx, .h5, .loom, .mtx, .txt, .tab, .data")
+    #parser.add_option("-m", "--metaData", dest="metaData", action="store",
+            #help="meta data table file, .gz is OK")
+
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+            help="output directory")
+
+    parser.add_option("-c", "--confFname", dest="confFname", action="store", default="scanpy.conf", 
+            help="config file from which settings are read, default is %default")
+
+    parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
+            help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
+
+    parser.add_option("-n", "--name", dest="name", action="store", default="cbScanpy-Data",
+            help="name of dataset in cell browser, default %default")
+
+    parser.add_option("", "--test",
+        dest="test",
+        action="store_true", help="run doctests")
+    parser.add_option("-d", "--debug", dest="debug", action="store_true", help="open an iPython shell when an exception occurs. also output debug messages")
+
+    (options, args) = parser.parse_args()
+
+    if options.test:
+        import doctest
+        doctest.testmod()
+        sys.exit(0)
+
+    if options.exprMatrix is None and options.outDir is None:
+        parser.print_help()
+        exit(1)
+
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG)
+        #import sys
+        #import IPython # just making sure that ipython is installed. install with 'pip install ipython'
+        #sys.excepthook = excepthook
+
+    else:
+        logging.basicConfig(level=logging.INFO)
     return args, options
 
 def makeDir(outDir):
@@ -571,6 +616,8 @@ def runGzip(fname, finalFname=None):
         os.remove(finalFname)
     logging.debug("Renaming %s to %s" % (gzipFname, finalFname))
     os.rename(gzipFname, finalFname)
+    if isfile(fname):
+        os.remove(fname)
     return finalFname
 
 def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
@@ -1571,7 +1618,7 @@ def execfile(filepath, globals=None, locals=None):
     with open(filepath, 'rb') as file:
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
-def loadConfig(fname):
+def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
@@ -1582,14 +1629,12 @@ def loadConfig(fname):
 
     conf = l
 
-    if not "coords" in conf:
-        errAbort("The input configuration has to define the 'coords' statement")
-    if not "meta" in conf:
-        errAbort("The input configuration has to define the 'meta' statement")
-    if not "exprMatrix" in conf:
-        errAbort("The input configuration has to define the 'exprMatrix' statement")
-    if "tags" in conf and type(conf["tags"])!=type([]):
-        errAbort("'tags' in input config file must be a list")
+    for rt in requireTags:
+        if not rt in conf:
+            errAbort("The input configuration has to define the %s statement" % rt)
+        if rt=="tags":
+            if type(conf["tags"])!=type([]):
+                errAbort("'tags' in input config file must be a list")
 
     conf["inDir"] = dirname(fname)
 
@@ -2214,17 +2259,19 @@ alpha=0.6
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def anndataToTsv(anndata, matFname):
+def anndataToTsv(anndata, matFname, useRaw=False):
     " write anndata to .tsv file and gzip it "
     logging.info("Writing matrix to %s" % matFname)
     tmpFname = matFname+".tmp"
     import pandas as pd
     adT = anndata.T
+    logging.info("Converting anndata to panda df")
     data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
+    logging.info("Writing panda df to file")
     data_matrix.to_csv(tmpFname, sep='\t', index=True)
     os.rename(tmpFname, matFname)
 
-def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
+def scanpyToTsv(anndata, path, datasetName, meta_option=["percent_mito", "UMI_count"], nb_marker=50):
     """
     Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2269,6 +2316,7 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
         # add prefix to make sure that it's not treated as a number
         #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
         anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
+        logging.info("Writing %s" % fname)
     else:
         errAbort('Couldn\'t find clustering information')
 
@@ -2293,19 +2341,20 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=None, nb_marker=50):
     marker_df=marker_df[cols]
     #Export
     fname = join(path, "markers.tsv")
+    logging.info("Writing %s" % fname)
     pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
 
     ##Save more metadata
-    if meta_option != None:
-        meta_df=pd.DataFrame()
-        for element in meta_option:
-            if element not in anndata.obs:
-                print(str(element) + ' field is not present in the AnnData object')
-            else:
-                temp=anndata.obs[[element]]
-                meta_df=pd.concat([meta_df,temp],axis=1)
-        fname = join(path, "meta.tsv")
-        meta_df.to_csv(fname,sep='\t')
+    #if meta_option != None:
+        #meta_df=pd.DataFrame()
+        #for element in meta_option:
+            #if element not in anndata.obs:
+                #print(str(element) + ' field is not present in the AnnData object')
+            #else:
+                #temp=anndata.obs[[element]]
+                #meta_df=pd.concat([meta_df,temp],axis=1)
+        #fname = join(path, "meta.tsv")
+        #meta_df.to_csv(fname,sep='\t')
 
     writeCellbrowserConf(datasetName, coordDescs, confName)
     #ofh = open(confName, "w")
@@ -2447,16 +2496,19 @@ def cbCellrangerCli():
 
 def cbToolCli_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv -i inputFile -o outputFile - convert various single-cell related files
+    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv - convert various single-cell related files
+
+    Examples:
+    - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv file
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
 
-    parser.add_option("-i", "--inDir", dest="inDir", action="store", help="input file")
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
+    #parser.add_option("-i", "--inDir", dest="inDir", action="store", help="input file")
+    #parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
     #parser.add_option("-g", "--geneSet", dest="geneSet", action="store", help="geneset, e.g. gencode28 or gencode-m13 or similar. Default: %default", default="gencode24")
-    parser.add_option("-n", "--name", dest="datasetName", action="store", help="output file")
+    #parser.add_option("-n", "--name", dest="datasetName", action="store", help="output file")
 
     (options, args) = parser.parse_args()
 
@@ -2516,24 +2568,31 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     from scipy import io
     import numpy as np
     logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
+
+    genes = [l.strip() for l in openFile(geneFname)]
+    genes = [g.replace("\t", "|") for g in genes if g!=""]
+    barcodes = [l.strip() for l in openFile(barcodeFname) if l!="\n"]
+
+    logging.info("Read %d genes and %d barcodes" % (len(genes), len(barcodes)))
+
+    logging.info("Reading expression matrix...")
     mat = io.mmread(mtxFname)
-    genes = [l.strip() for l in open(geneFname)]
-    genes = [g.replace("\t", "|") for g in genes]
-    barcodes = [l.strip() for l in open(barcodeFname)]
+
+    logging.info("Converting to row-based layout...")
     mat = mat.tocsr()
+
+    geneCount, cellCount = mat.shape
+    assert(geneCount==len(genes)) # matrix gene count has to match gene tsv file line count
+    assert(cellCount==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
 
     logging.info("Writing matrix to text")
     tmpFname = outFname+".tmp"
+
     ofh = open(tmpFname, "w")
 
     ofh.write("gene\t")
     ofh.write("\t".join(barcodes))
     ofh.write("\n")
-
-    geneCount, cellCount = mat.shape
-
-    assert(geneCount==len(genes))
-    assert(cellCount==len(barcodes))
 
     for i in range(0, geneCount):
         if i%1000==0:
@@ -2553,7 +2612,7 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
         logging.info("Wrote %s" % outFname)
     else:
         logging.info("%s does not end with .gz, not compressing, just moving output" % outFname)
-        os.rename(tmpName, outFname)
+        os.rename(tmpFname, outFname)
 
     logging.info("Created %s" % outFname)
 
@@ -2966,6 +3025,261 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
 
     cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname2, sizesFname, bbFname)
     runCommand(cmd)
+
+def pipeLog(msg):
+    print(msg)
+
+# for iphython debug command line
+def excepthook(type, value, traceback):
+    from IPython import embed
+    embed()
+
+def cbScanpy(matrixFname, confFname, figDir, logFname):
+    " run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data "
+    import scanpy.api as sc
+    import pandas as pd
+    import numpy as np
+    import warnings
+    warnings.filterwarnings("ignore")
+
+    if isfile(confFname):
+        conf = loadConfig(confFname, requireTags=[])
+    else:
+        logging.debug("Could not find %s, not loading config file" % confFname)
+        conf = {}
+
+    sc.settings.set_figure_params(dpi=200)
+    sc.settings.file_format_figs = 'png'
+    sc.settings.plot_suffix=''
+    sc.settings.autosave=True
+    sc.settings.autoshow=False
+    sc.settings.figdir=figDir
+    sc.settings.logfile=logFname
+    #sc.settings.logDir=join(outDir, "cbScanpy.log")
+
+    pipeLog("cbScanpy $Id: 1e7c40a1801e210aa974d42ddb5ea5f4d3f225e6 $")
+    pipeLog("Input file: %s" % matrixFname)
+    #print("Output directory: %s" % outDir)
+    pipeLog("Start time: %s" % datetime.datetime.now())
+    sc.logging.print_versions()
+
+    start = timeit.default_timer()
+    adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows)
+
+    pipeLog("Data has %d samples/observations" % len(adata.obs))
+    pipeLog("Data has %d genes/variables" % len(adata.var))
+
+    if conf.get("doTrimCells", True):
+        minGenes = conf.get("minGenes", 200)
+        pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
+        sc.pp.filter_cells(adata, min_genes=minGenes)
+    if conf.get("doTrimGenes", True):
+        minCells = conf.get("minCells", 3)
+        pipeLog("Basic filtering: keep only gene with min %d cells" % (minCells))
+        sc.pp.filter_genes(adata, min_cells=minCells)
+
+    #### PARAMETERS FOR GATING CELLS (must be changed) #####
+    if conf.get("doFilterMito", True):
+        geneIdType = conf.get("geneIdType")
+        if geneIdType is None:
+            logging.warn("'geneIdType' is not specified in config file. Using 'human' as a default")
+            geneIdType = "human"
+
+        thrsh_mito=conf.get("mitoMax", 0.05)
+        pipeLog("Remove cells with more than %f percent of mitochondrial genes" % thrsh_mito)
+
+        pipeLog("Computing percentage of mitochondrial genes")
+        mito_genes = [name for name in adata.var_names if name.startswith('MT.') or name.startswith('MT-')]
+        if len(mito_genes)==0:
+            gencodeMitos = readMitos(geneIdType)
+            mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
+
+        if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
+            pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
+            pipeLog("Dying cells cannot be removed - please check your expression matrix")
+            doMito = False
+        else:
+            doMito = True
+
+            adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
+            adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
+
+            sc.pl.violin(adata, ['n_genes', 'UMI_Count', 'percent_mito'], jitter=0.4, multi_panel=True)
+
+            fig1=sc.pl.scatter(adata, x='UMI_Count', y='percent_mito', save="_percent_mito")
+            fig2=sc.pl.scatter(adata, x='UMI_Count', y='n_genes', save="_gene_count")
+
+            adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
+
+    if conf.get("doFilterGenes", True):
+        up_thrsh_genes=conf.get("filterMaxGenes", 15000)
+        low_thrsh_genes=conf.get("filterMinGenes", 10)
+        pipeLog("Remove cells with less than %d and more than %d genes" % (low_thrsh_genes, up_thrsh_genes))
+
+        #Filtering out cells according to filter parameters
+        pipeLog('Filtering cells')
+        adata = adata[adata.obs['n_genes'] < up_thrsh_genes, :]
+        adata = adata[adata.obs['n_genes'] > low_thrsh_genes, :]
+
+        pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
+
+    if conf.get("doNormalize", True):
+        countsPerCell = conf.get("countsPerCell", 10000)
+        pipeLog('Expression normalization, counts per cell = %d' % countsPerCell)
+        sc.pp.normalize_per_cell(adata, counts_per_cell_after=countsPerCell)
+
+    if conf.get("doTrimVarGenes", True):
+        minMean = conf.get("varMinMean", 0.0125)
+        maxMean = conf.get("varMaxMean", 3)
+        minDisp = conf.get("varMinDisp", 0.5)
+        pipeLog('Finding highly variable genes: min_mean=%f, max_mean=%f, min_disp=%f' % (minMean, maxMean, minDisp))
+        filter_result = sc.pp.filter_genes_dispersion(adata.X, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
+        sc.pl.filter_genes_dispersion(filter_result)
+        adata = adata[:, filter_result.gene_subset]
+        pipeLog('Number of variable genes identified: %d' % sum(filter_result.gene_subset))
+
+    if conf.get("doLog", True):
+        sc.pp.log1p(adata)
+        pipeLog("Did log2'ing of data")
+
+    #Regress out variables nUMI, percent_mito
+    if conf.get("doRegress", True):
+        if doMito:
+            pipeLog('Regressing out percent_mito and number of UMIs')
+            sc.pp.regress_out(adata, ['UMI_Count', 'percent_mito'])
+        else:
+            pipeLog('Regressing out only number of UMIs')
+            sc.pp.regress_out(adata, ['UMI_Count'])
+
+        #Scaling after regression 
+        maxValue = conf.get("regressMax", 10)
+        pipeLog('Scaling data, max_value=%d' % maxValue)
+        sc.pp.scale(adata, max_value=maxValue)
+
+    allPcCount = 100
+    pipeLog('Performing initial PCA, number of PCs: %d' % allPcCount)
+    sc.tl.pca(adata, n_comps=allPcCount)
+    #Multiply by -1 to compare with Seurat
+    #adata.obsm['X_pca'] *= -1
+    #Plot of pca variance ratio to see if formula matches visual determination of pc_nb to use
+    sc.pl.pca_variance_ratio(adata, log=True)
+
+    #Computing number of PCs to be used in clustering
+    pcCount = conf.get("pcCount", 'auto')
+    if pcCount == "auto":
+        pipeLog("Estimating number of useful PCs based on Shekar et al, Cell 2016")
+        pipeLog("PC weight cutoff used is (sqrt(# of Genes/# of cells) + 1)^2")
+        pipeLog("See http://www.cell.com/cell/fulltext/S0092-8674(16)31007-8, STAR methods")
+        pc_cutoff= (np.sqrt((adata.n_vars/adata.n_obs))+1)**2
+        pc_nb=0
+        for i in adata.uns['pca']['variance']:
+            if i>pc_cutoff:
+                pc_nb+=1
+        pipeLog('%d PCs will be used for tSNE and clustering' % pc_nb)
+    else:
+        pc_nb = pcCount
+        pipeLog("Using %d PCs as configured in config" % pcCount)
+
+    pipeLog('Performing tSNE')
+    sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
+
+    neighbors = int(conf.get("louvainNeighbors", 6))
+    res = int(conf.get("louvainRes", 1.0))
+    pipeLog('Performing Louvain Clustering, using %d PCs and %d neighbors' % (pc_nb, neighbors))
+    sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
+    sc.tl.louvain(adata, resolution=res)
+    pipeLog("Found %d louvain clusters" % len(set(adata.obs[['louvain']])))
+    sc.pl.tsne(adata, color='louvain')
+
+    #Clustering. Default Resolution: 1
+    #res = 1.0
+    #pipeLog('Performing Louvain Clustering, resolution = %f' % res)
+    #sc.pp.neighbors(adata, n_pcs=int(pc_nb))
+    #sc.tl.louvain(adata, resolution=res)
+    #sc.pl.tsne(adata, color='louvain')
+
+    if conf.get("doUmap", True):
+        pipeLog("Performing UMAP")
+        sc.tl.umap(adata)
+
+    if conf.get("doPhate", True):
+        try:
+            import phate
+            hasPhate = True
+        except:
+            hasPhate = False
+
+        if not hasPhate:
+            pipeLog("Phate is not installed, cannot run PHATE, run 'pip install phate' to install it")
+        else:
+            pipeLog("Performing PHATE")
+            sc.tl.phate(adata)
+
+    if conf.get("doPagaFa2", True):
+        pipeLog("Performing PAGA+ForceAtlas2")
+        sc.tl.paga(adata, groups='louvain')
+        sc.pl.paga(adata, show=False)
+        sc.tl.draw_graph(adata, init_pos='paga')
+
+        if "X_draw_graph_fa" in adata.obsm:
+            adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fa"]
+        else:
+            adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fr"]
+
+    if conf.get("doFa2", True):
+        pipeLog("Performing ForceAtlas2 (draw_graph)")
+        sc.tl.draw_graph(adata)
+
+    #pipeLog("Performing PAGA+UMAP")
+    #sc.tl.umap(adata, init_pos='paga') # waiting for key_added_ext PR
+
+    #Finding Top Markers, according to z-score
+
+    if conf.get("doMarkers", True):
+        nGenes = conf.get("markerCount", 20)
+        pipeLog('Finding top markers for each cluster')
+        sc.tl.rank_genes_groups(adata, 'louvain')
+        sc.pl.rank_genes_groups(adata, n_genes=nGenes)
+
+    #Stop Timer
+    stop= timeit.default_timer()
+    pipeLog("Running time: %f" % (stop-start))
+
+    return adata
+
+def cbScanpyCli():
+    global options
+    args, options = cbScanpy_parseArgs()
+
+    matrixFname = options.exprMatrix
+    outDir = options.outDir
+    confFname = options.confFname
+
+    makeDir(outDir)
+
+    figDir = join(outDir, "figs")
+
+    adFname = join(outDir, "anndata.h5ad")
+
+    if not isfile(adFname):
+        logFname = join(outDir, "cbScanpy.log")
+        try:
+            adata = cbScanpy(matrixFname, confFname, figDir, logFname)
+        except:
+            # on an exception, automatically bring up the debugger - avoids having to reload the data file
+            extype, value, tb = sys.exc_info()
+            import traceback, pdb
+            traceback.print_tb(tb)
+            pdb.post_mortem(tb)
+        logging.info("Writing anndata object to %s" % adFname)
+        adata.write(adFname)
+    else:
+        import scanpy.api as sc
+        logging.info("Looks like the scanpy analysis was run before")
+        logging.info("Reading old cached anndata from %s" % adFname)
+        adata = sc.read(adFname)
+
+    scanpyToTsv(adata, outDir, datasetName=options.name)
 
 #if __name__=="__main__":
     #main()

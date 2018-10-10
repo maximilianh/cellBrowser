@@ -73,8 +73,9 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
     cd scanpyout
     ../../cellBrowser/src/cbBuild -o ~/public_html/cb
 
-Currently only the genes are exported that were used by Scanpy. This has advantages, but also disadvantages.
-I am looking forward on your feedback on how this should be done ideally.
+Currently only the genes are exported that were used by Scanpy and only their
+normalized and log'ed value. This has advantages, but also disadvantages.  I am
+looking forward on your feedback on how this should be done ideally.
 
 ### Convert an existing Scanpy object to a cell browser
 
