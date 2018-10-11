@@ -34,6 +34,20 @@ add file names, add more marker gene tables, etc.
 Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
 You will have to re-run cbBuild again with -p8888 to look at it again.
 
+To deploy the result onto a real webserver, simply copy all files and directories
+under "cells" to an empty directory on a webserver and point your
+web browser to it. E.g. many universities give their employees homepage
+directories, sometimes in a directory called "~/public_html" or on a special server.
+
+To add more datasets, go to the other data directories and run cbBuild
+there, with the same output directory. cbBuild will then modify the index.html
+in the output directory to show both datasets (or more). Note that the
+directory that you provide via -o or the CBOUT environment variable is the html
+directory. The data for each individual dataset will be copied into
+subdirectories under this html directory, one directory per dataset.
+
+# Using real webserver
+
 The -p 8888 is optional. A more permanent alternative to the -p option is to
 run a webserver on your machine and build directly into its web directory.
 
@@ -50,18 +64,6 @@ On Linux, you would use the directory /var/www/ instead:
 
 We hope you do not use this software on Windows. We could make it work, as it's
 only Python but we would rather avoid making it work on Windows.
-
-To deploy the result onto a real webserver, simply copy all files and directories
-under "cells" to an empty directory on a webserver and point your
-web browser to it. E.g. many universities give their employees homepage
-directories, sometimes in a directory called "~/public_html" or on a special server.
-
-To add more datasets, simply go to the other data directories and run cbBuild
-there, with the same output directory. cbBuild will then modify the index.html
-in the output directory to show both datasets (or more). Note that the
-directory that you provide via -o or the CBOUT environment variable is the html
-directory. The data for each individual dataset will be copied into
-subdirectories under this html directory, one directory per dataset.
 
 ### Process an expression matrix with ScanPy
 
@@ -97,7 +99,9 @@ Then build the cell browser from the Unix shell into a html directory:
 
 ### Convert a CellRanger directory
 
-    Use src/cbCellranger. More instructions later.
+    cbCellranger -i inputDir -o outputDir
+    cd outputDir
+    cbBuild
 
 ### Convert a Seurat object
 
@@ -112,8 +116,9 @@ have to install the module webcolors:
 
 ### Adding your dataset
 
-The first step is to copy the file sampleData/sample/cellbrowser.conf to your current directory, where
-the expression matrix and the meta data file is stored. 
+Go to the directory with the expression matrix and the cell annotations. Start from a sample cellbrowser.conf:
+
+    cbBuild --init
 
 Make sure that your files have the correct line endings and fix the line endings if necessary with mac2unix or dos2unix.
 
@@ -125,15 +130,13 @@ tab-separated file and has as many sample columns as you have rows in the meta
 data file  and they appear the same order. If this is the case, the conversion of the matrix
 is much quicker.
 
-Copy sampleData/sample1/cellbrowser.conf into the directory with the data files and adapt
-the values for meta, exprMatrix, labelField, clusterField and coordFiles.
+Edit cellbrowser.conf and adapt at least the values for meta, exprMatrix, labelField, clusterField and coordFiles.
 
 From this directory, run 
 
     cbBuild -o <yourWebserverHtmlDirectory> -p 8888
 
 Navigate your internet browser to the name of the server (or localhost, if you're running this on your own machine)
-followed by :8888.
+followed by :8888, e.g. http://localhost:8888.
 
-When you run into issues, please open a ticket or send email to cells@ucsc.edu.
-
+This is early testing research software, many things have not been properly tested yet. When you run into problems, just open a ticket or send email to cells@ucsc.edu.
