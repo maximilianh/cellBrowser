@@ -1,4 +1,4 @@
-Gene symbol	Entrez gene ID	Description	RefSeq accession	Molecular class	
+Gene symbol	Entrez gene ID	Description	RefSeq accession	Molecular class	empty
 ALDH1A1	216	Aldehyde dehydrogenase 1	NP_000680.2	Enzyme: Dehydrogenase	
 FAU	2197	FAU	NP_001988.1	Ubiquitin proteasome system protein	
 ALDH2	217	Aldehyde dehydrogenase 2	NP_000681.2	Enzyme: Dehydrogenase	

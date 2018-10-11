@@ -1,7 +1,12 @@
 UCSC Single Cell Browser
 ========================
 
-Funded by the California Institute of Regenerative Medicine and the Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
+Funded by the California Institute of Regenerative Medicine and the
+Chan-Zuckerberg Initiative, see https://www.chanzuckerberg.com/.
+
+This is a viewer for single cell data. It allows you to load an expression
+matrix and cell annotation (meta data) file and color the plot by gene or
+annotation.
 
 For a demo of the browser, see http://cells.ucsc.edu
 

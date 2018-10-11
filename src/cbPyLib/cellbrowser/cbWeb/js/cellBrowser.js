@@ -884,7 +884,7 @@ var tsnePlot = function() {
 
         var quickExpr = db.quickExpr[geneSym];
         // quickExpr format is: [exprVec, geneDesc, binInfo]
-        var exprVec = quickExpr[0]
+        var exprVec = quickExpr[0];
 
         $('#tpViolinCanvas').remove();
         var htmls = [];
