@@ -1,0 +1,4 @@
+#graft cbWeb
+#graft ../src/cbPyLib/cbWeb/
+graft ../src/cbPyLib/cellbrowser/cbWeb
+#include ../src/cbPyLib/cellbrowser/cbWeb/*.js
