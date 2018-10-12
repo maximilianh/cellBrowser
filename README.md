@@ -89,23 +89,28 @@ looking forward on your feedback on how this should be done ideally.
 From Jupyter or Python3, create a data directory with the tab-sep files:
 
     sys.path.append("cellbrowser/src/cbPyLib")
-    import cellbrowser
+    from cellbrowser import cellbrowser
     # convert to tsv files and create a cellbrowser.conf
     cellbrowser.scanpyToTsv(adata, "scanpyOut", "myDataset")
 
-Then build the cell browser from the Unix shell into a html directory:
+Then, build the cell browser into a html directory, from a Unix Shell:
 
-    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cb/
+    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cb/ -p 8888
 
-### Convert a CellRanger directory
+Or from Jupyter:
 
-    cbCellranger -i inputDir -o outputDir
+    cellbrowser.cbBuild(["scanpyOut/cellbrowser.conf"], "~/public_html/cb", 8888)
+
+
+### Import a CellRanger directory
+
+    cbImportCellranger -i inputDir -o outputDir
     cd outputDir
-    cbBuild
+    cbBuild -o ~/public_html/cb
 
-### Convert a Seurat object
+### Import a Seurat object
 
-    Use src/cbSeurat. More instructions later.
+    Use src/cbImportSeurat. More instructions later.
 
 ### Optional Python modules to install
 

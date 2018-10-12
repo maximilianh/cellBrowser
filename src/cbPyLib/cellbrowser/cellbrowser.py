@@ -180,8 +180,11 @@ def copyPkgFile(relPath):
     baseDir = dirname(__file__) # = directory of this script
     srcPath = join(baseDir, relPath)
     destPath = join(cwd, basename(relPath))
-    logging.info("Creating %s" % destPath)
-    shutil.copy(srcPath, destPath)
+    if isfile(destPath):
+        logging.info("%s already exists, not overwriting" % destPath)
+    else:
+        logging.info("Wrote %s" % destPath)
+        shutil.copy(srcPath, destPath)
 
 def cbBuild_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -193,6 +196,9 @@ def cbBuild_parseArgs(showHelp=False):
     is quite quick.
 
     """)
+
+    parser.add_option("", "--init", dest="init", action="store_true",
+        help="copy sample cellbrowser.conf to current directory")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
@@ -268,7 +274,7 @@ def cbScanpy_parseArgs():
         doctest.testmod()
         sys.exit(0)
 
-    if options.exprMatrix is None and options.outDir is None:
+    if (options.exprMatrix is None and options.outDir is None) and not options.init:
         parser.print_help()
         exit(1)
 
@@ -425,7 +431,7 @@ def readGeneToSym(fname):
     logging.info("Reading gene,symbol mapping from %s" % fname)
 
     # Jim's files and CellRanger files have no headers, they are just key-value
-    line1 = open(fname).readline().rstrip("\r\n")
+    line1 = openFile(fname).readline().rstrip("\r\n")
     fieldCount = line1.split('\t')
     if "geneId" not in line1:
         d = parseDict(fname)
@@ -2132,9 +2138,8 @@ def convertMeta(inConf, outConf, outDir):
 
     return sampleNames, needFilterMatrix, finalMetaFname
 
-def readGeneSymbols(inConf):
+def readGeneSymbols(geneIdType):
     " return geneToSym, based on gene tables "
-    geneIdType = inConf.get("geneIdType")
     if geneIdType==None:
         logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
         geneIdType = "symbols"
@@ -2142,23 +2147,18 @@ def readGeneSymbols(inConf):
     if geneIdType.startswith('symbol'):
         return None
 
-    searchMask = getStaticFile(join("genes", geneIdType+".symbols.tsv"))
-    fnames = glob.glob(searchMask)
-    assert(len(fnames)<=1)
-    if(len(fnames)==0):
-        errAbort("Could not find any files matching %s. Possible files that were found: %s" % (searchMask, searchMask))
-    geneIdTable = fnames[0]
+    geneIdTable = getStaticFile(join("genes", geneIdType+".symbols.tsv.gz"))
     geneToSym = readGeneToSym(geneIdTable)
     return geneToSym
 
 def readMitos(idType):
     ' return the gene IDs of all mitochondrial genes. 37 for human for all gencode versions '
     if idType=="human":
-        geneToSym = readGeneSymbols({'geneIdType': "gencode22"})
+        geneToSym = readGeneSymbols("gencode-human")
     elif idType=="mouse":
-        geneToSym = readGeneSymbols({'geneIdType': "gencode-m13"})
+        geneToSym = readGeneSymbols("gencode-mouse")
     else:
-        geneToSym = readGeneSymbols({'geneIdType': idType})
+        geneToSym = readGeneSymbols(idType)
 
     mitos = []
     for geneId, sym in iterItems(geneToSym):
@@ -2294,7 +2294,7 @@ def convertDataset(inConf, outConf, datasetDir):
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
 
     if doMatrix:
-        geneToSym = readGeneSymbols(inConf)
+        geneToSym = readGeneSymbols(inConf.get("geneIdType"))
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
         # in case script crashes after this, keep the current state of the config
         writeConfig(inConf, outConf, datasetDir)
@@ -2304,7 +2304,7 @@ def convertDataset(inConf, outConf, datasetDir):
     convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
 
     if geneToSym==-1:
-        geneToSym = readGeneSymbols(inConf)
+        geneToSym = readGeneSymbols(inConf.get("geneIdType"))
     convertMarkers(inConf, outConf, geneToSym, datasetDir)
 
     readAcronyms(inConf, outConf)
@@ -2519,8 +2519,9 @@ def startHttpServer(outDir, port):
     sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 
-def convertAndCopy(confFnames, outDir, port):
+def cbBuild(confFnames, outDir, port):
     " build browser from config files confFnames into directory outDir and serve on port "
+    outDir = expanduser(outDir)
     for inConfFname in confFnames:
         inConf = loadConfig(inConfFname)
         datasetDir = join(outDir, inConf["name"])
@@ -2549,6 +2550,10 @@ def cbBuildCli():
     if confFnames==None:
         confFnames = ["cellbrowser.conf"]
 
+    if options.init:
+        copyPkgFile("sampleConfig/cellbrowser.conf")
+        sys.exit(1)
+
     for fname in confFnames:
         if not isfile(fname):
             logging.error("File %s does not exist." % fname)
@@ -2561,7 +2566,7 @@ def cbBuildCli():
     #onlyMeta = options.onlyMeta
     port = options.port
 
-    convertAndCopy(confFnames, outDir, port)
+    cbBuild(confFnames, outDir, port)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
@@ -2941,6 +2946,10 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
 def cbScanpyCli():
     global options
     args, options = cbScanpy_parseArgs()
+
+    if options.init:
+        copyPkgFile("sampleConfig/scanpy.conf")
+        sys.exit(1)
 
     matrixFname = options.exprMatrix
     outDir = options.outDir
