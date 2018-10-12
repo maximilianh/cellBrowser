@@ -1,3 +1,4 @@
+- pipify
 - avoid label overlaps
 - Color palette menu
 - link to github

@@ -21,10 +21,12 @@ setuptools.setup(
     #},
     entry_points={
     'console_scripts': [
-        'cbBuild = cellbrowser:cbBuildCli',
-        'cbScanpy = cellbrowser:cbScanpyCli',
-        'cbTool = cellbrowser:cbToolCli',
-        'cbUpgrade = cellbrowser:cbMake_cli'
+        'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
+        'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        'cbTool = cellbrowser.convert:cbToolCli',
+        'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
+        'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencode_cli',
+        'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotate_cli'
     ]
     },
     #package_data={

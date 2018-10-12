@@ -1,2 +1,3 @@
 #gtfToTransTab /hive/data/outside/gencode/release_24/gencode.v24.annotation.gtf.gz gencode24
 gtfToTransTab /hive/data/outside/gencode/mouse/m13/gencode.vM13.annotation.gtf.gz gencode-m13
+../../utils/summarizeGenes mouse

@@ -9,5 +9,5 @@ from os.path import join, dirname
 # tested with python 2.6 and python3, see cellbrowser.py
 import sys
 sys.path.append( join(dirname(__file__), "cbPyLib") )
-import cellbrowser
-cellbrowser.cbCellrangerCli()
+from cellbrowser import convert
+convert.cbCellrangerCli()
