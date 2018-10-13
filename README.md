@@ -29,13 +29,13 @@ Alternatively, you can git clone the repo and run the command line scripts under
 
 Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
 expression matrix includes only the first 100 genes, otherwise all other
-features are used.
+features are used. Download and extract it to the current directory with:
 
-    wget https://cells.ucsc.edu/downloads/samples/mini.tgz -O -  | tar xvz
+    curl -s https://cells.ucsc.edu/downloads/samples/mini.tgz | tar xvz
     cd mini
 
-You can build a browser for it in the directory ~/public_html/cells/ and serve
-that directory on port 8888:
+You can build a browser consisting of html and other files into the directory
+~/public_html/cells/ and serve that directory on port 8888:
 
     cbBuild -o ~/public_html/cells/ -p 8888
 
