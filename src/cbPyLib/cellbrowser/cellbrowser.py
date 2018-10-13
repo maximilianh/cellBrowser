@@ -65,8 +65,8 @@ dataDir = None
 
 defOutDir = os.environ.get("CBOUT")
 
-#CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData"
-CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
+CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData"
+#CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
 # ==== functions =====
 
