@@ -27,21 +27,24 @@ Alternatively, you can git clone the repo and run the command line scripts under
 
 # Create a browser for a sample dataset
 
-There is a sample dataset in sampleData/sample1, it's a minimal expression
-matrix for a few thousand cells and only the first 100 genes and a bit of meta
-data for the cells..
+Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
+expression matrix includes only the first 100 genes, otherwise all other
+features are used.
 
-You can build a viewer for it in the directory ~/public_html/cells/ and serve that directory on port 8888:
+    wget https://cells.ucsc.edu/downloads/samples/mini.tgz -O -  | tar xvz
+    cd mini
 
-    cd sampleData/sample1/
+You can build a browser for it in the directory ~/public_html/cells/ and serve
+that directory on port 8888:
+
     cbBuild -o ~/public_html/cells/ -p 8888
-
-The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
-that are available in this config file. E.g. you can change the colors, add acronym tables,
-add file names, add more marker gene tables, etc.
 
 Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
 You will have to re-run cbBuild again with -p8888 to look at it again.
+
+The file cellbrowser.conf explains all the various settings that are available
+in this config file. E.g. you can change the colors, add acronym tables, add
+file names, add more marker gene tables, etc.
 
 To deploy the result onto a real webserver, simply copy all files and directories
 under "~/public_html/cells" to an empty directory on a webserver and point your
