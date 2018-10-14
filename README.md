@@ -14,10 +14,11 @@ For a demo of the browser, see http://cells.ucsc.edu
 
 The main script is cbBuild. It is a Python program that takes a gene expression
 matrix and related files and converts the output to JSON and binary files to
-an output directory which can be served over http.
+an output directory which can be served over http. The importers for cbBuild
+are cbCellranger, cbSeurat and cbScanpy.
 
-This is early research software. You are likely to come across bugs. Please open a Github
-ticket or email us at cells@ucsc.edu. We can usually fix them quickly.
+This is early research software. You are likely to find bugs. Please open a Github
+ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
 # Installation
 
