@@ -54,11 +54,11 @@ in this config file. E.g. you can change the colors, add acronym tables, add
 file names, add more marker gene tables, etc.
 
 To deploy the result onto a real webserver, simply copy all files and directories
-under "~/public_html/cells" to an empty directory on a webserver and point your
-web browser to it. E.g. many universities give their members webspace, 
-sometimes in a directory called "~/public_html" or on a special server. If you don't have
-that, contact us or use Cyverse or Amazon S3 to host your files, not Dropbox, not 
-MS OneDrive or Google Drive, these are not real webservers.
+under ~/public_html/cells to an empty directory on a webserver and point your
+web browser to it. E.g. many universities give their members webspace,
+sometimes in a directory called ~/public_html or on a special server. If you
+don't have that, contact us or use Cyverse or Amazon S3 to host your files, not
+Dropbox, not MS OneDrive or Google Drive, these are not real webservers.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
