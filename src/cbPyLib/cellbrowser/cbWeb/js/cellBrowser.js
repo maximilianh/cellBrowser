@@ -70,6 +70,9 @@ var tsnePlot = function() {
     var SHOWLABELSNAME = "Show labels";
     var METABOXTITLE   = "Cell Annotations";
 
+    // maximum number of distinct values that one can color on
+    const MAXCOLORCOUNT = 200;
+
     // histograms show only the top X values and summarize the rest into "other"
     var HISTOCOUNT = 12;
     // the sparkline is a bit shorter
@@ -828,8 +831,8 @@ var tsnePlot = function() {
 
        var fieldInfo = db.getMetaFields()[fieldIdx];
 
-       if (fieldInfo.diffValCount > 100 && fieldInfo.binMethod===undefined) {
-           warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than 100 different values is not supported.");
+       if (fieldInfo.diffValCount > MAXCOLORCOUNT && fieldInfo.binMethod===undefined) {
+           warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
            return null;
        }
 
@@ -1830,8 +1833,8 @@ var tsnePlot = function() {
             return legend;
         }
 
-        if (fieldInfo.diffValCount > 100) {
-            warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than 100 different values is not supported.");
+        if (fieldInfo.diffValCount > MAXCOLORCOUNT) {
+            warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
             return null;
         }
 
