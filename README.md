@@ -6,7 +6,9 @@ Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
 This is a viewer for single cell data. It allows you to load an expression
 matrix and cell annotation (meta data) file and color the plot by gene or
-annotation.
+annotation. It does not arranges the cells for you or runs analyses. Instead,
+if gets the analysis data from wherever you already have it, with
+one-line data importers for Cellranger, Seurat and Scanpy.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
@@ -23,42 +25,48 @@ You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
     pip install cellbrowser --user
 
-Alternatively, you can git clone the repo and run the command line scripts under cellbrowser/src/.
+If this says "command not found" on OSX, you need to setup pip first:
+
+    sudo easy_install pip
+
+Alternatively, you can also git clone this repo and run the command line scripts located in cellbrowser/src/.
 
 # Create a browser for a sample dataset
 
 There is a sample dataset in sampleData/sample1, it's a minimal expression
-matrix for a few thousand cells and only the first 100 genes and a bit of meta
-data for the cells..
+matrix for a few thousand cells, only the first 100 genes and a bit of meta
+data for the cells.
 
 You can build a viewer for it in the directory ~/public_html/cells/ and serve that directory on port 8888:
 
     cd sampleData/sample1/
     cbBuild -o ~/public_html/cells/ -p 8888
 
-The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
-that are available in this config file. E.g. you can change the colors, add acronym tables,
-add file names, add more marker gene tables, etc.
-
 Then point your web browser to http://localhost:8888. To stop the web server, press Ctrl-C. 
 You will have to re-run cbBuild again with -p8888 to look at it again.
 
+The file cellbrowser.conf in sampleData/sample1/ explains all the various settings
+that are available, e.g. you can change the colors, add acronym tables,
+add other coordinates, add more marker gene tables, etc.
+
 To deploy the result onto a real webserver, simply copy all files and directories
 under "~/public_html/cells" to an empty directory on a webserver and point your
-web browser to it. E.g. many universities give their employees homepage
-directories, sometimes in a directory called "~/public_html" or on a special server.
+web browser to it. E.g. many universities give their members webspace, 
+sometimes in a directory called "~/public_html" or on a special server. If you don't have
+that, contact us or use Cyverse or Amazon S3 to host your files, not Dropbox, not 
+MS OneDrive or Google Drive, these are not real webservers.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
 in the output directory to show all datasets. Note that the directory that you
-provide via -o or the CBOUT environment variable is the html directory. The
+provide via -o (or the CBOUT environment variable) is the html directory. The
 data for each individual dataset will be copied into subdirectories under this
 html directory, one directory per dataset.
 
 # Using a real webserver
 
 The -p 8888 is optional. A more permanent alternative to the -p option is to
-run a webserver on your machine and build directly its web directory.
+run a webserver on your machine and build directly into its web directory.
 
 On a Mac you can use the Apache that ships with OSX:
 
@@ -71,8 +79,12 @@ On Linux, you would use the directory /var/www/ instead:
 
     sudo cbBuild -o /var/www/
 
-We hope you do not use this software on Windows. We could make it work, as it's
-only Python but we would rather avoid working with Windows.
+Instead of specifying "-o" all the time, you can also add a line like this to
+your ~/.bashrc to point to your html directory:
+ 
+    export CBOUT=/var/www
+
+We hope you do not use this software on Windows. Contact us if you have to.
 
 ### Process an expression matrix with ScanPy
 
