@@ -21,9 +21,19 @@ ticket or email us at cells@ucsc.edu. We can usually fix them quickly.
 
 You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
+    sudo pip install cellbrowser
+
+Or, if you're not root on your machine:
+
     pip install cellbrowser --user
 
-Alternatively, you can git clone the repo and run the command line scripts under cellbrowser/src/.
+If you didn't use sudo, you should add ~/.local/bin to your PATH. e.g. by running
+    
+    export PATH=$PATH:~/.local/bin
+
+As an alternative to these pip commands, you can also git clone the repo and run the command line scripts under cellbrowser/src:
+
+    git clone https://github.com/maximilianh/cellBrowser.git --max-depth=16
 
 # Create a browser for a sample dataset
 
