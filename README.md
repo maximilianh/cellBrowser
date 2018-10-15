@@ -6,16 +6,19 @@ Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
 This is a viewer for single cell data. It allows you to load an expression
 matrix and cell annotation (meta data) file and color the plot by gene or
-annotation.
+annotation. It does not arranges the cells for you or runs analyses. Instead,
+if gets the analysis data from wherever you already have it, with
+one-line data importers for Cellranger, Seurat and Scanpy.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
 The main script is cbBuild. It is a Python program that takes a gene expression
 matrix and related files and converts the output to JSON and binary files to
-an output directory which can be served over http.
+an output directory which can be served over http. The importers for cbBuild
+are cbCellranger, cbSeurat and cbScanpy.
 
-This is early research software. You are likely to come across bugs. Please open a Github
-ticket or email us at cells@ucsc.edu. We can usually fix them quickly.
+This is early research software. You are likely to find bugs. Please open a Github
+ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
 # Installation
 
@@ -23,17 +26,24 @@ You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
     sudo pip install cellbrowser
 
-Or, if you're not root on your machine:
+On OSX, if this says "command not found", you need to setup pip first:
 
-    pip install cellbrowser --user
+    sudo easy_install pip
 
-If you didn't use sudo, you should add ~/.local/bin to your PATH. e.g. by running
-    
+On Linux, if you you're not allowed to run the sudo command, you can install into your user home directory:
+
+    pip install --user cellbrowser
     export PATH=$PATH:~/.local/bin
 
-As an alternative to these pip commands, you can also git clone the repo and run the command line scripts under cellbrowser/src:
+As an alternative to these pip commands, you can also git clone the repo and
+run the command line scripts under cellbrowser/src:
 
-    git clone https://github.com/maximilianh/cellBrowser.git --max-depth=16
+    git clone https://github.com/maximilianh/cellBrowser.git --depth=16
+    cd src
+
+Now you should be able to run the cbBuild command:
+
+   cbBuild
 
 # Create a browser for a sample dataset
 
@@ -57,21 +67,23 @@ in this config file. E.g. you can change the colors, add acronym tables, add
 file names, add more marker gene tables, etc.
 
 To deploy the result onto a real webserver, simply copy all files and directories
-under "~/public_html/cells" to an empty directory on a webserver and point your
-web browser to it. E.g. many universities give their employees homepage
-directories, sometimes in a directory called "~/public_html" or on a special server.
+under ~/public_html/cells to an empty directory on a webserver and point your
+web browser to it. E.g. many universities give their members webspace,
+sometimes in a directory called ~/public_html or on a special server. If you
+don't have that, contact us or use Cyverse or Amazon S3 to host your files, not
+Dropbox, not MS OneDrive or Google Drive, these are not real webservers.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
 in the output directory to show all datasets. Note that the directory that you
-provide via -o or the CBOUT environment variable is the html directory. The
+provide via -o (or the CBOUT environment variable) is the html directory. The
 data for each individual dataset will be copied into subdirectories under this
 html directory, one directory per dataset.
 
 # Using a real webserver
 
 The -p 8888 is optional. A more permanent alternative to the -p option is to
-run a webserver on your machine and build directly its web directory.
+run a webserver on your machine and build directly into its web directory.
 
 On a Mac you can use the Apache that ships with OSX:
 
@@ -84,8 +96,12 @@ On Linux, you would use the directory /var/www/ instead:
 
     sudo cbBuild -o /var/www/
 
-We hope you do not use this software on Windows. We could make it work, as it's
-only Python but we would rather avoid working with Windows.
+Instead of specifying "-o" all the time, you can also add a line like this to
+your ~/.bashrc to point to your html directory:
+ 
+    export CBOUT=/var/www
+
+We hope you do not use this software on Windows. Contact us if you have to.
 
 ### Process an expression matrix with ScanPy
 
