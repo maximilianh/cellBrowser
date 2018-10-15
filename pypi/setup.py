@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.1",
+    version="0.4.2",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
@@ -25,8 +25,8 @@ setuptools.setup(
         'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
-        'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencode_cli',
-        'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotate_cli'
+        'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
+        'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli'
     ]
     },
     #package_data={
