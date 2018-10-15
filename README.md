@@ -43,7 +43,7 @@ run the command line scripts under cellbrowser/src:
 
 Now you should be able to run the cbBuild command:
 
-   cbBuild
+    cbBuild
 
 # Create a browser for a sample dataset
 
