@@ -112,7 +112,7 @@ UMAP and formats them for cbBuild. An example file is on our downloads server:
 
     mkdir ~/cellData
     cd ~/cellData
-    rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k ./pbmc3k/ --progress
+    rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
     cd pbmc3k
 
 Write an empty scanpy.conf:
