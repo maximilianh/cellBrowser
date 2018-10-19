@@ -38,7 +38,7 @@ except:
 
 # We do not require numpy but numpy is around 30-40% faster in serializing arrays
 # So use it if it's present
-numpyLoaded = True
+numpyLoaded = False
 try:
     import numpy as np
 except:
@@ -247,8 +247,8 @@ def cbScanpy_parseArgs():
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
             help="gene-cell expression matrix file, possible formats: .h5ad, .csv, .xlsx, .h5, .loom, .mtx, .txt, .tab, .data")
-    #parser.add_option("-m", "--metaData", dest="metaData", action="store",
-            #help="meta data table file, .gz is OK")
+    parser.add_option("", "--init", dest="init", action="store_true",
+            help="copy sample scanpy.conf to current directory")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output directory")
@@ -902,16 +902,17 @@ class MatrixTsvReader:
             self.lineLen = len(line)
 
             gene, rest = splitOnce(line.rstrip("\r\n"), sep)
+            gene = gene.strip('"')
 
             if numpyLoaded:
                 arr = np.fromstring(rest, dtype=npType, sep=sep, count=sampleCount)
             else:
                 if self.matType=="int":
-                    #a = [int(x) for x in rest.split(sep)]
-                    arr = map(int, rest.split(sep))
+                    arr = [int(x) for x in rest.split(sep)]
+                    #arr = map(int, rest.split(sep)) # this doesn't work in python3, requires list(), so slower
                 else:
-                    #a = [float(x) for x in rest.split(sep)]
-                    arr = map(float, rest.split(sep))
+                    arr = [float(x) for x in rest.split(sep)]
+                    #arr = map(float, rest.split(sep))
 
             if "|" in gene:
                 gene, symbol = gene.split("|")
@@ -1934,23 +1935,31 @@ def parseGeneInfo(geneToSym, fname):
     geneInfo = []
     hasDesc = None
     hasPmid = None
-    for row in lineFileNextRow(fname):
+    #for row in lineFileNextRow(fname):
+    for line in openFile(fname):
+        sep = sepForFile(fname)
+        row = line.rstrip("\r\n").split(sep)
         if hasDesc == None:
-            if "desc" in row._fields:
+            #if "desc" in row._fields:
+            if len(row)==3:
                 hasDesc = True
         if hasPmid == None:
-            if "pmid" in row._fields:
+            #if "pmid" in row._fields:
+            if len(row)==2:
                 hasPmid = True
-        sym = row.symbol
+        #sym = row.symbol
+        sym = row[0]
         if validSyms is not None and sym not in validSyms:
             logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
             continue
 
         info = [sym]
         if hasDesc:
-            info.append(row.desc)
+            #info.append(row.desc)
+            info.append(row[1])
         if hasPmid:
-            info.append(row.pmid)
+            #info.append(row.pmid)
+            info.append(row[2])
         geneInfo.append(info)
     return geneInfo
 
@@ -2963,14 +2972,14 @@ def cbScanpyCli():
 
     if not isfile(adFname):
         logFname = join(outDir, "cbScanpy.log")
-        try:
-            adata = cbScanpy(matrixFname, confFname, figDir, logFname)
-        except:
+        #try:
+        adata = cbScanpy(matrixFname, confFname, figDir, logFname)
+        #except:
             # on an exception, automatically bring up the debugger - avoids having to reload the data file
-            extype, value, tb = sys.exc_info()
-            import traceback, pdb
-            traceback.print_tb(tb)
-            pdb.post_mortem(tb)
+            #extype, value, tb = sys.exc_info()
+            #import traceback, pdb
+            #traceback.print_tb(tb)
+            #pdb.post_mortem(tb)
         logging.info("Writing anndata object to %s" % adFname)
         adata.write(adFname)
     else:
