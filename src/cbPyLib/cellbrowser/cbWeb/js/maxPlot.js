@@ -1338,6 +1338,8 @@ function MaxPlot(div, top, left, width, height, args) {
         /* check which cell's bounding boxes contain (x, y), return a list of the cell IDs, sorted by distance */
         console.time("cellSearch");
         var pxCoords = self.pxCoords;
+        if (pxCoords===null)
+            return null;
         var possIds = [];
         for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];

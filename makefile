@@ -9,4 +9,4 @@ static-data:
 	rsync -avzp cellbrowserData/ /hive/data/inside/cells/cellbrowserData/
 
 minisample:
-	cd sampleData && tar cvfz /hive/data/inside/cells/samples/mini.tgz -T miniFiles.txt 
+	cd sampleData && tar cvfz /hive/data/inside/cells/samples/mini.tgz --hard-dereference -T miniFiles.txt 
