@@ -61,7 +61,7 @@ var tsnePlot = function() {
     //const cNullColor = "DDDDDD";
     const cNullColor = "87CEFA";
 
-    const cDefGradPalette = "reds";  // default legend gradient palette for numeric ranges
+    const cDefGradPalette = "tol-sq";  // default legend gradient palette for numeric ranges
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
 
     const exprBinCount = 10; //number of expression bins for genes
@@ -127,6 +127,19 @@ var tsnePlot = function() {
 
     function capitalize(s) {
         return s[0].toUpperCase() + s.slice(1);
+    }
+
+    function findMetaInfo(findName) {
+    /* return meta info field with name, add 'metaIndex' attribute  */
+        var metaFieldInfo = db.conf.metaFields;
+        for (var i = 0; i < metaFieldInfo.length; i++) {
+            var metaInfo = metaFieldInfo[i];
+            if (metaInfo.name===findName) {
+                metaInfo.index = i;
+                return metaInfo;
+            }
+        }
+        return null;
     }
 
     function cartSave(key, value, defaultValue) {
@@ -862,11 +875,31 @@ var tsnePlot = function() {
         $( "#tpLeftTabs" ).tabs( "option", "active", idx );
     }
 
+    function splitExprByMeta(exprVec, splitArr) {
+        /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go. 
+         * Returns array of two arrays.
+         * */
+        if (exprVec.length!==splitArr.length) {
+            warn("internal error - splitExprByMeta: exprVec has diff length from splitArr");
+        }
+
+        var sel = [];
+        var unsel = [];
+        for (var i = 0; i < exprVec.length; i++) {
+            var val = exprVec[i];
+            if (splitArr[i]==0)
+                sel.push(val);
+            else
+                unsel.push(val);
+        }
+        return [sel, unsel];
+    }
+
     function splitExpr(exprVec, selCells) {
         /* split the expression vector into two vectors, one for selected and one for unselected cells */
         var selMap = {};
         for (var i = 0; i < selCells.length; i++) {
-            selMap[i] = null;
+            selMap[selCells[i]] = null;
         }
 
         var sel = [];
@@ -881,31 +914,15 @@ var tsnePlot = function() {
         return [sel, unsel]
     }
 
-    function buildViolinPlot(geneSym) {
-        /* create the violin plot */
-        console.time("violin");
-
-        var quickExpr = db.quickExpr[geneSym];
-        // quickExpr format is: [exprVec, geneDesc, binInfo]
-        var exprVec = quickExpr[0];
-
+    function buildViolinFromValues(labelList, dataList) {
+        /* make a violin plot given the labels and the values for them */
+        console.time("violinDraw");
         $('#tpViolinCanvas').remove();
         var htmls = [];
         htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
         $('#tpViolin').append(htmls.join(""));
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
-
-        var dataList = [];
-        var labelList = [];
-        var selCells = renderer.getSelection();
-        if (selCells===null) {
-            dataList = [Array.prototype.slice.call(exprVec)];
-            labelList = ['All cells'];
-        } else {
-            dataList = splitExpr(exprVec, selCells);
-            labelList = ['Selected', 'Others'];
-        }
 
  	var boxplotData = {
           labels : labelList,
@@ -947,7 +964,53 @@ var tsnePlot = function() {
 	      title: { display: false }
 	    }
 	  });
-        console.timeEnd("violin");
+        console.timeEnd("violinDraw");
+    }
+
+
+    function plotTwoViolinsByMeta(exprVec, metaName) {
+        /* load a binary meta vector, split the exprVector by it and make two violin plots, one meta value vs the other.  */
+        var metaInfo = findMetaInfo(metaName);
+        if (metaInfo.valCounts.length!==2) {
+            alert("Config error: meta field in 'violinField', '"+db.conf.violinField+"' does not have two distinct values.");
+            return;
+        }
+        var labelList = [metaInfo.valCounts[0][0], metaInfo.valCounts[1][0]];
+        db.loadMetaVec( metaInfo.index, 
+                function(metaArr) { 
+                    var dataList = splitExprByMeta(exprVec, metaArr);
+                    buildViolinFromValues(labelList, dataList);
+                },
+                null);
+    }
+
+    function onExprVectorMakeViolin(exprVec, dArr, geneSym, geneDesc, binInfo) {
+
+        var dataList = [];
+        var labelList = [];
+        var selCells = renderer.getSelection();
+        if (selCells===null) {
+            if (db.conf.violinField!=undefined) {
+                // if we have a violin meta field to split on, plot two violins
+                plotTwoViolinsByMeta(exprVec, db.conf.violinField);
+            }
+            else  {
+                // otherwise, default to a single violin plot
+                dataList = [Array.prototype.slice.call(exprVec)];
+                labelList = ['All cells'];
+            }
+        } else {
+            // if cells are selected, make two violin plots, selected against other cells
+            dataList = splitExpr(exprVec, selCells);
+            labelList = ['Selected', 'Others'];
+        }
+
+        buildViolinFromValues(labelList, dataList);
+    }
+
+    function buildViolinPlot(exprVec) {
+        /* create the violin plot */
+        //db.loadExprVec(geneSym, onExprVectorMakeViolin, onProgress, exprBinCount);
     }
 
     function loadGeneAndColor(geneSym, onDone) {
@@ -962,11 +1025,13 @@ var tsnePlot = function() {
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
             _dump(binInfo);
             makeLegendExpr(geneSym, geneDesc, binInfo);
-            db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
+            //if (db.quickExpr===undefined)
+                //db.quickExpr = {};
+            //db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
             buildLegendBar();
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
-            buildViolinPlot(geneSym);
+            buildViolinPlot();
             onDone();
         }
 
@@ -976,46 +1041,6 @@ var tsnePlot = function() {
 
         // clear the meta combo
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
-    }
-
-    function preloadAllMeta() {
-        /* start loading the full meta value vectors and add them to db.quickMeta */
-        var metaFieldInfo = db.getMetaFields();
-        db.quickMeta = {};
-        for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
-           var fieldInfo = metaFieldInfo[fieldIdx];
-           if (fieldInfo.type==="uniqueString")
-               continue
-           db.loadMetaVec(fieldIdx, function(carr) {db.quickMeta[fieldIdx]=carr} , null);
-        }
-    }
-
-    function preloadQuickGenes() {
-       /* start loading the quick gene expression vectors in the background now 
-        * add them to db.quickExpr */
-       var quickGenes = db.conf.quickGenes;
-       db.quickExpr = {};
-       var validGenes = db.getGenes();
-       var loadCounter = 0;
-       if (quickGenes) {
-           for (var i=0; i<quickGenes.length; i++) {
-               var sym = quickGenes[i][0];
-               if (! (sym in validGenes)) {
-                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
-                  continue;
-               }
-
-               db.loadExprVec(
-                   sym, 
-                   function(exprVec, geneSym, geneDesc, binInfo) {
-                      db.quickExpr[geneSym] = [exprVec, geneDesc, binInfo];
-                      loadCounter++;
-                      if (loadCounter===quickGenes.length)
-                        updateGeneTableColors(null);
-                   },
-                   onProgressConsole, exprBinCount);
-           }
-       }
     }
 
    function gotCoords(coords, info, clusterMids) {
@@ -1094,8 +1119,9 @@ var tsnePlot = function() {
            renderer.drawDots();
         }
 
-       preloadQuickGenes();
-       preloadAllMeta();
+       if (db.conf.quickGenes)
+           db.preloadGenes(db.conf.quickGenes, function() { updateGeneTableColors(null); }, onProgressConsole, exprBinCount);
+       db.preloadAllMeta();
     }
 
     function onTransClick(ev) {
@@ -1460,7 +1486,7 @@ var tsnePlot = function() {
         return legendRows;
     }
 
-    function makeLegendExpr(geneSym, geneId, binInfo) {
+    function makeLegendExpr(geneSym, geneId, binInfo, exprVec, decExprVec) {
         /* build gLegend object for coloring by expression
          * return the colors as an array of hex codes */
 
@@ -2334,7 +2360,7 @@ var tsnePlot = function() {
         //htmls.push("<div id='tpSideMeta'>");
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, metaFieldInfo, "tpMetaCombo", 0);
-        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Mouse-over a '+gSampleDesc+' to show it below</div>');
+        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Hover over a '+gSampleDesc+' to show it below</div>');
         buildMetaPanel(htmls, metaFieldInfo);
         //htmls.push("</div>"); // tpSideMeta
         htmls.push("</div>"); // tpAnnotTab

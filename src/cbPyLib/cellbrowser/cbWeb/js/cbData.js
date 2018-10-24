@@ -44,10 +44,10 @@ var cbUtil = (function () {
         var oReq = new XMLHttpRequest();
         oReq.open("GET", url, true);
 
-        if (arrType!==null)
-            oReq.responseType = "arraybuffer";
-        else
+        if (arrType==="string")
             oReq.responseType = "text";
+        else
+            oReq.responseType = "arraybuffer";
 
         oReq.onload = cbUtil.onDoneBinaryData;
         oReq.onprogress = onProgress;
@@ -82,7 +82,7 @@ var cbUtil = (function () {
     };
 
     my.onDoneBinaryData = function(oEvent) {
-        /* called when binary file has been loaded. gunzips .gz URLs. */
+        /* called when binary file has been loaded. */
         var url = this._url;
         // 200 = OK, 206 = Partial Content OK
         if (this.status !== 200 && this.status !== 206) {
@@ -96,9 +96,6 @@ var cbUtil = (function () {
           alert("internal error when loading "+url+": no reponse from server?");
           return;
         }
-
-        if (url.endsWith(".gz"))
-            binData = pako.ungzip(binData);
 
         // if the user wants only a byte range...
         if (this._start!==undefined) {
@@ -118,6 +115,9 @@ var cbUtil = (function () {
                     binData = binData.slice(this._start, this._end); // slice does not include the end
                 }
         }
+
+        //if (url.endsWith(".gz"))
+            //binData = pako.ungzip(binData);
 
         if (this._arrType)
             binData = new this._arrType(binData);
@@ -197,7 +197,8 @@ function CbDbFile(url) {
     self.url = url;
     self.geneOffsets = null;
 
-    self.exprCache = {}; // cached compressed expression vectors
+    self.exprCache = {}; // cached compressed expression arrays
+    self.metaCache = {}; // cached meta arrays
 
     this.conf = null;
 
@@ -268,14 +269,37 @@ function CbDbFile(url) {
 
     this.loadMetaVec = function(fieldIdx, onDone, onProgress) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
-     * and an object with some info about the field. call onDone(arr, metaInfo) when done. */
-        //var metaInfo = cbUtil.findObjWhereEq(self.conf.metaFields, "name", fieldName);
+     * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
+     * Keep all arrays in metaCache;
+     * */
         var metaInfo = self.conf.metaFields[fieldIdx];
+
+        function onMetaDone(comprBytes, metaInfo) {
+            self.metaCache[fieldIdx] = comprBytes; 
+            var arrType = cbUtil.makeType(metaInfo.arrType);
+            var arr = pako.ungzip(comprBytes);
+            arr = new arrType(arr);
+            onDone(arr, metaInfo);
+        }
+
         console.log(metaInfo);
-        var fieldName = metaInfo.name;
-        var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
-        var arrType = cbUtil.makeType(metaInfo.arrType);
-        cbUtil.loadFile(binUrl, arrType, onDone, onProgress, metaInfo);
+        if (fieldIdx in self.allMeta) {
+            console.log("Found in uncompressed cache");
+            onDone(self.allMeta[fieldIdx], metaInfo);
+        }
+
+        if (fieldIdx in self.metaCache) {
+            console.log("Found in compressed cache");
+            onMetaDone(self.metaCache[fieldIdx], metaInfo);
+        }
+
+        else {
+            var fieldName = metaInfo.name;
+            var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
+            cbUtil.loadFile(binUrl, null, 
+                    onMetaDone,
+                    onProgress, metaInfo);
+        }
     };
 
     this.loadMetaForCell = function(cellIdx, onDone, onProgress) {
@@ -298,7 +322,7 @@ function CbDbFile(url) {
             var lineLen = cbUtil.baReadUint16(arr, 4);
             // now get the line from the .tsv file
             var url = cbUtil.joinPaths([self.url, "meta.tsv"]);
-            cbUtil.loadFile(url+"?"+cellIdx, null, lineDone, onProgress, null, 
+            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null, 
                 offset, offset+lineLen);
         }
 
@@ -480,20 +504,6 @@ function CbDbFile(url) {
             var arr = buf.slice(2, 2+descLen);
             var geneDesc = String.fromCharCode.apply(null, arr);
 
-            // read the info about the bins
-            //var binInfoLen = 11*3*4;
-            //var dv = new DataView(buf.buffer, 2+descLen, binInfoLen);
-            //var binInfo = []
-            //for (var i=0; i < 11; i++) {
-                //var startOfs = i*12;
-                //var min = dv.getFloat32(startOfs, true); // true = little-endian
-                //var max = dv.getFloat32(startOfs+4, true);
-                //var binCount = dv.getFloat32(startOfs+8, true); // number of cells in this bin
-                //if (min===0 && max===0 && binCount===0)
-                    //break;
-                //binInfo.push( [min, max, binCount] );
-            //}
-
             // read the byte array with one bin index per cell
             // var digArr = buf.slice(2+descLen+binInfoLen);
             
@@ -585,6 +595,45 @@ function CbDbFile(url) {
     /* return field index of default cluster field */
         var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", self.conf.clusterField);
         return idx;
+    };
+
+    this.preloadAllMeta = function() {
+        /* start loading all meta value vectors and add them to db.allMeta */
+        self.allMeta = {};
+        var metaFieldInfo = self.getMetaFields();
+        for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
+           var fieldInfo = metaFieldInfo[fieldIdx];
+           if (fieldInfo.type==="uniqueString")
+               continue
+           self.loadMetaVec(fieldIdx, function(arr, metaInfo) { self.allMeta[fieldIdx] = arr; delete self.metaCache[fieldIdx] }, null);
+        }
+    }
+
+    this.preloadGenes = function(geneSyms, onDone, onProgress, exprBinCount) {
+       /* start loading the gene expression vectors in the background. call onDone when done. */
+       if (self.quickExpr===undefined)
+           self.quickExpr = {};
+       var validGenes = self.getGenes();
+       var loadCounter = 0;
+       if (geneSyms) {
+           for (var i=0; i<geneSyms.length; i++) {
+               var sym = geneSyms[i][0];
+               if (! (sym in validGenes)) {
+                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
+                  continue;
+               }
+
+               self.loadExprVec(
+                   sym, 
+                   function(exprVec, discExprVec, geneSym, geneDesc, binInfo) { 
+                       //onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
+                       self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
+                       loadCounter++; 
+                       if (loadCounter===geneSyms.length) onDone(); 
+                   },
+                   onProgress, exprBinCount);
+           }
+       }
     };
 
 }

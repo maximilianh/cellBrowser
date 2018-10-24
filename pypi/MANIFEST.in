@@ -2,3 +2,5 @@
 #graft ../src/cbPyLib/cbWeb/
 graft ../src/cbPyLib/cellbrowser/cbWeb
 #include ../src/cbPyLib/cellbrowser/cbWeb/*.js
+include ../src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+include ../src/cbPyLib/cellbrowser/sampleConfig/scanpy.conf

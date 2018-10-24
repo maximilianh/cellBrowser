@@ -5,12 +5,12 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.2",
+    version="0.4.6",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
     url="https://github.com/maximilianh/cellBrowser",
-    description="",
+    description="UCSC Cellbrowser for single cell data. Includes command line builder and dataset converter tools for Seurat, Scanpy and Cellranger.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages("../src/cbPyLib/"),
