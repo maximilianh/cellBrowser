@@ -2730,6 +2730,14 @@ def excepthook(type, value, traceback):
     from IPython import embed
     embed()
 
+def maybeLoadConfig(confFname):
+    if isfile(confFname):
+        conf = loadConfig(confFname, requireTags=[])
+    else:
+        logging.debug("Could not find %s, not loading config file" % confFname)
+        conf = {}
+    return conf
+
 def cbScanpy(matrixFname, confFname, figDir, logFname):
     " run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data "
     import scanpy.api as sc
@@ -2738,11 +2746,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     import warnings
     warnings.filterwarnings("ignore")
 
-    if isfile(confFname):
-        conf = loadConfig(confFname, requireTags=[])
-    else:
-        logging.debug("Could not find %s, not loading config file" % confFname)
-        conf = {}
+    conf = maybeLoadConfig(confFname)
 
     sc.settings.set_figure_params(dpi=200)
     sc.settings.file_format_figs = 'png'
