@@ -4,15 +4,7 @@ UCSC Single Cell Browser
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
-This is a viewer for single cell data. You can click on hover over cells to get
-meta information, select genes to color on and click clusters to show
-cluster-specific marker genes, which in turn are clickable again.
-
-The accompanying command line programs allows you to load an expression
-matrix and cell annotation (meta data) file and color the plot by gene or
-annotation. It does not run analyses. Instead,
-it gets the analysis data from wherever you already have it, with
-one-line data importers for Cellranger, Seurat and Scanpy.
+The UCSC Cell Browser is a viewer for single cell data. You can click on and hover over cells to get meta information, search for genes to color on and click clusters to show cluster-specific marker genes, which in turn are clickable again.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
@@ -170,8 +162,7 @@ to tab-separated files, then run cbBuild on these:
 
 ### Optional Python modules to install
 
-In cellbrowser.conf you can specify a color file. If this file contains html color names, you
-have to install the module webcolors:
+In cellbrowser.conf you can specify a color file, the format is .tsv or .csv and it has two columns, clusterName<tab>colorCode. If this file contains html color names instead of color codes, you have to install the module webcolors:
 
     pip install webcolors
 
