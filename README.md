@@ -4,10 +4,14 @@ UCSC Single Cell Browser
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
-This is a viewer for single cell data. It allows you to load an expression
+This is a viewer for single cell data. You can click on hover over cells to get
+meta information, select genes to color on and click clusters to show
+cluster-specific marker genes, which in turn are clickable again.
+
+The accompanying command line programs allows you to load an expression
 matrix and cell annotation (meta data) file and color the plot by gene or
-annotation. It does not arranges the cells for you or runs analyses. Instead,
-if gets the analysis data from wherever you already have it, with
+annotation. It does not run analyses. Instead,
+it gets the analysis data from wherever you already have it, with
 one-line data importers for Cellranger, Seurat and Scanpy.
 
 For a demo of the browser, see http://cells.ucsc.edu
