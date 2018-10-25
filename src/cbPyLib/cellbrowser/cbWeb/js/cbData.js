@@ -37,7 +37,8 @@ var cbUtil = (function () {
     my.loadFile = function(url, arrType, onDone, onProgress, otherInfo, start, end) {
         /* load text or binary file with HTTP GET into fileData variable and call function
          * onDone(fileData, otherInfo) when done. .gz URLs are automatically decompressed.
-         * optional: return as an object of arrType. 
+         * optional: return as an object of arrType, arrType can be either a class like
+         * Uint8Array or the value 'string'
          * If it is a text file, specify arrType=null.
          * optional: byte range request for start-end (0-based, inclusive).
          * */
@@ -119,7 +120,7 @@ var cbUtil = (function () {
         //if (url.endsWith(".gz"))
             //binData = pako.ungzip(binData);
 
-        if (this._arrType)
+        if (this._arrType && this._arrType!=="string")
             binData = new this._arrType(binData);
         this._onDone(binData, this._otherInfo);
     };
@@ -198,7 +199,10 @@ function CbDbFile(url) {
     self.geneOffsets = null;
 
     self.exprCache = {}; // cached compressed expression arrays
-    self.metaCache = {}; // cached meta arrays
+    self.metaCache = {}; // cached compressed meta arrays
+
+    self.quickExpr = {}; // uncompressed expression arrays
+    self.allMeta = {};   // uncompressed meta arrays
 
     this.conf = null;
 
@@ -283,12 +287,12 @@ function CbDbFile(url) {
         }
 
         console.log(metaInfo);
-        if (fieldIdx in self.allMeta) {
+        if ((self.allMeta!==undefined) && (fieldIdx in self.allMeta)) {
             console.log("Found in uncompressed cache");
             onDone(self.allMeta[fieldIdx], metaInfo);
         }
 
-        if (fieldIdx in self.metaCache) {
+        if ((self.metaCache!==undefined) && (fieldIdx in self.metaCache)) {
             console.log("Found in compressed cache");
             onMetaDone(self.metaCache[fieldIdx], metaInfo);
         }
@@ -611,8 +615,6 @@ function CbDbFile(url) {
 
     this.preloadGenes = function(geneSyms, onDone, onProgress, exprBinCount) {
        /* start loading the gene expression vectors in the background. call onDone when done. */
-       if (self.quickExpr===undefined)
-           self.quickExpr = {};
        var validGenes = self.getGenes();
        var loadCounter = 0;
        if (geneSyms) {

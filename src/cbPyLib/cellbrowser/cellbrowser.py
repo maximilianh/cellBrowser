@@ -746,8 +746,10 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     colors = parseColors(colorFname)
 
     fieldInfo = []
+    validFieldNames = set()
     for colIdx, (fieldName, col) in enumerate(colData):
         logging.info("Meta data field index %d: '%s'" % (colIdx, fieldName))
+        validFieldNames.add(fieldName)
 
         forceEnum = False
         if enumFields!=None:
@@ -791,7 +793,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         else:
             logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
-    return fieldInfo
+    return fieldInfo, validFieldNames
 
 def iterLineOffsets(ifh):
     """ parse a text file and yield tuples of (line, startOffset, endOffset).
@@ -1935,19 +1937,17 @@ def parseGeneInfo(geneToSym, fname):
     geneInfo = []
     hasDesc = None
     hasPmid = None
-    #for row in lineFileNextRow(fname):
     for line in openFile(fname):
+        if line.startswith("symbol"):
+            continue
         sep = sepForFile(fname)
         row = line.rstrip("\r\n").split(sep)
         if hasDesc == None:
-            #if "desc" in row._fields:
-            if len(row)==3:
+            if len(row)==2:
                 hasDesc = True
         if hasPmid == None:
-            #if "pmid" in row._fields:
-            if len(row)==2:
+            if len(row)==3:
                 hasPmid = True
-        #sym = row.symbol
         sym = row[0]
         if validSyms is not None and sym not in validSyms:
             logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
@@ -1955,10 +1955,8 @@ def parseGeneInfo(geneToSym, fname):
 
         info = [sym]
         if hasDesc:
-            #info.append(row.desc)
             info.append(row[1])
         if hasPmid:
-            #info.append(row.pmid)
             info.append(row[2])
         geneInfo.append(info)
     return geneInfo
@@ -2112,6 +2110,16 @@ def getFileVersion(fname):
     metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
     return metaVersion
 
+def checkFieldNames(outConf, fieldNames, validFieldNames):
+    " make sure that all fieldNames in outConf are valid field names. errAbort is not. "
+    for fn in fieldNames:
+        if fn not in outConf:
+            continue
+
+        if not outConf[fn] in validFieldNames:
+            errAbort("Config statement '%s' contains an invalid field name, '%s'. Valid meta field names are: %s" % \
+                (fn, outConf[fn], ", ".join(validFieldNames)))
+
 def convertMeta(inConf, outConf, outDir):
     """ convert the meta data to binary files. The new meta is re-ordered, so it's in the same
     order as the samples in the expression matrix.
@@ -2136,8 +2144,10 @@ def convertMeta(inConf, outConf, outDir):
 
     colorFname = inConf.get("colors")
     enumFields = inConf.get("enumFields")
-    fieldConf = metaToBin(inConf, outConf, finalMetaFname, colorFname, metaDir, enumFields)
+    fieldConf, validFieldNames = metaToBin(inConf, outConf, finalMetaFname, colorFname, metaDir, enumFields)
     outConf["metaFields"] = fieldConf
+
+    checkFieldNames(outConf, ["violinField", "clusterField", "labelField"], validFieldNames)
 
     indexMeta(finalMetaFname, metaIdxFname)
 
@@ -2285,11 +2295,11 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField"]:
         copyConf(inConf, outConf, tag)
 
     if " " in inConf["name"]:
-        errAbort("Sorry, please no whitespace in the dataset name in the .conf file")
+        errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
 
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered/trimmed tsv version of the meta table

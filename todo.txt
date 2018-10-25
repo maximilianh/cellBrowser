@@ -1,11 +1,13 @@
 - make npm65 the default palette
 - sub-datasets
-- add md5s of matrix and meta to dataset config
 
 - make browsers:
   - Bob Jones
   - Aparna
   - Tabula Muris
+  - Samantha Morris
+  - Dana Peer
+  - Tara
 
 - example datasets:
   - cellranger output  -> cbCellranger
@@ -19,3 +21,5 @@
 
 datasets:
 - ciona Nature PMID30069052
+
+- add md5s of matrix and meta to dataset config

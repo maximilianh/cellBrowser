@@ -188,7 +188,7 @@ def crangerToCellbrowser(datasetName, inDir, outDir):
     writeCellbrowserConf(datasetName, coordDescs, confName, confArgs)
 
     crangerWriteMethods(inDir, outDir, matFname)
-    crangerWriteDownloads(datasetName, outDir)
+    generateDownloads(datasetName, outDir)
 
 def crangerWriteMethods(inDir, outDir, matFname):
     htmlFname = join(outDir, "methods.html")
@@ -214,7 +214,7 @@ def crangerWriteMethods(inDir, outDir, matFname):
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def crangerWriteDownloads(datasetName, outDir):
+def generateDownloads(datasetName, outDir):
     htmlFname = join(outDir, "downloads.html")
     if isfile(htmlFname):
         logging.info("%s exists, not overwriting" % htmlFname)
@@ -237,6 +237,18 @@ def crangerWriteDownloads(datasetName, outDir):
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         coordFname = cleanName+".coords.tsv.gz"
         ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
+
+    rdsFname = join(outDir, "seurat.rds")
+    if isfile(rdsFname):
+        ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>" % rdsFname)
+
+    scriptFname = join(outDir, "runSeurat.R")
+    if isfile(scriptFname):
+        ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>" % scriptFname)
+
+    logFname = join(outDir, "analysisLog.txt")
+    if isfile(logFname):
+        ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
 
 def crangerSignMarkers(dgeFname, markerFname, geneFname, maxPval, maxGenes):
     " convert cellranger diff exp file to markers.tsv file "

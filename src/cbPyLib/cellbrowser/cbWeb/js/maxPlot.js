@@ -32,6 +32,7 @@ function MaxPlot(div, top, left, width, height, args) {
     // I use 'self' to refer to object variables, so I can use 'this' to refer to the caller context
     
     const gTextSize = 16; // size of cluster labels
+    const gTitleSize = 18; // size of title text
     const gStatusHeight = 12; // height of status bar
     const gZoomButtonSize = 30; // size of zoom buttons
     const gZoomFromRight = 60;  // position of zoom buttons from right
@@ -54,6 +55,7 @@ function MaxPlot(div, top, left, width, height, args) {
         addModeButtons(top+10, left+10, self);
         addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
         addProgressBars(top+Math.round(height*0.3), left+30);
+        addTitleDiv(top+height-gTitleSize-gStatusHeight, left+5);
 
         /* add the div used for the mouse selection/zoom rectangle to the DOM */
         var selectDiv = document.createElement('div');
@@ -154,6 +156,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.setTitle = function (text) {
         self.title = text;
+        self.titleDiv.innerHTML = text;
     };
 
 
@@ -278,6 +281,27 @@ function MaxPlot(div, top, left, width, height, args) {
         plusDiv.addEventListener('click', function() { self.zoomBy(1.333); self.drawDots(); });
     }
     
+    function addTitleDiv(top, left) {
+        //var ctx = self.ctx;
+        //ctx.save();
+        //ctx.font = "bold "+gTextSize+"px Sans-serif"
+        //ctx.fillStyle = "rgba(220, 220, 220)";
+        //ctx.textBaseline = "top";
+        //ctx.fillText(self.title,5,self.height - gTextSize - 3); 
+        //ctx.restore();
+        var div = document.createElement('div');
+        div.style.left = left+"px";
+        div.style.top = top+"px";
+        div.style.display = "block";
+        div.style.position = "absolute";
+        div.style.fontSize = gTitleSize;
+        div.id = 'mpTitle';
+        //div.innerHTML = title;
+        div.style['color'] = "lightgrey";
+        self.div.appendChild(div);
+        self.titleDiv = div;
+    }
+
     function appendButton(parentDiv, id, title, imgName) {
         /* add a div styled like a button under div */
         var div = document.createElement('div');
@@ -581,8 +605,10 @@ function MaxPlot(div, top, left, width, height, args) {
             x = x - Math.round(textWidth*0.5);
 
             // don't draw labels where the midpoint is off-screen
-            if (x<0 || y<0 || x>winWidth || y>winWidth)
+            if (x<0 || y<0 || x>winWidth || y>winWidth) {
+                bboxArr.push( null );
                 continue;
+            }
 
             var textX1 = x;
             var textY1 = y;
@@ -970,20 +996,15 @@ function MaxPlot(div, top, left, width, height, args) {
        self.colors = colors;
     };
 
-    this.drawTitle = function() {
-        var ctx = self.ctx;
-        ctx.save();
-        ctx.font = "bold "+gTextSize+"px Sans-serif"
-        //ctx.globalAlpha = 1.0;
-
-        //ctx.strokeStyle = '#EEEEEE'; 
-        //ctx.lineWidth = 5; 
-        ctx.fillStyle = "rgba(220, 220, 220)";
-        ctx.textBaseline = "top";
-        //ctx.textAlign = "left";
-        ctx.fillText(self.title,5,self.height - gTextSize - 3); 
-        ctx.restore();
-    };
+    //this.drawTitle = function() {
+        //var ctx = self.ctx;
+        //ctx.save();
+        //ctx.font = "bold "+gTextSize+"px Sans-serif"
+        //ctx.fillStyle = "rgba(220, 220, 220)";
+        //ctx.textBaseline = "top";
+        //ctx.fillText(self.title,5,self.height - gTextSize - 3); 
+        //ctx.restore();
+    //};
 
     this.drawDots = function() {
         /* draw coordinates to canvas with current colors */
@@ -991,8 +1012,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
         self.clear();
 
-        if (self.title!==undefined)
-            self.drawTitle();
+        //if (self.title!==undefined)
+            //self.drawTitle();
 
         if (self.alpha===undefined)
              alert("internal error: alpha is not defined");
@@ -1315,6 +1336,9 @@ function MaxPlot(div, top, left, width, height, args) {
             return null;
         var labelCoords = self.pxLabels;
         var boxes = self.pxLabelBbox;
+
+        if (labelCoords.length!==clusterLabels.length)
+            alert("internal error maxPLot.js: coordinates of labels are different from clusterLabels");
 
         for (var i=0; i < labelCoords.length; i++) {
             var box = boxes[i];

@@ -445,7 +445,7 @@ var tsnePlot = function() {
     /* called each time when the selection has been changed */
         updateGeneTableColors(cellIds);
         if ("geneSym" in gLegend)
-            buildViolinPlot(gLegend.geneSym);
+            buildViolinPlot(gLegend.exprVec);
 
         //if (cellIds.length===0)
             //clearMetaAndGene();
@@ -968,7 +968,7 @@ var tsnePlot = function() {
     }
 
 
-    function plotTwoViolinsByMeta(exprVec, metaName) {
+    function buildViolinFromMeta(exprVec, metaName) {
         /* load a binary meta vector, split the exprVector by it and make two violin plots, one meta value vs the other.  */
         var metaInfo = findMetaInfo(metaName);
         if (metaInfo.valCounts.length!==2) {
@@ -984,33 +984,28 @@ var tsnePlot = function() {
                 null);
     }
 
-    function onExprVectorMakeViolin(exprVec, dArr, geneSym, geneDesc, binInfo) {
-
+    function buildViolinPlot(exprVec) {
+        /* create the violin plot, depending on the current selection and the violinField config */
         var dataList = [];
         var labelList = [];
         var selCells = renderer.getSelection();
         if (selCells===null) {
             if (db.conf.violinField!=undefined) {
-                // if we have a violin meta field to split on, plot two violins
-                plotTwoViolinsByMeta(exprVec, db.conf.violinField);
+                // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
+                buildViolinFromMeta(exprVec, db.conf.violinField);
             }
             else  {
                 // otherwise, default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
                 labelList = ['All cells'];
+                buildViolinFromValues(labelList, dataList);
             }
         } else {
             // if cells are selected, make two violin plots, selected against other cells
             dataList = splitExpr(exprVec, selCells);
             labelList = ['Selected', 'Others'];
+            buildViolinFromValues(labelList, dataList);
         }
-
-        buildViolinFromValues(labelList, dataList);
-    }
-
-    function buildViolinPlot(exprVec) {
-        /* create the violin plot */
-        //db.loadExprVec(geneSym, onExprVectorMakeViolin, onProgress, exprBinCount);
     }
 
     function loadGeneAndColor(geneSym, onDone) {
@@ -1024,14 +1019,14 @@ var tsnePlot = function() {
                 return;
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
             _dump(binInfo);
-            makeLegendExpr(geneSym, geneDesc, binInfo);
+            makeLegendExpr(geneSym, geneDesc, binInfo, exprArr, decArr);
             //if (db.quickExpr===undefined)
                 //db.quickExpr = {};
             //db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
             buildLegendBar();
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
-            buildViolinPlot();
+            buildViolinPlot(exprArr);
             onDone();
         }
 
@@ -1061,7 +1056,7 @@ var tsnePlot = function() {
            if (loadsDone===2) {
                buildLegendBar();
                renderer.setColors(legendGetColors(gLegend.rows));
-               renderer.setTitle(db.conf.shortLabel);
+               renderer.setTitle("Dataset: "+db.conf.shortLabel);
                renderer.drawDots();
            }
        }
@@ -1151,25 +1146,6 @@ var tsnePlot = function() {
         buildLegendBar();
     }
         
-    //function makeLegendObject(sortBy) {
-    /* create the gLegend object */
-        //if (gLegend.type=="meta")
-            //{
-            //// color by meta attribute
-            //gLegend = makeLegendMeta(gLegend.metaFieldIdx, sortBy);
-            //}
-        //else {
-            //// color by gene
-            //var geneIdx = gLegend.geneIdx;
-            //var geneInfo = gCurrentDataset.preloadExpr.genes[geneIdx];
-            //var geneId = geneInfo[0];
-            //var geneSym = geneInfo[1];
-            //var deciles = gCurrentDataset.preloadExpr.deciles[geneId];
-            //var cellExpr = gCurrentDataset.preloadExpr.cellExpr;
-            //makeLegendExpr(geneIdx, geneSym, deciles, cellExpr);
-        //}
-    //}
-
     //function filterCoordsAndUpdate(cellIds, mode) {
     /* hide/show currently selected cell IDs or "show all". Rebuild the legend and the coloring. */
         //if (mode=="hide")
@@ -1500,6 +1476,8 @@ var tsnePlot = function() {
         gLegend.titleHover = geneId;
         gLegend.geneSym = geneSym;
         gLegend.rowType = "range";
+        gLegend.exprVec = exprVec; // raw expression values, e.g. floats
+        gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
         legendSetPalette(gLegend, "default");
         return colors;
     }
@@ -1682,10 +1660,6 @@ var tsnePlot = function() {
     //        selectize.setTextboxValue(geneSym);
     //    }
 
-    //    makeLegendExpr(0, sExpr.symbol, sExpr.deciles, cellToExpr);
-    //    buildLegendBar();
-    //    plotDots();
-    //    renderer.render(stage);
 
     //}
 
@@ -2211,8 +2185,7 @@ var tsnePlot = function() {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
                 return "";
             }
-            //var fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
-            var fullUrl = "https://genome-test.gi.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+            var fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
 
             if (geneSym!==undefined)
                 fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
