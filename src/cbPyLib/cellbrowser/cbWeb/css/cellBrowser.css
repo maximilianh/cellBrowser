@@ -157,7 +157,10 @@ button { line-height: 12px }
 /* make bootstrap look more like jquery tabs */
 .nav-tabs>li.active>a { background-color: lightblue}
 
-.gradientBackground { background: linear-gradient(#fff 20%,#f6f6f6 50%,#eee 52%,#f4f4f4 100%) }
+.gradientBackground { background-color: #f6f6f6 }
+
+.selectize-control.single .selectize-input { background: none; background-color: #f6f6f6 }
+.selectize-input { background: none; background-color: #f6f6f6; box-shadow: none }
 
 /* make bootstrap's navbar show menus on mouse hover */
 /* ul.nav li.dropdown:hover > ul.dropdown-menu { display: block; } */
@@ -180,6 +183,8 @@ button.list-group-item { background-color: #EEE }
 .nav-tabs>li>a:focus { background-color: #DDD; color: black ; }
 .nav-tabs>li.active>a:focus { background-color: #DDD; color: black ; }
 */
+
+.chosen-container-single .chosen-single { box-shadow: none; background: none; background-color: #f6f6f6 }
 
 
 /* ----- FOR SORTTABLE.JS ------- */

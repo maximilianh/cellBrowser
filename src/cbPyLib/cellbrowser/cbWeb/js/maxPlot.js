@@ -290,6 +290,7 @@ function MaxPlot(div, top, left, width, height, args) {
         //ctx.fillText(self.title,5,self.height - gTextSize - 3); 
         //ctx.restore();
         var div = document.createElement('div');
+        div.style.cursor = "default";
         div.style.left = left+"px";
         div.style.top = top+"px";
         div.style.display = "block";
@@ -953,6 +954,8 @@ function MaxPlot(div, top, left, width, height, args) {
        var statusDiv = self.statusLine;
        statusDiv.style.top = (self.top+height-gStatusHeight)+"px";
        statusDiv.style.width = width+"px";
+
+       self.titleDiv.style.top = (self.top+height-gStatusHeight-gTitleSize)+"px";
 
        self.scaleData();
        //clearCanvas(self.ctx, width, height);

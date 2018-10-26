@@ -445,7 +445,7 @@ var tsnePlot = function() {
     /* called each time when the selection has been changed */
         updateGeneTableColors(cellIds);
         if ("geneSym" in gLegend)
-            buildViolinPlot(gLegend.exprVec);
+            buildViolinPlot();
 
         //if (cellIds.length===0)
             //clearMetaAndGene();
@@ -491,6 +491,95 @@ var tsnePlot = function() {
     /* Edit - Select None */
         renderer.selectClear();
         renderer.drawDots();
+    }
+
+    function onSelectComplexClick() {
+    /* Edit - Select by attribute */
+
+        var dlgHeight = 400;
+        var dlgWidth = 700;
+        var buttons = {
+        "OK" :
+            function() {
+                var queryStr = serializeQuery();
+                selectCellsByQuery(queryStr);
+                changeUrl({'selectQuery':queryStr});
+            }
+        };
+            
+        var htmls = [];
+
+        htmls.push('<div>');
+        htmls.push('<select name="type" id="tpSelectType">');
+        htmls.push('<option value="meta">Cell annotation</option><option value="expr">Gene expression</option>');
+        htmls.push('</select>');
+
+        buildMetaFieldCombo(htmls, "tpSelectMetaComboBox", "tpSelectMetaCombo", 0);
+
+        var comboWidth = 150;
+        var id = "tpSelectGeneCombo";
+        htmls.push('<select style="width:'+comboWidth+'px" id="'+id+'" placeholder="gene search..." class="tpCombo">');
+        htmls.push('</select>');
+
+        htmls.push('<select name="operator" id="operator">');
+        htmls.push('<option>is equal to</option><option>greater than</option><option>less than</option>');
+        htmls.push('</select>');
+        
+        htmls.push('<input id="tpSelectValue" type="text" name="exprValue"></input>');
+        
+        htmls.push('<select id="tpSelectMetaValueEnum" name="metaValue">');
+        htmls.push('</select>');
+
+        htmls.push('<p>');
+        
+        showDialogBox(htmls, "Select cells with annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
+
+        $('#tpSelectGeneCombo').selectize({
+                "labelField" : 'text',
+                "valueField" : 'id',
+                "searchField" : 'text',
+                "load" : geneComboSearch
+        });
+        activateCombobox("tpSelectMetaCombo", comboWidth);
+
+        $("#tpSelectGeneCombo").next().hide();
+        $("#tpSelectValue").hide();
+
+        $('#tpSelectMetaCombo').change(function(ev) { 
+            var selVal = this.value;
+            var fieldId = parseInt(selVal.split("_")[1]);
+            var valCounts = db.getMetaFields()[fieldId].valCounts;
+            if (valCounts===undefined) {
+                $('#tpSelectValue').show();
+                $('#tpSelectMetaValueEnum').hide();
+            } else {
+                $('#tpSelectValue').hide();
+                $('#tpSelectMetaValueEnum').empty();
+                for (var i = 0; i < valCounts.length; i++) {
+                    var valName = valCounts[i][0];
+                    $('#tpSelectMetaValueEnum').append("<option value='"+i+"'>"+valName+"</option>");
+                }
+                $('#tpSelectMetaValueEnum').show();
+            }
+        });
+
+        $('#tpSelectType').change(function(ev) { 
+            if (this.value === "meta") {
+                $("#tpSelectGeneCombo").next().hide();
+                $("#tpSelectValue").hide();
+                $("#tpSelectMetaComboBox").show();
+                $('#tpSelectMetaCombo').val(0).trigger('chosen:updated'); // empty the meta dropdown
+                $("#tpSelectMetaValueEnum").show();
+            } else {
+                $("#tpSelectGeneCombo").next().show();
+                $("#tpSelectValue").show();
+                $("#tpSelectMetaComboBox").hide();
+                $("#tpSelectMetaValueEnum").hide();
+            }
+        });
+
+        //renderer.selectClear();
+        //renderer.drawDots();
     }
 
     function onMarkClick() {
@@ -653,6 +742,7 @@ var tsnePlot = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
+         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Select by attributes...</span><span class="dropmenu-item-content"></span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
          //htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
@@ -735,6 +825,7 @@ var tsnePlot = function() {
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
+       $('#tpSelectComplex').click( onSelectComplexClick );
        $('#tpDownloadMenu li a').click( onDownloadClick );
 
        // This version is more like OSX/Windows:
@@ -879,6 +970,7 @@ var tsnePlot = function() {
         /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go. 
          * Returns array of two arrays.
          * */
+        console.time("findCellsWithMeta");
         if (exprVec.length!==splitArr.length) {
             warn("internal error - splitExprByMeta: exprVec has diff length from splitArr");
         }
@@ -892,11 +984,13 @@ var tsnePlot = function() {
             else
                 unsel.push(val);
         }
+        console.timeEnd("findCellsWithMeta");
         return [sel, unsel];
     }
 
     function splitExpr(exprVec, selCells) {
         /* split the expression vector into two vectors, one for selected and one for unselected cells */
+        console.time("splitExpr");
         var selMap = {};
         for (var i = 0; i < selCells.length; i++) {
             selMap[selCells[i]] = null;
@@ -911,16 +1005,19 @@ var tsnePlot = function() {
                 unsel.push(exprVec[i]);
         }
 
+        console.timeEnd("splitExpr");
         return [sel, unsel]
     }
 
     function buildViolinFromValues(labelList, dataList) {
         /* make a violin plot given the labels and the values for them */
         console.time("violinDraw");
-        $('#tpViolinCanvas').remove();
-        var htmls = [];
-        htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
-        $('#tpViolin').append(htmls.join(""));
+        //removeViolinPlot();
+        if ("violinChart" in window)
+            window.violinChart.destroy();
+
+        //var htmls = [];
+        //$('#tpLegendContent').append(htmls.join(""));
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
@@ -939,9 +1036,6 @@ var tsnePlot = function() {
 	}]
 	};
 	
-        if ("violinChart" in window)
-            window.violinChart.destroy();
-
 	window.violinChart = new Chart(ctx, {
 	    type: 'violin',
 	    data: boxplotData,
@@ -984,8 +1078,19 @@ var tsnePlot = function() {
                 null);
     }
 
-    function buildViolinPlot(exprVec) {
+    //function removeViolinPlot() {
+        /* destroy the violin plot */
+        //if ("violinChart" in window)
+            //window.violinChart.destroy();
+        //$('#tpViolinCanvas').remove();
+    //}
+
+    function buildViolinPlot() {
         /* create the violin plot, depending on the current selection and the violinField config */
+        var exprVec = gLegend.exprVec;
+        if (exprVec===undefined)
+            return;
+
         var dataList = [];
         var labelList = [];
         var selCells = renderer.getSelection();
@@ -1023,11 +1128,16 @@ var tsnePlot = function() {
             //if (db.quickExpr===undefined)
                 //db.quickExpr = {};
             //db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
-            buildLegendBar();
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
-            buildViolinPlot(exprArr);
+            buildLegendBar();
             onDone();
+            
+            // update the gene combo box
+            var sel = $('#tpGeneCombo')[0].selectize;
+            sel.addOption({text: geneSym, value: geneSym});
+            sel.refreshOptions();
+            sel.setTextboxValue(geneSym);
         }
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
@@ -1069,7 +1179,7 @@ var tsnePlot = function() {
 
        renderer.initPlot(db.conf);
 
-       buildLeftSidebar(db.getMetaFields());
+       buildLeftSidebar();
        buildToolBar(db.conf.coords, db.conf.name, metaBarWidth+metaBarMargin, toolBarHeight);
        activateMode("move");
 
@@ -1102,11 +1212,6 @@ var tsnePlot = function() {
        }
        else {
            loadGeneAndColor(colorBy, doneOnePart);
-           // update the gene combo box
-           var sel = $('#tpGeneCombo')[0].selectize;
-           sel.addOption({text: colorBy, value: colorBy});
-           sel.refreshOptions();
-           sel.setTextboxValue(colorBy);
        }
 
        if (forcePalName!==null) {
@@ -1277,7 +1382,7 @@ var tsnePlot = function() {
         htmls.push("<div style='float:right' class='btn-group btn-group-xs'>");
             htmls.push("<button type='button' class='btn btn-default dropdown-toggle' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false' id='tpChangeColorScheme'>Colors&nbsp;<span class='caret'> </span></button>");
             htmls.push('<ul class="dropdown-menu pull-right">');
-            htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Default</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to Default</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow Qualitative</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s Qualitative</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Shades of Blues</a></li>');
@@ -1292,8 +1397,6 @@ var tsnePlot = function() {
 
         htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
                     htmls.push("<div id='tpLegendContent'>");
-                    htmls.push("</div>"); // content 
-                    htmls.push("<div id='tpViolin'>");
                     htmls.push("</div>"); // content 
         htmls.push("</div>"); // bar 
         $(document.body).append(htmls.join(""));
@@ -1917,7 +2020,7 @@ var tsnePlot = function() {
     }
 
     function buildLegendForMetaIdx(fieldId) {
-    /* rebuild the legend */
+    /* build the legend for a meta field */
         var legend = makeLegendMeta(fieldId);
         if (legend==null)
             return;
@@ -2114,8 +2217,9 @@ var tsnePlot = function() {
         htmls.push('</div>');
     }
 
-    function buildMetaFieldCombo(htmls, metaFieldInfo, id, left) {
-        htmls.push('<div id="tpMetaFieldComboBox" style="padding-left:2px">');
+    function buildMetaFieldCombo(htmls, idOuter, id, left) {
+        var metaFieldInfo = db.getMetaFields();
+        htmls.push('<div id="'+idOuter+'" style="padding-left:2px; display:inline">');
         var entries = [["_none", ""]];
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var field = metaFieldInfo[i];
@@ -2219,7 +2323,10 @@ var tsnePlot = function() {
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 250, 290, 2);
+        var layoutLeft = 150;
+        if (db.conf.hubUrl!==undefined)
+            layoutLeft = 290;
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 250, layoutLeft, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
         
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
@@ -2278,7 +2385,8 @@ var tsnePlot = function() {
         return fieldName;
     }
 
-    function buildMetaPanel(htmls, metaFieldInfo) {
+    function buildMetaPanel(htmls) {
+        var metaFieldInfo = db.conf.metaFields;
         htmls.push("<div id='tpMetaPanel'>");
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var field = metaFieldInfo[i];
@@ -2310,7 +2418,7 @@ var tsnePlot = function() {
         htmls.push("</div>"); // tpMetaPanel
     }
 
-    function buildLeftSidebar (metaFieldInfo) {
+    function buildLeftSidebar () {
     /* add the left sidebar with the meta data fields. db.loadConf 
      * must have completed before this can be run, we need the meta field info. */
         $("#tpLeftSidebar").remove();
@@ -2330,12 +2438,11 @@ var tsnePlot = function() {
         htmls.push("</ul>");
 
         htmls.push("<div id='tpAnnotTab'>");
-        //htmls.push("<div id='tpSideMeta'>");
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
-        buildMetaFieldCombo(htmls, metaFieldInfo, "tpMetaCombo", 0);
+        buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Hover over a '+gSampleDesc+' to show it below</div>');
-        buildMetaPanel(htmls, metaFieldInfo);
-        //htmls.push("</div>"); // tpSideMeta
+        buildMetaPanel(htmls);
+
         htmls.push("</div>"); // tpAnnotTab
 
         htmls.push("<div id='tpGeneTab'>");
@@ -2354,33 +2461,7 @@ var tsnePlot = function() {
 
         $('.tpGeneBarCell').click( onGeneClick );
         $('#tpChangeGenes').click( onChangeGenesClick );
-        //$("#tpGenePaneLink").tab("show");
-        //$("#tpMetaPaneLink").tab("show");
 
-        /* htmls.push("<div id='tpMetaPanes' style='margin-top:2px; margin-left:1px'>");
-
-                htmls.push("<div id='tpAnnotPane' class='tab-pane'>");
-                buildMetaPanel(htmls, metaFieldInfo);
-                htmls.push("</div>");
-
-                htmls.push("<div id='tpGenePane' class='tab-pane' style='height:200px'>");
-                buildGeneCombo(htmls, "tpGeneCombo", 0);
-                htmls.push("</div>");
-
-            htmls.push("</div>"); // tab-content
-
-        htmls.push("</div>"); // opendialogtabs
-
-        htmls.push("</div>"); // tpLeftSidebar
-
-        $(document.body).append(htmls.join(""));
-        $(document.body).append("<div id='tpMetaTip'></div>");
-
-        // this is weird, but I have not found a better way to make the tab show up
-
-        //clearMetaAndGene();
-
-        */
         activateCombobox("tpMetaCombo", metaBarWidth-10);
         $("#tpMetaCombo").change( onMetaComboChange );
         $(".tpMetaLabel").click( onMetaClick );
@@ -2522,8 +2603,11 @@ var tsnePlot = function() {
             pal = makeHslPalette(0.6, n);
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);
-        else
+        else {
             pal = palette(palName, n);
+            if (palName==="tol-sq")
+                pal[0]='f4f7ff';
+        }
 
         return pal;
     }
@@ -2949,6 +3033,11 @@ var tsnePlot = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
 
+        // add the div where the violin plot will later be shown
+        htmls.push("<div id='tpViolin'>");
+        htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
+        htmls.push("</div>"); // violin 
+
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
         setLegendHeaders(gLegend.rowType);
@@ -2988,6 +3077,8 @@ var tsnePlot = function() {
                 }
             $("#tpLegendColorPicker_"+i).spectrum(opt);
         }
+
+        buildViolinPlot();
 
     }
 
@@ -3233,6 +3324,7 @@ var tsnePlot = function() {
        //htmls.push("<div class='tpHover'>"+clusterName+"</div>");
        //$(document.body).append(htmls.join(""));
        console.log("Hover over "+clusterName);
+       console.log(ev);
     }
 
     function sanitizeName(name) {

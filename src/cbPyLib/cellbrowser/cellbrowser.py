@@ -432,7 +432,7 @@ def readGeneToSym(fname):
 
     # Jim's files and CellRanger files have no headers, they are just key-value
     line1 = openFile(fname).readline().rstrip("\r\n")
-    fieldCount = line1.split('\t')
+    fieldCount = len(line1.split('\t'))
     if "geneId" not in line1:
         d = parseDict(fname)
     # my gencode tables contain a symbol for all genes
@@ -443,14 +443,14 @@ def readGeneToSym(fname):
                 continue
             d[row.geneId.split(".")[0]]=row.symbol
     # my new files are smaller and have headers
-    elif line1=="geneId\tsymbol" or fieldCount==2:
+    elif line1=="#geneId\tsymbol" or fieldCount==2:
         d = {}
         for row in lineFileNextRow(fname):
             if row.symbol=="":
                 continue
             d[row.geneId.split(".")[0]]=row.symbol
     else:
-        assert(False)
+        assert(False) # symbols file does not have a header like #geneId<tab>symbol
     logging.debug("Found symbols for %d genes" % len(d))
     return d
 
