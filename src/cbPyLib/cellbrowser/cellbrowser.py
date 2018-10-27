@@ -1274,7 +1274,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         ofh.write(exprStr)
 
         if geneCount % 1000 == 0:
-            logging.info("Wrote expression values for %d genes" % geneCount)
+            logging.info("Wrote compressed expression values for %d genes" % geneCount)
 
     discretOfh.close()
     ofh.close()
@@ -1585,7 +1585,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
 
     sep = "\t"
 
-    logging.info("Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
+    logging.info("Creating a clean ASCII-version of the expression matrix. Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
 
     matIter = MatrixTsvReader()
     matIter.open(inFname)
@@ -1614,7 +1614,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
         ofh.write("\n")
         count += 1
         if count%1000==0:
-            logging.info("Wrote %d rows" % count)
+            logging.info("Wrote %d text rows" % count)
     ofh.close()
 
     #tmpFnameGz = outFname+".tmp.gz"
@@ -2525,16 +2525,20 @@ def startHttpServer(outDir, port):
         import SimpleHTTPServer
         from BaseHTTPServer import HTTPServer
 
-    #server_address = ('localhost', port)
-    server_address = ('', port)
+    #server_address = ('localhost', port) # use this line to allow only access from localhost
+    server_address = ('', port) # by default, we allow access from anywhere
     HandlerClass = RangeHTTPServer.RangeRequestHandler
     HandlerClass.protocol_version = "HTTP/1.0"
     httpd = HTTPServer(server_address, HandlerClass)
 
     sa = httpd.socket.getsockname()
+    ipAddr = sa[0]
+    if ipAddr=="0.0.0.0":
+        ipAddr = "127.0.0.1"
+
     os.chdir(outDir)
     print("Serving "+outDir+". Press Ctrl-C to exit.")
-    print("Point your internet browser to http://"+sa[0]+":"+str(sa[1])+" (or the address of this server)")
+    print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the address of this server)")
     sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 

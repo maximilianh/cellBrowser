@@ -4,3 +4,4 @@ graft ../src/cbPyLib/cellbrowser/cbWeb
 #include ../src/cbPyLib/cellbrowser/cbWeb/*.js
 include ../src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
 include ../src/cbPyLib/cellbrowser/sampleConfig/scanpy.conf
+include ../src/cbPyLib/cellbrowser/sampleConfig/seurat.conf
