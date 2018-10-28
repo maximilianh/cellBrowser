@@ -271,7 +271,7 @@ function CbDbFile(url) {
         return cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
     };
 
-    this.loadMetaVec = function(fieldIdx, onDone, onProgress) {
+    this.loadMetaVec = function(fieldIdx, onDone, onProgress, otherInfo) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
      * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
      * Keep all arrays in metaCache;
@@ -283,7 +283,7 @@ function CbDbFile(url) {
             var arrType = cbUtil.makeType(metaInfo.arrType);
             var arr = pako.ungzip(comprBytes);
             arr = new arrType(arr);
-            onDone(arr, metaInfo);
+            onDone(arr, metaInfo, otherInfo);
         }
 
         console.log(metaInfo);
@@ -486,9 +486,24 @@ function CbDbFile(url) {
         return {"dArr": dArr, "binInfo": binInfo};
     }
 
-    this.loadExprVec = function(geneSym, onDone, onProgress, binCount) {
-    /* given a geneSym (string), retrieve array of deciles and call onDone with the
-     * array */
+    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress, binCount) {
+    /* given a geneSym (string), retrieve array of array put into binCount bins
+     * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
+     * binInfo) */
+
+        function onLoadedVec(exprArr, geneSym, geneDesc) {
+            console.time("discretize");
+            var da = discretizeArray(exprArr, binCount);
+            console.timeEnd("discretize");
+            onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
+        }
+
+        this.loadExprVec(geneSym, onLoadedVec, onDone, onProgress)
+    };
+
+    this.loadExprVec = function(geneSym, onDone, onProgress, otherInfo) {
+    /* given a geneSym (string), retrieve array of values and call onDone with
+     * (array, geneSym, geneDesc) */
         function onGeneDone(comprData, geneSym) {
             // decompress data and run onDone when ready
             self.exprCache[geneSym] = comprData;
@@ -508,9 +523,6 @@ function CbDbFile(url) {
             var arr = buf.slice(2, 2+descLen);
             var geneDesc = String.fromCharCode.apply(null, arr);
 
-            // read the byte array with one bin index per cell
-            // var digArr = buf.slice(2+descLen+binInfoLen);
-            
             // read the expression array
             var sampleCount = self.conf.sampleCount;
             var matrixType = self.conf.matrixArrType;
@@ -520,11 +532,7 @@ function CbDbFile(url) {
             var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
             var exprArr = new ArrType(arrData.buffer);
 
-            console.time("discretize");
-            var da = discretizeArray(exprArr, binCount);
-            console.timeEnd("discretize");
-
-            onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
+            onDone(exprArr, geneSym, geneDesc, otherInfo);
         }
 
         var offsData = self.geneOffsets[geneSym];
@@ -625,7 +633,7 @@ function CbDbFile(url) {
                   continue;
                }
 
-               self.loadExprVec(
+                self.loadExprAndDiscretize(
                    sym, 
                    function(exprVec, discExprVec, geneSym, geneDesc, binInfo) { 
                        //onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);

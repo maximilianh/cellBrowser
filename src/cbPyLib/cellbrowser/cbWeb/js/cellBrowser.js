@@ -141,6 +141,15 @@ var tsnePlot = function() {
         }
         return null;
     }
+                
+    function findMetaValIndex(fieldIdx, value) {
+        /* return the index of the value of an enum meta field */
+        var valCounts = db.conf.metaFields[fieldIdx].valCounts;
+        for (var valIdx = 0; valIdx < valCounts.length; valIdx++) {
+            if (valCounts[valIdx][0]===value)
+                return valIdx;
+        }
+    }
 
     function cartSave(key, value, defaultValue) {
     /* save a value in both localStorage and the URL. If the value is defaultValue or null, remove it */
@@ -493,93 +502,262 @@ var tsnePlot = function() {
         renderer.drawDots();
     }
 
-    function onSelectComplexClick() {
-    /* Edit - Select by attribute */
-
-        var dlgHeight = 400;
-        var dlgWidth = 700;
-        var buttons = {
-        "OK" :
-            function() {
-                var queryStr = serializeQuery();
-                selectCellsByQuery(queryStr);
-                changeUrl({'selectQuery':queryStr});
-            }
-        };
-            
-        var htmls = [];
-
+    function buildOneComboboxRow(htmls, comboWidth, rowIdx) {
+        /* create one row of combobox elements in the select dialog */
         htmls.push('<div>');
-        htmls.push('<select name="type" id="tpSelectType">');
-        htmls.push('<option value="meta">Cell annotation</option><option value="expr">Gene expression</option>');
+        htmls.push('<select name="type" id="tpSelectType_'+rowIdx+'">');
+        htmls.push('<option value="meta">Cell annotation field</option><option value="expr">Expression of gene </option>');
         htmls.push('</select>');
 
-        buildMetaFieldCombo(htmls, "tpSelectMetaComboBox", "tpSelectMetaCombo", 0);
+        buildMetaFieldCombo(htmls, "tpSelectMetaComboBox_"+rowIdx, "tpSelectMetaCombo_"+rowIdx, 0);
 
-        var comboWidth = 150;
-        var id = "tpSelectGeneCombo";
+        var id = "tpSelectGeneCombo_"+rowIdx;
         htmls.push('<select style="width:'+comboWidth+'px" id="'+id+'" placeholder="gene search..." class="tpCombo">');
         htmls.push('</select>');
 
-        htmls.push('<select name="operator" id="operator">');
-        htmls.push('<option>is equal to</option><option>greater than</option><option>less than</option>');
+        htmls.push('<select name="operator" id="tpSelectOperator_'+rowIdx+'">');
+        htmls.push('<option value="eq">is equal to</option>');
+        htmls.push('<option value="gt">is greater than</option>');
+        htmls.push('<option value="lt">is less than</option>');
         htmls.push('</select>');
         
-        htmls.push('<input id="tpSelectValue" type="text" name="exprValue"></input>');
+        htmls.push('<input id="tpSelectValue_'+rowIdx+'" type="text" name="exprValue"></input>');
         
-        htmls.push('<select id="tpSelectMetaValueEnum" name="metaValue">');
+        htmls.push('<select id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
         htmls.push('</select>');
 
         htmls.push('<p>');
-        
-        showDialogBox(htmls, "Select cells with annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
+    }
 
-        $('#tpSelectGeneCombo').selectize({
+    function connectOneComboboxRow(comboWidth, rowIdx) {
+        /* call the jquery inits and setup the change listeners for a combobox row */
+        /* a UI framework, like react or angular, would be very helpful here */
+
+        // auto-suggest for gene searches
+        $('#tpSelectGeneCombo_'+rowIdx).selectize({
                 "labelField" : 'text',
                 "valueField" : 'id',
                 "searchField" : 'text',
                 "load" : geneComboSearch
         });
-        activateCombobox("tpSelectMetaCombo", comboWidth);
+        activateCombobox("tpSelectMetaCombo_"+rowIdx, comboWidth);
 
-        $("#tpSelectGeneCombo").next().hide();
-        $("#tpSelectValue").hide();
+        $("#tpSelectGeneCombo_"+rowIdx).next().hide();
+        $("#tpSelectValue_"+rowIdx).hide();
 
-        $('#tpSelectMetaCombo').change(function(ev) { 
+        $('#tpSelectMetaCombo_'+rowIdx).change(function(ev) { 
+            // when the user changes the meta field, update the list of meta field values in the dropdown
             var selVal = this.value;
             var fieldId = parseInt(selVal.split("_")[1]);
             var valCounts = db.getMetaFields()[fieldId].valCounts;
             if (valCounts===undefined) {
-                $('#tpSelectValue').show();
-                $('#tpSelectMetaValueEnum').hide();
+                $('#tpSelectValue_'+rowIdx).show();
+                $('#tpSelectMetaValueEnum_'+rowIdx).hide();
             } else {
-                $('#tpSelectValue').hide();
-                $('#tpSelectMetaValueEnum').empty();
+                $('#tpSelectValue_'+rowIdx).hide();
+                $('#tpSelectMetaValueEnum_'+rowIdx).empty();
                 for (var i = 0; i < valCounts.length; i++) {
                     var valName = valCounts[i][0];
-                    $('#tpSelectMetaValueEnum').append("<option value='"+i+"'>"+valName+"</option>");
+                    $('#tpSelectMetaValueEnum_'+rowIdx).append("<option value='"+i+"'>"+valName+"</option>");
                 }
-                $('#tpSelectMetaValueEnum').show();
+                $('#tpSelectMetaValueEnum_'+rowIdx).show();
             }
         });
 
-        $('#tpSelectType').change(function(ev) { 
+        $('#tpSelectType_'+rowIdx).change(function(ev) { 
+            // when the user changes the gene expression / meta dropdown, hide/show the
+            // respective other dropdowns
             if (this.value === "meta") {
-                $("#tpSelectGeneCombo").next().hide();
-                $("#tpSelectValue").hide();
-                $("#tpSelectMetaComboBox").show();
-                $('#tpSelectMetaCombo').val(0).trigger('chosen:updated'); // empty the meta dropdown
-                $("#tpSelectMetaValueEnum").show();
+                $("#tpSelectGeneCombo_"+rowIdx).next().hide();
+                $("#tpSelectValue_"+rowIdx).hide();
+                $("#tpSelectMetaComboBox_"+rowIdx).show();
+                $('#tpSelectMetaCombo_'+rowIdx).val(0).trigger('chosen:updated'); // empty the meta dropdown
+                $("#tpSelectMetaValueEnum_"+rowIdx).show();
             } else {
-                $("#tpSelectGeneCombo").next().show();
-                $("#tpSelectValue").show();
-                $("#tpSelectMetaComboBox").hide();
-                $("#tpSelectMetaValueEnum").hide();
+                $("#tpSelectGeneCombo_"+rowIdx).next().show();
+                $("#tpSelectValue_"+rowIdx).show();
+                $("#tpSelectMetaComboBox_"+rowIdx).hide();
+                $("#tpSelectMetaValueEnum_"+rowIdx).hide();
             }
         });
+    }
 
-        //renderer.selectClear();
-        //renderer.drawDots();
+    function readSelectForm() {
+        /* convert the current state of the dialog box to a short string and return it */
+        // example: [{"g":"PITX2", "gt":0.05}, {"m":"Cluster", "eq":"cluster 2"}]
+        // XX TODO: non-enum meta data fields ???
+        var queries = [];
+
+        var rowIdx = 1;
+        while ($("#tpSelectOperator_"+rowIdx).length > 0) {
+            var query = {};
+            var op = $('#tpSelectOperator_'+rowIdx).val();
+
+            var queryType = $('#tpSelectType_'+rowIdx).val();
+            if (queryType=="expr") {
+                var gene = $('#tpSelectGeneCombo_'+rowIdx).val();
+                var val = $('#tpSelectValue_'+rowIdx).val();
+                query["g"] = gene;
+                query[op] = val;
+            }
+            else {
+                var metaValTag = $('#tpSelectMetaCombo_'+rowIdx).val();
+                var metaIdx = parseInt(metaValTag.split("_")[1]);
+                var metaName = db.conf.metaFields[metaIdx].name;
+                query["m"] = metaName;
+
+                var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
+                var valIdx = parseInt(selVal);
+                var val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
+                query[op] = val;
+            }
+            queries.push(query);
+            rowIdx++;
+        }
+        return queries;
+    }
+
+    function greaterThan(x, y) { return (x>y); }
+    function lessThan(x, y) { return (x<y); }
+    function equals(x, y) { return (x===y); }
+
+    function makeFuncAndVal(query) {
+        /* return a comparator function and the value given a query object */
+        var compFunc = equals;
+        if ("lt" in query)
+            compFunc = lessThan;
+        if ("gt" in query)
+            compFunc = greaterThan;
+
+        var val = query["eq"]
+        if (val===undefined)
+            val = query["lt"]
+        if (val===undefined)
+            val = query["gt"]
+
+        return [compFunc, val];
+    }
+
+    function searchArrayForFuncAndVal(arr, funcAndVal) {
+        /* given an array and function and a value, return an array with the indices the matching array elements */
+        var compFunc = funcAndVal[0];
+        var compVal  = funcAndVal[1];
+        var selCells = [];
+        for (var i=0; i<arr.length; i++) {
+            if (compFunc(arr[i], compVal))
+                selCells.push(i);
+        }
+        return selCells;
+    }
+
+    function intersectArrays(arrList) {
+        /* return the intersection of all arrays as an array. Non-IE11? */
+        var smallSet = new Set(arrList[0]);
+        for (var i=1; i < arrList.length; i++) {
+            var otherSet = new Set(arrList[i]);
+            smallSet = new Set([...smallSet].filter(x => otherSet.has(x)));
+        }
+        var newArr = Array.from(smallSet);
+        return newArr;
+    }
+
+    function findCellsMatchingQueryList(queries, onDone) {
+        /* given a list of dicts, return the identifiers of the matching cells */
+        /* example: [{"g":"PITX2", "gt":0.05}, {"m":"Cluster", "eq":"cluster 2"}] */
+
+        var doneQueries = 0;
+        var queryResults = []
+
+        function allQueriesDone() {
+            // XX this could use a promise framework
+            if (queryResults.length===1)
+                onDone(queryResults[0]);
+            else
+                onDone(intersectArrays(queryResults));
+        }
+
+        function gotGeneVec(exprArr, sym, desc, funcVal) {
+            var selCells = searchArrayForFuncAndVal(exprArr, funcVal)
+            queryResults.push(selCells);
+            doneQueries++;
+            if (doneQueries==queries.length)
+                allQueriesDone();
+        }
+
+        function gotMetaArr(metaArr, metaInfo, funcVal) {
+            var selCells = searchArrayForFuncAndVal(metaArr, funcVal)
+            queryResults.push(selCells);
+            doneQueries++;
+            if (doneQueries==queries.length)
+                allQueriesDone();
+        }
+
+        var selCells = [];
+        for (var i=0; i < queries.length; i++) {
+            var query = queries[i];
+            var funcVal = makeFuncAndVal(query); // [0] = function to compare, [1] = value for comparison
+            if ("g" in query) {
+                db.loadExprVec(query["g"], gotGeneVec, null, funcVal);
+            }
+            else {
+                var fieldName = query["m"];
+                var fieldIdx = cbUtil.findIdxWhereEq(db.conf.metaFields, "name", fieldName);
+                var findVal = funcVal[1];
+                var fieldValIdx = findMetaValIndex(fieldIdx, findVal);
+                db.loadMetaVec(fieldIdx, gotMetaArr, null, [funcVal[0], fieldValIdx]);
+            }
+        }
+    }
+
+    function onSelectComplexClick() {
+    /* Edit - Find cells */
+
+        var dlgHeight = 400;
+        var dlgWidth = 700;
+        var buttons = {
+
+            "Cancel" : function() { 
+                    $(this).dialog("close"); 
+            },
+
+            "OK" : function() {
+                var queryList = readSelectForm();
+                //alert(JSON.stringify(queryList));
+
+                findCellsMatchingQueryList(queryList, function(cellIds) {
+                    if (cellIds.length===0) {
+                        alert("No matching "+gSampleDesc+".");
+                    } else {
+                        renderer.selectSet(cellIds);
+                        changeUrl({'select':JSON.stringify(queryList)});
+                        renderer.drawDots();
+                        $("#tpDialog").dialog("close");
+                    }
+                });
+            }
+
+        };
+            
+        var htmls = [];
+
+        var comboWidth = 150;
+        buildOneComboboxRow(htmls, comboWidth, 1);
+
+        htmls.push("<div id='tpSelectAddRowLink' class='link'>Add another search criterion</div>");
+        
+        showDialogBox(htmls, "Find cells based on annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
+
+        connectOneComboboxRow(comboWidth, 1);
+
+        var rowIdx = 2;
+        $('#tpSelectAddRowLink').click( function(ev) {
+            var htmls = [];
+            buildOneComboboxRow(htmls, comboWidth, rowIdx);
+            $(htmls.join("")).insertBefore("#tpSelectAddRowLink");
+            //$('#tpSelectAddRowLink').insertBefore();
+            connectOneComboboxRow(comboWidth, rowIdx);
+            rowIdx++;
+        });
     }
 
     function onMarkClick() {
@@ -742,7 +920,7 @@ var tsnePlot = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
-         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Select by attributes...</span><span class="dropmenu-item-content"></span></a></li>');
+         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content"></span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
          //htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
@@ -966,26 +1144,41 @@ var tsnePlot = function() {
         $( "#tpLeftTabs" ).tabs( "option", "active", idx );
     }
 
-    function splitExprByMeta(exprVec, splitArr) {
+    function splitExprByMeta(exprVec, splitArr, selCells) {
         /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go. 
-         * Returns array of two arrays.
+         * if selCells is not null, restrict the splitting to just indices in selCells.
+         * Returns array of the two arrays.
          * */
         console.time("findCellsWithMeta");
         if (exprVec.length!==splitArr.length) {
             warn("internal error - splitExprByMeta: exprVec has diff length from splitArr");
         }
 
-        var sel = [];
-        var unsel = [];
-        for (var i = 0; i < exprVec.length; i++) {
-            var val = exprVec[i];
-            if (splitArr[i]==0)
-                sel.push(val);
-            else
-                unsel.push(val);
-        }
+        var arr1 = [];
+        var arr2 = [];
+
+        // code duplication, not very elegant, but avoids creating an array just for the indices
+        if (selCells===null)
+            // the version without a cell selection
+            for (var cellIdx = 0; cellIdx < exprVec.length; cellIdx++) {
+                var val = exprVec[cellIdx];
+                if (splitArr[cellIdx]==0)
+                    arr1.push(val);
+                else
+                    arr2.push(val);
+            }
+        else
+            // the version with a cell selection
+            for (var i = 0; i < selCells.length; i++) {
+                var cellIdx = selCells[i];
+                var val = exprVec[cellIdx];
+                if (splitArr[cellIdx]==0)
+                    arr1.push(val);
+                else
+                    arr2.push(val);
+            }
         console.timeEnd("findCellsWithMeta");
-        return [sel, unsel];
+        return [arr1, arr2];
     }
 
     function splitExpr(exprVec, selCells) {
@@ -1062,7 +1255,7 @@ var tsnePlot = function() {
     }
 
 
-    function buildViolinFromMeta(exprVec, metaName) {
+    function buildViolinFromMeta(exprVec, metaName, selCells) {
         /* load a binary meta vector, split the exprVector by it and make two violin plots, one meta value vs the other.  */
         var metaInfo = findMetaInfo(metaName);
         if (metaInfo.valCounts.length!==2) {
@@ -1072,7 +1265,7 @@ var tsnePlot = function() {
         var labelList = [metaInfo.valCounts[0][0], metaInfo.valCounts[1][0]];
         db.loadMetaVec( metaInfo.index, 
                 function(metaArr) { 
-                    var dataList = splitExprByMeta(exprVec, metaArr);
+                    var dataList = splitExprByMeta(exprVec, metaArr, selCells);
                     buildViolinFromValues(labelList, dataList);
                 },
                 null);
@@ -1094,22 +1287,23 @@ var tsnePlot = function() {
         var dataList = [];
         var labelList = [];
         var selCells = renderer.getSelection();
-        if (selCells===null) {
-            if (db.conf.violinField!=undefined) {
-                // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
-                buildViolinFromMeta(exprVec, db.conf.violinField);
-            }
-            else  {
-                // otherwise, default to a single violin plot
+        // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
+        // restrict the plot to the selected cells, if any
+        if (db.conf.violinField!=undefined) {
+            buildViolinFromMeta(exprVec, db.conf.violinField, selCells);
+        } else { 
+            // there is no violin field
+            if (selCells===null) {
+                // no selection, no violinField: default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
                 labelList = ['All cells'];
                 buildViolinFromValues(labelList, dataList);
+            } else {
+                // cells are selected and no violin field: make two violin plots, selected against other cells
+                dataList = splitExpr(exprVec, selCells);
+                labelList = ['Selected', 'Others'];
+                buildViolinFromValues(labelList, dataList);
             }
-        } else {
-            // if cells are selected, make two violin plots, selected against other cells
-            dataList = splitExpr(exprVec, selCells);
-            labelList = ['Selected', 'Others'];
-            buildViolinFromValues(labelList, dataList);
         }
     }
 
@@ -1142,7 +1336,7 @@ var tsnePlot = function() {
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
         console.log("Loading gene expression vector for "+geneSym);
-        db.loadExprVec(geneSym, gotGeneVec, onProgress, exprBinCount);
+        db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress, exprBinCount);
 
         // clear the meta combo
         $('#tpMetaCombo').val(0).trigger('chosen:updated');

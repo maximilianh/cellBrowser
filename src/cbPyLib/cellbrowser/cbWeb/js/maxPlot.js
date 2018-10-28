@@ -1229,6 +1229,12 @@ function MaxPlot(div, top, left, width, height, args) {
             self.onSelChange([]);
     };
 
+    this.selectSet = function(cellIds) {
+        /* set selection to an array of integer cellIds */
+        self.selCells = cellIds;
+        self._selUpdate();
+    };
+
     this.selectAdd = function(cellIdx) {
         /* add a single cell to the selection. If it already exists, remove it. */
         if (self.selCells===null) {
