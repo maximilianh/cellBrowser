@@ -165,36 +165,36 @@ Let's use an example, the pbmc3k cellranger output files from the 10x website:
 
 ### Import a Seurat object
 
-    Use src/cbImportSeurat. More instructions later.
+Use src/cbImportSeurat. More instructions later.
 
-### Process an expression matrix with a simple Seurat pipeline
+### Process an expression matrix with a basic Seurat pipeline
 
-    First make sure that you can install the package "hdf5r" in R:
+First make sure that you can install the package "hdf5r" in R:
 
-        install.packages("hdf5r")
+install.packages("hdf5r")
 
-    If this doesn't work, try to install the fake hdf5 package, which means that you won't be able to read 
-    hdf5 files, but reading .mtx and of course tab-sep files will still work.
+If this doesn't work, try to install the fake hdf5 package, which means that you won't be able to read 
+hdf5 files, but reading .mtx and of course tab-sep files will still work.
 
-        install.packages("remotes")
-        remotes::install_github("UCSF-TI/fake-hdf5r")
+install.packages("remotes")
+remotes::install_github("UCSF-TI/fake-hdf5r")
 
-    Download the pbmc3k expression matrix:
+Download the pbmc3k expression matrix:
 
-        rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
+rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
 
-    Create a default seurat.conf
+Create a default seurat.conf
 
-        cbSeurat --init
+cbSeurat --init
 
-    Then run your expression matrix through Seurat like this:
+Then run your expression matrix through Seurat like this:
 
-        cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
+cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
 
-    This will create a script seuratOut/runSeurat.R, and run it through Rscript. The script will install 
-    Seurat, if it's not installed already.
+This will create a script seuratOut/runSeurat.R, and run it through Rscript. The script will install 
+Seurat, if it's not installed already.
 
-    You can modify the file seurat.conf and rerun the cbSeurat command above.
+You can modify the file seurat.conf and rerun the cbSeurat command above.
 
 ### Optional Python modules to install
 
