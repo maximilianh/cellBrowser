@@ -253,14 +253,14 @@ def cbScanpy_parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output directory")
 
-    parser.add_option("-c", "--confFname", dest="confFname", action="store", default="scanpy.conf", 
+    parser.add_option("-c", "--confFname", dest="confFname", action="store", default="scanpy.conf",
             help="config file from which settings are read, default is %default")
 
     parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
             help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
 
-    parser.add_option("-n", "--name", dest="name", action="store", default="cbScanpy-Data",
-            help="name of dataset in cell browser, default %default")
+    parser.add_option("-n", "--name", dest="name", action="store",
+            help="name of dataset in cell browser")
 
     parser.add_option("", "--test",
         dest="test",
@@ -274,7 +274,12 @@ def cbScanpy_parseArgs():
         doctest.testmod()
         sys.exit(0)
 
-    if (options.exprMatrix is None and options.outDir is None) and not options.init:
+    if options.name is None:
+        parser.print_help()
+        exit(1)
+
+    if (options.exprMatrix is None or options.outDir is None or options.name is None) and not options.init:
+        print("Please specify at least the expression matrix (-e), the output directory (-o) and a name (-n)")
         parser.print_help()
         exit(1)
 
@@ -826,9 +831,9 @@ class MatrixTsvReader:
             #ifh = gzip.open(fname) # not doing this anymore
             cmd = ['gunzip', '-c', fname]
             proc, stdout = popen(cmd)
-            self.ifh = stdout # always faster and uses 2 CPUs
+            self.ifh = stdout # faster implementation and in addition uses 2 CPUs
         else:
-            self.ifh = io.open(fname, "r", encoding="utf8") # speed?
+            self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
 
         self.sep = "\t"
         if ".csv" in fname.lower():
@@ -847,6 +852,9 @@ class MatrixTsvReader:
             logging.info("Numbers in matrix are of type '%s'", self.matType)
         else:
             self.matType = matType
+
+    def close(self):
+        self.ifh.close()
 
     def getMatType(self):
         return self.matType
@@ -1616,6 +1624,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
         if count%1000==0:
             logging.info("Wrote %d text rows" % count)
     ofh.close()
+    matIter.close()
 
     #tmpFnameGz = outFname+".tmp.gz"
     #runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
@@ -1982,6 +1991,24 @@ def readSampleNames(fname):
     logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
 
+def guessGeneIdType(matrixFname):
+    " returns 'gencode-human', 'gencode-mouse' or 'symbols' depending on the first gene "
+    matIter = MatrixTsvReader()
+    matIter.open(matrixFname)
+
+    geneId, sym, exprArr = matIter.iterRows().next()
+    matIter.close()
+
+    if geneId.startswith("ENSG"):
+        geneType = "gencode-human"
+    elif geneId.startswith("ENSMUSG"):
+        geneType =  "gencode-mouse"
+    else:
+        geneType = "symbols"
+
+    logging.info("Auto-detected, gene IDs in %s are of type: %s" % (matrixFname, geneType))
+    return geneType
+
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
     """ trim a copy of the expression matrix for downloads, also create an indexed
     and compressed version
@@ -2157,11 +2184,12 @@ def convertMeta(inConf, outConf, outDir):
 
     return sampleNames, needFilterMatrix, finalMetaFname
 
-def readGeneSymbols(geneIdType):
+def readGeneSymbols(geneIdType, matrixFname):
     " return geneToSym, based on gene tables "
-    if geneIdType==None:
-        logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
-        geneIdType = "symbols"
+    if geneIdType==None or geneIdType=="auto":
+        #logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
+        #geneIdType = "symbols"
+        geneIdType = guessGeneIdType(matrixFname)
 
     if geneIdType.startswith('symbol'):
         return None
@@ -2313,7 +2341,7 @@ def convertDataset(inConf, outConf, datasetDir):
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
 
     if doMatrix:
-        geneToSym = readGeneSymbols(inConf.get("geneIdType"))
+        geneToSym = readGeneSymbols(inConf.get("geneIdType"), exprMatrixFname)
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
         # in case script crashes after this, keep the current state of the config
         writeConfig(inConf, outConf, datasetDir)
@@ -2780,9 +2808,9 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     sc.settings.logfile=logFname
     #sc.settings.logDir=join(outDir, "cbScanpy.log")
 
-    pipeLog("cbScanpy $Id: 1e7c40a1801e210aa974d42ddb5ea5f4d3f225e6 $")
+    pipeLog("cbScanpy $Id$")
     pipeLog("Input file: %s" % matrixFname)
-    #print("Output directory: %s" % outDir)
+    #printLog("Output directory: %s" % outDir)
     pipeLog("Start time: %s" % datetime.datetime.now())
     sc.logging.print_versions()
 
