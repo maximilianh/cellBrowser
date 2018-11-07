@@ -761,7 +761,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
 
-        if fieldName=="cluster" or fieldName=="Cluster":
+        if fieldName.endswith("luster"):
             forceEnum=True
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
@@ -2090,7 +2090,11 @@ def convertMarkers(inConf, outConf, geneToSym, outDir):
 
         splitMarkerTable(markerFname, geneToSym, markerDir)
 
-        newMarkers.append( {"name" : sanitizeName(clusterName), "shortLabel" : markerLabel})
+        newDict = {"name" : sanitizeName(clusterName), "shortLabel" : markerLabel}
+        if "selectOnClick" in markerInfo:
+            newDict["selectOnClick"] = markerInfo["selectOnClick"]
+        newMarkers.append( newDict )
+
     outConf["markers"] = newMarkers
 
 def readQuickGenes(inConf, geneToSym, outConf):
