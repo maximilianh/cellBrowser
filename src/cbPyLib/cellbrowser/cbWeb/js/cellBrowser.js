@@ -697,10 +697,10 @@ var tsnePlot = function() {
             var query = queries[i];
             var funcVal = makeFuncAndVal(query); // [0] = function to compare, [1] = value for comparison
             if ("g" in query) {
-                db.loadExprVec(query["g"], gotGeneVec, null, funcVal);
+                db.loadExprVec(query.g, gotGeneVec, null, funcVal);
             }
             else {
-                var fieldName = query["m"];
+                var fieldName = query.m;
                 var fieldIdx = cbUtil.findIdxWhereEq(db.conf.metaFields, "name", fieldName);
                 var findVal = funcVal[1];
                 var fieldValIdx = findMetaValIndex(fieldIdx, findVal);
@@ -1084,7 +1084,7 @@ var tsnePlot = function() {
     function colorByMetaField(fieldName, doneLoad) {
        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad */
        if (doneLoad===undefined)
-           doneLoad = function() { renderer.drawDots() };
+           doneLoad = function() { renderer.drawDots(); };
 
        if (fieldName===null) {
            // obscure hacky option: you can set the default color field to "None"
@@ -1106,7 +1106,7 @@ var tsnePlot = function() {
        if (fieldIdx === null) {
            fieldIdx = db.fieldNameToIndex(fieldName.replace(/[^0-9a-z]/gi, ''));
            if (fieldIdx === null) {
-               alert("The field "+fieldName+" does not exist in the sample/cell annotations. Cannot color on it.")
+               alert("The field "+fieldName+" does not exist in the sample/cell annotations. Cannot color on it.");
                return;
            }
        }
@@ -1144,6 +1144,15 @@ var tsnePlot = function() {
         $( "#tpLeftTabs" ).tabs( "option", "active", idx );
     }
 
+    function doLog2(arr) {
+        /* take log2(x+1) for all values in array and return the result */
+        var arr2 = new Float64Array(arr.length);
+        for (var i = 0; i < arr.length; i++) {
+            arr2.push(Math.log2(arr[i]+1));
+        }
+        return arr2;
+    }
+
     function splitExprByMeta(exprVec, splitArr, selCells) {
         /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go. 
          * if selCells is not null, restrict the splitting to just indices in selCells.
@@ -1177,6 +1186,14 @@ var tsnePlot = function() {
                 else
                     arr2.push(val);
             }
+
+        if (db.conf.violinDoLog2) {
+            console.time("log2");
+            arr1 = doLog2(arr1);
+            arr2 = doLog2(arr2);
+            console.timeEnd("log2");
+        }
+            
         console.timeEnd("findCellsWithMeta");
         return [arr1, arr2];
     }
@@ -1199,7 +1216,7 @@ var tsnePlot = function() {
         }
 
         console.timeEnd("splitExpr");
-        return [sel, unsel]
+        return [sel, unsel];
     }
 
     function buildViolinFromValues(labelList, dataList) {
@@ -1224,8 +1241,7 @@ var tsnePlot = function() {
 	    borderWidth: 1,
 	    outlierColor: '#999999',
 	    padding: 7,
-	    itemRadius: 0,
-	    outlierColor: '#999999'
+	    itemRadius: 0
 	}]
 	};
 	
@@ -1310,7 +1326,7 @@ var tsnePlot = function() {
     function loadGeneAndColor(geneSym, onDone) {
         /* color by a gene, load the array into the renderer and call onDone or just redraw */
         if (onDone===undefined)
-            onDone = function() { renderer.drawDots() };
+            onDone = function() { renderer.drawDots(); };
 
         function gotGeneVec(exprArr, decArr, geneSym, geneDesc, binInfo) {
             /* called when the expression vector has been loaded */
@@ -1627,7 +1643,7 @@ var tsnePlot = function() {
     function legendGetColors(rows) {
     /* go over the legend lines: create an array of colors in the order of their meta value indexes.
      * (the values in the legend may be sorted not in the order of their internal indices) */
-        var colArr = []
+        var colArr = [];
         for (var i = 0; i < rows.length; i++) {
             var row = rows[i];
             var col = row[0];
@@ -2079,9 +2095,9 @@ var tsnePlot = function() {
 
     function likeEmptyString(label) {
     /* some special values like "undefined" and empty string get colored in grey  */
-        return (label===null || label.trim()==="" || label==="none" || label==="None" || label==="unknown" 
-                || label==="nd" || label==="n.d."
-                || label==="Unknown" || label==="NaN" || label==="NA" || label==="undefined" || label==="Na")
+        return (label===null || label.trim()==="" || label==="none" || label==="None" || label==="unknown" || 
+            label==="nd" || label==="n.d." || 
+            label==="Unknown" || label==="NaN" || label==="NA" || label==="undefined" || label==="Na");
     }
 
     function numMetaToBinInfo(fieldInfo) {
@@ -2238,7 +2254,7 @@ var tsnePlot = function() {
             fieldId = parseInt(event.target.parentElement.id.split("_")[1]);
         }
         var fieldName = db.getMetaFields()[fieldId].name;
-        colorByMetaField(fieldName, );
+        colorByMetaField(fieldName);
     }
 
     function addMetaTipBar(htmls, valFrac, valStr) {
@@ -2740,21 +2756,21 @@ var tsnePlot = function() {
      * @param   Number  l       The lightness
      * @return  Array           The RGB representation
      */
+    function hue2rgb(p, q, t) {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    }
+
     function hslToRgb(h, s, l) {
       var r, g, b;
 
       if (s == 0) {
 	r = g = b = l; // achromatic
       } else {
-	function hue2rgb(p, q, t) {
-	  if (t < 0) t += 1;
-	  if (t > 1) t -= 1;
-	  if (t < 1/6) return p + (q - p) * 6 * t;
-	  if (t < 1/2) return q;
-	  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-	  return p;
-	}
-
 	var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
 	var p = 2 * l - q;
 
@@ -2882,7 +2898,7 @@ var tsnePlot = function() {
 
     function naturalSort (a, b) {
     /* copied from https://github.com/Bill4Time/javascript-natural-sort/blob/master/naturalSort.js */
-    "use strict";
+    /* "use strict"; */
     var re = /(^([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)?$|^0x[0-9a-f]+$|\d+)/gi,
         sre = /(^[ ]*|[ ]*$)/g,
         dre = /(^([\w ]+,?[\w ]+)?[\w ]+,?[\w ]+\d+:\d+(:\d+)?[\w ]?|^\d{1,4}[\/\-]\d{1,4}[\/\-]\d{1,4}|^\w+, \w+ \d+, \d{4})/,
