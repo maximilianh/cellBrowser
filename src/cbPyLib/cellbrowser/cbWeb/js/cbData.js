@@ -498,7 +498,7 @@ function CbDbFile(url) {
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
 
-        this.loadExprVec(geneSym, onLoadedVec, onDone, onProgress)
+        this.loadExprVec(geneSym, onLoadedVec, onProgress)
     };
 
     this.loadExprVec = function(geneSym, onDone, onProgress, otherInfo) {

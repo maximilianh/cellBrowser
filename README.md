@@ -150,21 +150,61 @@ Or from a Unix Shell:
 
 Find the cellranger OUT directory, it contains an "analysis" directory and also
 a subdirectory "filtered_gene_bc_matrices". From there, convert the cellranger files
-to tab-separated files, then run cbBuild on these:
+to tab-separated files, then run cbBuild on these.
 
-    cbImportCellranger -i inputDir -o outputDir
-    cd outputDir
-    cbBuild -o ~/public_html/cells
+To import Cellranger .mtx files, we need the scipy package (add --user if you are not admin on your machine):
+
+    pip install scipy
+
+Let's use an example, the pbmc3k cellranger output files from the 10x website:
+
+    rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3kCellranger/ ./pbmc3kCellranger/ --progress
+    cbImportCellranger -i pbmc3kCellranger -o cellrangerOut -n pbmc3kCellranger
+    cd cellrangerOut
+    cbBuild -o ~/public_html/cells -p 9999
 
 ### Import a Seurat object
 
     Use src/cbImportSeurat. More instructions later.
+
+### Process an expression matrix with a simple Seurat pipeline
+
+    First make sure that you can install the package "hdf5r" in R:
+
+        install.packages("hdf5r")
+
+    If this doesn't work, try to install the fake hdf5 package, which means that you won't be able to read 
+    hdf5 files, but reading .mtx and of course tab-sep files will still work.
+
+        install.packages("remotes")
+        remotes::install_github("UCSF-TI/fake-hdf5r")
+
+    Download the pbmc3k expression matrix:
+
+        rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
+
+    Create a default seurat.conf
+
+        cbSeurat --init
+
+    Then run your expression matrix through Seurat like this:
+
+        cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
+
+    This will create a script seuratOut/runSeurat.R, and run it through Rscript. The script will install 
+    Seurat, if it's not installed already.
+
+    You can modify the file seurat.conf and rerun the cbSeurat command above.
 
 ### Optional Python modules to install
 
 In cellbrowser.conf you can specify a color file, the format is .tsv or .csv and it has two columns, clusterName<tab>colorCode. If this file contains html color names instead of color codes, you have to install the module webcolors:
 
     pip install webcolors
+
+To read expression matrices in .mtx format, you have to install scipy:
+
+    pip install scipy
 
 ### Adding your own dataset
 
@@ -180,11 +220,13 @@ It's a good idea to gzip your expression matrix at this stage. The expression ma
 only one column for the gene identifiers. Ideally your expression matrix is a
 tab-separated file and has as many sample columns as you have rows in the meta
 data file  and they appear the same order. If this is the case, the conversion of the matrix
-is much quicker.
+is much quicker. If it's not the case, it will still work, cbBuild will simply rewrite your expression matrix
+to be in sync with the meta data file, only sample names that they have in common will be retained and the 
+order will be the same.
 
 Edit cellbrowser.conf and adapt at least the values for meta, exprMatrix, labelField, clusterField and coordFiles.
 
-From this directory, run 
+From the directory where your cellbrowser.conf is located, run 
 
     cbBuild -o <yourWebserverHtmlDirectory> -p 8888
 

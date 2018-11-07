@@ -1,17 +1,12 @@
-- make npm65 the default palette
+- format the cluster names as links and make them clickable to show the markers
+- implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
 
 - make browsers:
-  - Bob Jones
-  - Aparna
-  - Tabula Muris
-  - Samantha Morris
   - Dana Peer
   - Tara
 
 - example datasets:
-  - cellranger output  -> cbCellranger
-  - Seurat converter as R file -> cbSeurat
   - pbmc3k -> cbScanpy
   - get the paga sample datasets?
 
@@ -22,4 +17,13 @@
 datasets:
 - ciona Nature PMID30069052
 
+Done:
+- make npm65 the default palette
 - add md5s of matrix and meta to dataset config
+- Datasets:
+  - Bob Jones
+  - Aparna
+  - Tabula Muris
+  - Samantha Morris
+  - cellranger output  -> cbCellranger
+  - Seurat converter as R file -> cbSeurat

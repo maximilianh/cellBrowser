@@ -16,6 +16,7 @@ BRAINSPANLMD = join(dataDir, "brainspan_genes.csv")
 BRAINSPANMOUSEDEV = join(dataDir, "brainspanMouse_9Dec17.txt")
 MGIORTHO = join(dataDir, "mgi_HGNC_homologene_8Dec17.txt")
 EUREXPRESS = join(dataDir, "eurexpress_7Dec17.txt")
+DDD = join(dataDir, "DDG2P_18_10_2018.csv.gz")
 
 from cellbrowser import openStaticFile, staticFileNextRow, openFile
 
@@ -254,6 +255,13 @@ def parseEurexpress(mouseEntrezToHumanEntrez, inFname):
 
     return ret
 
+def parseDDD(fname):
+    " parse DDD phenotype file "
+    ret = {}
+    for row in staticFileNextRow(inFname):
+        print row
+    return ret
+    
 def parseSimpleMap(inFname):
     " parse simple tab-sep key-value file and return as dict "
     ret = {}
@@ -346,6 +354,7 @@ def cbMarkerAnnotateCli():
     entrezToOmim = parseOmim(options.omim)
     symToSfari = parseSfari(options.sfari)
     entrezToClass = parseHprd(options.hprd)
+    #symToDdd = parseDdd(DDD)
 
     filename = args[0]
     outFname = args[1]

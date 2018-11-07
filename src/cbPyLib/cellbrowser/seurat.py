@@ -1,9 +1,10 @@
 # a wrapper around the R library Seurat
 
 import logging, optparse, sys, glob, os
-from cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
-from convert import generateDownloads
+
+from .convert import generateDownloads
+from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -66,7 +67,7 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     " write the seurat R script to a file "
     cmds = []
     # try to install Seurat if not already installed
-    cmds.append("if (!require('Seurat',character.only = TRUE)) { install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://star-www.st-andrews.ac.uk/cran/') }")
+    cmds.append("if (!require('Seurat',character.only = TRUE)) { install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')}")
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
     cmds.append('print("Seurat: Reading data")')
@@ -190,6 +191,7 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append('write.table(clusters, "%s", quote=FALSE, sep="\t")' % clusterPath)
     # marker file is the flag file for successful operation
     cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
+    cmds.append('PrintCalcParams(sobj)')
 
     ofh = open(scriptPath, "w")
     for c in cmds:

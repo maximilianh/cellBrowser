@@ -722,7 +722,6 @@ var tsnePlot = function() {
 
             "OK" : function() {
                 var queryList = readSelectForm();
-                //alert(JSON.stringify(queryList));
 
                 findCellsMatchingQueryList(queryList, function(cellIds) {
                     if (cellIds.length===0) {
@@ -1212,10 +1211,15 @@ var tsnePlot = function() {
         //var htmls = [];
         //$('#tpLegendContent').append(htmls.join(""));
 
+        var labelLines = [];
+        labelLines.push([labelList[0], dataList[0].length+" cells"]);
+        if (dataList.length > 1)
+            labelLines.push([labelList[1], dataList[1].length+" cells"]);
+
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
  	var boxplotData = {
-          labels : labelList,
+          labels : labelLines,
 	  datasets: [{
             data : dataList,
 	    label: 'Dataset 1',
@@ -1293,7 +1297,7 @@ var tsnePlot = function() {
             buildViolinFromMeta(exprVec, db.conf.violinField, selCells);
         } else { 
             // there is no violin field
-            if (selCells===null) {
+            if (selCells===null || selCells.length===0) {
                 // no selection, no violinField: default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
                 labelList = ['All cells'];
@@ -1302,6 +1306,10 @@ var tsnePlot = function() {
                 // cells are selected and no violin field: make two violin plots, selected against other cells
                 dataList = splitExpr(exprVec, selCells);
                 labelList = ['Selected', 'Others'];
+                if (dataList[1].length===0) {
+                    dataList = [dataList[0]];
+                    labelList = ['All Selected'];
+                }
                 buildViolinFromValues(labelList, dataList);
             }
         }
@@ -1352,6 +1360,8 @@ var tsnePlot = function() {
     function renderData() {
     /* init the renderer, start loading and draw data when ready
      */
+       var forcePalName = getVar("pal", null);
+
        var loadsDone = 0;
 
        function doneOnePart() {
@@ -1359,14 +1369,20 @@ var tsnePlot = function() {
            loadsDone +=1;
            if (loadsDone===2) {
                buildLegendBar();
-               renderer.setColors(legendGetColors(gLegend.rows));
+
+               if (forcePalName!==null) {
+                   legendChangePaletteAndRebuild(forcePalName);
+               }
+               else
+                   renderer.setColors(legendGetColors(gLegend.rows));
+
                renderer.setTitle("Dataset: "+db.conf.shortLabel);
                renderer.drawDots();
            }
        }
 
        function gotFirstCoords(coords, info, clusterMids) {
-           /* very ugly way to implement promises. Need a better approach one day. */
+           /* XX very ugly way to implement promises. Need a better approach one day. */
            gotCoords(coords, info, clusterMids);
            doneOnePart();
        }
@@ -1395,8 +1411,6 @@ var tsnePlot = function() {
            activateTab("meta");
        }
 
-       var forcePalName = getVar("pal", null);
-
        gLegend = {};
        if (colorType==="meta") {
            colorByMetaField(colorBy, doneOnePart);
@@ -1407,11 +1421,6 @@ var tsnePlot = function() {
        else {
            loadGeneAndColor(colorBy, doneOnePart);
        }
-
-       if (forcePalName!==null) {
-           legendChangePaletteAndRebuild(forcePalName);
-           renderer.drawDots();
-        }
 
        if (db.conf.quickGenes)
            db.preloadGenes(db.conf.quickGenes, function() { updateGeneTableColors(null); }, onProgressConsole, exprBinCount);
@@ -1642,7 +1651,7 @@ var tsnePlot = function() {
     }
 
     function legendChangePaletteAndRebuild(palName) {
-        /* change the legend color palette and put it into the URL and redraw */
+        /* change the legend color palette and put it into the URL */
         var rows = gLegend.rows;
         var success = legendSetPalette(gLegend, palName, gLegend.metaFieldIdx);
         if (success) {
@@ -2314,9 +2323,6 @@ var tsnePlot = function() {
     }
 
     function loadCoordSet(coordIdx) {
-        //var coordUrl = gCurrentDataset.coordFiles[coordIdx].url;
-        //console.log("Loading coordinates from "+coordUrl);
-        //startLoadTsv("coords", coordUrl, loadCoordsFromTsv);
         db.loadCoords(coordIdx, 
                 function(a,b,c) { gotCoords(a,b,c); renderer.drawDots();},
                 onProgress);
@@ -2811,15 +2817,15 @@ var tsnePlot = function() {
         //setZoomRange();
     }
 
-    function startLoadTsv(fullUrl, func, addInfo) {
+    function loadClusterTsv(fullUrl, func, divName, clusterName) {
     /* load a tsv file relative to baseUrl and call a function when done */
         function conversionDone(data) {
             Papa.parse(data, {
                     complete: function(results, localFile) {
-                                func(results, localFile, addInfo);
+                                func(results, localFile, divName, clusterName);
                             },
                     error: function(err, file) {
-                                if (addInfo!==undefined)
+                                if (divName!==undefined)
                                     alert("could not load "+fullUrl);
                             }
                     });
@@ -3567,7 +3573,7 @@ var tsnePlot = function() {
             htmls.push("Loading...");
             htmls.push("</div>");
 
-            startLoadTsv(markerTsvUrl, loadMarkersFromTsv, divName);
+            loadClusterTsv(markerTsvUrl, loadMarkersFromTsv, divName, clusterName);
         }
 
         htmls.push("</div>"); // tabs
@@ -3587,12 +3593,8 @@ var tsnePlot = function() {
         if (acronyms!==undefined && clusterName in acronyms)
             title += " - "+acronyms[clusterName];
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
-        //$(".tpLoadGeneLink").on("click", onMarkerGeneClick);
-        //activateTooltip(".link");
         $(".ui-widget-content").css("padding", "0");
         $("#tabs").tabs();
-        //$("table").focus();
-        //removeFocus();
     }
 
     function geneListFormat(htmls, s, symbol) {
@@ -3628,15 +3630,7 @@ var tsnePlot = function() {
         }
     }
 
-    function onMarkerGeneClick(ev) {
-        /* user clicks onto a gene in the table of the marker gene dialog window */
-        var geneSym = ev.target.getAttribute("data-gene");
-        $(".ui-dialog").remove(); // close marker dialog box
-        //loadSingleGeneFromMatrix(geneSym);
-        loadGeneAndColor(geneSym);
-    }
-
-    function loadMarkersFromTsv(papaResults, url, divId) {
+    function loadMarkersFromTsv(papaResults, url, divId, clusterName) {
         /* construct a table from a marker tsv file and write as html to the DIV with divID */
         console.log("got coordinate TSV rows, parsing...");
         var rows = papaResults.data;
@@ -3644,6 +3638,8 @@ var tsnePlot = function() {
 
         var htmls = [];
 
+        var markerListIdx = parseInt(divId.split("-")[1]);
+        var selectOnClick = db.conf.markers[markerListIdx].selectOnClick;
 
         htmls.push("<table class='table' id='tpMarkerTable'>");
         htmls.push("<thead>");
@@ -3736,6 +3732,21 @@ var tsnePlot = function() {
 
         htmls.push("</tbody>");
         htmls.push("</table>");
+
+        function onMarkerGeneClick(ev) {
+            /* user clicks onto a gene in the table of the marker gene dialog window */
+            var geneSym = ev.target.getAttribute("data-gene");
+            $(".ui-dialog").remove(); // close marker dialog box
+            if (selectOnClick) {
+                var clusterField = db.conf.labelField;
+                var queryList = [{'m':clusterField, 'eq':clusterName}];
+                findCellsMatchingQueryList(queryList, function(cellIds) {
+                        renderer.selectSet(cellIds);
+                        //changeUrl({'select':JSON.stringify(queryList)});
+                });
+            }
+            loadGeneAndColor(geneSym);
+        }
 
         $("#"+divId).html(htmls.join(""));
         new Tablesort(document.getElementById('tpMarkerTable'));

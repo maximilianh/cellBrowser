@@ -3,9 +3,10 @@
 
 import logging, optparse, io, sys, os, shutil, operator, glob
 from collections import defaultdict
-from cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
-from cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from cellbrowser import anndataToTsv, loadConfig, sanitizeName
+
+from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
+from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
+from .cellbrowser import anndataToTsv, loadConfig, sanitizeName
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 

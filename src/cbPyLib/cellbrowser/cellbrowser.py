@@ -2345,7 +2345,7 @@ def convertDataset(inConf, outConf, datasetDir):
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
 
     if doMatrix:
-        geneToSym = readGeneSymbols(inConf.get("geneIdType"), exprMatrixFname)
+        geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
         # in case script crashes after this, keep the current state of the config
         writeConfig(inConf, outConf, datasetDir)
@@ -2355,7 +2355,8 @@ def convertDataset(inConf, outConf, datasetDir):
     convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
 
     if geneToSym==-1:
-        geneToSym = readGeneSymbols(inConf.get("geneIdType"))
+        geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
+
     convertMarkers(inConf, outConf, geneToSym, datasetDir)
 
     readAcronyms(inConf, outConf)
