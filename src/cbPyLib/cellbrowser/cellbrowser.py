@@ -2445,27 +2445,28 @@ def anndataToTsv(anndata, matFname, useRaw=False):
     adT = anndata.T
     logging.info("Converting anndata to panda df")
     data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
-    logging.info("Writing panda df to file")
+    logging.info("Writing panda dataframe to file (this is currently very slow, should be made faster one day)")
     data_matrix.to_csv(tmpFname, sep='\t', index=True)
     os.rename(tmpFname, matFname)
 
-def scanpyToTsv(anndata, path, datasetName, meta_option=["percent_mito", "UMI_count"], nb_marker=50):
+def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], nb_marker=50):
     """
-    Written by Lucas Seninge, lucas.seninge@etu.unistra.fr
+    Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
     Given a scanpy object, write dataset to a dataset directory under path.
 
     This function export files needed for the ucsc cells viewer from the Scanpy Anndata object
     :param anndata: Scanpy AnnData object where information are stored
     :param path : Path to folder where to save data (tsv tables)
-    :param meta_option: list of metadata names (string) present
+    :param metaFields: list of metadata names (string) present
     in the AnnData objects(other than 'louvain' to also save (eg: batches, ...))
     :param nb_marker: number of cluster markers to store. Default: 100
 
     """
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
-        errAbort("File %s already exists. Cowardly refusing to overwrite it. Please move the file and re-run this command" % confName)
+        logging.warn("%s already exists. You may be about to overwrite existing files." % confName)
+        #errAbort("File %s already exists. Cowardly refusing to overwrite it. Please move the file away and re-run this command" % confName)
 
     import numpy as np
     import pandas as pd
@@ -2476,8 +2477,8 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=["percent_mito", "UMI_co
     #    adT = anndata.raw.T
     #else:
     matFname = join(path, 'exprMatrix.tsv')
-    anndataToTsv(anndata, matFname)
-    matFname = runGzip(matFname)
+    #anndataToTsv(anndata, matFname)
+    #matFname = runGzip(matFname)
 
     coordDescs = []
     writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE", coordDescs)
@@ -2488,15 +2489,15 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=["percent_mito", "UMI_co
     writeAnndataCoords(anndata, "X_phate", path, "phate", "PHATE", coordDescs)
 
     ##Check for louvain clustering
-    if 'louvain' in anndata.obs:
+    #if 'louvain' in anndata.obs:
         #Export cell <-> cluster identity
-        fname = join(path, 'meta.tsv')
+        #fname = join(path, 'meta.tsv')
         # add prefix to make sure that it's not treated as a number
         #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
-        anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
-        logging.info("Writing %s" % fname)
-    else:
-        errAbort('Couldn\'t find clustering information')
+        #anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
+        #logging.info("Writing %s" % fname)
+    #else:
+        #errAbort('Could not find clustering information')
 
     ##Check for cluster markers
     if 'rank_genes_groups' in anndata.uns:
@@ -2522,17 +2523,17 @@ def scanpyToTsv(anndata, path, datasetName, meta_option=["percent_mito", "UMI_co
     logging.info("Writing %s" % fname)
     pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
 
-    ##Save more metadata
-    #if meta_option != None:
-        #meta_df=pd.DataFrame()
-        #for element in meta_option:
-            #if element not in anndata.obs:
-                #print(str(element) + ' field is not present in the AnnData object')
-            #else:
-                #temp=anndata.obs[[element]]
-                #meta_df=pd.concat([meta_df,temp],axis=1)
-        #fname = join(path, "meta.tsv")
-        #meta_df.to_csv(fname,sep='\t')
+    ##Save metadata
+    if metaFields != None:
+        meta_df=pd.DataFrame()
+        for element in metaFields:
+            if element not in anndata.obs:
+                print(str(element) + ' field is not present in the AnnData object')
+            else:
+                temp=anndata.obs[[element]]
+                meta_df=pd.concat([meta_df,temp],axis=1)
+        fname = join(path, "meta.tsv")
+        meta_df.to_csv(fname,sep='\t')
 
     writeCellbrowserConf(datasetName, coordDescs, confName)
     #ofh = open(confName, "w")
@@ -2601,6 +2602,10 @@ def startHttpServer(outDir, port):
 
 def cbBuild(confFnames, outDir, port):
     " build browser from config files confFnames into directory outDir and serve on port "
+    if type(confFnames)==type(""):
+        # it's very easy to forget that the input should be a list so we tolerate a single string
+        confFnames = [confFnames]
+
     outDir = expanduser(outDir)
     for inConfFname in confFnames:
         inConf = loadConfig(inConfFname)
@@ -2998,13 +3003,15 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     if conf.get("doPagaFa2", True):
         pipeLog("Performing PAGA+ForceAtlas2")
         sc.tl.paga(adata, groups='louvain')
-        sc.pl.paga(adata, show=False)
+        sc.pl.paga(adata, show=True)
         sc.tl.draw_graph(adata, init_pos='paga')
 
         if "X_draw_graph_fa" in adata.obsm:
             adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fa"]
-        else:
+        elif "X_draw_graph_fr" in adata.obsm:
             adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fr"]
+        else:
+            logging.warn("paga results not found. Did scanpy change again? Available keys: %s" % (repr(adata.obsm.keys())))
 
     if conf.get("doFa2", True):
         pipeLog("Performing ForceAtlas2 (draw_graph)")

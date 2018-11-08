@@ -1,3 +1,4 @@
+- double click to zoom!
 - format the cluster names as links and make them clickable to show the markers
 - implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
