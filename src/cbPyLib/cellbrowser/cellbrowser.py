@@ -1666,8 +1666,9 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
     if headerLine==seuratLine:
         logging.info("Cluster marker file was recognized to be in Seurat format")
-        headers = ["Gene", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
-        geneIdx = 0
+        # field 0 is not the gene ID, it has some weird suffix appended.
+        headers = ["WeirdGeneId", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
+        geneIdx = 7
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
