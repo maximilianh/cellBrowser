@@ -1661,23 +1661,42 @@ def splitMarkerTable(filename, geneToSym, outDir):
     #logging.debug("Splitting %s on first field" % filename)
     ifh = openFile(filename)
 
-    headers = ifh.readline().rstrip("\r\n").split('\t')
-    otherHeaders = headers[2:]
+    seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
+    headerLine = ifh.readline().rstrip("\r\n")
+
+    if headerLine==seuratLine:
+        logging.info("Cluster marker file was recognized to be in Seurat format")
+        headers = ["Gene", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
+        geneIdx = 0
+        scoreIdx = 1
+        clusterIdx = 6
+        otherStart = 2
+        otherEnd = 6
+        otherHeaders = headers[otherStart:otherEnd]
+    else:
+        headers = headerLine.split('\t')
+        otherHeaders = headers[2:]
+        clusterIdx = 0
+        geneIdx = 1
+        scoreIdx = 2
+        otherStart = 3
+        otherEnd = 9999
 
     data = defaultdict(list)
-    columns = defaultdict(list)
+    otherColumns = defaultdict(list)
+    sep = sepForFile(filename)
     for line in ifh:
-        row = line.rstrip("\r\n").split('\t')
-        for colIdx, val in enumerate(row[1:]):
-            columns[colIdx].append(val)
+        row = line.rstrip("\r\n").split(sep)
+        clusterName = row[clusterIdx]
+        geneId = row[geneIdx]
+        scoreVal = float(row[scoreIdx])
+        otherFields = row[otherStart:otherEnd]
 
-        clusterName = row[0]
-        geneId = row[1]
-        scoreVal = float(row[2])
-        otherFields = row[3:]
+        for colIdx, val in enumerate(otherFields):
+            otherColumns[colIdx].append(val)
 
-        #geneSym = convIdToSym(geneToSym, geneId)
-        geneSym = geneId # let's assume for now that the marker table already has symbols
+        geneSym = convIdToSym(geneToSym, geneId)
+        #geneSym = geneId # let's assume for now that the marker table already has symbols
 
         newRow = []
         newRow.append(geneId)
@@ -1687,18 +1706,23 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
         data[clusterName].append(newRow)
 
-    colTypes = {}
-    for colIdx, vals in iterItems(columns):
-        colTypes[colIdx] = typeForStrings(vals)
+    # annotate otherColumns with their data type, separated by |. This is optional and only used for sorting
+    otherColType = {}
+    for colIdx, vals in iterItems(otherColumns):
+        otherColType[colIdx] = typeForStrings(vals)
 
-    headersWithType = []
+    otherHeadersWithType = []
     for colIdx, header in enumerate(otherHeaders):
-        if colTypes[colIdx+1]!="string":
-            header = header+"|"+colTypes[colIdx+1]
-        headersWithType.append(header)
+        if otherColType[colIdx]!="string":
+            header = header+"|"+otherColType[colIdx]
+        otherHeadersWithType.append(header)
 
-    newHeaders = ["id", "symbol"]
-    newHeaders.extend(headersWithType)
+    newHeaders = ["id", "symbol", headers[scoreIdx]+"|float"]
+    newHeaders.extend(otherHeadersWithType)
+
+    if len(data) > 200:
+        errAbort("Your marker file has more than 200 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
+
 
     fileCount = 0
     sanNames = set()
@@ -1715,7 +1739,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
         ofh.write("\t".join(newHeaders))
         ofh.write("\n")
         for row in rows:
-            scoreVal = row[2]
             row[2] = "%0.5E" % row[2] # limit to 5 digits
             ofh.write("\t".join(row))
             ofh.write("\n")
@@ -2224,13 +2247,13 @@ def getAbsPath(conf, key):
     " get assume that value of key in conf is a filename and use the inDir value to make it absolute "
     return abspath(join(conf["inDir"], conf[key]))
 
-def popen(cmd):
+def popen(cmd, shell=False):
     " run command and return proc object with its stdout attribute  "
     
     if isPy3:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, encoding="utf8")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, encoding="utf8", shell=shell)
     else:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=shell)
     return proc, proc.stdout
 
 def getMd5Using(md5Cmd, fname):

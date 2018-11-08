@@ -34,18 +34,18 @@ On Linux, if you you're not allowed to run the sudo command, you can install int
 As an alternative to these pip commands, you can also git clone the repo and
 run the command line scripts under cellbrowser/src:
 
-    git clone https://github.com/maximilianh/cellBrowser.git --depth=16
-    cd src
+    git clone https://github.com/maximilianh/cellBrowser.git --depth=10
+    cd cellBrowser/src
 
-Now you should be able to run the cbBuild command:
+Now you should be able to run the cbBuild command and see the help messages:
 
     cbBuild
 
 # Create a browser for a sample dataset
 
 Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
-expression matrix includes only the first 100 genes, otherwise all other
-features are used. Download and extract it to the current directory with:
+expression matrix includes only the first 100 genes, otherwise quite a few
+features of the browser are used. Download and extract it to the current directory with:
 
     curl -s https://cells.ucsc.edu/downloads/samples/mini.tgz | tar xvz
     cd mini
@@ -76,6 +76,11 @@ provide via -o (or the CBOUT environment variable) is the html directory. The
 data for each individual dataset will be copied into subdirectories under this
 html directory, one directory per dataset.
 
+Instead of specifying "-o" all the time, you can also add a line like this to
+your ~/.bashrc to point to your html directory:
+ 
+    export CBOUT=/var/www
+
 # Using a real webserver
 
 The -p 8888 is optional. A more permanent alternative to the -p option is to
@@ -88,14 +93,10 @@ On a Mac you can use the Apache that ships with OSX:
 
 Then you should be able to access your viewer at http://localhost/cells
 
-On Linux, you would use the directory /var/www/ instead:
+On Linux, you would install Apache2 (with 'sudo yum install htppd' or 'sudo apt-get install
+apache2') and use the directory /var/www/ instead:
 
     sudo cbBuild -o /var/www/
-
-Instead of specifying "-o" all the time, you can also add a line like this to
-your ~/.bashrc to point to your html directory:
- 
-    export CBOUT=/var/www
 
 We hope you do not use this software on Windows. Contact us if you have to.
 
@@ -115,15 +116,15 @@ Write an empty scanpy.conf:
 
     cbScanpy --init
 
-Edit the scanpy.conf file and adapt it to your needs. Then:
+Edit the scanpy.conf file and adapt it to your needs or just leave the default values. Then:
     
     cbScanpy -e filtered_gene_bc_matrices/hg19/matrix.mtx -o scanpyout -n pbmc3k
     cd scanpyout
-    cbBuild -o ~/public_html/cb
+    cbBuild -o ~/public_html/cb -p 8888
 
 Currently only the genes are exported that were used by Scanpy and only their
 normalized and log'ed value. This has advantages, but also disadvantages.  Contact
-us if you have an opinion on how this should best be shown.
+us if you have an opinion on which expression value should be shown.
 
 ### Convert an existing Scanpy object to a cell browser
 
@@ -145,12 +146,12 @@ Or from a Unix Shell:
 
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cells/ -p 8888
 
-
 ### Import a CellRanger directory
 
 Find the cellranger OUT directory, it contains an "analysis" directory and also
-a subdirectory "filtered_gene_bc_matrices". From there, convert the cellranger files
-to tab-separated files, then run cbBuild on these.
+a subdirectory "filtered_gene_bc_matrices". This is the directory that is the
+input directory for our tool cbImportCellranger. The tool converts the
+cellranger files to tab-separated files, then run cbBuild on these.
 
 To import Cellranger .mtx files, we need the scipy package (add --user if you are not admin on your machine):
 
@@ -171,30 +172,96 @@ Use src/cbImportSeurat. More instructions later.
 
 First make sure that you can install the package "hdf5r" in R:
 
-install.packages("hdf5r")
+    install.packages("hdf5r")
 
 If this doesn't work, try to install the fake hdf5 package, which means that you won't be able to read 
 hdf5 files, but reading .mtx and of course tab-sep files will still work.
 
-install.packages("remotes")
-remotes::install_github("UCSF-TI/fake-hdf5r")
+    install.packages("remotes")
+    remotes::install_github("UCSF-TI/fake-hdf5r")
 
-Download the pbmc3k expression matrix:
+Then install Seurat into your default command line R (not RStudio or another R version you may have):
 
-rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
+    Rscript -e "install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')"
 
-Create a default seurat.conf
+To run an example now, download the 10X pbmc3k expression matrix:
 
-cbSeurat --init
+   rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
 
-Then run your expression matrix through Seurat like this:
+Create a default seurat.conf:
 
-cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
+   cbSeurat --init
 
-This will create a script seuratOut/runSeurat.R, and run it through Rscript. The script will install 
-Seurat, if it's not installed already.
+You can modify seurat.conf but the default values are good for this dataset.
+Now run your expression matrix through Seurat like this:
+
+   cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
+
+This will create a script seuratOut/runSeurat.R, run it through Rscript and will fill the directory seuratOut/ with everything needed to create a cell browser. Now you can build your cell browser from the Seurat output:
+
+   cd seuratOut
+   cbBuild -o 
 
 You can modify the file seurat.conf and rerun the cbSeurat command above.
+
+### Adding a dataset from tab-separated files
+
+Go to the directory with the expression matrix and the cell annotations. Start from a sample cellbrowser.conf:
+
+    cbBuild --init
+
+Then you need at least three but ideally four files, they can be in .tsv or .csv format:
+
+1. The expression matrix, one row per gene, ideally gzipped. The first column
+   must be the gene identifier or gene symbol, or ideally
+   geneId|symbol. ENSG and ENSMUSG gene identifiers will be translated
+   automatically to symbols. The other columns are expression values as
+   numbers, one per cell. The number type will be auto-detected (float or int).
+   The file must be a header line that describes the columns with the
+   identifiers for the cells.
+
+2. The cell annotation meta data table, one row per cell. No need to gzip this
+   relatively small file. The first column is the name of the cell and it has
+   to match the cell name in the expression matrix. There should be at least
+   two columns: one with the name of the cell and one with
+   the name of the cluster. Ideally your expression matrix is a tab-separated
+   file and has as many cell columns as you have rows in the meta data file
+   and they appear in the same order in both files, as cbBuild doesn't have to
+   trim the matrix then or reorder the meta file. The meta file as has a header
+   file, the names of the columns are used in the cellbrowser.conf file.
+
+3. The coordinates of the cells, often t-SNE coordinates. This file always has three
+   columns, (cellName, x, y). The cellName must be the same as in the expression
+   matrix and cell annotation meta data file. You can provide multiple files
+   in this format, if you have run multiple dimensionality reduction algorithms.
+
+4. The (optional) table with cluster-specific marker genes. The first column is
+   the cluster name(from the cell annotation meta file), the second column 
+   contains the gene symbol (or gene ID, will be mapped to symbol) and the
+   third column is some numeric score (e.g.  p-Value or FDR). You can add as
+   many other columns as you like with additional information about this gene
+   or run your table through cbMarkerAnnotate to add information from various
+   gene-centric databases to your existing table. There can be multiple files 
+   with cluster-specific marker genes, e.g. in case that you are also doing
+   differential gene expression analysis or have results from multiple
+   algorithms.
+
+Make sure that all your input files have Unix line endings and fix the line endings if necessary with mac2unix or dos2unix.
+
+    file *.txt *.csv *.tsv *.tab
+
+Edit cellbrowser.conf. Enter the name of the three files for the tags  exprMatrix, meta, coordFiles. If you have
+a table with cluster specific genes, put that into clusterFiles.
+Enter the value of your cluster name field from the meta annotation file for the tags labelField and clusterField.
+
+From the directory where your cellbrowser.conf is located, run 
+
+    cbBuild -o /tmp/cb -p 8888
+
+Navigate your internet browser to the name of the server (or localhost, if you're running this on your own machine)
+followed by :8888, e.g. http://localhost:8888.
+
+This is early testing research software, many things have not been properly tested yet. When you run into problems, just open a ticket or send email to cells@ucsc.edu.
 
 ### Optional Python modules to install
 
@@ -206,31 +273,3 @@ To read expression matrices in .mtx format, you have to install scipy:
 
     pip install scipy
 
-### Adding your own dataset
-
-Go to the directory with the expression matrix and the cell annotations. Start from a sample cellbrowser.conf:
-
-    cbBuild --init
-
-Make sure that your files have the correct line endings and fix the line endings if necessary with mac2unix or dos2unix.
-
-    file *.txt *.csv *.tsv *.tab
-
-It's a good idea to gzip your expression matrix at this stage. The expression matrix must have
-only one column for the gene identifiers. Ideally your expression matrix is a
-tab-separated file and has as many sample columns as you have rows in the meta
-data file  and they appear the same order. If this is the case, the conversion of the matrix
-is much quicker. If it's not the case, it will still work, cbBuild will simply rewrite your expression matrix
-to be in sync with the meta data file, only sample names that they have in common will be retained and the 
-order will be the same.
-
-Edit cellbrowser.conf and adapt at least the values for meta, exprMatrix, labelField, clusterField and coordFiles.
-
-From the directory where your cellbrowser.conf is located, run 
-
-    cbBuild -o <yourWebserverHtmlDirectory> -p 8888
-
-Navigate your internet browser to the name of the server (or localhost, if you're running this on your own machine)
-followed by :8888, e.g. http://localhost:8888.
-
-This is early testing research software, many things have not been properly tested yet. When you run into problems, just open a ticket or send email to cells@ucsc.edu.

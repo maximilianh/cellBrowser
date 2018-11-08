@@ -49,19 +49,21 @@ def runRscript(scriptFname, logFname):
     """ run an R script given as a string through Rscript """
     logging.info("running %s through Rscript" % scriptFname)
 
-    ofh = open(logFname, "w")
+    #ofh = open(logFname, "w")
 
-    #cmd = "time Rscript %s | tee %s" % (scriptFname, logFname)
-    cmd = ["time","Rscript", scriptFname]
-    proc, stdout = popen(cmd)
-    for line in stdout:
-        print(line),
-        ofh.write(line)
-    #assert(os.system(cmd)==0)
-    proc.stdout.close()
-    stat = os.waitpid(proc.pid, 0)
-    err = stat[1]
+    # removed subprocess. Multiprocessing is notoriously tricky to get right.
+    cmd = "time Rscript %s | tee %s" % (scriptFname, logFname)
+    #cmd = ["time","Rscript", scriptFname, "&"]
+    #proc, stdout = popen(cmd, shell=True)
+    #for line in stdout:
+        #print(line),
+        #ofh.write(line)
+    err = os.system(cmd)
+    #proc.stdout.close()
+    #stat = os.waitpid(proc.pid, 0)
+    #err = stat[1]
     assert(err==0)
+    logging.info("Wrote logfile of R run to %s" % logFname)
 
 def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
     " write the seurat R script to a file "
@@ -72,6 +74,8 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
     cmds.append('print("Seurat: Reading data")')
     cmds.append('print("Loading input data matrix")')
+
+    writeMatrix = False
     if isfile(inData):
         if inData.endswith(".rds"):
             cmds.append('mat = readRDS(file = "%s")' % inData)
@@ -93,6 +97,18 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append('sobj <- CreateSeuratObject(raw.data = mat, min.cells=%d, min.genes=%d)' % (minCells, minGenes))
     #cmds.append('sobj=Setup(nbt,project = "NBT",min.cells = 3,names.field = 2,names.delim = "_",min.genes = 500, do.logNormalize = F, total.expr = 1e4)')
     cmds.append('sobj') # print size of the matrix
+
+    # export the matrix as a proper .tsv.gz
+    cmds.append('print("Writing expression matrix to %s")' % matrixPath)
+    cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+    # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
+    # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
+    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
+    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
+    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') #  scaled
+    cmds.append('z <- gzfile("%s")' % matrixPath)
+    cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
+
     # find mito genes, mito-%, and create plots for it
     # XX - ENSG names?
     cmds.append('mito.genes <- grep(pattern = "^MT-", x = rownames(x = sobj@data), value = TRUE)')
@@ -112,14 +128,6 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append('print("Keeping only cells with a geneCount %d-%d")' % (minGenes, maxGenes))
     cmds.append('sobj <- FilterCells(object = sobj, subset.names = c("nGene", "percent.mito"), low.thresholds = c(%(minGenes)d, -Inf), high.thresholds = c(%(maxGenes)d, %(mitoMax)f))' % locals())
     cmds.append('sobj') # print size of the matrix
-
-    # export the matrix as a proper .tsv.gz
-    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') # 
-    cmds.append('print("Writing expression matrix to %s")' % matrixPath)
-    cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, filtered?
-    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
-    cmds.append('z <- gzfile("%s")' % matrixPath)
-    cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
 
     # do the log
     cmds.append('sobj <- NormalizeData(object = sobj, normalization.method = "LogNormalize", scale.factor = 10000)')
@@ -191,7 +199,9 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append('write.table(clusters, "%s", quote=FALSE, sep="\t")' % clusterPath)
     # marker file is the flag file for successful operation
     cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
-    cmds.append('PrintCalcParams(sobj)')
+
+    cmds.append('PrintCalcParams(sobj, calculation = "RunPCA")')
+    cmds.append('PrintCalcParams(sobj, calculation = "RunTSNE")')
 
     ofh = open(scriptPath, "w")
     for c in cmds:
@@ -239,7 +249,7 @@ def cbSeuratCli():
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
-        errAbort("R script did not complete")
+        errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
     coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
     writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})

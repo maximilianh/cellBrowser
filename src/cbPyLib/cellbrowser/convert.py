@@ -239,15 +239,15 @@ def generateDownloads(datasetName, outDir):
         coordFname = cleanName+".coords.tsv.gz"
         ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
 
-    rdsFname = join(outDir, "seurat.rds")
+    rdsFname = join(datasetName, "seurat.rds")
     if isfile(rdsFname):
         ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>" % rdsFname)
 
-    scriptFname = join(outDir, "runSeurat.R")
+    scriptFname = join(datasetName, "runSeurat.R")
     if isfile(scriptFname):
         ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>" % scriptFname)
 
-    logFname = join(outDir, "analysisLog.txt")
+    logFname = join(datasetName, "analysisLog.txt")
     if isfile(logFname):
         ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
 
