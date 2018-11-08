@@ -236,15 +236,16 @@ Then you need at least three but ideally four files, they can be in .tsv or .csv
    in this format, if you have run multiple dimensionality reduction algorithms.
 
 4. The (optional) table with cluster-specific marker genes. The first column is
-   the cluster name(from the cell annotation meta file), the second column 
+   the cluster name (from the cell annotation meta file), the second column 
    contains the gene symbol (or gene ID, will be mapped to symbol) and the
-   third column is some numeric score (e.g.  p-Value or FDR). You can add as
+   third column is some numeric score (e.g.  p-Value or FDR).  You can add as
    many other columns as you like with additional information about this gene
    or run your table through cbMarkerAnnotate to add information from various
-   gene-centric databases to your existing table. There can be multiple files 
-   with cluster-specific marker genes, e.g. in case that you are also doing
+   gene-centric databases to your existing table. Alternatively you can also
+   provide the raw Seurat marker gene output. There can be multiple files with
+   cluster-specific marker genes, e.g. in case that you are also doing
    differential gene expression analysis or have results from multiple
-   algorithms.
+   algorithms. 
 
 Make sure that all your input files have Unix line endings and fix the line endings if necessary with mac2unix or dos2unix.
 
