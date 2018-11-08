@@ -172,13 +172,13 @@ Use src/cbImportSeurat. More instructions later.
 
 First make sure that you can install the package "hdf5r" in R:
 
-    install.packages("hdf5r")
+    Rscript -e "install.packages('hdf5r' , dep=TRUE, repos='http://cran.r-project.org/')"
 
-If this doesn't work, try to install the fake hdf5 package, which means that you won't be able to read 
-hdf5 files, but reading .mtx and of course tab-sep files will still work.
+If the above doesn't work, try installing the fake-hdf5r package, which means that you won't be able to read 
+hdf5 files, but reading .mtx and of course tab-sep files will still work:
 
-    install.packages("remotes")
-    remotes::install_github("UCSF-TI/fake-hdf5r")
+    Rscript -e "install.packages('remotes' , dep=TRUE, repos='http://cran.r-project.org/')"
+    Rscript -e "remotes::install_github('UCSF-TI/fake-hdf5r')"
 
 Then install Seurat into your default command line R (not RStudio or another R version you may have):
 
@@ -193,9 +193,9 @@ Create a default seurat.conf:
    cbSeurat --init
 
 You can modify seurat.conf but the default values are good for this dataset.
-Now run your expression matrix through Seurat like this:
+Now run the expression matrix filtered_gene_bc_matrices/hg19/matrix.mtx through Seurat like this:
 
-   cbSeurat -o seuratOut -n pbmc3kSeurat  -e filtered_gene_bc_matrices/hg19
+   cbSeurat -e filtered_gene_bc_matrices/hg19 --name pbmc3kSeurat -o seuratOut 
 
 This will create a script seuratOut/runSeurat.R, run it through Rscript and will fill the directory seuratOut/ with everything needed to create a cell browser. Now you can build your cell browser from the Seurat output:
 
