@@ -68,6 +68,28 @@ defOutDir = os.environ.get("CBOUT")
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
+# the scanpy layout from the scanpy docs
+scanpyLayouts = {
+    # scanpy-specific layouts
+    "tsne": "t-SNE",
+    "pagaFa": "PAGA/ForceAtlas2",
+    "pagaFr": "PAGA/Fruchterman Reingold",
+    "pagaUmap": "PAGA/UMAP",
+    "umap": "UMAP",
+    "phate": "PHATE"
+}
+
+igraphLayouts = {
+    #  generic igraph layouts
+    "fa": "ForceAtlas2",
+    "fr": "Fruchterman Reingold",
+    "grid_fr": "Grid Fruchterman Reingold",
+    "kk": "Kamadi Kawai",
+    "lgl": "Large Graph Layout",
+    "drl": "DrL Distributed Recursive Layout",
+    "rt": "Reingold Tilford tree"
+}
+
 # ==== functions =====
 
 def setDebug(options):
@@ -186,6 +208,25 @@ def copyPkgFile(relPath):
         logging.info("Wrote %s" % destPath)
         shutil.copy(srcPath, destPath)
 
+def main_parseArgs():
+    " arg parser for __main__, only used internally "
+    parser = optparse.OptionParser("""usage: %prog serve outDir port
+            serve outDir via http on port
+    """)
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true",
+        help="show debug messages")
+
+    (options, args) = parser.parse_args()
+
+    if len(args)==0:
+        parser.print_help()
+        exit(1)
+
+    setDebug(options)
+
+    return args, options
+
 def cbBuild_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] -i cellbrowser.conf -o outputDir - add a dataset to the single cell viewer directory
@@ -273,10 +314,6 @@ def cbScanpy_parseArgs():
         import doctest
         doctest.testmod()
         sys.exit(0)
-
-    if options.name is None:
-        parser.print_help()
-        exit(1)
 
     if (options.exprMatrix is None or options.outDir is None or options.name is None) and not options.init:
         print("Please specify at least the expression matrix (-e), the output directory (-o) and a name (-n)")
@@ -1673,15 +1710,16 @@ def splitMarkerTable(filename, geneToSym, outDir):
         clusterIdx = 6
         otherStart = 2
         otherEnd = 6
-        otherHeaders = headers[otherStart:otherEnd]
     else:
+        logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
         headers = headerLine.split('\t')
-        otherHeaders = headers[2:]
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
         otherStart = 3
         otherEnd = 9999
+
+    otherHeaders = headers[otherStart:otherEnd]
 
     data = defaultdict(list)
     otherColumns = defaultdict(list)
@@ -2003,11 +2041,9 @@ def readSampleNames(fname):
     for row in lineFileNextRow(fname):
         metaName = row[0]
         if metaName=="":
-            logging.error("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
-            sys.exit(1)
+            errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
         if metaName in doneNames:
-            logging.error("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
-            sys.exit(1)
+            errAbort("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
 
         doneNames.add(metaName)
         sampleNames.append(row[0])
@@ -2388,7 +2424,6 @@ def convertDataset(inConf, outConf, datasetDir):
     readQuickGenes(inConf, geneToSym, outConf)
 
 def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
-    #if 'X_draw_graph_fa' in anndata.obsm.dtype.names:
     import pandas as pd
     fileBase = filePrefix+"_coords.tsv"
     fname = join(outDir, fileBase)
@@ -2399,7 +2434,7 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
         fa2_coord.to_csv(fname,sep='\t')
         desc.append( {'file':fileBase, 'shortLabel': fullName} )
     else:
-        logging.warn('Couldnt find %s coordinates' % fullName)
+        logging.debug('Couldnt find %s coordinates' % fullName)
 
 def writeCellbrowserConf(name, coordsList, fname, args={}):
     for c in name:
@@ -2439,13 +2474,20 @@ alpha=0.6
 
 def anndataToTsv(anndata, matFname, useRaw=False):
     " write anndata to .tsv file and gzip it "
-    logging.info("Writing matrix to %s" % matFname)
-    tmpFname = matFname+".tmp"
     import pandas as pd
-    adT = anndata.T
-    logging.info("Converting anndata to panda df")
-    data_matrix=pd.DataFrame(adT.X, index=adT.obs.index.tolist(), columns=adT.var.index.tolist())
-    logging.info("Writing panda dataframe to file (this is currently very slow, should be made faster one day)")
+    import scipy.sparse
+    logging.info("Writing scanpy matrix to %s" % matFname)
+    tmpFname = matFname+".tmp"
+
+    logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
+    mat = anndata.X.transpose()
+    if scipy.sparse.issparse(mat):
+        logging.info("Converting csc matrix to row-sparse matrix")
+        mat = mat.tocsr() # makes writing to a file 10X faster, thanks Alex Wolf!
+
+    logging.info("Converting anndata to pandas dataframe")
+    data_matrix=pd.DataFrame(mat, index=anndata.var.index.tolist(), columns=anndata.obs.index.tolist())
+    logging.info("Writing pandas dataframe to file (slow?)")
     data_matrix.to_csv(tmpFname, sep='\t', index=True)
     os.rename(tmpFname, matFname)
 
@@ -2477,27 +2519,19 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     #    adT = anndata.raw.T
     #else:
     matFname = join(path, 'exprMatrix.tsv')
-    #anndataToTsv(anndata, matFname)
-    #matFname = runGzip(matFname)
+    anndataToTsv(anndata, matFname)
+    matFname = runGzip(matFname)
 
     coordDescs = []
     writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE", coordDescs)
     writeAnndataCoords(anndata, "X_umap", path, "umap", "UMAP", coordDescs)
-    writeAnndataCoords(anndata, "X_draw_graph_fa", path, "fa2", "ForceAtlas2", coordDescs)
-    writeAnndataCoords(anndata, "X_pagaFa2", path, "pagaFa2", "PAGA+ForceAtlas2", coordDescs)
+    writeAnndataCoords(anndata, "X_pagaFa", path, "pagaFa2", "PAGA/ForceAtlas2", coordDescs)
+    writeAnndataCoords(anndata, "X_pagaFr", path, "pagaFr", "PAGA/Fruchterman-Reingold", coordDescs)
     writeAnndataCoords(anndata, "X_pagaUmap", path, "pagaUmap", "PAGA+UMAP", coordDescs)
     writeAnndataCoords(anndata, "X_phate", path, "phate", "PHATE", coordDescs)
 
-    ##Check for louvain clustering
-    #if 'louvain' in anndata.obs:
-        #Export cell <-> cluster identity
-        #fname = join(path, 'meta.tsv')
-        # add prefix to make sure that it's not treated as a number
-        #anndata.obs[['louvain']]['louvain'] = "cluster "+anndata.obs[['louvain']]['louvain'].astype(str)
-        #anndata.obs[['louvain']].to_csv(fname,sep='\t', header=["Louvain Cluster"])
-        #logging.info("Writing %s" % fname)
-    #else:
-        #errAbort('Could not find clustering information')
+    for layoutCode, layoutName in igraphLayouts.items():
+        writeAnndataCoords(anndata, "X_draw_graph_"+layoutCode, path, layoutCode, layoutName, coordDescs)
 
     ##Check for cluster markers
     if 'rank_genes_groups' in anndata.uns:
@@ -2528,20 +2562,14 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
         meta_df=pd.DataFrame()
         for element in metaFields:
             if element not in anndata.obs:
-                print(str(element) + ' field is not present in the AnnData object')
+                logging.warn(str(element) + ' field is not present in the AnnData object')
             else:
                 temp=anndata.obs[[element]]
                 meta_df=pd.concat([meta_df,temp],axis=1)
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
-    writeCellbrowserConf(datasetName, coordDescs, confName)
-    #ofh = open(confName, "w")
-    #ofh.write("coords = %s\n" % repr(coordDescs))
-    #ofh.write("meta = 'meta.tsv'\n")
-    #ofh.write("name = %s" % repr(datasetName))
-    #ofh.write("exprMatrix = 'exprMatrix.tsv'")
-    #ofh.close()
+    writeCellbrowserConf(datasetName, coordDescs, confName, args={'clusterField':'louvain'})
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -2594,13 +2622,22 @@ def startHttpServer(outDir, port):
     if ipAddr=="0.0.0.0":
         ipAddr = "127.0.0.1"
 
+    outDir = os.path.expanduser(outDir)
     os.chdir(outDir)
-    print("Serving "+outDir+". Press Ctrl-C to exit.")
-    print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the address of this server)")
+    print("Serving "+outDir)
+    print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the IP address of this server)")
     sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 
-def cbBuild(confFnames, outDir, port):
+def daemonizeWithPid():
+    """ daemonize this process and write the PID to a temp file """
+    tempDir = tempfile.gettempdir()
+
+def cbBuild(confFnames, outDir, port=None):
+    " stay compatible "
+    build(confFnames, outDir, port)
+
+def build(confFnames, outDir, port=None):
     " build browser from config files confFnames into directory outDir and serve on port "
     if type(confFnames)==type(""):
         # it's very easy to forget that the input should be a list so we tolerate a single string
@@ -2608,6 +2645,8 @@ def cbBuild(confFnames, outDir, port):
 
     outDir = expanduser(outDir)
     for inConfFname in confFnames:
+        if isdir(inConfFname):
+            inConfFname = join(inConfFname, "cellbrowser.conf")
         inConf = loadConfig(inConfFname)
         datasetDir = join(outDir, inConf["name"])
         makeDir(datasetDir)
@@ -2625,7 +2664,94 @@ def cbBuild(confFnames, outDir, port):
     cbMake(outDir)
 
     if port:
+        print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
         startHttpServer(outDir, port)
+
+pidFname = "cellbrowser.pid"
+
+def savePid():
+    " save PID to file "
+    import tempfile
+    tempDir = tempfile.gettempdir()
+    tempName = join(tempDir, pidFname)
+    tempFh = open(tempName, "w")
+    pid = os.getpid()
+    tempFh.write("%d" % pid)
+    tempFh.close()
+    return pid
+
+def loadPid():
+    " return previously saved PID and delete the pid file "
+    import tempfile
+    tempDir = tempfile.gettempdir()
+    tempName = join(tempDir, pidFname)
+    if not isfile(tempName):
+        return None
+    pid = int(open(tempName).read())
+    os.remove(tempName)
+    return pid
+
+def serve(outDir, port):
+    " spawning a daemon from ipython is not a good idea. We use the shell instead "
+    cmd = [sys.executable, __file__, "cbServe", outDir, str(port)]
+    cmdStr = " ".join(cmd) + "&"
+    ret = os.system(cmdStr)
+    if ret!=0:
+        print("ERROR: Could not run command '%s'" % cmdStr)
+
+def serveDirect(outDir, port):
+    """ run a webserver on localhost with a port, fork/detach as a daemon, and
+    write PID into <tempdir>/cellbrowser.pid. NOT USED FOR NOW - Jupyther/ipython/Rstudio don't like this  """
+    # mostly copied from
+    # http://code.activestate.com/recipes/66012-fork-a-daemon-process-on-unix/
+    # do the UNIX double-fork magic, see Stevens' "Advanced 
+    # Programming in the UNIX Environment" for details (ISBN 0201563177)
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # exit first parent
+            #sys.exit(0)
+            return
+    except OSError as e:
+        logging.error("fork #1 failed: %d (%s)" % (e.errno, e.strerror))
+        sys.exit(1)
+
+    # decouple from parent environment
+    os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # do second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # exit from second parent
+            #logging.error( "Daemon PID %d" % pid )
+            sys.exit(0)
+    except OSError as e:
+        logging.error("fork #2 failed: %d (%s)" % (e.errno, e.strerror) )
+        sys.exit(1)
+
+    # start the daemon main loop
+    pid = savePid()
+    logging.info("Starting webserver, process ID: %d" % pid)
+    startHttpServer(outDir, port)
+
+def stop():
+    " kill the process with PID in <tempdir>/cellbrowser.pid "
+    import signal
+    pid = loadPid()
+    if pid is None:
+        print("No saved process ID found, nothing to kill")
+        return
+
+    try:
+        os.kill(pid, signal.SIGTERM) #or signal.SIGKILL 
+    except OSError as ex:
+        print("Unable to kill cellbrowser process with PID %d" % pid)
+        return
+
+    print("Successfully killed cellbrowser process with PID %d" % pid)
 
 def cbBuildCli():
     " command line interface for dataset converter, also copies the html/js/etc files "
@@ -2823,6 +2949,15 @@ def maybeLoadConfig(confFname):
         conf = {}
     return conf
 
+def checkLayouts(conf):
+    """ it's very easy to get the layout names wrong """
+    if "doLayouts" not in conf:
+        return
+
+    for l in conf["doLayouts"]:
+        if l not in scanpyLayouts and l not in igraphLayouts:
+            errAbort("layout name %s is not valid. Valid layouts: %s or %s" % (l, str(scanpyLayouts), str(igraphLayouts)))
+
 def cbScanpy(matrixFname, confFname, figDir, logFname):
     " run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data "
     import scanpy.api as sc
@@ -2832,6 +2967,8 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     warnings.filterwarnings("ignore")
 
     conf = maybeLoadConfig(confFname)
+
+    checkLayouts(conf)
 
     sc.settings.set_figure_params(dpi=200)
     sc.settings.file_format_figs = 'png'
@@ -2973,7 +3110,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     pipeLog('Performing Louvain Clustering, using %d PCs and %d neighbors' % (pc_nb, neighbors))
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=res)
-    pipeLog("Found %d louvain clusters" % len(set(adata.obs[['louvain']])))
+    pipeLog("Found %d louvain clusters" % len(adata.obs['louvain'].unique()))
     sc.pl.tsne(adata, color='louvain')
 
     #Clustering. Default Resolution: 1
@@ -2983,11 +3120,13 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     #sc.tl.louvain(adata, resolution=res)
     #sc.pl.tsne(adata, color='louvain')
 
-    if conf.get("doUmap", True):
+    doLayouts = conf.get("doLayouts", ["fa", "umap"])
+
+    if "umap" in doLayouts:
         pipeLog("Performing UMAP")
         sc.tl.umap(adata)
 
-    if conf.get("doPhate", True):
+    if "phate" in doLayouts:
         try:
             import phate
             hasPhate = True
@@ -3000,22 +3139,33 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
             pipeLog("Performing PHATE")
             sc.tl.phate(adata)
 
-    if conf.get("doPagaFa2", True):
+    if "pagaFa" in doLayouts:
         pipeLog("Performing PAGA+ForceAtlas2")
         sc.tl.paga(adata, groups='louvain')
-        sc.pl.paga(adata, show=True)
+        sc.pl.paga(adata, show=True, layout="fa")
         sc.tl.draw_graph(adata, init_pos='paga')
+        adata.obsm["X_pagaFa"] = adata.obsm["X_draw_graph_fa"]
 
-        if "X_draw_graph_fa" in adata.obsm:
-            adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fa"]
-        elif "X_draw_graph_fr" in adata.obsm:
-            adata.obsm["X_pagaFa2"] = adata.obsm["X_draw_graph_fr"]
-        else:
-            logging.warn("paga results not found. Did scanpy change again? Available keys: %s" % (repr(adata.obsm.keys())))
+    if "pagaFr" in doLayouts:
+        pipeLog("Performing PAGA+Fruchterman Reingold")
+        sc.tl.paga(adata, groups='louvain')
+        sc.pl.paga(adata, show=True, layout="fr")
+        sc.tl.draw_graph(adata, init_pos='paga')
+        adata.obsm["X_pagaFr"] = adata.obsm["X_draw_graph_fr"]
 
-    if conf.get("doFa2", True):
-        pipeLog("Performing ForceAtlas2 (draw_graph)")
-        sc.tl.draw_graph(adata)
+    otherLayouts = set(doLayouts).difference(set(["phate", "umap", "pagaFa", "pagaFr"]))
+
+    for layoutCode in otherLayouts:
+        pipeLog("Performing Layout '%s' = %s" % (layoutCode, igraphLayouts[layoutCode]))
+        sc.tl.draw_graph(adata, layout=layoutCode)
+
+    #if conf.get("doLgl", False):
+        #pipeLog("Performing LGL layout (draw_graph)")
+        #sc.tl.draw_graph(adata)
+
+    #if conf.get("doFr", False):
+        #pipeLog("Performing Fruchterman Reingold layout (draw_graph)")
+        #sc.tl.draw_graph(adata)
 
     #pipeLog("Performing PAGA+UMAP")
     #sc.tl.umap(adata, init_pos='paga') # waiting for key_added_ext PR
@@ -3052,23 +3202,22 @@ def cbScanpyCli():
 
     adFname = join(outDir, "anndata.h5ad")
 
-    if not isfile(adFname):
-        logFname = join(outDir, "cbScanpy.log")
-        #try:
-        adata = cbScanpy(matrixFname, confFname, figDir, logFname)
-        #except:
-            # on an exception, automatically bring up the debugger - avoids having to reload the data file
-            #extype, value, tb = sys.exc_info()
-            #import traceback, pdb
-            #traceback.print_tb(tb)
-            #pdb.post_mortem(tb)
-        logging.info("Writing anndata object to %s" % adFname)
-        adata.write(adFname)
-    else:
-        import scanpy.api as sc
-        logging.info("Looks like the scanpy analysis was run before")
-        logging.info("Reading old cached anndata from %s" % adFname)
-        adata = sc.read(adFname)
+    #if not isfile(adFname):
+    logFname = join(outDir, "cbScanpy.log")
+    adata = cbScanpy(matrixFname, confFname, figDir, logFname)
+    #except:
+        # on an exception, automatically bring up the debugger - avoids having to reload the data file
+        #extype, value, tb = sys.exc_info()
+        #import traceback, pdb
+        #traceback.print_tb(tb)
+        #pdb.post_mortem(tb)
+    logging.info("Writing final result as an anndata object to %s" % adFname)
+    adata.write(adFname)
+    #else:
+        #import scanpy.api as sc
+        #logging.info("Looks like the scanpy analysis was run before")
+        #logging.info("Reading old cached anndata from %s" % adFname)
+        #adata = sc.read(adFname)
 
     scanpyToTsv(adata, outDir, datasetName=options.name)
 
@@ -3145,9 +3294,13 @@ def getAllFields(ifhs, sep):
 
     return allFields, colCounts
 
-#if __name__=="__main__":
-    #main()
-    #import scanpy.api as sc
-    #ad = sc.read("sampleData/quakeBrainGeo1.old/geneMatrix.tsv")
-    #ad = ad.T
-    #convScanpy(ad, "temp", "./")
+if __name__=="__main__":
+    args, options = main_parseArgs()
+
+    cmd = args[0]
+    if cmd=="cbServe":
+        outDir, port = args[1:3]
+        savePid()
+        startHttpServer(outDir, int(port))
+    else:
+        errAbort("Unknown command %s" % cmd)

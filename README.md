@@ -123,8 +123,11 @@ Edit the scanpy.conf file and adapt it to your needs or just leave the default v
     cbBuild -o ~/public_html/cb -p 8888
 
 Currently only the genes are exported that were used by Scanpy and only their
-normalized and log'ed value. This has advantages, but also disadvantages.  Contact
-us if you have an opinion on which expression value should be shown.
+normalized and log'ed value, so the matrix after filtering. This has
+advantages, but also disadvantages.  Contact us if you have an opinion on which
+expression value should be shown. You can also manually copy your original
+expression matrix into the output directory ("scanpyout" in the example) to 
+include all genes.
 
 ### Convert an existing Scanpy object to a cell browser
 

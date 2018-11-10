@@ -184,12 +184,12 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE)")
     cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
-    cmds.append('print("Saving .rds to %s")' % rdsPath)
-    cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
-
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)
     cmds.append('print("Finding markers")')
     cmds.append('all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
+
+    cmds.append('print("Saving .rds to %s")' % rdsPath)
+    cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
     # export the data to tsvs
     cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
