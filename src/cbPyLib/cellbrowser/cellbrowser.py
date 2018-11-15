@@ -2472,7 +2472,7 @@ alpha=0.6
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def anndataToTsv(anndata, matFname, useRaw=False):
+def anndataToTsv(anndata, matFname, usePandas=False):
     " write anndata to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
@@ -2485,10 +2485,35 @@ def anndataToTsv(anndata, matFname, useRaw=False):
         logging.info("Converting csc matrix to row-sparse matrix")
         mat = mat.tocsr() # makes writing to a file 10X faster, thanks Alex Wolf!
 
-    logging.info("Converting anndata to pandas dataframe")
-    data_matrix=pd.DataFrame(mat, index=anndata.var.index.tolist(), columns=anndata.obs.index.tolist())
-    logging.info("Writing pandas dataframe to file (slow?)")
-    data_matrix.to_csv(tmpFname, sep='\t', index=True)
+    if usePandas:
+        logging.info("Converting anndata to pandas dataframe")
+        data_matrix=pd.DataFrame(mat, index=anndata.var.index.tolist(), columns=anndata.obs.index.tolist())
+        logging.info("Writing pandas dataframe to file (slow?)")
+        data_matrix.to_csv(tmpFname, sep='\t', index=True)
+    else:
+        # manual writing row-by-row should save quite a bit of memory
+        logging.info("Writing gene-by-gene, without using pandas")
+        ofh = open(tmpFname, "w")
+        sampleNames = anndata.obs.index.tolist()
+        ofh.write("gene\t")
+        ofh.write("\t".join(sampleNames))
+        ofh.write("\n")
+
+        genes = anndata.var.index.tolist()
+        logging.info("Writing %d genes in total" % len(genes))
+        for i, geneName in enumerate(genes):
+            if i % 2000==0:
+                logging.info("Wrote %d genes" % i)
+            ofh.write(geneName)
+            ofh.write("\t")
+            row = mat[i,:]
+            #savetxt is super slow, as it is not C code
+            #np.savetxt(ofh, row, fmt="%g", delimiter="\t", newline="\t")
+            # tofile() is much faster:
+            row.tofile(ofh, sep="\t", format="%.7g")
+            ofh.write("\n")
+
+        ofh.close()
     os.rename(tmpFname, matFname)
 
 def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], nb_marker=50):
