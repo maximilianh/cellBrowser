@@ -1,49 +1,6 @@
 # the following is copied from Seurat3's utilities.R and generics.R
 require(reticulate)
 
-#' Get, set, and manipulate an object's identity classes
-#'
-#' @param x,object An object
-#' @param ... Arguments passed to other methods; for \code{RenameIdents}: named
-#' arguments as \code{old.ident = new.ident}
-#'
-#' @return \code{Idents}: The cell identies
-#'
-#' @rdname Idents
-#' @export Idents
-#'
-#' @examples
-#' # Get cell identity classes
-#' Idents(object = pbmc_small)
-#'
-Idents <- function(object, ... ) {
-  UseMethod(generic = 'Idents', object = object)
-}
-
-#' @inheritParams Idents
-#' @param value The name of the identites to pull from object metadata or the identities themselves
-#'
-#' @return \code{Idents<-}: An object with the cell identites changed
-#'
-#' @rdname Idents
-#' @export Idents<-
-#'
-#' @examples
-#' # Set cell identity classes
-#' # Can be used to set identities for specific cells to a new level
-#' Idents(object = pbmc_small, cells = 1:4) <- 'a'
-#' head(x = Idents(object = pbmc_small))
-#'
-#' # Can also set idents from a value in object metadata
-#' pbmc_small$groups <- sample(x = c('g1', 'g2'), size = ncol(x = pbmc_small), replace = TRUE)
-#' Idents(object = pbmc_small) <- 'groups'
-#' levels(x = pbmc_small)
-#'
-"Idents<-" <- function(object, ..., value) {
-  UseMethod(generic = 'Idents<-', object = object)
-}
-
-
 #' Export Seurat object for UCSC cell browser
 #'
 #' @param object Seurat object
@@ -82,8 +39,8 @@ ExportToCellbrowser <- function(
   cb.dir = NULL
 ) {
   if (is.null(meta.fields)) {
-    meta.fields <- c("nCount_RNA", "nFeature_RNA")
-    if (length(levels(x = Idents(object = object))) > 1) {
+    meta.fields <- c("nGene", "nUMI")
+    if (length(levels(FetchData(object,c("ident"))$ident)) > 1) {
       meta.fields <- c(meta.fields, ".ident")
     }
   }
@@ -97,20 +54,23 @@ ExportToCellbrowser <- function(
     stop("Output directory ", dir, " cannot be created or is a file")
   }
 
-  order <- Cells(object = object)
+  order <- object@cell.names
   enum.fields <- c()
 
   # Export expression matrix
   df <- as.data.frame(as.matrix(GetAssayData(object = object)))
-  df <- data.frame(gene=rownames(object), df)
+  df <- data.frame(gene=rownames(object@data), df)
   z <- gzfile(file.path(dir, "exprMatrix.tsv.gz"), "w")
   write.table(df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
   close(z)
 
   # Export cell embeddings
   embeddings.conf <- c()
+  dr <- object@dr
   for (embedding in embeddings) {
-    df <- Embeddings(object = object, reduction = embedding)
+    #df <- Embeddings(object = object, reduction = embedding)
+    emb <- dr[[embedding]]
+    df <- slot(emb, "cell.embeddings")
     if (ncol(df) > 2) {
       warning(
         'Embedding ', embedding,
@@ -133,10 +93,10 @@ ExportToCellbrowser <- function(
   }
 
   # Export metadata
-  df <- data.frame(row.names = rownames(object[[]]))
+  df <- data.frame(row.names = object@cell.names)
   for (field in meta.fields) {
     if (field == ".ident") {
-      df$Cluster <- Idents(object = object)
+      df$Cluster <- FetchData(object,c("ident"))$ident # no Idents() in Seurat2
       enum.fields <- c(enum.fields, "Cluster")
       cluster.field <- "Cluster"
     } else {
@@ -144,7 +104,8 @@ ExportToCellbrowser <- function(
       if (is.null(name)) {
         name <- field
       }
-      df[[name]] <- object[[field]][, 1]
+      #df[[name]] <- object[[field]][, 1]
+      df[[name]] <- FetchData(object, field)[, 1]
       if (!is.numeric(df[[name]])) {
         enum.fields <- c(enum.fields, name)
       }
