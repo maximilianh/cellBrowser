@@ -151,7 +151,7 @@ Or from a Unix Shell:
 
 ### Convert an existing Seurat object
 
-The function ExportToCellbrowser() will be part of Seurat 3. You can install it like this:
+The function ExportToCellbrowser() will be part of Seurat 3. You can install pre-release Seurat3 like this:
 
     install.packages("devtools")
     devtools::install_github("satijalab/seurat", ref = "release/3.0")
