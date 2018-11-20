@@ -90,6 +90,11 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
             errAbort("Could not find file %s - sure that you specified the directory of the matrix.mtx file?" % matrixFname)
         cmds.append('mat = Read10X(data.dir="%s")' % inData)
 
+    undoLog = conf.get("undoLog", False)
+    if undoLog:
+        cmds.append('print("Undoing log2 on matrix, doing 2^mat")')
+        cmds.append('mat <- 2^mat')
+
     minCells = conf.get("minCells", 3)
     minGenes = conf.get("minGenes", 200)
 
@@ -181,7 +186,8 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
 
     cmds.append('print("Running t-SNE")')
     #cmds.append("sobj <- RunTSNE(object = sobj, dims.use = 1:pcCount, do.fast = TRUE)")
-    cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE)")
+    # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
+    cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE)")
     cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)

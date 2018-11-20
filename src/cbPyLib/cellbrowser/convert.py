@@ -1,31 +1,36 @@
 # various format converters for single cell data:
 # - cellranger, mtx to tsv, matConcat, etc
 
-import logging, optparse, io, sys, os, shutil, operator, glob
+import logging, optparse, io, sys, os, shutil, operator, glob, re
 from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from .cellbrowser import anndataToTsv, loadConfig, sanitizeName
+from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
 def cbToolCli_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv|matConcat - convert various single-cell related files
+    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv|matCat|metaCat - convert various single-cell related files
 
     mtx2tsv   - convert matrix market to .tsv.gz
-    matConcat - merge expression matrices with one line per gene into a big matrix.
+    matCat - merge expression matrices with one line per gene into a big matrix.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
+    metaCat - concat meta tables
 
     Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
-    - %prog matConcat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
+    - %prog matCat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
+    - %prog metaCat meta.tsv seurat/meta.tsv scanpy/meta.tsv newMeta.tsv - merge meta matrices
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
+    parser.add_option("", "--fixDots", dest="fixDots", action="store_true",
+        help="try to fix R's mangling of various special chars to '.' in the cell IDs")
+
 
     (options, args) = parser.parse_args()
 
@@ -40,13 +45,13 @@ def cbToolCli():
     " run various tools from the command line "
     args, options = cbToolCli_parseArgs()
 
-    if len(args)==0:
+    if len(args)<=1:
         cbToolCli_parseArgs(showHelp=True)
         sys.exit(1)
 
     cmd = args[0]
 
-    cmds = ["mtx2tsv", "matConcat"]
+    cmds = ["mtx2tsv", "matCat", "metaCat"]
 
     if cmd=="mtx2tsv":
         mtxFname = args[1]
@@ -54,14 +59,18 @@ def cbToolCli():
         barcodeFname = args[3]
         outFname = args[4]
         mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname)
-    if cmd=="matConcat":
+    elif cmd=="matCat":
         inFnames = args[1:-1]
         outFname = args[-1]
-        matConcat(inFnames, outFname)
+        matCat(inFnames, outFname)
+    elif cmd=="metaCat":
+        inFnames = args[1:-1]
+        outFname = args[-1]
+        metaCat(inFnames, outFname, options)
     else:
         errAbort("Command %s is not a valid command. Valid commands are: %s" % (cmd, ", ".join(cmds)))
 
-def matConcat(inFnames, outFname):
+def matCat(inFnames, outFname):
     tmpFname = outFname+".tmp"
     ofh = openFile(tmpFname, "w")
 
@@ -130,6 +139,68 @@ def matConcat(inFnames, outFname):
     ofh.close()
     moveOrGzip(tmpFname, outFname)
     logging.info("Wrote %d lines (not counting header)" % lineCount)
+
+def metaCat(inFnames, outFname, options):
+    " merge all tsv/csv columns in inFnames into a new file, outFname. Column 1 is ID to join on. "
+    allHeaders = ["cellId"]
+    allRows = defaultdict(dict) # cellId -> fileIdx -> list of non-ID fields
+    fieldCounts = {} # fileIdx -> number of non-ID fields
+    allIds = set() # set with all cellIds
+
+    for fileIdx, fname in enumerate(inFnames):
+        headers = None
+        for row in lineFileNextRow(fname):
+            if headers is None:
+                headers = row._fields[1:]
+                logging.info("Reading %s, %d columns:  %s" % (fname, len(headers), repr(headers)))
+                allHeaders.extend(headers)
+                fieldCounts[fileIdx] = len(headers)
+
+            cellId = row[0]
+            allIds.add(cellId)
+            allRows[cellId][fileIdx] = row[1:]
+
+    nonCharRe = re.compile(r'[^a-zA-Z0-9]')
+
+    if options.fixDots:
+        # first create a map realId -> rId
+        rToReal = {}
+        for cellId, rowData in iterItems(allRows):
+            rId = nonCharRe.sub(".", cellId)
+            if rId!=cellId and rId in allRows:
+                assert(rId not in rToReal) # Uh-oh! Mapping R <-> realId is not simple. May need some manual work.
+                rToReal[rId]=cellId
+        logging.info("Found %d cell IDs that look like they've been mangled by R" % (len(rToReal)))
+
+        # now merge the R-id entries into the real ID entries
+        newRows = {}
+        for rId, readlId in iterItems(rToReal):
+            allRows[cellId].update(allRows[rId])
+        for rId in rToReal.keys():
+            del allRows[rId]
+        logging.info("Merged back rIds into normal data")
+
+    tmpFname = outFname+".tmp"
+    ofh = openFile(tmpFname, "w")
+    ofh.write("\t".join(allHeaders))
+    ofh.write("\n")
+
+    for cellId, rowData in iterItems(allRows):
+        row = []
+        for fileIdx in range(0, len(inFnames)):
+            if fileIdx in rowData:
+                row.extend(rowData[fileIdx])
+            else:
+                row.extend([""]*fieldCounts[fileIdx])
+
+        ofh.write(cellId)
+        ofh.write("\t")
+        ofh.write("\t".join(row))
+        ofh.write("\n")
+
+    ofh.close()
+    os.rename(tmpFname, outFname)
+    logging.info("Wrote %d lines (not counting header)" % len(allRows))
 
 def crangerToCellbrowser(datasetName, inDir, outDir):
     " convert cellranger output to a cellbrowser directory "
