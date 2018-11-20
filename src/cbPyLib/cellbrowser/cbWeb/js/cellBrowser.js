@@ -1397,17 +1397,53 @@ var tsnePlot = function() {
            }
        }
 
+       function guessRadiusAlpha(dotCount) {
+           /* return reasonable radius and alpha values for a number of dots */
+           if (dotCount<5000)
+               return [3.0, 0.5];
+           if (dotCount<9000)
+               return [2.0, 0.5];
+           if (dotCount<15000)
+               return [3.0, 0.4];
+           if (dotCount<50000)
+               return [0.0, 0.3];
+       }
+
+       function makeRendConf(dbConf, dotCount) {
+           /* return the 'args' object for the renderer, based on dbConf and count of dots */
+           var rendConf = {};
+
+           var radius = dbConf.radius;
+           var alpha = dbConf.alpha;
+
+           if (radius===undefined || alpha===undefined)
+               var radiusAlpha = guessRadiusAlpha(dotCount);
+
+           if (radius===undefined)
+               radius = radiusAlpha[0];
+           if (alpha===undefined)
+               alpha = radiusAlpha[1];
+
+           rendConf["radius"] = radius;
+           rendConf["alpha"] = alpha;
+
+           rendConf["mode"] = "move"; // default mode, one of "move", "select" or "zoom"
+
+           return rendConf;
+        }
+
        function gotFirstCoords(coords, info, clusterMids) {
            /* XX very ugly way to implement promises. Need a better approach one day. */
            gotCoords(coords, info, clusterMids);
            doneOnePart();
        }
 
-       renderer.initPlot(db.conf);
+       var rendConf = makeRendConf(db.conf, db.conf.sampleCount);
+       renderer.initPlot(rendConf);
 
        buildLeftSidebar();
        buildToolBar(db.conf.coords, db.conf.name, metaBarWidth+metaBarMargin, toolBarHeight);
-       activateMode("move");
+       //activateMode("move");
 
        db.loadCoords(0, gotFirstCoords, onProgress);
 
@@ -1759,7 +1795,9 @@ var tsnePlot = function() {
              //   maxDig = 0
 
             var legLabel = null;
-            if (binMin!==binMax)
+            if (binMin==="Unknown")
+                legLabel = "Unknown";
+            else if (binMin!==binMax)
                 legLabel = binMin.toFixed(minDig)+' - '+binMax.toFixed(maxDig);
             else
                 legLabel = binMin.toFixed(minDig);
@@ -2114,6 +2152,7 @@ var tsnePlot = function() {
          * an array of [start, end, count] */
         var binInfo = [];
         if (fieldInfo.binMethod==="uniform") {
+            // old method, not used anymore
             var binMin = fieldInfo.minVal;
             var stepSize = fieldInfo.stepSize;
             var binCounts = fieldInfo.binCounts;
@@ -2179,7 +2218,7 @@ var tsnePlot = function() {
         // even if they look like numbers
         if (sortBy===undefined) {
             // should cluster fields be sorted by their name
-            if (fieldName.indexOf("luster"))
+            if (fieldName.indexOf("luster") || fieldName.indexOf("ouvain"))
                 sortBy = "count";
             else if (fieldInfo.type==="float" || fieldInfo.type==="int")
                 sortBy = "name";
@@ -2542,7 +2581,7 @@ var tsnePlot = function() {
         var layoutLeft = 150;
         if (db.conf.hubUrl!==undefined)
             layoutLeft = 290;
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 250, layoutLeft, 2);
+        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, layoutLeft, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
         
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
@@ -3171,17 +3210,6 @@ var tsnePlot = function() {
         var colors = [];
         var rows = gLegend.rows;
 
-        // add the "sort by" div
-        //var sortLabel = null;
-        //if (gLegend.isSortedByName===true)
-            //sortLabel = "Sort by freq." // add the link to sort by the other possibility
-        //else
-            //sortLabel = "Sort by name"
-            //$('#tpLegendTitle').html('<span id="tpGeneSym" title="' +geneId+'">'+geneSym+" expression</span>");
-        //htmls.push("<span id='tpSortBy' style='color: #888; cursor:pointer; font-size:13px'>"+sortLabel+"</span>");
-        //htmls.push("<div class='btn-group btn-group-xs' role='group'>");
-        //htmls.push("<button type='button' class='btn btn-default' id='tpSortBy'>"+sortLabel+"</button>");
-        //htmls.push("</div>");
         htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+gLegend.title+"</span>");
         htmls.push('<div class="tpHint">Click below to select '+gSampleDesc+'s</small></div>');
         htmls.push("</div>"); // title
@@ -3205,19 +3233,22 @@ var tsnePlot = function() {
                 colorHex = row[1]; // default color
 
             var label = row[2];
+
             var count = row[3];
             var freq  = 100*count/sum;
 
-            colors.push(colorHex); // save for later
-
             var labelClass = "tpLegendLabel";
             label = label.replace(/_/g, " ").replace(/'/g, "&#39;").trim();
+
+            if (likeEmptyString(label)) {
+                labelClass += " tpGrey";
+                colorHex = cNullColor;
+            }
             if (label==="") {
                 label = "(empty)";
-                labelClass += " tpGrey";
             }
-            else if (likeEmptyString(label))
-                labelClass += " tpGrey";
+
+            colors.push(colorHex); // save for later
 
             var labelDesc = label;
             var labelDesc = acronyms[label] || null;
@@ -3228,7 +3259,6 @@ var tsnePlot = function() {
                 else
                     labelDesc = "";
             }
-
 
             var classStr = "tpLegend";
             var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "'>";

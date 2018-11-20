@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.9",
+    version="0.4.11",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
