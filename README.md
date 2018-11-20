@@ -129,7 +129,7 @@ expression value should be shown. You can also manually copy your original
 expression matrix into the output directory ("scanpyout" in the example) to 
 include all genes.
 
-### Convert an existing Scanpy object to a cell browser
+### Convert an existing Scanpy object
 
 The cbScanpy wrapper runs some generic analysis steps with very crude default
 values. If you have done the analysis already, you can build a cellbrowser from
@@ -149,7 +149,26 @@ Or from a Unix Shell:
 
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cells/ -p 8888
 
-### Import a CellRanger directory
+### Convert an existing Seurat object
+
+The function ExportToCellbrowser() will be part of Seurat 3. You can install it like this:
+
+    install.packages("devtools")
+    devtools::install_github("satijalab/seurat", ref = "release/3.0")
+
+For Seurat 1.4 and 2, you have to load the function with this command:
+
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser.R")
+
+You can then write a Seurat object to a directory from which you can run cbBuild:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall")
+
+Or immediately convert the files to html and serve the result on port 8080 and open a web browser:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
+
+### Convert CellRanger results
 
 Find the cellranger OUT directory, it contains an "analysis" directory and also
 a subdirectory "filtered_gene_bc_matrices". This is the directory that is the
