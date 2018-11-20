@@ -2553,10 +2553,14 @@ def anndataToTsv(anndata, matFname, usePandas=False):
                 logging.info("Wrote %d genes" % i)
             ofh.write(geneName)
             ofh.write("\t")
-            row = mat[i,:]
-            #savetxt is super slow, as it is not C code
-            #np.savetxt(ofh, row, fmt="%g", delimiter="\t", newline="\t")
-            # tofile() is much faster:
+            row = np.asarray(mat[i,:])
+            if scipy.sparse.issparse(row):
+                logging.debug("Converting csr row to dense")
+                row = row.todense()
+
+            # Note: Faster is not possible. savetxt() is super slow, as it is not C code
+            # We used to have this 'np.savetxt(ofh, row, fmt="%g", delimiter="\t", newline="\t")'
+            # But tofile() is several times faster:
             row.tofile(ofh, sep="\t", format="%.7g")
             ofh.write("\n")
 
