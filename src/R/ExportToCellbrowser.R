@@ -1,5 +1,48 @@
-# the following is copied from Seurat3's utilities.R
+# the following is copied from Seurat3's utilities.R and generics.R
 require(reticulate)
+
+#' Get, set, and manipulate an object's identity classes
+#'
+#' @param x,object An object
+#' @param ... Arguments passed to other methods; for \code{RenameIdents}: named
+#' arguments as \code{old.ident = new.ident}
+#'
+#' @return \code{Idents}: The cell identies
+#'
+#' @rdname Idents
+#' @export Idents
+#'
+#' @examples
+#' # Get cell identity classes
+#' Idents(object = pbmc_small)
+#'
+Idents <- function(object, ... ) {
+  UseMethod(generic = 'Idents', object = object)
+}
+
+#' @inheritParams Idents
+#' @param value The name of the identites to pull from object metadata or the identities themselves
+#'
+#' @return \code{Idents<-}: An object with the cell identites changed
+#'
+#' @rdname Idents
+#' @export Idents<-
+#'
+#' @examples
+#' # Set cell identity classes
+#' # Can be used to set identities for specific cells to a new level
+#' Idents(object = pbmc_small, cells = 1:4) <- 'a'
+#' head(x = Idents(object = pbmc_small))
+#'
+#' # Can also set idents from a value in object metadata
+#' pbmc_small$groups <- sample(x = c('g1', 'g2'), size = ncol(x = pbmc_small), replace = TRUE)
+#' Idents(object = pbmc_small) <- 'groups'
+#' levels(x = pbmc_small)
+#'
+"Idents<-" <- function(object, ..., value) {
+  UseMethod(generic = 'Idents<-', object = object)
+}
+
 
 #' Export Seurat object for UCSC cell browser
 #'
