@@ -43,7 +43,7 @@ try:
     import numpy as np
 except:
     numpyLoaded = False
-    logging.error("Numpy could not be loaded. The script will work, but it will be 30% slower when processing the matrix.")
+    logging.debug("Numpy could not be loaded. This is fine but matrix export may be 1/3 slower.")
 
 # older numpy versions don't have tobytes()
 if numpyLoaded:
@@ -90,6 +90,7 @@ igraphLayouts = {
     "rt": "Reingold Tilford tree"
 }
 
+
 # ==== functions =====
 
 def setDebug(options):
@@ -124,6 +125,15 @@ def splitOnce(s, sep):
     else:
         tup = string.split(s, sep, maxsplit=1)
     return tup
+
+def which(prog):
+    " return path of program in PATH "
+    try:
+        import distutils.spawn
+        return distutils.spawn.find_executable(prog)
+    except:
+        return shutil.which(prog)
+    assert(False)
 
 def findCbData():
     """ return the name of the dataDir directory:
@@ -542,14 +552,32 @@ def findBins(numVals, breakVals):
     >>> findBins([1,1,1,2,2,2,3,3,4,4,5,5,6,6], [1, 2,3,5,6])
     ([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3], [6, 2, 4, 2])
     """
+    nanVal = float('nan')
     breaks = breakVals[1:]
     bArr = []
     binCounts = [0]*len(breaks)
+
+    # check for NaN values
+    hasNan = False
     for x in numVals:
-        binIdx = bisect.bisect_left(breaks, x)
+        if math.isnan(x):
+            hasNan = True
+            binCounts.append(0)
+            break
+
+    for x in numVals:
+        if not hasNan:
+            binIdx = bisect.bisect_left(breaks, x)
+        else:
+            if math.isnan(x):
+                binIdx = 0
+            else:
+                binIdx = bisect.bisect_left(breaks, x)+1
+
         bArr.append(binIdx)
         binCounts[binIdx]+=1
-    return bArr, binCounts
+
+    return bArr, binCounts, hasNan
 
 def countBinsBetweenBreaks(numVals, breakVals):
     """ count how many numVals fall into the bins defined by breakVals.
@@ -611,12 +639,14 @@ def discretizeArray(numVals, fieldMeta):
     breakIndices.append(countLen-1)
     breakVals = [counts[idx][0] for idx in breakIndices]
 
-    dArr, binCounts = findBins(numVals, breakVals)
-    assert(len(binCounts)==10)
+    dArr, binCounts, hasNan = findBins(numVals, breakVals)
+    assert((not hasNan and len(binCounts)==10) or (hasNan and len(binCounts)==11))
     logging.info("Number of values per decile-bin: %s" % binCounts)
 
     fieldMeta["binMethod"] = "quantiles"
     fieldMeta["binCounts"] = binCounts
+    if hasNan:
+        breakVals.insert(0, "Unknown")
     fieldMeta["breaks"] = breakVals
 
     return dArr, fieldMeta
@@ -652,6 +682,12 @@ def typeForStrings(strings):
         return "float"
     return "int"
 
+emptyVals = ["", "null", "none", "None", "unknown", "nd", "n.d.", "Unknown", "NaN", "NA", "undefined", "Na"]
+
+def likeEmptyString(val):
+    " returns true if string is a well-known synonym of 'unknown' or 'NaN'. ported from cellbrowser.js "
+    return val.strip() in emptyVals
+
 def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
@@ -661,44 +697,48 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     - if enum: 'values' is a list of all possible values
     - if colors is not None: 'colors' is a list of the default colors
     """
+    unknownCount = 0
     intCount = 0
     floatCount = 0
     valCounts = defaultdict(int)
-    #maxVal = 0
+    newVals = []
+    nanVal = float('nan')
     for val in valList:
         fieldType = "string"
-        try:
-            newVal = int(val)
-            intCount += 1
-            floatCount += 1
-            #maxVal = max(newVal, val)
-        except:
-            try:
-                newVal = float(val)
-                floatCount += 1
-                #maxVal = max(newVal, val)
-            except:
-                pass
+        newVal = val
 
+        if likeEmptyString(val):
+            unknownCount += 1
+            newVal = nanVal
+        else:
+            try:
+                newVal = int(val)
+                intCount += 1
+                floatCount += 1
+            except:
+                try:
+                    newVal = float(val)
+                    floatCount += 1
+                except:
+                    pass
+
+        newVals.append(newVal)
         valCounts[val] += 1
 
     valToInt = None
+    assert(len(newVals)==len(valList))
 
-    if floatCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
+    if floatCount+unknownCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
         # field is a floating point number: convert to decile index
-        numVals = [float(x) for x in valList]
-
+        numVals = [float(x) for x in newVals]
         newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
-
         fieldMeta["type"] = "float"
-        #fieldMeta["maxVal"] = maxVal
 
-    elif intCount==len(valList) and not forceEnum:
+    elif intCount+unknownCount==len(valList) and not forceEnum:
         # field is an integer: convert to decile index
-        numVals = [int(x) for x in valList]
+        numVals = [int(x) for x in newVals]
         newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
         fieldMeta["type"] = "int"
-        #fieldMeta["maxVal"] = maxVal
 
     elif len(valCounts)==len(valList) and not forceEnum:
         # field is a unique string
@@ -735,7 +775,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
         newVals = [valToInt[x] for x in valList] #
 
-    #fieldMeta["valCount"] = len(valList)
     fieldMeta["diffValCount"] = len(valCounts)
 
     return fieldMeta, newVals
@@ -803,7 +842,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
 
-        if fieldName.endswith("luster"):
+        if fieldName.endswith("luster") or fieldName.endswith("ouvain"):
             forceEnum=True
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
@@ -856,8 +895,11 @@ class MatrixTsvReader:
     def __init__(self, geneToSym=None):
         self.geneToSym = geneToSym
 
-    def open(self, fname, matType=None):
+    def open(self, fname, matType=None, usePyGzip=False):
         " return something for iterMatrixTsv "
+        if which("gunzip")==None:
+            logging.warn("Gunzip not in PATH, falling back to Python's built-in")
+            usePyGzip = True
         # Note: The encoding for popen below is utf8. Is this a good choice?
         # Does performance change if we don't do unicode strings but
         # byte strings instead? Does unicode eat up the performance gain
@@ -865,10 +907,14 @@ class MatrixTsvReader:
         logging.debug("Opening %s" % fname)
         self.fname = fname
         if fname.endswith(".gz"):
-            #ifh = gzip.open(fname) # not doing this anymore
-            cmd = ['gunzip', '-c', fname]
-            proc, stdout = popen(cmd)
-            self.ifh = stdout # faster implementation and in addition uses 2 CPUs
+            # python's gzip is slower, but does not output an error if we read just 
+            # a single line
+            if usePyGzip:
+                self.ifh = gzip.open(fname)
+            else:
+                cmd = ['gunzip', '-c', fname]
+                proc, stdout = popen(cmd)
+                self.ifh = stdout # faster implementation and in addition uses 2 CPUs
         else:
             self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
 
@@ -1563,9 +1609,9 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (0,0)" % (sampleName, coordName))
-            x = 0
-            y = 0
+            logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
+            x = 12345
+            y = 12345
         else:
             x, y = coordTuple
             textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
@@ -2054,7 +2100,7 @@ def readSampleNames(fname):
 def guessGeneIdType(matrixFname):
     " returns 'gencode-human', 'gencode-mouse' or 'symbols' depending on the first gene "
     matIter = MatrixTsvReader()
-    matIter.open(matrixFname)
+    matIter.open(matrixFname, usePyGzip=True)
 
     geneId, sym, exprArr = matIter.iterRows().next()
     matIter.close()
@@ -2442,6 +2488,7 @@ def writeCellbrowserConf(name, coordsList, fname, args={}):
 
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
+    coordStr = json.dumps(coordList, indent=4)
 
     conf = """
 name='%(name)s'
@@ -2454,9 +2501,9 @@ clusterField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]
-coords=%(coordsList)s
-radius=5
-alpha=0.6
+coords=%(coordStr)s
+#alpha=0.3
+#radius=2
 """ % locals()
 
     if "geneToSym" in args:
@@ -2954,7 +3001,12 @@ def checkLayouts(conf):
     if "doLayouts" not in conf:
         return
 
-    for l in conf["doLayouts"]:
+    doLayouts = conf["doLayouts"]
+    if doLayouts=="all":
+        doLayouts = list( igraphLayouts.keys() )
+        doLayouts.extend( list(scanpyLayouts) )
+
+    for l in doLayouts:
         if l not in scanpyLayouts and l not in igraphLayouts:
             errAbort("layout name %s is not valid. Valid layouts: %s or %s" % (l, str(scanpyLayouts), str(igraphLayouts)))
 
