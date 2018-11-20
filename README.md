@@ -267,6 +267,18 @@ followed by :8888, e.g. http://localhost:8888.
 
 This is early testing research software, many things have not been properly tested yet. When you run into problems, just open a ticket or send email to cells@ucsc.edu.
 
+### Combining Seurat, Scanpy and Cellranger result into a single browser
+
+You can use `cbTool metaCat` to merge the meta.tsv files from different pipelines into a single one, like this:
+
+    cbTool metaCat myMeta.tsv seuratOut/meta.tsv scanpyOut/meta.tsv ./newMeta.tsv --fixDot
+
+The option --fixDot will work around R's strange habit of replacing special characters in the cell identifier with ".".
+
+You can now take one of the auto-generated cellbrowser.conf files or start from a fresh one with `cbBuild --init`.
+In this cellbrowser.conf, add all the coordinates files from all your pipelines. Unfortunately, right now you can
+only have a single marker gene list.
+
 ### Optional Python modules to install
 
 In cellbrowser.conf you can specify a color file, the format is .tsv or .csv and it has two columns, clusterName<tab>colorCode. If this file contains html color names instead of color codes, you have to install the module webcolors:
