@@ -2495,7 +2495,7 @@ def writeCellbrowserConf(name, coordsList, fname, args={}):
 
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
-    coordStr = json.dumps(coordList, indent=4)
+    coordStr = json.dumps(coordsList, indent=4)
 
     conf = """
 name='%(name)s'
@@ -2527,7 +2527,7 @@ coords=%(coordStr)s
     logging.info("Wrote %s" % ofh.name)
 
 def anndataToTsv(anndata, matFname, usePandas=False):
-    " write anndata to .tsv file and gzip it "
+    " write anndata expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
     logging.info("Writing scanpy matrix to %s" % matFname)
@@ -2560,13 +2560,11 @@ def anndataToTsv(anndata, matFname, usePandas=False):
                 logging.info("Wrote %d genes" % i)
             ofh.write(geneName)
             ofh.write("\t")
-            row = np.asarray(mat[i,:])
-            print(type(row))
-            print(scipy.sparse.issparse(row))
-            print(row)
-            if scipy.sparse.issparse(row):
+            if scipy.sparse.issparse(mat):
                 logging.debug("Converting csr row to dense")
-                row = row.todense()
+                row = mat.getrow(i).todense()
+            else:
+                row = mat[i,:]
 
             # Note: Faster is not possible. savetxt() is super slow, as it is not C code
             # We used to have this 'np.savetxt(ofh, row, fmt="%g", delimiter="\t", newline="\t")'
@@ -2591,6 +2589,9 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     :param nb_marker: number of cluster markers to store. Default: 100
 
     """
+    if not isdir(path):
+        makeDir(path)
+
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
         logging.warn("%s already exists. You may be about to overwrite existing files." % confName)
@@ -2604,6 +2605,7 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     #if "raw" in dir(anndata):
     #    adT = anndata.raw.T
     #else:
+
     matFname = join(path, 'exprMatrix.tsv')
     anndataToTsv(anndata, matFname)
     matFname = runGzip(matFname)
@@ -3036,9 +3038,9 @@ def maybeLoadConfig(confFname):
     return conf
 
 def checkLayouts(conf):
-    """ it's very easy to get the layout names wrong """
+    """ it's very easy to get the layout names wrong: check them and handle the special value 'all' """
     if "doLayouts" not in conf:
-        return
+        return ["umap", "fa"]
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
@@ -3048,6 +3050,8 @@ def checkLayouts(conf):
     for l in doLayouts:
         if l not in scanpyLayouts and l not in igraphLayouts:
             errAbort("layout name %s is not valid. Valid layouts: %s or %s" % (l, str(scanpyLayouts), str(igraphLayouts)))
+
+    return doLayouts
 
 def cbScanpy(matrixFname, confFname, figDir, logFname):
     " run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data "
@@ -3059,7 +3063,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
 
     conf = maybeLoadConfig(confFname)
 
-    checkLayouts(conf)
+    doLayouts = checkLayouts(conf)
 
     sc.settings.set_figure_params(dpi=200)
     sc.settings.file_format_figs = 'png'
@@ -3210,8 +3214,6 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     #sc.pp.neighbors(adata, n_pcs=int(pc_nb))
     #sc.tl.louvain(adata, resolution=res)
     #sc.pl.tsne(adata, color='louvain')
-
-    doLayouts = conf.get("doLayouts", ["fa", "umap"])
 
     if "umap" in doLayouts:
         pipeLog("Performing UMAP")
