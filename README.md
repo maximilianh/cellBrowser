@@ -156,9 +156,9 @@ The function ExportToCellbrowser() will be part of Seurat 3. You can install pre
     install.packages("devtools")
     devtools::install_github("satijalab/seurat", ref = "release/3.0")
 
-For Seurat 1.4 and 2, you have to load the function with this command:
+For Seurat 2, you have to load the function with this command:
 
-    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser.R")
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-Seurat2.R")
 
 You can then write a Seurat object to a directory from which you can run cbBuild:
 
