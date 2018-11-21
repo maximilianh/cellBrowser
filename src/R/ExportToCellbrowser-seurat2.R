@@ -58,9 +58,11 @@ ExportToCellbrowser <- function(
   enum.fields <- c()
 
   # Export expression matrix
-  df <- as.data.frame(as.matrix(GetAssayData(object = object)))
-  df <- data.frame(gene=rownames(object@data), df)
-  z <- gzfile(file.path(dir, "exprMatrix.tsv.gz"), "w")
+  df <- as.data.frame(as.matrix(GetAssayData(object = object)), check.names=FALSE)
+  df <- data.frame(gene=rownames(object@data), df, check.names = FALSE)
+  gzPath <- file.path(dir, "exprMatrix.tsv.gz")
+  z <- gzfile(gzPath, "w")
+  message("Writing expression matrix to ", gzPath)
   write.table(df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
   close(z)
 
@@ -79,11 +81,12 @@ ExportToCellbrowser <- function(
       df <- df[, 1:2]
     }
     colnames(df) <- c("x", "y")
-    df <- data.frame(cellId = rownames(df), df)
+    df <- data.frame(cellId = rownames(df), df, check.names=FALSE)
     fname <- file.path(
       dir,
       sprintf("%s.coords.tsv", embedding)
     )
+    message("Writing embeddings to ", fname)
     write.table(df[order, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
     conf <- sprintf(
       '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
@@ -93,7 +96,7 @@ ExportToCellbrowser <- function(
   }
 
   # Export metadata
-  df <- data.frame(row.names = object@cell.names)
+  df <- data.frame(row.names = object@cell.names, check.names=FALSE)
   for (field in meta.fields) {
     if (field == ".ident") {
       df$Cluster <- FetchData(object,c("ident"))$ident # no Idents() in Seurat2
@@ -111,13 +114,17 @@ ExportToCellbrowser <- function(
       }
     }
   }
-  df <- data.frame(Cell=rownames(df), df)
-  write.table(df[order, ], sep="\t", file=file.path(dir, "meta.tsv"), quote = FALSE, row.names=FALSE)
+  df <- data.frame(Cell=rownames(df), df, check.names=FALSE)
+  fname <- file.path(dir, "meta.tsv")
+  message("Writing meta data to ", fname)
+  write.table(df[order, ], sep="\t", file=fname, quote = FALSE, row.names=FALSE)
 
   # Export markers
   markers.string <- ''
   if (!is.null(markers.file)) {
-    file.copy(markers.file, file.path(dir, "markers.tsv"))
+    fname <- file.path(dir, "markers.tsv")
+    message("Writing cluster markers to ", fname)
+    file.copy(markers.file, fname)
     markers.string <- 'markers = [{"file": "markers.tsv", "shortLabel": "Seurat Cluster Markers"}]'
   }
 
@@ -171,9 +178,13 @@ coords=%s'
     if (!is.null(port)) {
       port <- as.integer(port)
     }
+    message("Converting cellbrowser directory to html/json files")
     cb <- import("cellbrowser")
     cb$cellbrowser$build(dir, cb.dir)
+    message("HTML files are ready in ", cb.dir)
+
     if (!is.null(port)) {
+      message("Starting http server")
       cb$cellbrowser$stop()
       cb$cellbrowser$serve(cb.dir, port)
       Sys.sleep(0.4)
