@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-
 # scanpy exists only in python3, so this script works only in python3
 
 # runs a single cell matrix through scanpy and output 
 # everything as tab-sep files
-# large parts were written by Lucas Seninge
 from os.path import join, dirname
 import sys
 sys.path.append( join(dirname(__file__), "cbPyLib") )
