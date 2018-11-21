@@ -1,11 +1,12 @@
 import setuptools
 
-with open("README.md", "r") as fh:
+with open("pypi/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.11",
+    version="0.4.12",
+    license="GPL 3",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
@@ -13,16 +14,17 @@ setuptools.setup(
     description="UCSC Cellbrowser for single cell data. Includes command line builder and dataset converter tools for Seurat, Scanpy and Cellranger.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=setuptools.find_packages("../src/cbPyLib/"),
-    package_dir={'':'../src/cbPyLib/'},   # tell distutils packages are under src
+    packages=setuptools.find_packages("src/cbPyLib/"),
+    package_dir={'':'src/cbPyLib/'},   # tell distutils packages are under src
     include_package_data=True,  # use MANIFEST.in for non-python files
     #package_data={
-        #'cellbrowser': ['cbWeb/js/*.js', 'cbWeb/html/*', 'cbWeb/ext/*']
+        #'cellbrowser': ['cbWeb/js/*.js', 'cbWeb/html/*.html', 'cbWeb/ext/*']
     #},
+    scripts=['src/cbScanpy'], # want to force python3 as the executable for cbScanpy
     entry_points={
     'console_scripts': [
         'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
-        'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        #'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',

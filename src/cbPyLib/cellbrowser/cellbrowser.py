@@ -118,6 +118,13 @@ def iterItems(d):
     else:
         return d.iteritems()
 
+def nextEl(d):
+    " wrapper for next() for all python versions "
+    if isPy3:
+        return next(d)
+    else:
+        return d.next()
+
 def splitOnce(s, sep):
     " split s only once on sep, for all python versions "
     if isPy3:
@@ -910,7 +917,7 @@ class MatrixTsvReader:
             # python's gzip is slower, but does not output an error if we read just 
             # a single line
             if usePyGzip:
-                self.ifh = gzip.open(fname)
+                self.ifh = openFile(fname)
             else:
                 cmd = ['gunzip', '-c', fname]
                 proc, stdout = popen(cmd)
@@ -2102,7 +2109,7 @@ def guessGeneIdType(matrixFname):
     matIter = MatrixTsvReader()
     matIter.open(matrixFname, usePyGzip=True)
 
-    geneId, sym, exprArr = matIter.iterRows().next()
+    geneId, sym, exprArr = nextEl(matIter.iterRows())
     matIter.close()
 
     if geneId.startswith("ENSG"):
@@ -2554,6 +2561,9 @@ def anndataToTsv(anndata, matFname, usePandas=False):
             ofh.write(geneName)
             ofh.write("\t")
             row = np.asarray(mat[i,:])
+            print(type(row))
+            print(scipy.sparse.issparse(row))
+            print(row)
             if scipy.sparse.issparse(row):
                 logging.debug("Converting csr row to dense")
                 row = row.todense()
