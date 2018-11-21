@@ -3278,8 +3278,40 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
     return adata
 
 def cbScanpyCli():
+    if not isPy3:
+        print("Unsupported Python version.")
+        print("The cellbrowser works on almost any Python version, but Scanpy requires Python3.")
+        print("This script has been installed and is running under this Python: %s" % sys.executable)
+        print("Most likely it has not been installed with a Python3-pip.")
+        print("You will have to install cellbrowser again using a pip command that is")
+        print("using Python3.")
+        print("")
+        print("On mixed Python2/3 systems, the command is sometimes called 'pip3' (see: 'apt-get install python3-pip').")
+        print("In conda environments, you can create a Python3 environment and activate it with:")
+        print("    conda create -n py36 python=3.6 anaconda && source activate py36")
+        print("If using virtualenvs, you can do something like this:")
+        print("    virtualenv -p /usr/bin/python3 ~/py3env")
+        print("    source ~/py3env/bin/activate")
+        print("On OSX and brew, install python3 and adapt the PATH:")
+        print("    brew install python3 && export PATH=/usr/local/opt/python/libexec/bin:$PYTHON")
+        print("After any of this, check that your pip is indeed using python3 with:")
+        print("    pip --version")
+        print("")
+        print("Then reinstall cellbrowser using this new pip:")
+        print("    pip install cellbrowser")
+        print("and re-run this command")
+        sys.exit(1)
+
     global options
     args, options = cbScanpy_parseArgs()
+
+    try:
+        import scanpy.api as sc
+    except:
+        print("The Python package 'scanpy' is not installed in the current interpreter %s" % sys.executable)
+        print("Please install it following the instructions at https://scanpy.readthedocs.io/en/latest/installation.html")
+        print("Then re-run this command.")
+        sys.exit(1)
 
     if options.init:
         copyPkgFile("sampleConfig/scanpy.conf")
