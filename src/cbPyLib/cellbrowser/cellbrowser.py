@@ -2488,7 +2488,7 @@ def writeCellbrowserConf(name, coordsList, fname, args={}):
 
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
-    coordStr = json.dumps(coordList, indent=4)
+    coordStr = json.dumps(coordsList, indent=4)
 
     conf = """
 name='%(name)s'
