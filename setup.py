@@ -5,7 +5,7 @@ with open("pypi/README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.12",
+    version="0.4.15",
     license="GPL 3",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
@@ -20,11 +20,11 @@ setuptools.setup(
     #package_data={
         #'cellbrowser': ['cbWeb/js/*.js', 'cbWeb/html/*.html', 'cbWeb/ext/*']
     #},
-    scripts=['src/cbScanpy'], # want to force python3 as the executable for cbScanpy
+    #scripts=['src/cbScanpy'], # want to force python3 as the executable for cbScanpy
     entry_points={
     'console_scripts': [
         'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
-        #'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',

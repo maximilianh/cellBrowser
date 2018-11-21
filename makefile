@@ -12,6 +12,7 @@ minisample:
 	cd sampleData && tar cvfz /hive/data/inside/cells/samples/mini.tgz --hard-dereference -T miniFiles.txt 
 pip:
 	rm -rf dist/*
+	rm -rf build/*
 	python2 setup.py sdist bdist_wheel
 	python3 setup.py sdist bdist_wheel --keep-temp
 
