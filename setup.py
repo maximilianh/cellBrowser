@@ -20,11 +20,11 @@ setuptools.setup(
     #package_data={
         #'cellbrowser': ['cbWeb/js/*.js', 'cbWeb/html/*.html', 'cbWeb/ext/*']
     #},
-    scripts=['src/cbScanpy'], # want to force python3 as the executable for cbScanpy
+    #scripts=['src/cbScanpy'], # want to force python3 as the executable for cbScanpy
     entry_points={
     'console_scripts': [
         'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
-        #'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
