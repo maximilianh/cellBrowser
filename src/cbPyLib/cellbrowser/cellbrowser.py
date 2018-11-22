@@ -3291,7 +3291,7 @@ def cbScanpyCli():
         print("    virtualenv -p /usr/bin/python3 ~/py3env")
         print("    source ~/py3env/bin/activate")
         print("On OSX and brew, install python3 and adapt the PATH:")
-        print("    brew install python3 && export PATH=/usr/local/opt/python/libexec/bin:$PYTHON")
+        print("    brew install python3 && export PATH=/usr/local/opt/python/libexec/bin:$PATH")
         print("After any of this, check that your pip is indeed using python3 with:")
         print("    pip --version")
         print("")
