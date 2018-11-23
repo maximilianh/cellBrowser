@@ -24,8 +24,8 @@ loadSeurat <- function(input) {
 }
 
 saveExpression <- function(seurat, dir) {
-  df <- as.data.frame(as.matrix(seurat@data))
-  df <- data.frame(gene=rownames(seurat@data), df)
+  df <- as.data.frame(as.matrix(seurat@data), check.names=FALSE)
+  df <- data.frame(gene=rownames(seurat@data), df, check.names=FALSE)
   write.table(df, sep="\t", file=file.path(dir, "exprMatrix.tsv"), quote = FALSE, row.names = FALSE)
 }
 
@@ -33,7 +33,7 @@ saveTSNE <- function(seurat, dir, order) {
   df <- data.frame(
     cellId=rownames(seurat@dr$tsne@cell.embeddings),
     x=seurat@dr$tsne@cell.embeddings[,1],
-    y=seurat@dr$tsne@cell.embeddings[,2]
+    y=seurat@dr$tsne@cell.embeddings[,2], check.names=FALSE
   )
   write.table(df[order, ], sep="\t", file=file.path(dir, "tsne.coords.tsv"), quote = FALSE, row.names = FALSE)
 }
@@ -56,7 +56,7 @@ checkMeta <- function(seurat, fields) {
 
 saveMeta <- function(seurat, dir, order, fields) {
   df <- seurat@meta.data[order, fields]
-  df <- data.frame(Cell=rownames(seurat@meta.data), df)
+  df <- data.frame(Cell=rownames(seurat@meta.data), df, check.names=FALSE)
   colnames(df) <- c("Cell", fields)
   write.table(df, sep="\t", file=file.path(dir, "meta.tsv"), quote = FALSE, row.names=FALSE)
 }
@@ -67,7 +67,8 @@ saveMarkers <- function(dir, markers_file) {
     cluster = markers$cluster,
     gene = gsub('"|\'', '', markers$gene),
     avg_diff = markers$avg_logFC,
-    p_val = markers$p_val_adj
+    p_val = markers$p_val_adj,
+    check.names=FALSE
   )
   write.table(df, sep="\t", file=file.path(dir, "markers.tsv"), quote = FALSE, row.names=FALSE)
 }
