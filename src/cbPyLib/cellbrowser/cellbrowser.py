@@ -65,7 +65,7 @@ dataDir = None
 
 defOutDir = os.environ.get("CBOUT")
 
-CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData"
+CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
 # the scanpy layout from the scanpy docs
@@ -93,9 +93,9 @@ igraphLayouts = {
 
 # ==== functions =====
 
-def setDebug(options):
+def setDebug(options, doDebug=False):
     " activate debugging if needed "
-    if options.debug:
+    if (doDebug and options==None) or (options!=None and options.debug):
         logging.basicConfig(level=logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
     else:
@@ -1722,10 +1722,14 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
     #os.rename(tmpFnameGz, outFname)
     runGzip(tmpFname, outFname)
 
-def convIdToSym(geneToSym, geneId):
+def convIdToSym(geneToSym, geneId, printWarning=True):
     if geneToSym is None:
         return geneId
     else:
+        if geneId not in geneToSym:
+            if printWarning:
+                logging.warn("Could not convert geneId %s to symbol" % geneId)
+            return geneId
         return geneToSym[geneId]
 
 def to_camel_case(snake_str):
@@ -1787,7 +1791,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
         for colIdx, val in enumerate(otherFields):
             otherColumns[colIdx].append(val)
 
-        geneSym = convIdToSym(geneToSym, geneId)
+        geneSym = convIdToSym(geneToSym, geneId, printWarning=False)
         #geneSym = geneId # let's assume for now that the marker table already has symbols
 
         newRow = []
@@ -2447,7 +2451,7 @@ def convertDataset(inConf, outConf, datasetDir):
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
 
     # convertMeta also compares the sample IDs between meta and matrix
-    # outMeta is a reordered/trimmed tsv version of the meta table
+    # outMeta is a reordered & trimmed tsv version of the meta table
     sampleNames, needFilterMatrix, outMeta = convertMeta(inConf, outConf, datasetDir)
 
     geneToSym = None
@@ -2477,6 +2481,7 @@ def convertDataset(inConf, outConf, datasetDir):
     readQuickGenes(inConf, geneToSym, outConf)
 
 def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
+    " write embedding coordinates from anndata object to outDir, the new filename is <prefix>_coords.tsv "
     import pandas as pd
     fileBase = filePrefix+"_coords.tsv"
     fname = join(outDir, fileBase)
@@ -2575,7 +2580,7 @@ def anndataToTsv(anndata, matFname, usePandas=False):
         ofh.close()
     os.rename(tmpFname, matFname)
 
-def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], nb_marker=50):
+def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], nb_marker=50, doDebug=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2589,6 +2594,7 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     :param nb_marker: number of cluster markers to store. Default: 100
 
     """
+    setDebug(None, doDebug)
     if not isdir(path):
         makeDir(path)
 
@@ -2725,8 +2731,9 @@ def cbBuild(confFnames, outDir, port=None):
     " stay compatible "
     build(confFnames, outDir, port)
 
-def build(confFnames, outDir, port=None):
+def build(confFnames, outDir, port=None, doDebug=False):
     " build browser from config files confFnames into directory outDir and serve on port "
+    setDebug(None, doDebug)
     if type(confFnames)==type(""):
         # it's very easy to forget that the input should be a list so we tolerate a single string
         confFnames = [confFnames]

@@ -1167,7 +1167,7 @@ var tsnePlot = function() {
 
         // code duplication, not very elegant, but avoids creating an array just for the indices
         if (selCells===null)
-            // the version without a cell selection
+            // the version if no cells are selected
             for (var cellIdx = 0; cellIdx < exprVec.length; cellIdx++) {
                 var val = exprVec[cellIdx];
                 if (splitArr[cellIdx]==0)
@@ -1229,9 +1229,11 @@ var tsnePlot = function() {
         //$('#tpLegendContent').append(htmls.join(""));
 
         var labelLines = [];
-        labelLines.push([labelList[0], dataList[0].length+" cells"]);
+        //labelLines.push([labelList[0], dataList[0].length+" cells"]);
+        labelLines.push([labelList[0], dataList[0].length]);
         if (dataList.length > 1)
-            labelLines.push([labelList[1], dataList[1].length+" cells"]);
+            //labelLines.push([labelList[1], dataList[1].length+" cells"]);
+            labelLines.push([labelList[1], dataList[1].length]);
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
@@ -1249,10 +1251,6 @@ var tsnePlot = function() {
 	}]
 	};
 	
-	window.violinChart = new Chart(ctx, {
-	    type: 'violin',
-	    data: boxplotData,
-	    options: {
 	      //scales: {
 		//xAxes: [{
 		    //ticks: {
@@ -1263,14 +1261,24 @@ var tsnePlot = function() {
 		//}],
 	      //},
 	      //responsive: true,
-              maintainAspectRatio: false,
-	      //legend: {
-		//position: 'top',
-	      //},
+        var optDict = { maintainAspectRatio: false,
               legend: { display: false },
 	      title: { display: false }
-	    }
-	  });
+        };
+
+        var yLabel = null;
+        if (db.conf.unit===undefined && db.conf.matrixArrType==="Uint32")
+            yLabel = "read/UMI count"
+        if (db.conf.unit!==undefined)
+            yLabel = db.conf.unit;
+
+        if (yLabel!==null)
+            optDict.scales = { yAxes: [{ scaleLabel: { display: true, labelString: yLabel} }] };
+
+	window.violinChart = new Chart(ctx, {
+	    type: 'violin',
+	    data: boxplotData,
+	    options: optDict});
         console.timeEnd("violinDraw");
     }
 
@@ -1399,6 +1407,8 @@ var tsnePlot = function() {
 
        function guessRadiusAlpha(dotCount) {
            /* return reasonable radius and alpha values for a number of dots */
+           if (dotCount<3000)
+               return [4.0, 0.5];
            if (dotCount<5000)
                return [3.0, 0.5];
            if (dotCount<9000)

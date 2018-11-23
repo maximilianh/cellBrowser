@@ -135,23 +135,31 @@ The cbScanpy wrapper runs some generic analysis steps with very crude default
 values. If you have done the analysis already, you can build a cellbrowser from
 your existing Scanpy object.
 
-From Jupyter or Python3, create a data directory with the tab-sep files:
+From Jupyter or Python3, create a data directory with the tab-sep files and a basic cellbrowser.conf:
 
-    from cellbrowser import cellbrowser
-    # convert to tsv files and create a cellbrowser.conf
-    cellbrowser.scanpyToTsv(adata, "scanpyOut", "myScanpyDataset")
+    import cellbrowser.cellbrowser as cb
+    cb.scanpyToTsv(adata, "scanpyOut", "myScanpyDataset")
 
-Then, build the cell browser into a html directory, from Jupyter:
+Then, build the cell browser into a html directory:
 
-    cellbrowser.cbBuild(["scanpyOut/cellbrowser.conf"], "~/public_html/cells", 8888)
+    cb.build("scanpyOut", "~/public_html/cells")
 
-Or from a Unix Shell:
+If you don't have a webserver running already, start an http server to serve this directory: 
 
-    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cells/ -p 8888
+    cb.serve("~/public_html/cells", 8888)
+
+You can later stop this http server:
+
+    cb.stop()
+
+Or from a Unix Shell, build and start the http server:
+
+    cd scanpyOut
+    cbBuild -o ~/public_html/cells/ -p 8888
 
 ### Convert an existing Seurat object
 
-The function ExportToCellbrowser() will be part of Seurat 3. You can install pre-release Seurat3 like this:
+The function ExportToCellbrowser() will be part of Seurat 3. You can install the pre-release Seurat3 like this:
 
     install.packages("devtools")
     devtools::install_github("satijalab/seurat", ref = "release/3.0")
@@ -168,6 +176,10 @@ Or immediately convert the files to html and serve the result on port 8080 and o
 
     ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
 
+### Import a Seurat2 .rds file
+
+Use src/cbImportSeurat. This is a somewhat outdated version of ExportToCellbrowser but should still work.
+
 ### Convert CellRanger results
 
 Find the cellranger OUT directory, it contains an "analysis" directory and also
@@ -182,13 +194,9 @@ To import Cellranger .mtx files, we need the scipy package (add --user if you ar
 Let's use an example, the pbmc3k cellranger output files from the 10x website:
 
     rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3kCellranger/ ./pbmc3kCellranger/ --progress
-    cbImportCellranger -i pbmc3kCellranger -o cellrangerOut -n pbmc3kCellranger
+    cbImportCellranger -i pbmc3kCellranger -o cellrangerOut --name pbmc3k_cellranger
     cd cellrangerOut
     cbBuild -o ~/public_html/cells -p 9999
-
-### Import a Seurat object
-
-Use src/cbImportSeurat. More instructions later.
 
 ### Process an expression matrix with a basic Seurat pipeline
 
@@ -249,8 +257,8 @@ Then you need at least three but ideally four files, they can be in .tsv or .csv
    the name of the cluster. Ideally your expression matrix is a tab-separated
    file and has as many cell columns as you have rows in the meta data file
    and they appear in the same order in both files, as cbBuild doesn't have to
-   trim the matrix then or reorder the meta file. The meta file as has a header
-   file, the names of the columns are used in the cellbrowser.conf file.
+   trim the matrix then or reorder the meta file. The meta file has a header
+   file, the names of the columns will be refered to later in the cellbrowser.conf file.
 
 3. The coordinates of the cells, often t-SNE coordinates. This file always has three
    columns, (cellName, x, y). The cellName must be the same as in the expression
@@ -292,7 +300,8 @@ You can use `cbTool metaCat` to merge the meta.tsv files from different pipeline
 
     cbTool metaCat myMeta.tsv seuratOut/meta.tsv scanpyOut/meta.tsv ./newMeta.tsv --fixDot
 
-The option --fixDot will work around R's strange habit of replacing special characters in the cell identifier with ".".
+The option --fixDot will work around R's strange habit of replacing special characters in the cell identifiers with ".".
+Directories created with ExportToCellbrowser() should not have this problem, but others may.
 
 You can now take one of the auto-generated cellbrowser.conf files or start from a fresh one with `cbBuild --init`.
 In this cellbrowser.conf, add all the coordinates files from all your pipelines. Unfortunately, right now you can
