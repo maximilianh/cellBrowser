@@ -5,7 +5,7 @@ with open("pypi/README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.19",
+    version="0.4.20",
     license="GPL 3",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
