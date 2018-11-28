@@ -38,7 +38,7 @@ def cbToolCli_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
     return args, options
 
 def cbToolCli():
@@ -400,7 +400,7 @@ def cbCellrangerCli_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
 
     return args, options
 

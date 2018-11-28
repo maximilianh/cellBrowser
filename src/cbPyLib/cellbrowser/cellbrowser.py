@@ -68,39 +68,49 @@ defOutDir = os.environ.get("CBOUT")
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
-# the scanpy layout from the scanpy docs
-scanpyLayouts = {
-    # scanpy-specific layouts
-    "tsne": "t-SNE",
-    "pagaFa": "PAGA/ForceAtlas2",
-    "pagaFr": "PAGA/Fruchterman Reingold",
-    "pagaUmap": "PAGA/UMAP",
-    "umap": "UMAP",
-    "phate": "PHATE"
-}
-
-igraphLayouts = {
-    #  generic igraph layouts
+coordLabels = {
+    #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
     "fr": "Fruchterman Reingold",
     "grid_fr": "Grid Fruchterman Reingold",
     "kk": "Kamadi Kawai",
     "lgl": "Large Graph Layout",
     "drl": "DrL Distributed Recursive Layout",
-    "rt": "Reingold Tilford tree"
+    "rt": "Reingold Tilford tree",
+    # special scanpy layouts
+    "tsne" : "t-SNE",
+    "umap" : "UMAP",
+    "pagaFa" : "PAGA/ForceAtlas2",
+    "pagaFr" : "PAGA/Fruchterman-Reingold",
+    "pagaUmap" : "PAGA/UMAP",
+    "phate" : "PHATE"
 }
 
+metaLabels = {
+    "louvain" : "Louvain Cluster",
+    "percent_mito" : "Percent Mitochond.",
+    "n_genes" : "Expressed Genes",
+    "n_counts" : "UMI Count"
+}
 
 # ==== functions =====
 
-def setDebug(options, doDebug=False):
+debugDone = False
+
+def setDebug(doDebug):
     " activate debugging if needed "
-    if (doDebug and options==None) or (options!=None and options.debug):
+    global debugDone
+    if debugDone:
+        return
+
+    if doDebug:
         logging.basicConfig(level=logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
         logging.getLogger().setLevel(logging.INFO)
+    debugDone = True
+
 
 def makeDir(outDir):
     if not isdir(outDir):
@@ -240,7 +250,7 @@ def main_parseArgs():
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
 
     return args, options
 
@@ -275,7 +285,7 @@ def cbBuild_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
 
     return args, options
 
@@ -293,7 +303,7 @@ def cbMake_parseArgs():
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
     return args, options
 
 def cbScanpy_parseArgs():
@@ -550,41 +560,41 @@ def bytesAndFmt(x):
 #    decCounts.insert(0, zeroCount)
 #    return deciles, decCounts, newVals
 
-def findBins(numVals, breakVals):
+def findBins(numVals, breakVals, hasNan):
     """
     find the right bin index defined by breakVals for every value in numVals.
     Special handling for the last value. The comparison uses "<=". The first
     break is assumed to be the minimum of numVals and is therefore ignored.
-    Also returns an array with the count for every bin.
+    Also returns an array with the count for every bin. hasNan triggers a special
+    mode where the first bin is reserved for NaNs (encoded as -inf)
     >>> findBins([1,1,1,2,2,2,3,3,4,4,5,5,6,6], [1, 2,3,5,6])
     ([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3], [6, 2, 4, 2])
     """
-    nanVal = float('nan')
-    breaks = breakVals[1:]
     bArr = []
-    binCounts = [0]*len(breaks)
+    binCounts = [0]*(len(breakVals)-1)
 
-    # check for NaN values
-    hasNan = False
-    for x in numVals:
-        if math.isnan(x):
-            hasNan = True
-            binCounts.append(0)
-            break
+    # NaNs mean that the non-NaN bins are all +1
+    if hasNan:
+        breaks = breakVals[2:]
+    else:
+        breaks = breakVals[1:]
 
-    for x in numVals:
-        if not hasNan:
-            binIdx = bisect.bisect_left(breaks, x)
-        else:
-            if math.isnan(x):
+    if hasNan:
+        for x in numVals:
+            # we use -inf for the NaN value everywhere, sorting is undefined in lists that contain NaN
+            if math.isinf(x):
                 binIdx = 0
             else:
                 binIdx = bisect.bisect_left(breaks, x)+1
+            bArr.append(binIdx)
+            binCounts[binIdx]+=1
+    else:
+        for x in numVals:
+            binIdx = bisect.bisect_left(breaks, x) # comparison operator is <=
+            bArr.append(binIdx)
+            binCounts[binIdx]+=1
 
-        bArr.append(binIdx)
-        binCounts[binIdx]+=1
-
-    return bArr, binCounts, hasNan
+    return bArr, binCounts
 
 def countBinsBetweenBreaks(numVals, breakVals):
     """ count how many numVals fall into the bins defined by breakVals.
@@ -646,14 +656,28 @@ def discretizeArray(numVals, fieldMeta):
     breakIndices.append(countLen-1)
     breakVals = [counts[idx][0] for idx in breakIndices]
 
-    dArr, binCounts, hasNan = findBins(numVals, breakVals)
-    assert((not hasNan and len(binCounts)==10) or (hasNan and len(binCounts)==11))
+    # NaNs are encoded as -inf so they always are the first break
+    # The first non-NaN value is at index 1
+    # If we have NaNs, we need one more bin, with the first non-Nan value
+    hasNan = False
+    if math.isinf(breakVals[0]):
+        hasNan = True
+        breakVals.insert(1, counts[1][0])
+        logging.info("Field has NaN/Unknown values")
+    logging.debug("Breaks are: %s" % breakVals)
+
+    dArr, binCounts = findBins(numVals, breakVals, hasNan)
     logging.info("Number of values per decile-bin: %s" % binCounts)
+
+    # we should have 11 breaks/10 bins, or 12 breaks/11bins if we have NaN elements
+    assert((not hasNan and len(breakVals)==11) or (hasNan and len(breakVals)==12))
+    assert((not hasNan and len(binCounts)==10) or (hasNan and len(binCounts)==11))
+    assert((len(binCounts)+1 == len(breakVals)))
 
     fieldMeta["binMethod"] = "quantiles"
     fieldMeta["binCounts"] = binCounts
-    if hasNan:
-        breakVals.insert(0, "Unknown")
+    if math.isinf(breakVals[0]): # -infinity is not valid in JSON
+        breakVals[0] = "Unknown"
     fieldMeta["breaks"] = breakVals
 
     return dArr, fieldMeta
@@ -709,7 +733,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     floatCount = 0
     valCounts = defaultdict(int)
     newVals = []
-    nanVal = float('nan')
+    nanVal = float('-inf') # NaN and sorting does not work. we want NaN always to be first.
     for val in valList:
         fieldType = "string"
         newVal = val
@@ -2485,14 +2509,24 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     import pandas as pd
     fileBase = filePrefix+"_coords.tsv"
     fname = join(outDir, fileBase)
-    if fieldName in anndata.obsm.dtype.names:
-        logging.info("Writing %s coords to %s" % (fullName, fname))
-        fa2_coord=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
-        fa2_coord.columns=['x','y']
-        fa2_coord.to_csv(fname,sep='\t')
-        desc.append( {'file':fileBase, 'shortLabel': fullName} )
-    else:
-        logging.debug('Couldnt find %s coordinates' % fullName)
+
+    existNames = anndata.obsm.dtype.names 
+    altName1 = "X_"+fieldName
+    altName2 = "draw_graph_"+fieldName
+    if fieldName not in existNames:
+        if altName1 in existNames:
+            fieldName = altName1
+        elif altName2 in existNames:
+            fieldName = altName2
+        else:
+            logging.debug('Couldnt find coordinates for %s, tried keys %s, %s and %s' % (fullName, fieldName, altName1, altName2))
+            return
+
+    logging.info("Writing %s coords to %s" % (fullName, fname))
+    fa2_coord=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
+    fa2_coord.columns=['x','y']
+    fa2_coord.to_csv(fname,sep='\t')
+    desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
 def writeCellbrowserConf(name, coordsList, fname, args={}):
     for c in name:
@@ -2580,7 +2614,17 @@ def anndataToTsv(anndata, matFname, usePandas=False):
         ofh.close()
     os.rename(tmpFname, matFname)
 
-def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], nb_marker=50, doDebug=False):
+def makeDictDefaults(inVar, defaults):
+    " convert inVar to dict if necessary, defaulting to our default labels "
+    if type(inVar) is dict:
+        return inVar
+
+    d = {}
+    for val in inVar:
+        d[val] = defaults.get(val, val)
+    return d
+
+def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2594,38 +2638,40 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     :param nb_marker: number of cluster markers to store. Default: 100
 
     """
-    setDebug(None, doDebug)
+    if doDebug is not None:
+        setDebug(doDebug)
+
     if not isdir(path):
         makeDir(path)
 
+    for name in metaFields:
+        if name not in anndata.obs.keys():
+            raise ValueError('There is no annotation field with the name `%s`.' % name)
+
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
-        logging.warn("%s already exists. You may be about to overwrite existing files." % confName)
-        #errAbort("File %s already exists. Cowardly refusing to overwrite it. Please move the file away and re-run this command" % confName)
+        logging.warn("%s already exists. Overwriting existing files." % confName)
 
     import numpy as np
     import pandas as pd
     import scanpy.api as sc
 
-    ##Save data matrix to tsv
-    #if "raw" in dir(anndata):
-    #    adT = anndata.raw.T
-    #else:
+    if not skipMatrix:
+        matFname = join(path, 'exprMatrix.tsv')
+        anndataToTsv(anndata, matFname)
+        matFname = runGzip(matFname)
 
-    matFname = join(path, 'exprMatrix.tsv')
-    anndataToTsv(anndata, matFname)
-    matFname = runGzip(matFname)
+    if coordFields=="all" or coordFields is None:
+        coordFields = coordLabels
+    coordsFields = makeDictDefaults(coordFields, coordLabels)
 
     coordDescs = []
-    writeAnndataCoords(anndata, "X_tsne", path, "tsne", "T-SNE", coordDescs)
-    writeAnndataCoords(anndata, "X_umap", path, "umap", "UMAP", coordDescs)
-    writeAnndataCoords(anndata, "X_pagaFa", path, "pagaFa2", "PAGA/ForceAtlas2", coordDescs)
-    writeAnndataCoords(anndata, "X_pagaFr", path, "pagaFr", "PAGA/Fruchterman-Reingold", coordDescs)
-    writeAnndataCoords(anndata, "X_pagaUmap", path, "pagaUmap", "PAGA+UMAP", coordDescs)
-    writeAnndataCoords(anndata, "X_phate", path, "phate", "PHATE", coordDescs)
 
-    for layoutCode, layoutName in igraphLayouts.items():
-        writeAnndataCoords(anndata, "X_draw_graph_"+layoutCode, path, layoutCode, layoutName, coordDescs)
+    for layoutCode, layoutName in coordFields.items():
+        writeAnndataCoords(anndata, layoutCode, path, layoutCode, layoutName, coordDescs)
+
+    if len(coordDescs)==0:
+        raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
 
     ##Check for cluster markers
     if 'rank_genes_groups' in anndata.uns:
@@ -2639,31 +2685,38 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
             col[0],col[-2]='z_score','gene'
             concat.columns=col
             marker_df=marker_df.append(concat)
+
+        #Rearranging columns -> Cluster, gene, score
+        cols=marker_df.columns.tolist()
+        cols=cols[::-1]
+        marker_df=marker_df[cols]
+        #Export
+        fname = join(path, "markers.tsv")
+        logging.info("Writing %s" % fname)
+        pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+
     else:
         errAbort ('Couldnt find cluster markers list')
 
-    #Rearranging columns -> Cluster, gene, score
-    cols=marker_df.columns.tolist()
-    cols=cols[::-1]
-    marker_df=marker_df[cols]
-    #Export
-    fname = join(path, "markers.tsv")
-    logging.info("Writing %s" % fname)
-    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
-
     ##Save metadata
     if metaFields != None:
+        metaFields = makeDictDefaults(metaFields, metaLabels)
         meta_df=pd.DataFrame()
-        for element in metaFields:
-            if element not in anndata.obs:
-                logging.warn(str(element) + ' field is not present in the AnnData object')
+        for metaKey, metaLabel in iterItems(metaFields):
+            if metaKey not in anndata.obs:
+                logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
             else:
-                temp=anndata.obs[[element]]
+                temp=anndata.obs[[metaKey]]
+                if metaKey in metaLabels:
+                    temp.rename(metaLabel)
                 meta_df=pd.concat([meta_df,temp],axis=1)
+        meta_fr.rename(columns=lambda x: x.replace(' ', '_'), inplace=True)
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
-    writeCellbrowserConf(datasetName, coordDescs, confName, args={'clusterField':'louvain'})
+    if clusterField:
+        clusterFieldLabel = metaFields.get('louvain', 'louvain')
+        writeCellbrowserConf(datasetName, coordDescs, confName, args={'clusterField':clusterFieldLabel})
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -2733,7 +2786,7 @@ def cbBuild(confFnames, outDir, port=None):
 
 def build(confFnames, outDir, port=None, doDebug=False):
     " build browser from config files confFnames into directory outDir and serve on port "
-    setDebug(None, doDebug)
+    setDebug(doDebug)
     if type(confFnames)==type(""):
         # it's very easy to forget that the input should be a list so we tolerate a single string
         confFnames = [confFnames]
@@ -2787,7 +2840,11 @@ def loadPid():
     return pid
 
 def serve(outDir, port):
-    " spawning a daemon from ipython is not a good idea. We use the shell instead "
+    " forking from R/ipython/jupyter is not a good idea at all. Instead, we start a shell that runs Python. "
+    if outDir is None:
+        raise Exception("html outDir must be set if a port is set")
+
+    stop()
     cmd = [sys.executable, __file__, "cbServe", outDir, str(port)]
     cmdStr = " ".join(cmd) + "&"
     ret = os.system(cmdStr)
@@ -2837,7 +2894,7 @@ def stop():
     import signal
     pid = loadPid()
     if pid is None:
-        print("No saved process ID found, nothing to kill")
+        logging.debug("No saved process ID found, nothing to kill")
         return
 
     try:
@@ -3051,7 +3108,7 @@ def checkLayouts(conf):
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
-        doLayouts = list( igraphLayouts.keys() )
+        doLayouts = list( coordLabels.keys() )
         doLayouts.extend( list(scanpyLayouts) )
 
     for l in doLayouts:

@@ -2175,9 +2175,18 @@ var tsnePlot = function() {
             var binMin = fieldInfo.minVal;
             var breaks = fieldInfo.breaks;
             var binCounts = fieldInfo.binCounts;
-            var binCount = fieldInfo.binCounts.length;
-            for (var i=0; i<binCount; i++) {
-                binInfo.push( [breaks[i], breaks[i+1], binCounts[i]] );
+            var binCountsLen = fieldInfo.binCounts.length;
+            var binIdx = 0;
+            if (breaks[0]=="Unknown") {
+                binInfo.push( ["Unknown", "Unknown", binCounts[0]] );
+                binIdx = 1;
+            }
+                
+            for (; binIdx<binCountsLen; binIdx++) {
+                var binMin = breaks[binIdx];
+                var binMax = breaks[binIdx+1];
+                var binCount = binCounts[binIdx];
+                binInfo.push( [binMin, binMax, binCount] );
             }
         }
             

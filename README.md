@@ -4,7 +4,10 @@ UCSC Single Cell Browser
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
-The UCSC Cell Browser is a viewer for single cell data. You can click on and hover over cells to get meta information, search for genes to color on and click clusters to show cluster-specific marker genes, which in turn are clickable again.
+The UCSC Cell Browser is a viewer for single cell data. You can click on and
+hover over cells to get meta information, search for genes to color on and
+click clusters to show cluster-specific marker genes, which in turn are
+clickable again.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
