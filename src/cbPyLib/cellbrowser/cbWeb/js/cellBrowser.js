@@ -322,7 +322,7 @@ var tsnePlot = function() {
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
-        var buttonWidth = 300;
+        var buttonWidth = 400;
         var tabsWidth = winWidth - buttonWidth - 50;
 
 
@@ -333,6 +333,7 @@ var tsnePlot = function() {
             var dataset = gDatasetList[i];
             var line = "<button id='tpDatasetButton_"+i+"' type='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
+            htmls.push('<a role="button" class="btn btn-primary btn-xs load-dataset">Open dataset</a>')
 
             if (dataset.sampleCount!==undefined) {
                 var countDesc = prettyNumber(dataset.sampleCount);
@@ -351,7 +352,7 @@ var tsnePlot = function() {
         }
         htmls.push("</div>"); // list-group
 
-        htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: 340px; top: 10px;'>");
+        htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: " + (buttonWidth + 40) + "px; top: 10px;'>");
         htmls.push("<div id='tpOpenDialogTabs'>");
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
@@ -381,19 +382,10 @@ var tsnePlot = function() {
         //htmls.push("<div id='tpSelectedId' data-selectedid='0'>"); // store the currently selected datasetId in the DOM
         var selDatasetIdx = 0;
 
-        var buttons = {
-        "Open Dataset" :
-            function(event) {
-                $( this ).dialog( "close" );
-                var datasetName = gDatasetList[selDatasetIdx].name;
-                loadDataset(datasetName, true);
-            }
-        };
-
         if (db!==null)
             buttons["Cancel"] = function() { $( this ).dialog( "close" ); };
 
-        showDialogBox(htmls, "Open Cell Browser Dataset", {width: winWidth, height:winHeight, "buttons":buttons});
+        showDialogBox(htmls, "Choose Cell Browser Dataset", {width: winWidth, height:winHeight});
 
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
@@ -410,6 +402,15 @@ var tsnePlot = function() {
             $(".list-group-item").removeClass("active");
             $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in .html
             openDatasetLoadPane(selDatasetIdx);
+        });
+
+        $(".load-dataset").click( function (ev) {
+            ev.preventDefault();
+            selDatasetIdx = parseInt($(this).parents('.list-group-item').data('datasetid'));
+            var datasetName = gDatasetList[selDatasetIdx].name;
+            loadDataset(datasetName, true);
+            $(".ui-dialog-content").dialog("close");
+            return false;
         });
 
         $("#tabLink1").tab("show");
