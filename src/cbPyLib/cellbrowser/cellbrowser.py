@@ -2565,34 +2565,34 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def anndataToTsv(anndata, matFname, usePandas=False):
-    " write anndata expression matrix to .tsv file and gzip it "
+def anndataToTsv(ad, matFname, usePandas=False):
+    " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
     logging.info("Writing scanpy matrix to %s" % matFname)
     tmpFname = matFname+".tmp"
 
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
-    mat = anndata.X.transpose()
+    mat = ad.X.transpose()
     if scipy.sparse.issparse(mat):
         logging.info("Converting csc matrix to row-sparse matrix")
         mat = mat.tocsr() # makes writing to a file 10X faster, thanks Alex Wolf!
 
     if usePandas:
         logging.info("Converting anndata to pandas dataframe")
-        data_matrix=pd.DataFrame(mat, index=anndata.var.index.tolist(), columns=anndata.obs.index.tolist())
+        data_matrix=pd.DataFrame(mat, index=ad.var.index.tolist(), columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
         data_matrix.to_csv(tmpFname, sep='\t', index=True)
     else:
         # manual writing row-by-row should save quite a bit of memory
         logging.info("Writing gene-by-gene, without using pandas")
         ofh = open(tmpFname, "w")
-        sampleNames = anndata.obs.index.tolist()
+        sampleNames = ad.obs.index.tolist()
         ofh.write("gene\t")
         ofh.write("\t".join(sampleNames))
         ofh.write("\n")
 
-        genes = anndata.var.index.tolist()
+        genes = ad.var.index.tolist()
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
             if i % 2000==0:
@@ -2624,7 +2624,7 @@ def makeDictDefaults(inVar, defaults):
         d[val] = defaults.get(val, val)
     return d
 
-def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
+def scanpyToTsv(adata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2645,7 +2645,7 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
         makeDir(path)
 
     for name in metaFields:
-        if name not in anndata.obs.keys():
+        if name not in adata.obs.keys():
             raise ValueError('There is no annotation field with the name `%s`.' % name)
 
     confName = join(path, "cellbrowser.conf")
@@ -2654,11 +2654,12 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
 
     import numpy as np
     import pandas as pd
-    import scanpy.api as sc
+    #import scanpy.api as sc
+    import anndata
 
     if not skipMatrix:
         matFname = join(path, 'exprMatrix.tsv')
-        anndataToTsv(anndata, matFname)
+        anndataToTsv(adata, matFname)
         matFname = runGzip(matFname)
 
     if coordFields=="all" or coordFields is None:
@@ -2668,15 +2669,15 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
     coordDescs = []
 
     for layoutCode, layoutName in coordFields.items():
-        writeAnndataCoords(anndata, layoutCode, path, layoutCode, layoutName, coordDescs)
+        writeAnndataCoords(adata, layoutCode, path, layoutCode, layoutName, coordDescs)
 
     if len(coordDescs)==0:
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
 
     ##Check for cluster markers
-    if 'rank_genes_groups' in anndata.uns:
-        top_score=pd.DataFrame(anndata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
-        top_gene=pd.DataFrame(anndata.uns['rank_genes_groups']['names']).loc[:nb_marker]
+    if 'rank_genes_groups' in adata.uns:
+        top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
+        top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
         marker_df= pd.DataFrame()
         for i in range(len(top_score.columns)):
             concat=pd.concat([top_score[[str(i)]],top_gene[[str(i)]]],axis=1,ignore_index=True)
@@ -2703,14 +2704,16 @@ def scanpyToTsv(anndata, path, datasetName, metaFields=["louvain", "percent_mito
         metaFields = makeDictDefaults(metaFields, metaLabels)
         meta_df=pd.DataFrame()
         for metaKey, metaLabel in iterItems(metaFields):
-            if metaKey not in anndata.obs:
+            logging.debug("getting meta field: %s -> %s" % (metaKey, metaLabel))
+            if metaKey not in adata.obs:
                 logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
             else:
-                temp=anndata.obs[[metaKey]]
-                if metaKey in metaLabels:
-                    temp.rename(metaLabel)
+                temp=adata.obs[[metaKey]]
+                #if metaKey in metaLabels:
+                #logging.debug("Using new name %s -> %s" % (metaKey, metaLabels[metaKey]))
+                #temp.name = metaLabel
                 meta_df=pd.concat([meta_df,temp],axis=1)
-        meta_fr.rename(columns=lambda x: x.replace(' ', '_'), inplace=True)
+        meta_df.rename(metaFields, axis=1, inplace=True)
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
@@ -2748,6 +2751,8 @@ def writeConfig(inConf, outConf, datasetDir):
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
+    port = int(port)
+
     import RangeHTTPServer
     try:
         # py3
@@ -2775,10 +2780,6 @@ def startHttpServer(outDir, port):
     print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the IP address of this server)")
     sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
-
-def daemonizeWithPid():
-    """ daemonize this process and write the PID to a temp file """
-    tempDir = tempfile.gettempdir()
 
 def cbBuild(confFnames, outDir, port=None):
     " stay compatible "
@@ -2813,7 +2814,7 @@ def build(confFnames, outDir, port=None, doDebug=False):
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
-        startHttpServer(outDir, port)
+        startHttpServer(outDir, int(port))
 
 pidFname = "cellbrowser.pid"
 
@@ -2843,6 +2844,8 @@ def serve(outDir, port):
     " forking from R/ipython/jupyter is not a good idea at all. Instead, we start a shell that runs Python. "
     if outDir is None:
         raise Exception("html outDir must be set if a port is set")
+
+    port = int(port)
 
     stop()
     cmd = [sys.executable, __file__, "cbServe", outDir, str(port)]
