@@ -33,6 +33,8 @@ canvas { user-select: none }
 .tpIconButton { padding: 1px 2px 1px 2px; border-radius: 0; height:28px; width: 28px; cursor: default}
 .tpClicked { background-color: #AAA }
 .tpClicked:hover { background-color: #AAA }
+.btn-primary.load-dataset {float: right; margin-left: 10px; color: white;}
+.list-group-item.active>.btn-primary {color: #337ab7;background-color: #fff;}
 
 .link { text-decoration: underline; color: #0000EE; cursor: pointer; }
 

@@ -95,8 +95,8 @@ def lineFileNextRow(inFile):
         fields = string.split(line, "\t", maxsplit=len(headers)-1)
         try:
             rec = Record(*fields)
-        except Exception, msg:
-            logging.error("Exception occured while parsing line, %s" % msg)
+        except Exception as e:
+            logging.error("Exception occured while parsing line, %s" % e)
             logging.error("Filename %s" % fh.name)
             logging.error("Line was: %s" % line)
             logging.error("Does number of fields match headers?")
