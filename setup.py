@@ -25,6 +25,7 @@ setuptools.setup(
     'console_scripts': [
         'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
         'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        'cbSeurat = cellbrowser.seurat:cbSeuratCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
