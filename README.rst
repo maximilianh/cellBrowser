@@ -24,8 +24,8 @@ The following documentation explains how to create a cellbrowser from a:
 * Seurat object: `ExportToCellbrowser()` from R
 * Scanpy object: `scanpyToCellbrowser()` from Python
 * Expression matrix
-    ** running a basic Seurat pipeline: `cbSeurat` command line tool
-    ** running a basic Scanpy pipeline: `cbScanpy` command line tool
+  * running a basic Seurat pipeline: `cbSeurat` command line tool
+  * running a basic Scanpy pipeline: `cbScanpy` command line tool
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
