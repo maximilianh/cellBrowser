@@ -21,8 +21,8 @@ The following documentation explains how to create a cellbrowser from a:
 * Cellranger directory: command line tool `cbImportCellranger`
 * Seurat rds file: command line tool `cbImportSeurat`
 * Scanpy h5ad file: command line tool `cbImportScanpy`
-* Seurat object: `ExportToCellbrowser()` in R
-* Scanpy object: `ExportToCellbrowser()` in Python
+* Seurat object: `ExportToCellbrowser()` from R
+* Scanpy object: `scanpyToCellbrowser()` from Python
 * Expression matrix
     ** running a basic Seurat pipeline: `cbSeurat` command line tool
     ** running a basic Scanpy pipeline: `cbScanpy` command line tool

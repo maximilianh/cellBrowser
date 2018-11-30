@@ -2550,6 +2550,9 @@ def writeCellbrowserConf(name, coordsList, fname, args={}):
     coordStr = json.dumps(coordsList, indent=4)
 
     conf = """
+# This is a bare-bones, auto-generated cellbrowser config file.
+# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+# for a full file that shows all possible options
 name='%(name)s'
 shortLabel='%(name)s'
 exprMatrix='exprMatrix.tsv.gz'
@@ -2789,7 +2792,7 @@ def startHttpServer(outDir, port):
 
     outDir = os.path.expanduser(outDir)
     os.chdir(outDir)
-    print("Serving "+outDir)
+    print("Serving "+outDir+" on port %s" % str(port))
     print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the IP address of this server)")
     sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
@@ -2861,8 +2864,9 @@ def serve(outDir, port):
     port = int(port)
 
     stop()
-    cmd = [sys.executable, __file__, "cbServe", outDir, str(port)]
+    cmd = [sys.executable, __file__, "cbServe", "'"+outDir+"'", str(port)]
     cmdStr = " ".join(cmd) + "&"
+    logging.debug("Running command through shell: '%s'" % cmdStr)
     ret = os.system(cmdStr)
     if ret!=0:
         print("ERROR: Could not run command '%s'" % cmdStr)
