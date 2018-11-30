@@ -13,8 +13,19 @@ For a demo of the browser, see http://cells.ucsc.edu
 
 The main script is cbBuild. It is a Python program that takes a gene expression
 matrix and related files and converts the output to JSON and binary files to
-an output directory which can be served over http. The importers for cbBuild
-are cbCellranger, cbSeurat and cbScanpy.
+an output directory which can be put onto a webserver or shown with the built-in
+webserver.
+
+The following documentation explains how to create a cellbrowser from a:
+
+* Cellranger directory: command line tool `cbImportCellranger`
+* Seurat rds file: command line tool `cbImportSeurat`
+* Scanpy h5ad file: command line tool `cbImportScanpy`
+* Seurat object: `ExportToCellbrowser()` in R
+* Scanpy object: `ExportToCellbrowser()` in Python
+* Expression matrix
+    ** running a basic Seurat pipeline: `cbSeurat` command line tool
+    ** running a basic Scanpy pipeline: `cbScanpy` command line tool
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.

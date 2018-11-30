@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToTsv, build
+from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -447,7 +447,7 @@ def cbImportScanpyCli():
 
     import anndata
     ad = anndata.read_h5ad(inFname)
-    scanpyToTsv(ad, outDir, datasetName, skipMatrix=options.skipMatrix)
+    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix)
 
     if options.port and not options.htmlDir:
         errAbort("--port requires --htmlDir")

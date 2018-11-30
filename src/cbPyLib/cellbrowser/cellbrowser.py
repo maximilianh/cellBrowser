@@ -72,17 +72,17 @@ coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
     "fr": "Fruchterman Reingold",
-    "grid_fr": "Grid Fruchterman Reingold",
+    #"grid_fr": "Grid Fruchterman Reingold", # deactivated for now due to https://github.com/igraph/python-igraph/issues/152
     "kk": "Kamadi Kawai",
-    "lgl": "Large Graph Layout",
+    #"lgl": "Large Graph Layout", # looks useless
     "drl": "DrL Distributed Recursive Layout",
-    "rt": "Reingold Tilford tree",
+    #"rt": "Reingold Tilford tree", # doesn't look useful
+
     # special scanpy layouts
     "tsne" : "t-SNE",
     "umap" : "UMAP",
     "pagaFa" : "PAGA/ForceAtlas2",
     "pagaFr" : "PAGA/Fruchterman-Reingold",
-    "pagaUmap" : "PAGA/UMAP",
     "phate" : "PHATE"
 }
 
@@ -347,14 +347,7 @@ def cbScanpy_parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-        #import sys
-        #import IPython # just making sure that ipython is installed. install with 'pip install ipython'
-        #sys.excepthook = excepthook
-
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options.debug)
     return args, options
 
 def lineFileNextRow(inFile, utfHacks=False):
@@ -2132,13 +2125,22 @@ def readSampleNames(fname):
     logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
 
-def guessGeneIdType(matrixFname):
-    " returns 'gencode-human', 'gencode-mouse' or 'symbols' depending on the first gene "
-    matIter = MatrixTsvReader()
-    matIter.open(matrixFname, usePyGzip=True)
+def guessGeneIdType(inputObj):
+    """ Accepts a list of gene IDs or a matrix file name.
+    returns 'gencode-human', 'gencode-mouse' or 'symbols' depending on the first gene
+    """
+    if type(inputObj)==type(list()):
+        geneIds = inputObj
+    else:
+        matrixFname = inputObj
+        matIter = MatrixTsvReader()
+        matIter.open(matrixFname, usePyGzip=True)
 
-    geneId, sym, exprArr = nextEl(matIter.iterRows())
-    matIter.close()
+        geneId, sym, exprArr = nextEl(matIter.iterRows())
+        matIter.close()
+        geneIds = [geneId]
+
+    geneId = geneIds[0]
 
     if geneId.startswith("ENSG"):
         geneType = "gencode-human"
@@ -2147,7 +2149,7 @@ def guessGeneIdType(matrixFname):
     else:
         geneType = "symbols"
 
-    logging.info("Auto-detected, gene IDs in %s are of type: %s" % (matrixFname, geneType))
+    logging.info("Auto-detected gene IDs type: %s" % (geneType))
     return geneType
 
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
@@ -2345,16 +2347,27 @@ def readGeneSymbols(geneIdType, matrixFname):
 
 def readMitos(idType):
     ' return the gene IDs of all mitochondrial genes. 37 for human for all gencode versions '
-    if idType=="human":
-        geneToSym = readGeneSymbols("gencode-human")
-    elif idType=="mouse":
-        geneToSym = readGeneSymbols("gencode-mouse")
-    else:
-        geneToSym = readGeneSymbols(idType)
+    logging.debug("Creating mito list for gene ID type %s" % idType)
 
+    if idType.startswith("symbol"):
+        human = readGeneSymbols("gencode-human", None)
+        mouse = readGeneSymbols("gencode-human", None)
+        mitos = []
+        for sym in human.values():
+            if sym.startswith("MT-"):
+                mitos.append(sym)
+        for sym in mouse.values():
+            if sym.startswith("mt-"):
+                mitos.append(sym)
+        logging.info("Built list of human and mouse mitochondrial symbols, %d symbols found" % len(mitos))
+        if len(mitos)>100:
+            errAbort("Too many mitos found. %s" % mitos)
+        return mitos
+
+    geneToSym = readGeneSymbols(idType, None)
     mitos = []
     for geneId, sym in iterItems(geneToSym):
-        if sym.startswith("MT-"):
+        if sym.lower().startswith("MT-"):
             mitos.append(geneId)
     if len(mitos)==0:
         errAbort("Could not find any mitochondrial genes for gene ID type %s" % idType)
@@ -2510,9 +2523,9 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     fileBase = filePrefix+"_coords.tsv"
     fname = join(outDir, fileBase)
 
-    existNames = anndata.obsm.dtype.names 
+    existNames = anndata.obsm.dtype.names
     altName1 = "X_"+fieldName
-    altName2 = "draw_graph_"+fieldName
+    altName2 = "X_draw_graph_"+fieldName
     if fieldName not in existNames:
         if altName1 in existNames:
             fieldName = altName1
@@ -2624,7 +2637,7 @@ def makeDictDefaults(inVar, defaults):
         d[val] = defaults.get(val, val)
     return d
 
-def scanpyToTsv(adata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
+def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2645,7 +2658,7 @@ def scanpyToTsv(adata, path, datasetName, metaFields=["louvain", "percent_mito",
         makeDir(path)
 
     for name in metaFields:
-        if name not in adata.obs.keys():
+        if name not in adata.obs.keys() and name!="percent_mito":
             raise ValueError('There is no annotation field with the name `%s`.' % name)
 
     confName = join(path, "cellbrowser.conf")
@@ -3112,11 +3125,10 @@ def checkLayouts(conf):
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
         doLayouts = list( coordLabels.keys() )
-        doLayouts.extend( list(scanpyLayouts) )
 
     for l in doLayouts:
-        if l not in scanpyLayouts and l not in igraphLayouts:
-            errAbort("layout name %s is not valid. Valid layouts: %s or %s" % (l, str(scanpyLayouts), str(igraphLayouts)))
+        if l not in coordLabels:
+            errAbort("layout name %s is not valid. Valid layouts: %s" % (l, str(coordLabels)))
 
     return doLayouts
 
@@ -3162,12 +3174,20 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
         pipeLog("Basic filtering: keep only gene with min %d cells" % (minCells))
         sc.pp.filter_genes(adata, min_cells=minCells)
 
+    pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
+
+    if len(list(adata.obs_names))==0:
+        errAbort("No cells left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
+    if len(list(adata.var_names))==0:
+        errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
+
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
     if conf.get("doFilterMito", True):
         geneIdType = conf.get("geneIdType")
-        if geneIdType is None:
-            logging.warn("'geneIdType' is not specified in config file. Using 'human' as a default")
-            geneIdType = "human"
+        if geneIdType is None or geneIdType=="auto":
+            logging.info("'geneIdType' is not specified in config file.")
+            geneIds = list(adata.var_names)
+            geneIdType = guessGeneIdType(geneIds)
 
         thrsh_mito=conf.get("mitoMax", 0.05)
         pipeLog("Remove cells with more than %f percent of mitochondrial genes" % thrsh_mito)
@@ -3303,35 +3323,23 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
         pipeLog("Performing PAGA+ForceAtlas2")
         sc.tl.paga(adata, groups='louvain')
         sc.pl.paga(adata, show=True, layout="fa")
-        sc.tl.draw_graph(adata, init_pos='paga')
+        sc.tl.draw_graph(adata, init_pos='paga', layout="fa")
         adata.obsm["X_pagaFa"] = adata.obsm["X_draw_graph_fa"]
 
     if "pagaFr" in doLayouts:
         pipeLog("Performing PAGA+Fruchterman Reingold")
         sc.tl.paga(adata, groups='louvain')
         sc.pl.paga(adata, show=True, layout="fr")
-        sc.tl.draw_graph(adata, init_pos='paga')
+        sc.tl.draw_graph(adata, init_pos='paga', layout="fr")
         adata.obsm["X_pagaFr"] = adata.obsm["X_draw_graph_fr"]
 
-    otherLayouts = set(doLayouts).difference(set(["phate", "umap", "pagaFa", "pagaFr"]))
+    otherLayouts = set(doLayouts).difference(set(["tsne", "phate", "umap", "pagaFa", "pagaFr"]))
 
     for layoutCode in otherLayouts:
-        pipeLog("Performing Layout '%s' = %s" % (layoutCode, igraphLayouts[layoutCode]))
+        pipeLog("Performing Layout '%s' = %s" % (layoutCode, coordLabels[layoutCode]))
         sc.tl.draw_graph(adata, layout=layoutCode)
 
-    #if conf.get("doLgl", False):
-        #pipeLog("Performing LGL layout (draw_graph)")
-        #sc.tl.draw_graph(adata)
-
-    #if conf.get("doFr", False):
-        #pipeLog("Performing Fruchterman Reingold layout (draw_graph)")
-        #sc.tl.draw_graph(adata)
-
-    #pipeLog("Performing PAGA+UMAP")
-    #sc.tl.umap(adata, init_pos='paga') # waiting for key_added_ext PR
-
-    #Finding Top Markers, according to z-score
-
+    # Finding Top Markers, sorted by z-score
     if conf.get("doMarkers", True):
         nGenes = conf.get("markerCount", 20)
         pipeLog('Finding top markers for each cluster')
@@ -3344,7 +3352,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
 
     return adata
 
-def cbScanpyCli():
+def mustBePython3():
     if not isPy3:
         print("Unsupported Python version.")
         print("The cellbrowser works on almost any Python version, but Scanpy requires Python3.")
@@ -3378,6 +3386,10 @@ def cbScanpyCli():
         print("")
         print("As usual, if you're not root and not on conda/virtualenv, you may need to add --user for pip")
         sys.exit(1)
+
+def cbScanpyCli():
+    " command line interface for cbScanpy "
+    mustBePython3()
 
     global options
     args, options = cbScanpy_parseArgs()
@@ -3415,13 +3427,7 @@ def cbScanpyCli():
         #pdb.post_mortem(tb)
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
-    #else:
-        #import scanpy.api as sc
-        #logging.info("Looks like the scanpy analysis was run before")
-        #logging.info("Reading old cached anndata from %s" % adFname)
-        #adata = sc.read(adFname)
-
-    scanpyToTsv(adata, outDir, datasetName=options.name)
+    scanpyToCellbrowser(adata, outDir, datasetName=options.name)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     " convert mtx to tab-sep without scanpy. gzip if needed "
