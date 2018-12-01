@@ -122,10 +122,15 @@ ExportToCellbrowser <- function(
   # Export markers
   markers.string <- ''
   if (!is.null(markers.file)) {
-    fname <- file.path(dir, "markers.tsv")
+    ext <- tools::file_ext(markers.file)
+    file <- paste0("markers.", ext)
+    fname <- file.path(dir, file)
     message("Writing cluster markers to ", fname)
     file.copy(markers.file, fname)
-    markers.string <- 'markers = [{"file": "markers.tsv", "shortLabel": "Seurat Cluster Markers"}]'
+    markers.string <- sprintf(
+      'markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',
+      file
+    )
   }
 
   config <- 'name="%s"
