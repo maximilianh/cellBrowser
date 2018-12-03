@@ -1773,9 +1773,10 @@ def splitMarkerTable(filename, geneToSym, outDir):
     ifh = openFile(filename)
 
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
+    seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
     headerLine = ifh.readline().rstrip("\r\n")
 
-    if headerLine==seuratLine:
+    if headerLine == seuratLine or headerLine == seuratLine2:
         logging.info("Cluster marker file was recognized to be in Seurat format")
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["WeirdGeneId", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
