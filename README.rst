@@ -30,7 +30,8 @@ The following documentation explains how to create a cellbrowser from a:
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
-# Installation
+Installation: pip-based
+-----------------------
 
 You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
@@ -44,18 +45,32 @@ On Linux, if you you're not allowed to run the sudo command, you can install int
 
     pip install --user cellbrowser
     export PATH=$PATH:~/.local/bin
+    
+Installation: conda-based
+-------------------------
 
-As an alternative to these pip commands, you can also git clone the repo and
+Alternatively, if you prefer to install through bioconda, since 0.4.23 you can do:
+
+    conda install -c bioconda ucsc-cell-browser
+    
+Installation: git clone
+-----------------------
+
+As an alternative to pip or conda, you can also git clone the repo and
 run the command line scripts under cellbrowser/src:
 
     git clone https://github.com/maximilianh/cellBrowser.git --depth=10
     cd cellBrowser/src
+    
+Create site with data
+---------------------
 
-Now you should be able to run the cbBuild command and see the help messages:
+After installing through one of the methods above, you should be able to run the cbBuild command and see the help messages:
 
     cbBuild
 
-# Create a browser for a sample dataset
+Create a browser for a sample dataset
+-------------------------------------
 
 Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
 expression matrix includes only the first 100 genes, otherwise quite a few
@@ -95,7 +110,8 @@ your ~/.bashrc to point to your html directory:
  
     export CBOUT=/var/www
 
-# Using a real webserver
+Using a real webserver
+----------------------
 
 The -p 8888 is optional. A more permanent alternative to the -p option is to
 run a webserver on your machine and build directly into its web directory.
