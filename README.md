@@ -16,7 +16,8 @@ are cbCellranger, cbSeurat and cbScanpy.
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
-# Installation
+Installation
+============
 
 You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
@@ -41,7 +42,8 @@ Now you should be able to run the cbBuild command and see the help messages:
 
     cbBuild
 
-# Create a browser for a sample dataset
+A sample dataset
+================
 
 Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
 expression matrix includes only the first 100 genes, otherwise quite a few
@@ -62,12 +64,15 @@ The file cellbrowser.conf explains all the various settings that are available
 in this config file. E.g. you can change the colors, add acronym tables, add
 file names, add more marker gene tables, etc.
 
+Putting it onto the internet
+============================
+
 To deploy the result onto a real webserver, simply copy all files and directories
 under ~/public_html/cells to an empty directory on a webserver and point your
 web browser to it. E.g. many universities give their members webspace,
 sometimes in a directory called ~/public_html or on a special server. If you
 don't have that, contact us or use Cyverse or Amazon S3 to host your files, not
-Dropbox, not MS OneDrive or Google Drive, these are not real webservers.
+Dropbox. You cannot use Dropbox, iCloud OneDrive or Google Drive, they are not webservers.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
@@ -81,10 +86,8 @@ your ~/.bashrc to point to your html directory:
  
     export CBOUT=/var/www
 
-# Using a real webserver
-
-The -p 8888 is optional. A more permanent alternative to the -p option is to
-run a webserver on your machine and build directly into its web directory.
+A more permanent alternative to the built-in webserver with the -p option is to
+run a real webserver on your machine and build directly into its web directory.
 
 On a Mac you can use the Apache that ships with OSX:
 
@@ -100,7 +103,28 @@ apache2') and use the directory /var/www/ instead:
 
 We hope you do not use this software on Windows. Contact us if you have to.
 
-### Process an expression matrix with ScanPy
+Convert a Seurat object
+=======================
+
+The function ExportToCellbrowser() will be part of Seurat 3. You can install pre-release Seurat3 like this:
+
+    install.packages("devtools")
+    devtools::install_github("satijalab/seurat", ref = "release/3.0")
+
+For Seurat 2, you have to load the function with this command:
+
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-Seurat2.R")
+
+You can then write a Seurat object to a directory from which you can run cbBuild:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall")
+
+Or immediately convert the files to html and serve the result on port 8080 and open a web browser:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
+
+A minimal Scanpy pipeline
+=========================
 
 Requirements: python3 with Scanpy installed, see https://scanpy.readthedocs.io/en/latest/installation.html.
 
@@ -129,7 +153,8 @@ expression value should be shown. You can also manually copy your original
 expression matrix into the output directory ("scanpyout" in the example) to 
 include all genes.
 
-### Convert an existing Scanpy object
+Convert an existing Scanpy object
+=================================
 
 The cbScanpy wrapper runs some generic analysis steps with very crude default
 values. If you have done the analysis already, you can build a cellbrowser from
@@ -148,25 +173,6 @@ Then, build the cell browser into a html directory, from Jupyter:
 Or from a Unix Shell:
 
     cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cells/ -p 8888
-
-### Convert an existing Seurat object
-
-The function ExportToCellbrowser() will be part of Seurat 3. You can install pre-release Seurat3 like this:
-
-    install.packages("devtools")
-    devtools::install_github("satijalab/seurat", ref = "release/3.0")
-
-For Seurat 2, you have to load the function with this command:
-
-    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-Seurat2.R")
-
-You can then write a Seurat object to a directory from which you can run cbBuild:
-
-    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall")
-
-Or immediately convert the files to html and serve the result on port 8080 and open a web browser:
-
-    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
 
 ### Convert CellRanger results
 
