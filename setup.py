@@ -5,13 +5,13 @@ with open("pypi/README.md", "r") as fh:
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.16",
+    version="0.4.23",
     license="GPL 3",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
     url="https://github.com/maximilianh/cellBrowser",
-    description="UCSC Cellbrowser for single cell data. Includes command line builder and dataset converter tools for Seurat, Scanpy and Cellranger.",
+    description="UCSC Cellbrowser for single cell data. Includes tab-sep command line importer, dataset converter tools for Seurat, Scanpy and Cellranger and two basic pipelines to process an expression matrix.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib/"),
@@ -25,10 +25,13 @@ setuptools.setup(
     'console_scripts': [
         'cbBuild = cellbrowser.cellbrowser:cbBuildCli',
         'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
+        'cbSeurat = cellbrowser.seurat:cbSeuratCli',
         'cbTool = cellbrowser.convert:cbToolCli',
         'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
-        'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli'
+        'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli',
+        'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',
+        'cbImportCellranger = cellbrowser.convert:cbCellrangerCli'
     ]
     },
     #package_data={

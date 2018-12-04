@@ -1,5 +1,5 @@
 // A viewer for (x,y) scatter plots of small circles
-// shows associated meta data (usually key->val attributes, one mapping per circle) 
+// shows associated meta data (usually key->val attributes, one mapping per circle)
 // and expression data (string -> float, one mapping per circle)
 
 /* jshint -W097 */
@@ -8,7 +8,7 @@
 var tsnePlot = function() {
     var db = null; // the cbData object from cbData.js. Loads coords,
                    // annotations and gene expression vectors
-    
+
     var gDatasetList = null; // array of dataset descriptions (objects)
 
     var gVersion = "0.3";
@@ -18,7 +18,7 @@ var tsnePlot = function() {
     var gLegend = null;
     // all info about the current legend. gLegend.rows is:
     // [ colorHexStr, defaultColorHexStr, label, count, internalKey, uniqueKey ]
-    // internalKey can be int or str, depending on current coloring mode. 
+    // internalKey can be int or str, depending on current coloring mode.
     // E.g. in meta coloring, it's the metadata string value.
     // When doing expression coloring, it's the expression bin index.
     // uniqueKey is used to save manually defined colors to localStorage
@@ -30,7 +30,7 @@ var tsnePlot = function() {
     var gTitle = "UCSC Cell Browser";
     const COL_PREFIX = "col_";
 
-    // depending on the type of data, single cell or bulk RNA-seq, we call a circle a 
+    // depending on the type of data, single cell or bulk RNA-seq, we call a circle a
     // "sample" or a "cell". This will adapt help menus, menus, etc.
     var gSampleDesc = "cell";
 
@@ -141,7 +141,7 @@ var tsnePlot = function() {
         }
         return null;
     }
-                
+
     function findMetaValIndex(fieldIdx, value) {
         /* return the index of the value of an enum meta field */
         var valCounts = db.conf.metaFields[fieldIdx].valCounts;
@@ -205,7 +205,7 @@ var tsnePlot = function() {
             "f064e5", "478700", "727eff", "9ed671", "b6006c", "5fdd90", "f8384b",
             "00b199", "bb000f", "0052a3", "fcba56", "005989", "c57000", "7a3a78",
             "ccca76", "ff6591", "265e1c", "ff726c", "7b8550", "923223", "9a7e00",
-            "ffa9ad", "5f5300", "ff9d76", "b3885f"]; 
+            "ffa9ad", "5f5300", "ff9d76", "b3885f"];
         var colList2 = ["cd6a00", "843dc3", "c9cd31", "eda3ff", "854350"];
         if (n<=5)
             colList = colList2;
@@ -213,8 +213,8 @@ var tsnePlot = function() {
     }
 
     function activateTooltip(selector) {
-        // noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery 
-        var ttOpt = {"html": true, "animation": false, "delay":{"show":350, "hide":100}, container:"body"}; 
+        // noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery
+        var ttOpt = {"html": true, "animation": false, "delay":{"show":350, "hide":100}, container:"body"};
         $(selector).bsTooltip(ttOpt);
     }
 
@@ -254,7 +254,7 @@ var tsnePlot = function() {
          menuBarShow("#tpOnlySelectedButton");
          menuBarShow("#tpFilterButton");
      }
-     
+
      // the "show all" menu entry is only shown if some dots are actually hidden
      //if ((pixelCoords!==null && shownCoords!==null) && pixelCoords.length===shownCoords.length)
          //menuBarHide("#tpShowAllButton");
@@ -322,7 +322,7 @@ var tsnePlot = function() {
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
-        var buttonWidth = 300;
+        var buttonWidth = 400;
         var tabsWidth = winWidth - buttonWidth - 50;
 
 
@@ -333,6 +333,7 @@ var tsnePlot = function() {
             var dataset = gDatasetList[i];
             var line = "<button id='tpDatasetButton_"+i+"' type='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
+            htmls.push('<a role="button" class="btn btn-primary btn-xs load-dataset">Open dataset</a>')
 
             if (dataset.sampleCount!==undefined) {
                 var countDesc = prettyNumber(dataset.sampleCount);
@@ -351,7 +352,7 @@ var tsnePlot = function() {
         }
         htmls.push("</div>"); // list-group
 
-        htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: 340px; top: 10px;'>");
+        htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: " + (buttonWidth + 40) + "px; top: 10px;'>");
         htmls.push("<div id='tpOpenDialogTabs'>");
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
@@ -381,19 +382,12 @@ var tsnePlot = function() {
         //htmls.push("<div id='tpSelectedId' data-selectedid='0'>"); // store the currently selected datasetId in the DOM
         var selDatasetIdx = 0;
 
-        var buttons = {
-        "Open Dataset" :
-            function(event) {
-                $( this ).dialog( "close" );
-                var datasetName = gDatasetList[selDatasetIdx].name;
-                loadDataset(datasetName, true);
-            }
-        };
-
-        if (db!==null)
+        var buttons = {}
+        if (db!==null) {
             buttons["Cancel"] = function() { $( this ).dialog( "close" ); };
+        }
 
-        showDialogBox(htmls, "Open Cell Browser Dataset", {width: winWidth, height:winHeight, "buttons":buttons});
+        showDialogBox(htmls, "Choose Cell Browser Dataset", {width: winWidth, height:winHeight, buttons: buttons});
 
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
@@ -412,6 +406,15 @@ var tsnePlot = function() {
             openDatasetLoadPane(selDatasetIdx);
         });
 
+        $(".load-dataset").click( function (ev) {
+            ev.preventDefault();
+            selDatasetIdx = parseInt($(this).parents('.list-group-item').data('datasetid'));
+            var datasetName = gDatasetList[selDatasetIdx].name;
+            loadDataset(datasetName, true);
+            $(".ui-dialog-content").dialog("close");
+            return false;
+        });
+
         $("#tabLink1").tab("show");
 
         $(".list-group-item").focus( function (event) {
@@ -424,7 +427,7 @@ var tsnePlot = function() {
 
         if (activeIdx!==null)
             $('#tpDatasetButton_'+activeIdx).bsButton("toggle"); // had to rename .button() in .html to bsButton
-        
+
         // this is weird, but I have not found a better way to make the tab show up
         $("#tpOpenDialogTabs a:last").tab("show");
         $("#tpOpenDialogTabs a:first").tab("show");
@@ -436,7 +439,7 @@ var tsnePlot = function() {
 
     function drawLayoutMenu() {
        /* Add the View / Layout menu to the DOM */
-      var htmls = [];  
+      var htmls = [];
       var coordFiles = gCurrentDataset.coordFiles;
       for (var i=0; i<coordFiles.length; i++) {
            var label = coordFiles[i].shortLabel;
@@ -478,7 +481,7 @@ var tsnePlot = function() {
         if (name==="matrix") {
             url = joinPaths([baseUrl,"geneMatrix.tsv"]);
             // hack for aparna, to send the original matrix
-            if (baseUrl==="aparna/" || baseUrl==="aparna") 
+            if (baseUrl==="aparna/" || baseUrl==="aparna")
                 url = joinPaths([baseUrl,"matrix.tsv.gz"]);
             document.location.href = url;
         }
@@ -520,9 +523,9 @@ var tsnePlot = function() {
         htmls.push('<option value="gt">is greater than</option>');
         htmls.push('<option value="lt">is less than</option>');
         htmls.push('</select>');
-        
+
         htmls.push('<input id="tpSelectValue_'+rowIdx+'" type="text" name="exprValue"></input>');
-        
+
         htmls.push('<select id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
         htmls.push('</select>');
 
@@ -545,7 +548,7 @@ var tsnePlot = function() {
         $("#tpSelectGeneCombo_"+rowIdx).next().hide();
         $("#tpSelectValue_"+rowIdx).hide();
 
-        $('#tpSelectMetaCombo_'+rowIdx).change(function(ev) { 
+        $('#tpSelectMetaCombo_'+rowIdx).change(function(ev) {
             // when the user changes the meta field, update the list of meta field values in the dropdown
             var selVal = this.value;
             var fieldId = parseInt(selVal.split("_")[1]);
@@ -564,7 +567,7 @@ var tsnePlot = function() {
             }
         });
 
-        $('#tpSelectType_'+rowIdx).change(function(ev) { 
+        $('#tpSelectType_'+rowIdx).change(function(ev) {
             // when the user changes the gene expression / meta dropdown, hide/show the
             // respective other dropdowns
             if (this.value === "meta") {
@@ -716,8 +719,8 @@ var tsnePlot = function() {
         var dlgWidth = 700;
         var buttons = {
 
-            "Cancel" : function() { 
-                    $(this).dialog("close"); 
+            "Cancel" : function() {
+                    $(this).dialog("close");
             },
 
             "OK" : function() {
@@ -736,14 +739,14 @@ var tsnePlot = function() {
             }
 
         };
-            
+
         var htmls = [];
 
         var comboWidth = 150;
         buildOneComboboxRow(htmls, comboWidth, 1);
 
         htmls.push("<div id='tpSelectAddRowLink' class='link'>Add another search criterion</div>");
-        
+
         showDialogBox(htmls, "Find cells based on annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
 
         connectOneComboboxRow(comboWidth, 1);
@@ -798,7 +801,7 @@ var tsnePlot = function() {
                 var idListStr = $("#tpIdList").val();
                 idListStr = idListStr.trim().replace(/\r\n/g,"\n");
                 gSelCellIds = {};
-                if (idListStr==="") 
+                if (idListStr==="")
                     return;
 
                 // first check the IDs
@@ -861,7 +864,7 @@ var tsnePlot = function() {
         htmls.push("<textarea style='height:320px;width:350px;display:block'>");
         htmls.push(idList.join("\n"));
         htmls.push("</textarea>");
-        
+
         //htmls.push('<a style="text-decoration:underline" href="data:text/plain;charset=utf-8,'+idListEnc+'" download="identifiers.txt">Download as text file</a><br>');
 
         //htmls.push('<a style="text-decoration:underline" href="data:text/plain;charset=utf-8,'+idListEnc+'" download="identifiers.txt">Download as text file</a><br>');
@@ -983,7 +986,7 @@ var tsnePlot = function() {
        htmls.push('</div>'); // tpMenuBar
 
        $(document.body).append(htmls.join(""));
-      
+
        $('#tpTransMenu li a').click( onTransClick );
        $('#tpSizeMenu li a').click( onSizeClick );
        //$('#tpFilterButton').click( onHideSelectedClick );
@@ -1012,10 +1015,10 @@ var tsnePlot = function() {
        var doHover = false;
        $(".nav > .dropdown").click( function(){ doHover = true;} );
        $(".nav > .dropdown").hover(
-           function(event) { 
-               if (doHover) {  
-                   $(".dropdown-submenu").removeClass("open"); $(".dropdown").removeClass("open"); $(this).addClass('open'); 
-               } 
+           function(event) {
+               if (doHover) {
+                   $(".dropdown-submenu").removeClass("open"); $(".dropdown").removeClass("open"); $(this).addClass('open');
+               }
            });
        $(document).click ( function() { doHover= false; });
 
@@ -1090,7 +1093,7 @@ var tsnePlot = function() {
            // so there is no coloring at all on startup
            renderer.setColors(["black"]);
            var cellCount = db.conf.sampleCount;
-           renderer.setColorArr(new Uint8Array(cellCount)); 
+           renderer.setColorArr(new Uint8Array(cellCount));
            gLegend.rows = [];
            gLegend.rows.push( [ "000000", null, "No Value", cellCount, 0, null] );
            doneLoad();
@@ -1153,7 +1156,7 @@ var tsnePlot = function() {
     }
 
     function splitExprByMeta(exprVec, splitArr, selCells) {
-        /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go. 
+        /* split the expression vector into two vectors. splitArr is an array with 0/1, indicates where values go.
          * if selCells is not null, restrict the splitting to just indices in selCells.
          * Returns array of the two arrays.
          * */
@@ -1167,7 +1170,7 @@ var tsnePlot = function() {
 
         // code duplication, not very elegant, but avoids creating an array just for the indices
         if (selCells===null)
-            // the version without a cell selection
+            // the version if no cells are selected
             for (var cellIdx = 0; cellIdx < exprVec.length; cellIdx++) {
                 var val = exprVec[cellIdx];
                 if (splitArr[cellIdx]==0)
@@ -1192,7 +1195,7 @@ var tsnePlot = function() {
             arr2 = doLog2(arr2);
             console.timeEnd("log2");
         }
-            
+
         console.timeEnd("findCellsWithMeta");
         return [arr1, arr2];
     }
@@ -1229,9 +1232,11 @@ var tsnePlot = function() {
         //$('#tpLegendContent').append(htmls.join(""));
 
         var labelLines = [];
-        labelLines.push([labelList[0], dataList[0].length+" cells"]);
+        //labelLines.push([labelList[0], dataList[0].length+" cells"]);
+        labelLines.push([labelList[0], dataList[0].length]);
         if (dataList.length > 1)
-            labelLines.push([labelList[1], dataList[1].length+" cells"]);
+            //labelLines.push([labelList[1], dataList[1].length+" cells"]);
+            labelLines.push([labelList[1], dataList[1].length]);
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
@@ -1248,11 +1253,7 @@ var tsnePlot = function() {
 	    itemRadius: 0
 	}]
 	};
-	
-	window.violinChart = new Chart(ctx, {
-	    type: 'violin',
-	    data: boxplotData,
-	    options: {
+
 	      //scales: {
 		//xAxes: [{
 		    //ticks: {
@@ -1263,14 +1264,24 @@ var tsnePlot = function() {
 		//}],
 	      //},
 	      //responsive: true,
-              maintainAspectRatio: false,
-	      //legend: {
-		//position: 'top',
-	      //},
+        var optDict = { maintainAspectRatio: false,
               legend: { display: false },
 	      title: { display: false }
-	    }
-	  });
+        };
+
+        var yLabel = null;
+        if (db.conf.unit===undefined && db.conf.matrixArrType==="Uint32")
+            yLabel = "read/UMI count"
+        if (db.conf.unit!==undefined)
+            yLabel = db.conf.unit;
+
+        if (yLabel!==null)
+            optDict.scales = { yAxes: [{ scaleLabel: { display: true, labelString: yLabel} }] };
+
+	window.violinChart = new Chart(ctx, {
+	    type: 'violin',
+	    data: boxplotData,
+	    options: optDict});
         console.timeEnd("violinDraw");
     }
 
@@ -1283,8 +1294,8 @@ var tsnePlot = function() {
             return;
         }
         var labelList = [metaInfo.valCounts[0][0], metaInfo.valCounts[1][0]];
-        db.loadMetaVec( metaInfo.index, 
-                function(metaArr) { 
+        db.loadMetaVec( metaInfo.index,
+                function(metaArr) {
                     var dataList = splitExprByMeta(exprVec, metaArr, selCells);
                     buildViolinFromValues(labelList, dataList);
                 },
@@ -1311,7 +1322,7 @@ var tsnePlot = function() {
         // restrict the plot to the selected cells, if any
         if (db.conf.violinField!=undefined) {
             buildViolinFromMeta(exprVec, db.conf.violinField, selCells);
-        } else { 
+        } else {
             // there is no violin field
             if (selCells===null || selCells.length===0) {
                 // no selection, no violinField: default to a single violin plot
@@ -1350,7 +1361,7 @@ var tsnePlot = function() {
             renderer.setColorArr(decArr);
             buildLegendBar();
             onDone();
-            
+
             // update the gene combo box
             var sel = $('#tpGeneCombo')[0].selectize;
             sel.addOption({text: geneSym, value: geneSym});
@@ -1399,6 +1410,8 @@ var tsnePlot = function() {
 
        function guessRadiusAlpha(dotCount) {
            /* return reasonable radius and alpha values for a number of dots */
+           if (dotCount<3000)
+               return [4.0, 0.5];
            if (dotCount<5000)
                return [3.0, 0.5];
            if (dotCount<9000)
@@ -1484,7 +1497,7 @@ var tsnePlot = function() {
         var transText = ev.target.innerText;
         var transStr = transText.slice(0, -1); // remove last char
         var transFloat = 1.0 - (parseFloat(transStr)/100.0);
-        transparency = transFloat;        
+        transparency = transFloat;
         plotDots();
         $("#tpTransMenu").children().removeClass("active");
         $("#tpTrans"+transStr).addClass("active");
@@ -1505,7 +1518,7 @@ var tsnePlot = function() {
         }
         buildLegendBar();
     }
-        
+
     //function filterCoordsAndUpdate(cellIds, mode) {
     /* hide/show currently selected cell IDs or "show all". Rebuild the legend and the coloring. */
         //if (mode=="hide")
@@ -1526,14 +1539,14 @@ var tsnePlot = function() {
     //}
 
     /* function onHideSelectedClick(ev) {
-     user clicked the hide selected button 
+     user clicked the hide selected button
         filterCoordsAndUpdate(gSelCellIds, "hide");
         menuBarHide("#tpFilterButton");
         menuBarHide("#tpOnlySelectedButton");
         menuBarShow("#tpShowAllButton");
         ev.preventDefault();
     }
-    
+
 
     function onShowOnlySelectedClick(ev) {
      // user clicked the only selected button
@@ -1542,7 +1555,7 @@ var tsnePlot = function() {
         menuBarHide("#tpOnlySelectedButton");
         menuBarShow("#tpShowAllButton");
         ev.preventDefault();
-    } 
+    }
 
     function onShowAllClick(ev) {
     // user clicked the show all menu entry
@@ -1579,7 +1592,7 @@ var tsnePlot = function() {
     /* user clicked circle size menu entry */
         var sizeText = ev.target.innerText;
         var sizeStr = sizeText.slice(0, 1); // keep only first char
-        circleSize = parseInt(sizeStr);        
+        circleSize = parseInt(sizeStr);
         $("#tpSizeMenu").children().removeClass("active");
         $("#tpSize"+circleSize).addClass("active");
         plotDots();
@@ -1652,8 +1665,8 @@ var tsnePlot = function() {
 
         htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
                     htmls.push("<div id='tpLegendContent'>");
-                    htmls.push("</div>"); // content 
-        htmls.push("</div>"); // bar 
+                    htmls.push("</div>"); // content
+        htmls.push("</div>"); // bar
         $(document.body).append(htmls.join(""));
 
         $(".tpColorLink").click( onColorPaletteClick );
@@ -1718,7 +1731,7 @@ var tsnePlot = function() {
     }
 
     function legendSetPalette(legend, origPalName, metaFieldIndex) {
-    /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors. 
+    /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors.
      * metaFieldIndex is optional. If it is set, will use the predefined colors that are
      * in the field configuration.
      * */
@@ -1827,7 +1840,7 @@ var tsnePlot = function() {
          * return the colors as an array of hex codes */
 
         activateTooltip("#tpGeneSym");
-        
+
         var legendRows = makeLegendRowsNumeric(binInfo);
         var colors = legendGetColors(legendRows);
 
@@ -1918,9 +1931,9 @@ var tsnePlot = function() {
 
         var cellIds = getSortedCellIds();
 
-        // transform the data from tpLoadGeneExpr as gene -> list of values (one per cellId) to 
+        // transform the data from tpLoadGeneExpr as gene -> list of values (one per cellId) to
         // newExprData cellId -> list of values (one per gene)
-        
+
         // initialize an empty dict cellId = floats, one per gene
         var newExprData = {};
         var geneCount = gLoad_geneList.length;
@@ -1957,7 +1970,7 @@ var tsnePlot = function() {
         gCurrentDataset.preloadExpr.cellExpr = newExprData;
         gCurrentDataset.preloadExpr.deciles = newDeciles;
 
-        //tpGeneTable(); 
+        //tpGeneTable();
     }
 
     //function onReceiveExprLineProgress(line) {
@@ -2092,7 +2105,7 @@ var tsnePlot = function() {
                 //htmls.push(notFoundGenes[i]);
             //}
             //htmls.push("<p>Could not find the following gene symbols:</p>");
-            //showDialogBox(htmls, "Warning", 400); 
+            //showDialogBox(htmls, "Warning", 400);
         }
 
         var showOk = (notFoundGenes.length!=0);
@@ -2123,7 +2136,7 @@ var tsnePlot = function() {
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         var colsPerRow = Math.round(tableWidth / cellWidth);
-        var cellWidth = Math.round(tableWidth/colsPerRow); 
+        var cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
         for (var i = 0; i < geneInfos.length; i++) {
@@ -2142,8 +2155,8 @@ var tsnePlot = function() {
 
     function likeEmptyString(label) {
     /* some special values like "undefined" and empty string get colored in grey  */
-        return (label===null || label.trim()==="" || label==="none" || label==="None" || label==="unknown" || 
-            label==="nd" || label==="n.d." || 
+        return (label===null || label.trim()==="" || label==="none" || label==="None" || label==="unknown" ||
+            label==="nd" || label==="n.d." ||
             label==="Unknown" || label==="NaN" || label==="NA" || label==="undefined" || label==="Na");
     }
 
@@ -2165,12 +2178,21 @@ var tsnePlot = function() {
             var binMin = fieldInfo.minVal;
             var breaks = fieldInfo.breaks;
             var binCounts = fieldInfo.binCounts;
-            var binCount = fieldInfo.binCounts.length;
-            for (var i=0; i<binCount; i++) {
-                binInfo.push( [breaks[i], breaks[i+1], binCounts[i]] );
+            var binCountsLen = fieldInfo.binCounts.length;
+            var binIdx = 0;
+            if (breaks[0]=="Unknown") {
+                binInfo.push( ["Unknown", "Unknown", binCounts[0]] );
+                binIdx = 1;
+            }
+
+            for (; binIdx<binCountsLen; binIdx++) {
+                var binMin = breaks[binIdx];
+                var binMax = breaks[binIdx+1];
+                var binCount = binCounts[binIdx];
+                binInfo.push( [binMin, binMax, binCount] );
             }
         }
-            
+
         return binInfo;
     }
 
@@ -2358,7 +2380,7 @@ var tsnePlot = function() {
             var otherFrac = (otherCount / totalSum);
             addMetaTipBar(htmls, otherFrac, "<span style='color:indigo'>(other)</span>");
         }
-        
+
         $('#tpMetaTip').html(htmls.join(""));
         $('#tpMetaTip').css({top: event.target.offsetTop+"px", left: metaBarWidth+"px", width:metaTipWidth+"px"});
         $('#tpMetaTip').show();
@@ -2378,7 +2400,7 @@ var tsnePlot = function() {
     }
 
     function loadCoordSet(coordIdx) {
-        db.loadCoords(coordIdx, 
+        db.loadCoords(coordIdx,
                 function(a,b,c) { gotCoords(a,b,c); renderer.drawDots();},
                 onProgress);
     }
@@ -2395,7 +2417,7 @@ var tsnePlot = function() {
     function onGeneChange(ev) {
         /* user changed the gene in the combobox */
         var geneSym = ev.target.value;
-        if (geneSym==="") 
+        if (geneSym==="")
             return; // do nothing if user just deleted the current gene
         loadGeneAndColor(geneSym);
         $(this).blur(); // remove focus
@@ -2417,7 +2439,7 @@ var tsnePlot = function() {
          * When a dataset is opened through the UI, the variables have to
          * be reset, as their values (gene or meta data) may not exist
          * there. If it's opened via a URL, the variables must stay. */
-        db = new CbDbFile(datasetName); 
+        db = new CbDbFile(datasetName);
 
         var vars = undefined;
         if (resetVars)
@@ -2425,7 +2447,7 @@ var tsnePlot = function() {
 
         changeUrl({"ds":datasetName}, vars);
         db.loadConfig(function() { renderData() });
-        
+
         // start the tutorial after a while
         var introShownBefore = localStorage.getItem("introShown");
         if (introShownBefore==undefined)
@@ -2511,7 +2533,7 @@ var tsnePlot = function() {
 
     function geneComboSearch(query, callback) {
         /* called when the user types something into the gene box, returns matching gene symbols */
-        if (!query.length) 
+        if (!query.length)
             return callback();
 
         //var geneList = [];
@@ -2583,7 +2605,7 @@ var tsnePlot = function() {
             layoutLeft = 290;
         buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, layoutLeft, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
-        
+
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
 
         var hubUrl = db.conf.hubUrl;
@@ -2602,7 +2624,7 @@ var tsnePlot = function() {
         activateTooltip('.tpIconButton');
 
         //$('#tpIconModeMove').click( function() { activateMode("move")} );
-        //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );  
+        //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );
         //$('#tpIconModeSelect').click( function() { activateMode("select")} );
         //$('#tpZoom100Button').click( onZoom100Click );
         $('#tpIconDatasetInfo').click( function() { openDatasetDialog()});
@@ -2674,7 +2696,7 @@ var tsnePlot = function() {
     }
 
     function buildLeftSidebar () {
-    /* add the left sidebar with the meta data fields. db.loadConf 
+    /* add the left sidebar with the meta data fields. db.loadConf
      * must have completed before this can be run, we need the meta field info. */
         $("#tpLeftSidebar").remove();
         // setup the tabs
@@ -2723,13 +2745,13 @@ var tsnePlot = function() {
         $(".tpMetaValue").click( onMetaClick );
         //$(".tpMetaValue").mouseover( onMetaMouseOver );
         $(".tpMetaValue").mouseleave ( function() { $('#tpMetaTip').hide()} );
-        
+
         // setup the right-click menu
         //var menuItems = [{name: "Use as cluster label"},{name: "Copy field value to clipboard"}];
         var menuItems = [{name: "Copy field value to clipboard"}];
         var menuOpt = {
             selector: ".tpMetaBox",
-            items: menuItems, 
+            items: menuItems,
             className: 'contextmenu-customwidth',
             callback: onMetaRightClick
         };
@@ -2737,7 +2759,7 @@ var tsnePlot = function() {
         // setup the tooltips
         //$('[title!=""]').tooltip();
     }
-        
+
     function showIntro(addFirst) {
         /* add the intro.js data */
         //var htmls = [];
@@ -2832,7 +2854,7 @@ var tsnePlot = function() {
         var pal = [];
         for (var i=1; i<n+1; i++) {
             var c = hslToRgb(hue, 1.0, (0.35+((n-i)/n*0.65)));
-            pal.push( palette.rgbColor(c[0]/255, c[1]/255, c[2]/255)); 
+            pal.push( palette.rgbColor(c[0]/255, c[1]/255, c[2]/255));
         }
         return pal;
     }
@@ -2849,7 +2871,7 @@ var tsnePlot = function() {
 
 	return (luma < 40);
     }
-        
+
     function makeColorPalette(palName, n) {
     /* return an array with n color hex strings */
     // Use Google's palette functions for now, first Paul Tol's colors, if that fails, use the usual HSV rainbow
@@ -2906,7 +2928,7 @@ var tsnePlot = function() {
 
     function removeFocus() {
     /* called when the escape key is pressed, removes current focus and puts focus to nothing */
-        window.focus(); 
+        window.focus();
         if (document.activeElement) {
                 document.activeElement.blur();
         }
@@ -3026,7 +3048,7 @@ var tsnePlot = function() {
 
     function assignColors(fieldIdx, countList, doReset) {
     /* given an array of (count, value), assign a color to every value.
-     Returns an dict of value : (color as integer, color as hex string without #) 
+     Returns an dict of value : (color as integer, color as hex string without #)
      Will check if user has a manually defined color for this field before and use it, if present.
      If doReset is true, will delete of manual definitions.
      */
@@ -3034,7 +3056,7 @@ var tsnePlot = function() {
 
     function plotSelection(coords) {
     /* redraw block dots of current selection
-       Redrawing makes sure that they are not hidden underneath others. 
+       Redrawing makes sure that they are not hidden underneath others.
     */
         for (var i = 0; i < coords.length; i++) {
             var x = coords[i][0];
@@ -3162,7 +3184,7 @@ var tsnePlot = function() {
             //document.execCommand('copy');
             //console.log(val);
         }
-            
+
     }
 
     //function onLegendRightClick (key, options) {
@@ -3197,7 +3219,7 @@ var tsnePlot = function() {
     }
 
     function buildLegendBar(sortBy) {
-    /* draws current legend as specified by gLegend.rows 
+    /* draws current legend as specified by gLegend.rows
      * sortBy can be "name" or "count" or "undefined" (=auto-detect)
      * */
         if (gLegend.rows==undefined)
@@ -3269,7 +3291,7 @@ var tsnePlot = function() {
             htmls.push(label);
             htmls.push("</span>");
             //htmls.push("<span class='tpLegendCount'>"+count+"</div>");
-            var prec = 1;            
+            var prec = 1;
             if (freq<1)
                 prec = 2;
             htmls.push("<span class='tpLegendCount' title='"+count+" of "+sum+"'>"+freq.toFixed(prec)+"%</div>");
@@ -3282,7 +3304,7 @@ var tsnePlot = function() {
         // add the div where the violin plot will later be shown
         htmls.push("<div id='tpViolin'>");
         htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
-        htmls.push("</div>"); // violin 
+        htmls.push("</div>"); // violin
 
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
@@ -3304,9 +3326,9 @@ var tsnePlot = function() {
         //var menuItems = [{name: "Hide "+gSampleDesc+"s with this value"}, {name:"Show only "+gSampleDesc+"s with this value"}];
         //var menuOpt = {
             //selector: ".tpLegend",
-            //items: menuItems, 
+            //items: menuItems,
             //className: 'contextmenu-customwidth',
-            //callback: onLegendRightClick 
+            //callback: onLegendRightClick
         //};
         //$.contextMenu( menuOpt );
 
@@ -3531,7 +3553,7 @@ var tsnePlot = function() {
     }
 
     function onCellClickOrHover (cellIds, ev) {
-        /* user clicks onto a circle with the mouse or hovers over one. 
+        /* user clicks onto a circle with the mouse or hovers over one.
          * ev is undefined if not a click. */
 
         // do nothing if only hover but we already have a selection
@@ -3557,7 +3579,7 @@ var tsnePlot = function() {
         if (ev!==undefined) {
             // it was a click
             if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey)
-                renderer.selectClear(); 
+                renderer.selectClear();
             renderer.selectAdd(cellId);
             renderer.drawDots();
             event.stopPropagation();
@@ -3799,7 +3821,7 @@ var tsnePlot = function() {
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
 
-        var ttOpt = {"html": true, "animation": false, "delay":{"show":100, "hide":100} }; 
+        var ttOpt = {"html": true, "animation": false, "delay":{"show":100, "hide":100} };
         $(".tpPlots").bsTooltip(ttOpt);
 
         removeFocus();
@@ -3814,25 +3836,25 @@ var tsnePlot = function() {
     /* https://github.com/jupiterjs/jquerymx/blob/master/lang/string/deparam/deparam.js */
         if(! params || ! paramTest.test(params) ) {
             return {};
-        } 
-    
+        }
+
         var data = {},
             pairs = params.split('&'),
             current;
-            
+
         for(var i=0; i < pairs.length; i++){
             current = data;
             var pair = pairs[i].split('=');
-            
+
             // if we find foo=1+1=2
-            if(pair.length != 2) { 
+            if(pair.length != 2) {
                 pair = [pair[0], pair.slice(1).join("=")]
             }
-              
-            var key = decodeURIComponent(pair[0].replace(plus, " ")), 
+
+            var key = decodeURIComponent(pair[0].replace(plus, " ")),
                 value = decodeURIComponent(pair[1].replace(plus, " ")),
                 parts = key.match(keyBreaker);
-    
+
             for ( var j = 0; j < parts.length - 1; j++ ) {
                 var part = parts[j];
                 if (!current[part] ) {
@@ -3931,14 +3953,14 @@ var tsnePlot = function() {
     }
 
     function redirectIfSubdomain() {
-        /* rewrite the URL if at ucsc and subdomain is specified 
+        /* rewrite the URL if at ucsc and subdomain is specified
          * e.g. autism.cells.ucsc.edu -> cells.ucsc.edu?ds=autism */
-        /* we cannot run in the subdomain, as otherwise localStorage and 
+        /* we cannot run in the subdomain, as otherwise localStorage and
          * cookies are not shared */
 
         // at UCSC, the dataset can be part of the hostname
         // we got a "* CNAME" in the campus DNS server for this.
-        // it's easier to type, and pretty in manuscripts e.g. 
+        // it's easier to type, and pretty in manuscripts e.g.
         // autism.cells.ucsc.edu instead of cells.ucsc.edu?ds=autism
         var myUrl = new URL(window.location.href);
         var hostName = myUrl.hostname;
@@ -3984,7 +4006,7 @@ var tsnePlot = function() {
             if ("title" in globalOpts)
                 gTitle = globalOpts["title"];
         }
-            
+
         setupKeyboard();
         buildMenuBar();
 
@@ -3993,7 +4015,7 @@ var tsnePlot = function() {
         //menuBarHide("#tpShowAllButton");
 
         menuBarHeight = $('#tpMenuBar').outerHeight(true);
-       
+
         var canvLeft = metaBarWidth+metaBarMargin;
         var canvTop  = menuBarHeight+toolBarHeight;
         var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
@@ -4021,12 +4043,12 @@ var tsnePlot = function() {
 
         if (datasetName===undefined)
             openDatasetDialog();
-        else 
+        else
             loadDataset(datasetName, false);
-       
+
     }
 
-    // only export these functions 
+    // only export these functions
     return {
         "loadData":loadData
     }

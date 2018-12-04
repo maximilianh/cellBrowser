@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow
+from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -38,7 +38,7 @@ def cbToolCli_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
     return args, options
 
 def cbToolCli():
@@ -400,7 +400,57 @@ def cbCellrangerCli_parseArgs(showHelp=False):
         parser.print_help()
         exit(1)
 
-    setDebug(options)
+    setDebug(options.debug)
 
     return args, options
 
+def cbImportScanpy_parseArgs(showHelp=False):
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] input.h5ad outDir datasetName - convert Scanpy AnnData object to cellbrowser
+
+    Example:
+    - %prog pbmc3k.h5ad pbmc3kScanpy pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
+    """)
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true",
+        help="show debug messages")
+
+    parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
+        help="do not only convert to tab-sep files but also run cbBuild to"
+            "convert the data and add the dataset under htmlDir")
+
+    parser.add_option("-p", "--port", dest="port", action="store", type="int",
+            help="only with --htmlDir: start webserver on port to serve htmlDir")
+
+    parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
+        help="do not convert the matrix, saves time if the same one has been exported before to the "
+        "same directory")
+
+    (options, args) = parser.parse_args()
+
+    if showHelp:
+        parser.print_help()
+        exit(1)
+
+    setDebug(options.debug)
+    return args, options
+
+def cbImportScanpyCli():
+    " convert h5ad to directory "
+    args, options = cbImportScanpy_parseArgs()
+
+    if len(args)<3:
+        cbImportScanpy_parseArgs(showHelp=True)
+        sys.exit(1)
+
+    inFname, outDir, datasetName = args
+
+    import anndata
+    ad = anndata.read_h5ad(inFname)
+    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix)
+
+    if options.port and not options.htmlDir:
+        errAbort("--port requires --htmlDir")
+
+    if options.htmlDir:
+        build(outDir, options.htmlDir, port=options.port)

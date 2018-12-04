@@ -2,6 +2,7 @@
 - format the cluster names as links and make them clickable to show the markers
 - implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
+- menu entry for data set info?
 
 - make browsers:
   - Dana Peer

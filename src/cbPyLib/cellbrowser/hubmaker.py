@@ -83,7 +83,7 @@ def cbHub_parseArgs():
         parser.print_help()
         exit(1)
 
-    cellbrowser.setDebug(options)
+    cellbrowser.setDebug(options.debug)
     return args, options
 
 def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):

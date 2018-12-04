@@ -4,20 +4,34 @@ UCSC Single Cell Browser
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
 
-The UCSC Cell Browser is a viewer for single cell data. You can click on and hover over cells to get meta information, search for genes to color on and click clusters to show cluster-specific marker genes, which in turn are clickable again.
+The UCSC Cell Browser is a viewer for single cell data. You can click on and
+hover over cells to get meta information, search for genes to color on and
+click clusters to show cluster-specific marker genes, which in turn are
+clickable again.
 
 For a demo of the browser, see http://cells.ucsc.edu
 
 The main script is cbBuild. It is a Python program that takes a gene expression
 matrix and related files and converts the output to JSON and binary files to
-an output directory which can be served over http. The importers for cbBuild
-are cbCellranger, cbSeurat and cbScanpy.
+an output directory which can be put onto a webserver or shown with the built-in
+webserver.
+
+The following documentation explains how to create a cellbrowser from a:
+
+* Cellranger directory: command line tool `cbImportCellranger`
+* Seurat rds file: command line tool `cbImportSeurat`
+* Scanpy h5ad file: command line tool `cbImportScanpy`
+* Seurat object: `ExportToCellbrowser()` from R
+* Scanpy object: `scanpyToCellbrowser()` from Python
+* Expression matrix
+  * running a basic Seurat pipeline: `cbSeurat` command line tool
+  * running a basic Scanpy pipeline: `cbScanpy` command line tool
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
-Installation
-============
+Installation with pip
+---------------------
 
 You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run:
 
@@ -31,19 +45,29 @@ On Linux, if you you're not allowed to run the sudo command, you can install int
 
     pip install --user cellbrowser
     export PATH=$PATH:~/.local/bin
+    
+Installation with conda
+-----------------------
 
-As an alternative to these pip commands, you can also git clone the repo and
+Alternatively, if you prefer to install through bioconda, since 0.4.23 you can do:
+
+    conda install -c bioconda ucsc-cell-browser
+    
+Installation: git clone
+-----------------------
+
+As an alternative to pip or conda, you can also git clone the repo and
 run the command line scripts under cellbrowser/src:
 
     git clone https://github.com/maximilianh/cellBrowser.git --depth=10
     cd cellBrowser/src
+    
+Create site with data
+---------------------
 
-Now you should be able to run the cbBuild command and see the help messages:
+After installing through one of the methods above, you should be able to run the cbBuild command and see the help messages:
 
     cbBuild
-
-A sample dataset
-================
 
 Here is a small example dataset (Nowakowski et al 2018, fetal brains). The
 expression matrix includes only the first 100 genes, otherwise quite a few
@@ -86,8 +110,8 @@ your ~/.bashrc to point to your html directory:
  
     export CBOUT=/var/www
 
-A more permanent alternative to the built-in webserver with the -p option is to
-run a real webserver on your machine and build directly into its web directory.
+The -p 8888 is optional. A more permanent alternative to the -p option is to
+run a webserver on your machine and build directly into its web directory.
 
 On a Mac you can use the Apache that ships with OSX:
 
@@ -160,21 +184,50 @@ The cbScanpy wrapper runs some generic analysis steps with very crude default
 values. If you have done the analysis already, you can build a cellbrowser from
 your existing Scanpy object.
 
-From Jupyter or Python3, create a data directory with the tab-sep files:
+From Jupyter or Python3, create a data directory with the tab-sep files and a basic cellbrowser.conf:
 
-    from cellbrowser import cellbrowser
-    # convert to tsv files and create a cellbrowser.conf
-    cellbrowser.scanpyToTsv(adata, "scanpyOut", "myScanpyDataset")
+    import cellbrowser.cellbrowser as cb
+    cb.scanpyToTsv(adata, "scanpyOut", "myScanpyDataset")
 
-Then, build the cell browser into a html directory, from Jupyter:
+Then, build the cell browser into a html directory:
 
-    cellbrowser.cbBuild(["scanpyOut/cellbrowser.conf"], "~/public_html/cells", 8888)
+    cb.build("scanpyOut", "~/public_html/cells")
 
-Or from a Unix Shell:
+If you don't have a webserver running already, start an http server to serve this directory: 
 
-    cbBuild -i scanpyOut/cellbrowser.conf -o ~/public_html/cells/ -p 8888
+    cb.serve("~/public_html/cells", 8888)
 
-### Convert CellRanger results
+You can later stop this http server:
+
+    cb.stop()
+
+Or from a Unix Shell, build and start the http server:
+
+    cd scanpyOut
+    cbBuild -o ~/public_html/cells/ -p 8888
+
+Convert an Seurat object
+========================
+
+The function ExportToCellbrowser() will be part of Seurat 3. You can install the pre-release Seurat3 like this:
+
+    install.packages("devtools")
+    devtools::install_github("satijalab/seurat", ref = "release/3.0")
+
+For Seurat 2, you have to load the function with this command:
+
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-Seurat2.R")
+
+You can then write a Seurat object to a directory from which you can run cbBuild:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall")
+
+Or immediately convert the files to html and serve the result on port 8080 and open a web browser:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
+
+Convert CellRanger results
+==========================
 
 Find the cellranger OUT directory, it contains an "analysis" directory and also
 a subdirectory "filtered_gene_bc_matrices". This is the directory that is the
@@ -188,13 +241,9 @@ To import Cellranger .mtx files, we need the scipy package (add --user if you ar
 Let's use an example, the pbmc3k cellranger output files from the 10x website:
 
     rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3kCellranger/ ./pbmc3kCellranger/ --progress
-    cbImportCellranger -i pbmc3kCellranger -o cellrangerOut -n pbmc3kCellranger
+    cbImportCellranger -i pbmc3kCellranger -o cellrangerOut --name pbmc3k_cellranger
     cd cellrangerOut
     cbBuild -o ~/public_html/cells -p 9999
-
-### Import a Seurat object
-
-Use src/cbImportSeurat. More instructions later.
 
 ### Process an expression matrix with a basic Seurat pipeline
 
@@ -255,8 +304,8 @@ Then you need at least three but ideally four files, they can be in .tsv or .csv
    the name of the cluster. Ideally your expression matrix is a tab-separated
    file and has as many cell columns as you have rows in the meta data file
    and they appear in the same order in both files, as cbBuild doesn't have to
-   trim the matrix then or reorder the meta file. The meta file as has a header
-   file, the names of the columns are used in the cellbrowser.conf file.
+   trim the matrix then or reorder the meta file. The meta file has a header
+   file, the names of the columns will be refered to later in the cellbrowser.conf file.
 
 3. The coordinates of the cells, often t-SNE coordinates. This file always has three
    columns, (cellName, x, y). The cellName must be the same as in the expression
@@ -298,7 +347,8 @@ You can use `cbTool metaCat` to merge the meta.tsv files from different pipeline
 
     cbTool metaCat myMeta.tsv seuratOut/meta.tsv scanpyOut/meta.tsv ./newMeta.tsv --fixDot
 
-The option --fixDot will work around R's strange habit of replacing special characters in the cell identifier with ".".
+The option --fixDot will work around R's strange habit of replacing special characters in the cell identifiers with ".".
+Directories created with ExportToCellbrowser() should not have this problem, but others may.
 
 You can now take one of the auto-generated cellbrowser.conf files or start from a fresh one with `cbBuild --init`.
 In this cellbrowser.conf, add all the coordinates files from all your pipelines. Unfortunately, right now you can
