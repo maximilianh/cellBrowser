@@ -323,7 +323,7 @@ var tsnePlot = function() {
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
         var buttonWidth = 400;
-        var tabsWidth = winWidth - buttonWidth - 50;
+        var tabsWidth = winWidth - buttonWidth - 70;
 
 
         var htmls = [];
@@ -363,15 +363,15 @@ var tsnePlot = function() {
 
         htmls.push("<div class='tab-content'>");
 
-        htmls.push("<div id='pane1' class='tab-pane'>");
+        htmls.push("<div id='pane1' class='tpDatasetPane tab-pane'>");
         htmls.push("<p>Loading abstract...</p>");
         htmls.push("</div>");
 
-        htmls.push("<div id='pane2' class='tab-pane'>");
+        htmls.push("<div id='pane2' class='tpDatasetPane tab-pane'>");
         htmls.push("<p>Loading methods...</p>");
         htmls.push("</div>");
 
-        htmls.push("<div id='pane3' class='tab-pane'>");
+        htmls.push("<div id='pane3' class='tpDatasetPane tab-pane'>");
         htmls.push("<p>Loading data download...</p>");
         htmls.push("</div>");
 
@@ -3607,14 +3607,15 @@ var tsnePlot = function() {
 
         console.log("building marker genes window for "+clusterName);
         var htmls = [];
-        htmls.push("<div id='tpPaneHeader' style='padding:8px'>");
+        htmls.push("<div id='tpPaneHeader' style='padding:0.4em 1em'>");
 
         var buttons = {};
 
         if (tabInfo===undefined || tabInfo.length===0) {
             tabInfo = [];
-            htmls.push("No marker genes are available in this dataset. "
-                "To add marker genes, contact the original author of the dataset and ask them to add "
+            buttons["Close"] = function() { $( this ).dialog( "close" )}; 
+            htmls.push("No marker genes are available in this dataset. " +
+                "To add marker genes, contact the original authors of the dataset and ask them to add " +
                 " them to the cell browser.");
         } else {
             htmls.push("Click gene symbols below to color plot by gene<br>");

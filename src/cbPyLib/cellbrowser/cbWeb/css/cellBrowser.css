@@ -24,7 +24,7 @@ canvas { user-select: none }
 .ui-tabs .ui-tabs-panel { padding-top:5px; border:1px solid lightgray !important; padding:0} /* for marker panels */
 .ui-tabs-anchor { padding: 3px !important}
 .ui-tabs .ui-tabs-nav .ui-tabs-anchor { padding: 3px }
-.tab-pane { padding-top: 8px; border: 1px solid lightgrey; padding: 4px }
+.tab-pane { padding: .4em 1em; border: 1px solid lightgrey }
 .ui-corner-all { border-radius: 0px } /* dialogs */
 #tpOpenDatasetButton { border-radius: 4px }
 .ui-menu-item { font-size:13px }

@@ -72,11 +72,11 @@ coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
     "fr": "Fruchterman Reingold",
-    #"grid_fr": "Grid Fruchterman Reingold", # deactivated for now due to https://github.com/igraph/python-igraph/issues/152
+    "grid_fr": "Grid Fruchterman Reingold", # deactivated for now due to https://github.com/igraph/python-igraph/issues/152
     "kk": "Kamadi Kawai",
-    #"lgl": "Large Graph Layout", # looks useless
+    "lgl": "Large Graph Layout", # looks useless
     "drl": "DrL Distributed Recursive Layout",
-    #"rt": "Reingold Tilford tree", # doesn't look useful
+    "rt": "Reingold Tilford tree", # doesn't look useful
 
     # special scanpy layouts
     "tsne" : "t-SNE",
@@ -85,6 +85,8 @@ coordLabels = {
     "pagaFr" : "PAGA/Fruchterman-Reingold",
     "phate" : "PHATE"
 }
+
+recommendedLayouts = ["fa", "fr", "kk", "drl", "tsne", "umap", "pagaFa", "phate"]
 
 metaLabels = {
     "louvain" : "Louvain Cluster",
@@ -3136,7 +3138,7 @@ def checkLayouts(conf):
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
-        doLayouts = list( coordLabels.keys() )
+        doLayouts = recommendedLayouts
 
     for l in doLayouts:
         if l not in coordLabels:
