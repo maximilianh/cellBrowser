@@ -2804,7 +2804,7 @@ var tsnePlot = function() {
               //},
               {
                 element: document.querySelector('#tpLegendBar'),
-                intro: "Click into the legene to select "+gSampleDesc+"s.<br>Click a color to change it or select a palette from the 'Colors' menu.<br>To setup your own cell browser, see 'Help - Setup your own'",
+                intro: "Click into the legend to select "+gSampleDesc+"s.<br>Click a color to change it or select a palette from the 'Colors' menu.<br>To setup your own cell browser, see 'Help - Setup your own'",
                 position: 'left'
               },
             ]);
@@ -3603,24 +3603,36 @@ var tsnePlot = function() {
 
     function onClusterNameClick(clusterName) {
         /* build and open the dialog with the marker genes table for a given cluster */
-        console.log("building marker genes window for "+clusterName);
         var tabInfo = db.conf.markers; // list with (label, subdirectory)
-        if (tabInfo===undefined)
-            return;
-        var doTabs = (tabInfo != undefined && tabInfo.length>1);
 
+        console.log("building marker genes window for "+clusterName);
         var htmls = [];
-
         htmls.push("<div id='tpPaneHeader' style='padding:8px'>");
+
+        var buttons = {};
+
+        if (tabInfo===undefined || tabInfo.length===0) {
+            tabInfo = [];
+            htmls.push("No marker genes are available in this dataset. "
+                "To add marker genes, contact the original author of the dataset and ask them to add "
+                " them to the cell browser.");
+        } else {
+            htmls.push("Click gene symbols below to color plot by gene<br>");
+            buttons["Download as file"] = function() {
+                    //url = joinPaths([baseUrl,"geneMatrix.tsv"]);
+                    document.location.href = markerTsvUrl;
+                };
+
+        }
+        htmls.push("</div>");
+
+        var doTabs = (tabInfo.length>1);
+
         //var hubUrl = db.conf.hubUrl;
         //if (hubUrl!==undefined) {
             //htmls.push("<p>");
             //htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
         //}
-
-        htmls.push("Click gene symbols below to color plot by gene<br>");
-
-        htmls.push("</div>");
 
         if (doTabs) {
             htmls.push("<div id='tabs'>");
@@ -3645,14 +3657,6 @@ var tsnePlot = function() {
         }
 
         htmls.push("</div>"); // tabs
-
-        var buttons = {
-        "Download as file" :
-            function() {
-                //url = joinPaths([baseUrl,"geneMatrix.tsv"]);
-                document.location.href = markerTsvUrl;
-            },
-        };
 
         var winWidth = window.innerWidth - 0.10*window.innerWidth;
         var winHeight = window.innerHeight - 0.10*window.innerHeight;
@@ -3702,6 +3706,7 @@ var tsnePlot = function() {
         /* construct a table from a marker tsv file and write as html to the DIV with divID */
         console.log("got coordinate TSV rows, parsing...");
         var rows = papaResults.data;
+
         var headerRow = rows[0];
 
         var htmls = [];
