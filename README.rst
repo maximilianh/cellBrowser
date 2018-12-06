@@ -180,7 +180,7 @@ The function ExportToCellbrowser() will be part of Seurat 3. You can install the
 
 For Seurat 2, you have to load the function with this command:
 
-    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-Seurat2.R")
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-seurat2.R")
 
 You can then write a Seurat object to a directory from which you can run cbBuild:
 
