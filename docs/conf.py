@@ -18,15 +18,20 @@
 
 
 # -- Project information -----------------------------------------------------
+import cellbrowser
 
 project = 'cellbrowser'
-copyright = '2018, Maximilian Haeussler, Lucas Seninge, Nikolai Markov'
+copyright = '2018, Maximilian Haeussler'
 author = 'Maximilian Haeussler, Lucas Seninge, Nikolai Markov'
 
 # The short X.Y version
-version = ''
+#version = ''
 # The full version, including alpha/beta/rc tags
-release = ''
+#release = ''
+version = cellbrowser.__version__.replace('.dirty', '')
+release = version
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+pygments_style = 'sphinx'
 
 
 # -- General configuration ---------------------------------------------------
@@ -75,8 +80,15 @@ pygments_style = None
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'alabaster'
+html_theme = 'sphinx_rtd_theme'
 
+html_context = dict(
+    display_github=True,      # Integrate GitHub
+    github_user='maximilianh',   # Username
+    github_repo='cellbrowser',     # Repo name
+    github_version='master',  # Version
+    conf_py_path='/docs/',    # Path in the checkout to the docs root
+)
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
