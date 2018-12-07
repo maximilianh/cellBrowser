@@ -2637,7 +2637,11 @@ def anndataToTsv(ad, matFname, usePandas=False):
             ofh.write("\n")
 
         ofh.close()
-    os.rename(tmpFname, matFname)
+
+    if matFname.endswith(".gz"):
+        runGzip(tmpFname, matFname)
+    else:
+        os.rename(tmpFname, matFname)
 
 def makeDictDefaults(inVar, defaults):
     " convert inVar to dict if necessary, defaulting to our default labels "
@@ -2683,9 +2687,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
     import anndata
 
     if not skipMatrix:
-        matFname = join(path, 'exprMatrix.tsv')
+        matFname = join(path, 'exprMatrix.tsv.gz')
         anndataToTsv(adata, matFname)
-        matFname = runGzip(matFname)
 
     if coordFields=="all" or coordFields is None:
         coordFields = coordLabels
