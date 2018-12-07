@@ -1,1 +1,0 @@
-../src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf

@@ -96,7 +96,8 @@ under ~/public_html/cells to an empty directory on a webserver and point your
 web browser to it. E.g. many universities give their members webspace,
 sometimes in a directory called ~/public_html or on a special server. If you
 don't have that, contact us or use Cyverse or Amazon S3 to host your files, not
-Dropbox. You cannot use Dropbox, iCloud OneDrive or Google Drive, they are not webservers.
+Dropbox. You cannot use online backup solutions like Dropbox, iCloud OneDrive
+or Google Drive, they are not webservers.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
@@ -244,42 +245,6 @@ Let's use an example, the pbmc3k cellranger output files from the 10x website:
     cbImportCellranger -i pbmc3kCellranger -o cellrangerOut --name pbmc3k_cellranger
     cd cellrangerOut
     cbBuild -o ~/public_html/cells -p 9999
-
-### Process an expression matrix with a basic Seurat pipeline
-
-First make sure that you can install the package "hdf5r" in R:
-
-    Rscript -e "install.packages('hdf5r' , dep=TRUE, repos='http://cran.r-project.org/')"
-
-If the above doesn't work, try installing the fake-hdf5r package, which means that you won't be able to read 
-hdf5 files, but reading .mtx and of course tab-sep files will still work:
-
-    Rscript -e "install.packages('remotes' , dep=TRUE, repos='http://cran.r-project.org/')"
-    Rscript -e "remotes::install_github('UCSF-TI/fake-hdf5r')"
-
-Then install Seurat into your default command line R (not RStudio or another R version you may have):
-
-    Rscript -e "install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')"
-
-To run an example now, download the 10X pbmc3k expression matrix:
-
-    rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
-
-Create a default seurat.conf:
-
-    cbSeurat --init
-
-You can modify seurat.conf but the default values are good for this dataset.
-Now run the expression matrix filtered_gene_bc_matrices/hg19/matrix.mtx through Seurat like this:
-
-    cbSeurat -e filtered_gene_bc_matrices/hg19 --name pbmc3kSeurat -o seuratOut 
-
-This will create a script seuratOut/runSeurat.R, run it through Rscript and will fill the directory seuratOut/ with everything needed to create a cell browser. Now you can build your cell browser from the Seurat output:
-
-    cd seuratOut
-    cbBuild -o 
-
-You can modify the file seurat.conf and rerun the cbSeurat command above.
 
 ### Adding a dataset from tab-separated files
 

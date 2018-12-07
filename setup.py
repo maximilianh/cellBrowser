@@ -1,17 +1,19 @@
 import setuptools
+import versioneer
 
 with open("pypi/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="cellbrowser",
-    version="0.4.24",
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     license="GPL 3",
     python_requires='>=2.5',
     author="Maximilian Haeussler",
     author_email="max@soe.ucsc.edu",
     url="https://github.com/maximilianh/cellBrowser",
-    description="UCSC Cellbrowser for single cell data. Includes tab-sep command line importer, dataset converter tools for Seurat, Scanpy and Cellranger and two basic pipelines to process an expression matrix.",
+    description="UCSC Cellbrowser, an interactive browser for single cell data. Includes converters and basic pipelines for text files, Seurat, Scanpy and Cellranger.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib/"),

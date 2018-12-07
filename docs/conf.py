@@ -18,6 +18,7 @@
 
 
 # -- Project information -----------------------------------------------------
+sys.path.insert(0, "cbPyLib")
 import cellbrowser
 
 project = 'cellbrowser'
