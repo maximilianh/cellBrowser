@@ -9,3 +9,5 @@ graft src/cbPyLib/cellbrowser/sampleConfig
 #include cellbrowser/sampleConfig/cellbrowser.conf
 #include cellbrowser/sampleConfig/scanpy.conf
 ##include cellbrowser/sampleConfig/seurat.conf
+include versioneer.py
+include src/cbPyLib/cellbrowser/_version.py

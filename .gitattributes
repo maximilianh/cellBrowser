@@ -1,1 +1,2 @@
 cbScanpy ident 
+src/cbPyLib/cellbrowser/_version.py export-subst
