@@ -72,11 +72,11 @@ coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
     "fr": "Fruchterman Reingold",
-    #"grid_fr": "Grid Fruchterman Reingold", # deactivated for now due to https://github.com/igraph/python-igraph/issues/152
+    "grid_fr": "Grid Fruchterman Reingold", # deactivated for now due to https://github.com/igraph/python-igraph/issues/152
     "kk": "Kamadi Kawai",
-    #"lgl": "Large Graph Layout", # looks useless
+    "lgl": "Large Graph Layout", # looks useless
     "drl": "DrL Distributed Recursive Layout",
-    #"rt": "Reingold Tilford tree", # doesn't look useful
+    "rt": "Reingold Tilford tree", # doesn't look useful
 
     # special scanpy layouts
     "tsne" : "t-SNE",
@@ -85,6 +85,8 @@ coordLabels = {
     "pagaFr" : "PAGA/Fruchterman-Reingold",
     "phate" : "PHATE"
 }
+
+recommendedLayouts = ["fa", "fr", "kk", "drl", "tsne", "umap", "pagaFa", "phate"]
 
 metaLabels = {
     "louvain" : "Louvain Cluster",
@@ -445,6 +447,12 @@ def parseIntoColumns(fname):
     ifh = open(fname)
     sep = "\t"
     headers = ifh.readline().rstrip("\r\n").split(sep)
+    if headers[0]=="":
+        headers[0]="cell_id" # some tolerance, for R
+    for i, h in enumerate(headers):
+        if h=="":
+            errAbort("Header '%s' of column %d is empty. Please fix the meta data file and give every column a name" %
+                    (h, i))
     colsToGet = range(len(headers))
 
     columns = []
@@ -859,6 +867,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         forceEnum = False
         if enumFields!=None:
             forceEnum = (fieldName in enumFields)
+        if fieldName.endswith("luster") or fieldName.endswith("ouvain"):
+            forceEnum=True
+
         cleanFieldName = cleanString(fieldName)
         binName = join(outDir, cleanFieldName+".bin")
 
@@ -866,8 +877,6 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
 
-        if fieldName.endswith("luster") or fieldName.endswith("ouvain"):
-            forceEnum=True
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
         fieldType = fieldMeta["type"]
 
@@ -3128,7 +3137,7 @@ def checkLayouts(conf):
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
-        doLayouts = list( coordLabels.keys() )
+        doLayouts = recommendedLayouts
 
     for l in doLayouts:
         if l not in coordLabels:

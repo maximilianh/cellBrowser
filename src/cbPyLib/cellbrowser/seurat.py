@@ -153,6 +153,10 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     # PCA
     cmds.append('print("Running PCA")')
     pcCountConfig = conf.get("pcCount", 30)
+    # see: https://github.com/satijalab/seurat/issues/982
+    # pca = SeuratObj@dr$pca
+    # eigValues = (pca@sdev) ^2 ## 
+    # varExplained = eigValues / sum(eigValues)
     #if pcCountConfig == "auto":
         #cmds.append('sobj <- JackStraw(object = sobj, num.replicate = 100, display.progress = FALSE)')
         #cmds.append('JackStrawPlot(object = sobj, PCs = 1:12)')
