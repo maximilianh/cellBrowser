@@ -2390,7 +2390,6 @@ def getAbsPath(conf, key):
 
 def popen(cmd, shell=False):
     " run command and return proc object with its stdout attribute  "
-    
     if isPy3:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, encoding="utf8", shell=shell)
     else:
@@ -2638,7 +2637,11 @@ def anndataToTsv(ad, matFname, usePandas=False):
             ofh.write("\n")
 
         ofh.close()
-    os.rename(tmpFname, matFname)
+
+    if matFname.endswith(".gz"):
+        runGzip(tmpFname, matFname)
+    else:
+        os.rename(tmpFname, matFname)
 
 def makeDictDefaults(inVar, defaults):
     " convert inVar to dict if necessary, defaulting to our default labels "
@@ -2684,9 +2687,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
     import anndata
 
     if not skipMatrix:
-        matFname = join(path, 'exprMatrix.tsv')
+        matFname = join(path, 'exprMatrix.tsv.gz')
         anndataToTsv(adata, matFname)
-        matFname = runGzip(matFname)
 
     if coordFields=="all" or coordFields is None:
         coordFields = coordLabels
@@ -3146,8 +3148,9 @@ def checkLayouts(conf):
 
     return doLayouts
 
-def cbScanpy(matrixFname, confFname, figDir, logFname):
-    " run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data "
+def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
+    """ run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data.
+    Return an adata object. Write raw matrix to outMatrixFname """
     import scanpy.api as sc
     import pandas as pd
     import numpy as np
@@ -3175,6 +3178,9 @@ def cbScanpy(matrixFname, confFname, figDir, logFname):
 
     start = timeit.default_timer()
     adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows)
+
+    if outMatrixFname is not None:
+        anndataToTsv(adata, outMatrixFname)
 
     pipeLog("Data has %d samples/observations" % len(adata.obs))
     pipeLog("Data has %d genes/variables" % len(adata.var))
@@ -3427,21 +3433,15 @@ def cbScanpyCli():
     makeDir(outDir)
 
     figDir = join(outDir, "figs")
-
     adFname = join(outDir, "anndata.h5ad")
+    matrixOutFname = join(outDir, "exprMatrix.tsv.gz")
 
-    #if not isfile(adFname):
     logFname = join(outDir, "cbScanpy.log")
-    adata = cbScanpy(matrixFname, confFname, figDir, logFname)
-    #except:
-        # on an exception, automatically bring up the debugger - avoids having to reload the data file
-        #extype, value, tb = sys.exc_info()
-        #import traceback, pdb
-        #traceback.print_tb(tb)
-        #pdb.post_mortem(tb)
+    # write the expr matrix before doing any processing, otherwise scanpy will destroy the original matrix
+    adata = cbScanpy(matrixFname, confFname, figDir, logFname, matrixOutFname)
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
-    scanpyToCellbrowser(adata, outDir, datasetName=options.name)
+    scanpyToCellbrowser(adata, outDir, datasetName=options.name, skipMatrix=True)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     " convert mtx to tab-sep without scanpy. gzip if needed "
