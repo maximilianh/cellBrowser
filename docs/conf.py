@@ -18,7 +18,7 @@
 
 
 # -- Project information -----------------------------------------------------
-import sys
+import sys, os
 print(os.getcwd())
 os.system("ls")
 sys.path.insert(0, "src/cbPyLib")
