@@ -18,8 +18,6 @@ Report problems and see the code, see `GitHub <https://github.com/maximilianh/ce
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 
-# .. include:: release_notes.rst
-
 .. toctree::
    :maxdepth: 1
 

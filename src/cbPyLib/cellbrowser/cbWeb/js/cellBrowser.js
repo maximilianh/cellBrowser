@@ -2164,7 +2164,8 @@ var tsnePlot = function() {
         /* convert a numeric meta field info to look like gene expression info for the legend:
          * an array of [start, end, count] */
         var binInfo = [];
-        if (fieldInfo.binMethod==="uniform") {
+        var binMethod = fieldInfo.binMethod;
+        if (binMethod==="uniform") {
             // old method, not used anymore
             var binMin = fieldInfo.minVal;
             var stepSize = fieldInfo.stepSize;
@@ -2174,7 +2175,7 @@ var tsnePlot = function() {
                 binInfo.push( [binMin, binMin+stepSize, binCounts[i]] );
                 binMin+=stepSize;
             }
-        } else if (fieldInfo.binMethod==="quantiles") {
+        } else if (binMethod==="quantiles") {
             var binMin = fieldInfo.minVal;
             var breaks = fieldInfo.breaks;
             var binCounts = fieldInfo.binCounts;
@@ -2192,6 +2193,18 @@ var tsnePlot = function() {
                 binInfo.push( [binMin, binMax, binCount] );
             }
         }
+        else if (binMethod==="raw") {
+            // no binning was done at all, this happens when there are not enough distinct values
+            var values = fieldInfo.values;
+            var binCounts = fieldInfo.binCounts;
+            for (var i=0; i<values.length; i++) {
+                var value = values[i];
+                var valCount = binCounts[i];
+                binInfo.push( [value, value, valCount] );
+            }
+        }
+        else 
+            alert("invalid value for meta field binMethod: "+binMethod); 
 
         return binInfo;
     }
