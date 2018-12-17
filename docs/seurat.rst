@@ -31,7 +31,7 @@ The function ExportToCellbrowser() is already part of Seurat 3. You can install 
 
 For Seurat 2, you have to load the function with this command::
 
-    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/R/ExportToCellbrowser-seurat2.R")
+    source("https://raw.githubusercontent.com/maximilianh/cellBrowser/master/src/cbPyLib/cellbrowser/R/ExportToCellbrowser-seurat2.R")
 
 You can then write a Seurat object to a directory from which you can run cbBuild::
 
