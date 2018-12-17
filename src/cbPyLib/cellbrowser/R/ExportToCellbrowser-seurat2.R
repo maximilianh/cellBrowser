@@ -1,6 +1,7 @@
 # the following is copied from Seurat3's utilities.R and generics.R
 require(reticulate)
 
+# ---
 #' Export Seurat object for UCSC cell browser
 #'
 #' @param object Seurat object
@@ -36,11 +37,15 @@ ExportToCellbrowser <- function(
   markers.file = NULL,
   cluster.field = NULL,
   port = NULL,
-  cb.dir = NULL
+  cb.dir = NULL,
+  markers.n = 100,
+  skip.expr.matrix = FALSE
 ) {
+  idents <- FetchData(object,c("ident"))$ident;
+
   if (is.null(meta.fields)) {
     meta.fields <- c("nGene", "nUMI")
-    if (length(levels(FetchData(object,c("ident"))$ident)) > 1) {
+    if (length(levels(idents)) > 1) {
       meta.fields <- c(meta.fields, ".ident")
     }
   }
@@ -58,13 +63,15 @@ ExportToCellbrowser <- function(
   enum.fields <- c()
 
   # Export expression matrix
-  df <- as.data.frame(as.matrix(GetAssayData(object = object)), check.names=FALSE)
-  df <- data.frame(gene=rownames(object@data), df, check.names = FALSE)
-  gzPath <- file.path(dir, "exprMatrix.tsv.gz")
-  z <- gzfile(gzPath, "w")
-  message("Writing expression matrix to ", gzPath)
-  write.table(df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
-  close(z)
+  if (!skip.expr.matrix) {
+      df <- as.data.frame(as.matrix(GetAssayData(object = object)), check.names=FALSE)
+      df <- data.frame(gene=rownames(object@data), df, check.names = FALSE)
+      gzPath <- file.path(dir, "exprMatrix.tsv.gz")
+      z <- gzfile(gzPath, "w")
+      message("Writing expression matrix to ", gzPath)
+      write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
+      close(con = z)
+  }
 
   # Export cell embeddings
   embeddings.conf <- c()
@@ -99,7 +106,7 @@ ExportToCellbrowser <- function(
   df <- data.frame(row.names = object@cell.names, check.names=FALSE)
   for (field in meta.fields) {
     if (field == ".ident") {
-      df$Cluster <- FetchData(object,c("ident"))$ident # no Idents() in Seurat2
+      df$Cluster <- idents # no Idents() in Seurat2
       enum.fields <- c(enum.fields, "Cluster")
       cluster.field <- "Cluster"
     } else {
@@ -121,12 +128,21 @@ ExportToCellbrowser <- function(
 
   # Export markers
   markers.string <- ''
-  if (!is.null(markers.file)) {
+  if (!is.null(markers.file) && (length(levels(idents)>1))) {
     ext <- tools::file_ext(markers.file)
     file <- paste0("markers.", ext)
     fname <- file.path(dir, file)
-    message("Writing cluster markers to ", fname)
-    file.copy(markers.file, fname)
+    message("Running FindAllMarkers() and writing cluster markers to ", fname)
+    # find_all_markers crashes if there is only a single cluster
+    if (length(levels(idents))!=1) {
+        markers.all=FindAllMarkers(object, do.print=TRUE, print.bar=TRUE)
+        #for (cluster in levels(idents)) {
+        # }
+        write.table(top.markers, fname, quote=FALSE, sep="\t", col.names=NA)
+    } else {
+        file.create(fname)
+    }       
+
     markers.string <- sprintf(
       'markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',
       file
@@ -197,6 +213,7 @@ coords=%s'
     }
   }
 }
+# ---
 
 #' Stop Cellbrowser web server
 #'

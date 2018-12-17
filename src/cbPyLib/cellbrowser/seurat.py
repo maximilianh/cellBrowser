@@ -1,10 +1,11 @@
 # a wrapper around the R library Seurat
 
-import logging, optparse, sys, glob, os
+import logging, optparse, sys, glob, os, datetime
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
 from .convert import generateDownloads
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
+from .cellbrowser import setDebug, build
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -39,10 +40,7 @@ def parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options.debug)
     return args, options
 
 def runRscript(scriptFname, logFname):
@@ -52,7 +50,7 @@ def runRscript(scriptFname, logFname):
     #ofh = open(logFname, "w")
 
     # removed subprocess. Multiprocessing is notoriously tricky to get right.
-    cmd = "time Rscript %s | tee %s" % (scriptFname, logFname)
+    cmd = "time Rscript %s 2>&1 | tee %s" % (scriptFname, logFname)
     #cmd = ["time","Rscript", scriptFname, "&"]
     #proc, stdout = popen(cmd, shell=True)
     #for line in stdout:
@@ -266,7 +264,110 @@ def cbSeuratCli():
 
     generateDownloads(datasetName, outDir)
 
-    #outMatrix = join(outDir, "exprMatrix.tsv.gz")
-    #logging.info("Copying %s to %s" % (inMatrix, outMatrix))
-    #shutil.copy(inMatrix, outMatrix)
+def cbImportSeurat2_parseArgs(showHelp=False):
+    " setup logging, parse command line arguments and options. -h shows auto-generated help page "
+    parser = optparse.OptionParser("""usage: %prog [options] input.rds outDir datasetName - convert Seurat2 object to cellbrowser
 
+    Example:
+    - %prog pbmc3k.rds pbmc3kSeurat pbmc3kSeurat - convert pbmc3k to directory of tab-separated files
+    """)
+
+    parser.add_option("-d", "--debug", dest="debug", action="store_true",
+        help="show debug messages")
+
+    parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
+        help="do not only convert to tab-sep files but also run cbBuild to"
+            "convert the data and add the dataset under htmlDir")
+
+    parser.add_option("-p", "--port", dest="port", action="store", type="int",
+            help="only with --htmlDir: start webserver on port to serve htmlDir")
+
+    parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
+        help="do not convert the matrix, saves time if the same one has been exported before to the "
+        "same outDir directory")
+
+    (options, args) = parser.parse_args()
+
+    if showHelp:
+        parser.print_help()
+        exit(1)
+
+    setDebug(options.debug)
+    return args, options
+
+def readExportScript(cmds):
+    " find the ExportToCellbrowser-seurat2.R script and add the commands between # --- to cmds "
+    fname = join(dirname(__file__), "R", "ExportToCellbrowser-seurat2.R")
+
+    blockFound = False
+    for line in open(fname):
+        if line=="# ---\n":
+            blockFound = (not blockFound)
+            continue
+        if blockFound:
+            cmds.append(line.rstrip("\n"))
+    return cmds
+
+def writeRScript(cmds, scriptPath, madeBy):
+    " write list of R commands to script, prefix with a header "
+    ofh = open(scriptPath, "w")
+    ofh.write("# generated R code by: cellbrowser %s, %s, username: %s\n" %
+            (madeBy, datetime.datetime.now().strftime("%I:%M%p %B %d, %Y"), os.getlogin()))
+    for c in cmds:
+        ofh.write(c)
+        ofh.write("\n")
+    ofh.close()
+
+def cbImportSeurat2(rdsPath, outDir, datasetName, skipMatrix=False):
+    " convert Seurat2 .rds file to tab-sep directory for cellbrowser "
+    logging.info("inFname: %s, outDir: %s, datasetName: %s" % (rdsPath, outDir, datasetName))
+
+    makeDir(outDir)
+
+    tsnePath = join(outDir, "tsne.coords.tsv")
+    metaPath = join(outDir, "meta.tsv")
+    markerPath = join(outDir, "markers.tsv")
+    scriptPath = join(outDir, "runSeurat.R")
+    matrixPath = join(outDir, "exprMatrix.tsv.gz")
+    logPath = join(outDir, "analysisLog.txt")
+
+    cmds = ["require(methods)"] # for the 'slots()' function
+    cmds.append("require(Seurat)")
+
+    cmds = readExportScript(cmds)
+
+    cmds.append("message('Reading %s')" % rdsPath)
+    cmds.append("sobj <- readRDS(file='%s')" % rdsPath)
+    skipStr = str(skipMatrix).upper()
+    cmds.append("message('Exporting Seurat data to %s')" % outDir)
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file='%s', skip.expr.matrix = %s)" %
+            (outDir, datasetName, markerPath, skipStr))
+
+    writeRScript(cmds, scriptPath, "cbImportSeurat2")
+    runRscript(scriptPath, logPath)
+    if not isfile(markerPath):
+        errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
+
+    cbConfPath = join(outDir, "cellbrowser.conf")
+    coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
+    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
+
+    generateDownloads(datasetName, outDir)
+
+def cbImportSeurat2Cli():
+    " convert .rds to directory "
+    args, options = cbImportSeurat2_parseArgs()
+
+    if len(args)<3:
+        cbImportSeurat2_parseArgs(showHelp=True)
+        sys.exit(1)
+
+    inFname, outDir, datasetName = args
+
+    cbImportSeurat2(inFname, outDir, datasetName, skipMatrix=options.skipMatrix)
+
+    if options.port and not options.htmlDir:
+        errAbort("--port requires --htmlDir")
+
+    if options.htmlDir:
+        build(outDir, options.htmlDir, port=options.port)

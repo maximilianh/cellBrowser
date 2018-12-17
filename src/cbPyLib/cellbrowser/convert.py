@@ -454,3 +454,4 @@ def cbImportScanpyCli():
 
     if options.htmlDir:
         build(outDir, options.htmlDir, port=options.port)
+
