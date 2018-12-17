@@ -12,7 +12,7 @@ clickable again.
 To look at a list of selected single cell datasets, see http://cells.ucsc.edu
 
 To setup your own cell browser, from Cellranger, Seurat, Scanpy or text files 
-(tsv or csv), or just a single cell expression matrix, read the documentation
+(tsv/csv), or just a single cell expression matrix, read the documentation
 at http://cellbrowser.rtfd.io
 
 If you want us to add a single cell dataset to the website http://cells.ucsc.edu, 
