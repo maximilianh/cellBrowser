@@ -1,4 +1,6 @@
 # the following is copied from Seurat3's utilities.R and generics.R
+# it was modified to work with Seurat2. At some point we probably should merge the two code bases.
+# the markers "---" are used to mark the part that is used by the command line tool cbImportSeurat2
 require(reticulate)
 
 # ---
