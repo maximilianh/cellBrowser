@@ -7,8 +7,22 @@ servers may prefer to import a Seurat ``rds`` file.  If you have an expression
 matrix and no knowledge of Seurat, you can still use our minimal Seurat
 pipeline to do some quick inspection of your data with the Cell Browser.
 
-Convert a Seurat object
-^^^^^^^^^^^^^^^^^^^^^^^
+Convert a Seurat2 .rds file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You can use the program ``cbImportSeurat2`` to convert a ``rds`` file to a Cell
+Browser. You only have to specify the input .rds file, the output directory and
+a name for the dataset::
+
+    cbImportSeurat2 pbmc3k_small.rds pbmc3kCb pbmc3k-rdsExport
+
+You can then go into the directory *pbmc3kCb* and run cbBuild to create the Cell Browser html files::
+
+    cd pbmc3kCb
+    cbBuild -o ~/public_html/cb
+
+Convert a Seurat object from R
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The function ExportToCellbrowser() is already part of Seurat 3. You can install pre-release Seurat3 like this::
 
