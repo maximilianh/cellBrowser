@@ -2,13 +2,15 @@ Putting it onto the internet
 ----------------------------
 
 To deploy the result of ``cbBuild`` onto a webserver, simply copy all files and
-directories under *~/public_html/cells* to an empty directory on a webserver and
-point your web browser to it. E.g. many universities give their members
+directories in the html output directory (in the examples on this site, that's
+usually *~/public_html/cells*) to an empty directory on a webserver and point
+your web browser to it. Many universities give their members
 webspace, sometimes in a directory called ~/public_html or on a special server.
-If you don't have that, contact us or use Cyverse or Amazon S3 to host your
-files, not Dropbox. You cannot use online backup solutions like Dropbox,
-Box.com, iCloud OneDrive or Google Drive, they intentionally are not
-webservers.
+If you do not have one, contact us or use Cyverse, Amazon S3, Goole Cloud
+Storage, Microsoft Azure etc. to host your files. You cannot use online backup
+solutions like Dropbox, Box.com, iCloud OneDrive or Google Drive, they
+intentionally are not webservers. You can always send the result to cells@ucsc.edu, 
+we are happy to add it to our cell browser site at cells.ucsc.edu.
 
 To add more datasets, go to the other data directories and run cbBuild
 there, with the same output directory. cbBuild will then modify the index.html
