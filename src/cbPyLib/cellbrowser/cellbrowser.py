@@ -98,21 +98,26 @@ metaLabels = {
 # ==== functions =====
 
 debugDone = False
+debugMode = False
 
 def setDebug(doDebug):
     " activate debugging if needed "
     global debugDone
+    global debugMode
     if debugDone:
         return
 
     if doDebug:
         logging.basicConfig(level=logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
+        debugMode = True
     else:
         logging.basicConfig(level=logging.INFO)
         logging.getLogger().setLevel(logging.INFO)
     debugDone = True
 
+def isDebugMode():
+    return debugMode
 
 def makeDir(outDir):
     if not isdir(outDir):
@@ -867,7 +872,8 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         forceEnum = False
         if enumFields!=None:
             forceEnum = (fieldName in enumFields)
-        if fieldName.endswith("luster") or fieldName.endswith("ouvain"):
+        # very dumb heuristic to recognize fields that should really not be treated as numbers
+        if "luster" in fieldName or "ouvain" in fieldName:
             forceEnum=True
 
         cleanFieldName = cleanString(fieldName)
@@ -3344,14 +3350,20 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
         sc.tl.paga(adata, groups='louvain')
         sc.pl.paga(adata, show=True, layout="fa")
         sc.tl.draw_graph(adata, init_pos='paga', layout="fa")
-        adata.obsm["X_pagaFa"] = adata.obsm["X_draw_graph_fa"]
+        if "X_draw_graph_fa" not in adata.obsm.dtype.names:
+            logging.warn("After paga, 'X_draw_graph_fa' not found in adata object! Older scanpy version?")
+        else:
+            adata.obsm["X_pagaFa"] = adata.obsm["X_draw_graph_fa"]
 
     if "pagaFr" in doLayouts:
         pipeLog("Performing PAGA+Fruchterman Reingold")
         sc.tl.paga(adata, groups='louvain')
         sc.pl.paga(adata, show=True, layout="fr")
         sc.tl.draw_graph(adata, init_pos='paga', layout="fr")
-        adata.obsm["X_pagaFr"] = adata.obsm["X_draw_graph_fr"]
+        if "X_draw_graph_fr" not in adata.obsm.dtype.names:
+            logging.warn("After paga, 'X_draw_graph_fr' not found in adata object! Older scanpy version?")
+        else:
+            adata.obsm["X_pagaFr"] = adata.obsm["X_draw_graph_fr"]
 
     otherLayouts = set(doLayouts).difference(set(["tsne", "phate", "umap", "pagaFa", "pagaFr"]))
 
