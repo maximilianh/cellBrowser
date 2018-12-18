@@ -41,7 +41,8 @@ ExportToCellbrowser <- function(
   port = NULL,
   cb.dir = NULL,
   markers.n = 100,
-  skip.expr.matrix = FALSE
+  skip.expr.matrix = FALSE,
+  skip.markers = FALSE
 ) {
   idents <- FetchData(object,c("ident"))$ident;
 
@@ -130,21 +131,26 @@ ExportToCellbrowser <- function(
 
   # Export markers
   markers.string <- ''
-  if (!is.null(markers.file) && (length(levels(idents)>1))) {
+  if (is.null(markers.file)) {
+    ext <- "tsv"
+  } else {
     ext <- tools::file_ext(markers.file)
-    file <- paste0("markers.", ext)
-    fname <- file.path(dir, file)
-    message("Running FindAllMarkers() and writing cluster markers to ", fname)
-    # find_all_markers crashes if there is only a single cluster
-    if (length(levels(idents))!=1) {
-        markers.all=FindAllMarkers(object, do.print=TRUE, print.bar=TRUE)
-        #for (cluster in levels(idents)) {
-        # }
-        write.table(top.markers, fname, quote=FALSE, sep="\t", col.names=NA)
+  }
+  file <- paste0("markers.", ext)
+  fname <- file.path(dir, file)
+  if (is.null(markers.file) & !skip.markers) {
+    if (length(levels(idents)) > 1) {
+      message("Running FindAllMarkers() and writing cluster markers to ", fname)
+      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE)
+      top.markers <- markers %>% group_by(cluster) %>% top_n(markers.n, avg_logFC)
+      write.table(top.markers, fname, quote=FALSE, sep="\t", row.names=FALSE)
     } else {
-        file.create(fname)
-    }       
-
+      file <- NULL
+    }
+  } else if (!skip.markers) {
+    file.copy(markers.file, fname)
+  }
+  if (!is.null(file)) {
     markers.string <- sprintf(
       'markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',
       file
