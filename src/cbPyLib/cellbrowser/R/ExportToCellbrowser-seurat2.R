@@ -42,9 +42,15 @@ ExportToCellbrowser <- function(
   cb.dir = NULL,
   markers.n = 100,
   skip.expr.matrix = FALSE,
-  skip.markers = FALSE
+  skip.markers = FALSE,
+  all.meta = FALSE
 ) {
-  idents <- FetchData(object,c("ident"))$ident;
+  if (substr(object@version, 1, 1)!='2') { 
+          stop("can only process Seurat2 objects, version of rds is ", object@version) 
+  }
+
+  #idents <- FetchData(object,c("ident"))$ident;
+  idents <- object@ident # Idents() in Seurat3
 
   if (is.null(meta.fields)) {
     meta.fields <- c("nGene", "nUMI")
@@ -106,25 +112,30 @@ ExportToCellbrowser <- function(
   }
 
   # Export metadata
-  df <- data.frame(row.names = object@cell.names, check.names=FALSE)
-  for (field in meta.fields) {
-    if (field == ".ident") {
-      df$Cluster <- idents # no Idents() in Seurat2
-      enum.fields <- c(enum.fields, "Cluster")
-      cluster.field <- "Cluster"
-    } else {
-      name <- meta.fields.names[[field]]
-      if (is.null(name)) {
-        name <- field
+  if (all.meta)
+          df <- objet@meta.data
+  else {
+      df <- data.frame(row.names = object@cell.names, check.names=FALSE)
+      for (field in meta.fields) {
+        if (field == ".ident") {
+          df$Cluster <- idents
+          enum.fields <- c(enum.fields, "Cluster")
+          cluster.field <- "Cluster"
+        } else {
+          name <- meta.fields.names[[field]]
+          if (is.null(name)) {
+            name <- field
+          }
+          #df[[name]] <- object[[field]][, 1]
+          df[[name]] <- FetchData(object, field)[, 1]
+          if (!is.numeric(df[[name]])) {
+            enum.fields <- c(enum.fields, name)
+          }
+        }
       }
-      #df[[name]] <- object[[field]][, 1]
-      df[[name]] <- FetchData(object, field)[, 1]
-      if (!is.numeric(df[[name]])) {
-        enum.fields <- c(enum.fields, name)
-      }
-    }
+      df <- data.frame(Cell=rownames(df), df, check.names=FALSE)
   }
-  df <- data.frame(Cell=rownames(df), df, check.names=FALSE)
+
   fname <- file.path(dir, "meta.tsv")
   message("Writing meta data to ", fname)
   write.table(df[order, ], sep="\t", file=fname, quote = FALSE, row.names=FALSE)
