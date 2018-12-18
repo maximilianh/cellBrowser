@@ -113,7 +113,7 @@ ExportToCellbrowser <- function(
 
   # Export metadata
   if (all.meta)
-          df <- objet@meta.data
+          df <- object@meta.data
   else {
       df <- data.frame(row.names = object@cell.names, check.names=FALSE)
       for (field in meta.fields) {
