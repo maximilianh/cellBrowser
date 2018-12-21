@@ -18,11 +18,11 @@ Browser. You can create an .rds file in R as described in the Seurat tutorial::
 Then, on the Unix command line, you specify the input .rds file, the output directory and
 the name for the dataset in the cell browser::
 
-    cbImportSeurat2 pbmc3k_small.rds pbmc3kCb pbmc3k-rdsExport
+    cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport
 
-Then go into the directory *pbmc3kCb* and run cbBuild to create the Cell Browser html files::
+Then go into the directory *pbmc3kImport* and run cbBuild to create the Cell Browser html files::
 
-    cd pbmc3kCb
+    cd pbmc3kImport
     cbBuild -o ~/public_html/cb
 
 Convert a Seurat object from R

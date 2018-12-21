@@ -1,12 +1,27 @@
 With Scanpy
 -----------
 
+If you got a .h5ad file from a collaborator, you can use the program ``cbImportScanpy`` 
+to export the data and then create the Cell Browser html directory with the ``cbBuild``
+command.
+
 If you are already using Scanpy, you can convert your anndata Scanpy objects
 directly to Cell Browser format and start a webserver, e.g. from Jupyter,
 without the ``cbBuild`` script or the Unix command line.
 
 If you are not using Scanpy but have an expression matrix and would like to do
 preprocessing, embedding and clustering, you can use our minimal Scanpy pipeline.
+
+Convert a Scanpy .h5ad file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Specify the input file and the output directory, then run ``cbBuild`` on the output directory.
+There is an example file in the Cell Browser github repository::
+
+   cd sample_data/pbmc_small
+   cbImportScanpy -i anndata.h5ad -o pbmc3kImportScanpy 
+   cd pbmc3kImportScanpy
+   cbBuild -o ~/public_html/cb
 
 Convert a Scanpy object
 ^^^^^^^^^^^^^^^^^^^^^^^
