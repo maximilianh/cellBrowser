@@ -5,7 +5,7 @@ from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, ge
 
 from .convert import generateDownloads
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
-from .cellbrowser import setDebug, build
+from .cellbrowser import setDebug, build, isDebugMode
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -260,20 +260,29 @@ def cbSeuratCli():
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
     coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
-    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
+    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":clusterField})
 
     generateDownloads(datasetName, outDir)
 
 def cbImportSeurat2_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] input.rds outDir datasetName - convert Seurat2 object to cellbrowser
+    parser = optparse.OptionParser("""usage: %prog [options] -i input.rds -o outDir [-n datasetName] - convert Seurat2 object to cellbrowser
 
     Example:
-    - %prog pbmc3k.rds pbmc3kSeurat pbmc3kSeurat - convert pbmc3k to directory of tab-separated files
+    - %prog -i pbmc3k.rds -o pbmc3kSeurat - convert pbmc3k to directory of tab-separated files
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
-        help="show debug messages")
+        help="show debug messages. Also activates debug() in the generated R script.")
+
+    parser.add_option("-i", "--inRds", dest="inRds", action="store",
+        help="input .rds file. Required parameter")
+
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+        help="Output directory. Required parameter")
+
+    parser.add_option("-n", "--name", dest="datasetName", action="store",
+        help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -282,9 +291,20 @@ def cbImportSeurat2_parseArgs(showHelp=False):
     parser.add_option("-p", "--port", dest="port", action="store", type="int",
             help="only with --htmlDir: start webserver on port to serve htmlDir")
 
-    parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
+    parser.add_option("-x", "--skipMatrix", dest="skipMatrix", action="store_true",
+            default = False,
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same outDir directory")
+
+    parser.add_option("-m", "--skipMarkers", dest="skipMarkers", action="store_true",
+            default = False,
+        help="do not calculate cluster-specific markers with FindAllMarkers(), saves a lot of time")
+
+    parser.add_option("-c", "--clusterField", dest="clusterField", action="store",
+        help="Cluster field to color on, by default this is the @ident slot of the Seurat object but it can also be any other meta data field of the @meta.data slot")
+
+    parser.add_option("", "--markerFile", dest="markerFile", action="store",
+            help="Instead of calculating cluster markers again, use this file. Format: cluster,gene,pVal + any other fields.")
 
     (options, args) = parser.parse_args()
 
@@ -318,11 +338,16 @@ def writeRScript(cmds, scriptPath, madeBy):
         ofh.write("\n")
     ofh.close()
 
-def cbImportSeurat2(rdsPath, outDir, datasetName, skipMatrix=False):
+def cbImportSeurat2(rdsPath, outDir, datasetName, options):
     " convert Seurat2 .rds file to tab-sep directory for cellbrowser "
     logging.info("inFname: %s, outDir: %s, datasetName: %s" % (rdsPath, outDir, datasetName))
 
     makeDir(outDir)
+
+    skipMatrix = options.skipMatrix
+    skipMarkers = options.skipMarkers
+    clusterField = options.clusterField
+    markerFile = options.markerFile
 
     tsnePath = join(outDir, "tsne.coords.tsv")
     metaPath = join(outDir, "meta.tsv")
@@ -339,18 +364,26 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, skipMatrix=False):
     cmds.append("message('Reading %s')" % rdsPath)
     cmds.append("sobj <- readRDS(file='%s')" % rdsPath)
     skipStr = str(skipMatrix).upper()
+    skipMarkerStr = str(skipMarkers).upper()
+    if isDebugMode():
+        cmds.append("debug(ExportToCellbrowser)")
+    if clusterField is None:
+        clusterStr = 'NULL'
+    else:
+        clusterStr = "'%s'" % clusterField
+
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file='%s', skip.expr.matrix = %s)" %
-            (outDir, datasetName, markerPath, skipStr))
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = '%s', cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE)" %
+            (outDir, datasetName, markerFile, clusterStr, skipStr, skipMarkerStr))
 
     writeRScript(cmds, scriptPath, "cbImportSeurat2")
     runRscript(scriptPath, logPath)
-    if not isfile(markerPath):
+    if not isfile(metaPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
-    cbConfPath = join(outDir, "cellbrowser.conf")
-    coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
-    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
+    #cbConfPath = join(outDir, "cellbrowser.conf")
+    #coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
+    #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
     generateDownloads(datasetName, outDir)
 
@@ -358,13 +391,17 @@ def cbImportSeurat2Cli():
     " convert .rds to directory "
     args, options = cbImportSeurat2_parseArgs()
 
-    if len(args)<3:
+    inFname = options.inRds
+    outDir = options.outDir
+    if None in [inFname, outDir]:
         cbImportSeurat2_parseArgs(showHelp=True)
-        sys.exit(1)
+        errAbort("You need to specify at least an input rds file and an output directory")
 
-    inFname, outDir, datasetName = args
+    datasetName = options.datasetName
+    if datasetName is None:
+        datasetName = basename(outDir.rstrip("/"))
 
-    cbImportSeurat2(inFname, outDir, datasetName, skipMatrix=options.skipMatrix)
+    cbImportSeurat2(inFname, outDir, datasetName, options)
 
     if options.port and not options.htmlDir:
         errAbort("--port requires --htmlDir")

@@ -303,6 +303,14 @@ def generateDownloads(datasetName, outDir):
 
     ofh.write("<b>Cell meta annotations:</b> <a href='%s/meta.tsv'>meta.tsv</a><p>" % datasetName)
 
+    markerFname = join(outDir, "markers.csv")
+    if not isfile(markerFname):
+        markerFname = join(outDir, "markers.tsv")
+
+    if isfile(markerFname):
+        baseName = basename(markerFname)
+        ofh.write("<b>Cluster Marker Genes:</b> <a href='%s/%s'>%s</a><p>\n" % (baseName, baseName, datasetName))
+
     coordDescs = conf["coords"]
     for coordDesc in coordDescs:
         coordLabel = coordDesc["shortLabel"]
@@ -321,6 +329,9 @@ def generateDownloads(datasetName, outDir):
     logFname = join(datasetName, "analysisLog.txt")
     if isfile(logFname):
         ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
+
+    ofh.close()
+    logging.info("Wrote %s" % ofh.name)
 
 def crangerSignMarkers(dgeFname, markerFname, geneFname, maxPval, maxGenes):
     " convert cellranger diff exp file to markers.tsv file "
@@ -409,11 +420,20 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser = optparse.OptionParser("""usage: %prog [options] input.h5ad outDir datasetName - convert Scanpy AnnData object to cellbrowser
 
     Example:
-    - %prog pbmc3k.h5ad pbmc3kScanpy pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
+    - %prog -i pbmc3k.h5ad -o pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
+
+    parser.add_option("-i", "--inFile", dest="inFile", action="store",
+        help="input .h5ad file. Required parameter")
+
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+        help="Output directory. Required parameter")
+
+    parser.add_option("-n", "--name", dest="datasetName", action="store",
+        help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -439,11 +459,18 @@ def cbImportScanpyCli():
     " convert h5ad to directory "
     args, options = cbImportScanpy_parseArgs()
 
-    if len(args)<3:
+    if len(args)==0 and not options.inFile and not options.outDir:
         cbImportScanpy_parseArgs(showHelp=True)
         sys.exit(1)
 
-    inFname, outDir, datasetName = args
+    inFname = options.inFile
+    outDir = options.outDir
+    if None in [inFname, outDir]:
+        errAbort("You need to specify at least an input .h5ad file and an output directory")
+
+    datasetName = options.datasetName
+    if datasetName is None:
+        datasetName = basename(outDir.rstrip("/"))
 
     import anndata
     ad = anndata.read_h5ad(inFname)

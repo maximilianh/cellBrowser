@@ -52,8 +52,12 @@ ExportToCellbrowser <- function(
   #idents <- FetchData(object,c("ident"))$ident;
   idents <- object@ident # Idents() in Seurat3
 
+  if (is.null(cluster.field)) {
+          cluster.field = "Cluster"
+  }
+
   if (is.null(meta.fields)) {
-    meta.fields <- c("nGene", "nUMI")
+    meta.fields <- colnames(object@meta.data)
     if (length(levels(idents)) > 1) {
       meta.fields <- c(meta.fields, ".ident")
     }
@@ -88,7 +92,8 @@ ExportToCellbrowser <- function(
   for (embedding in embeddings) {
     #df <- Embeddings(object = object, reduction = embedding)
     emb <- dr[[embedding]]
-    df <- slot(emb, "cell.embeddings")
+    #df <- slot(emb, "cell.embeddings")
+    df <-  emb@cell.embeddings
     if (ncol(df) > 2) {
       warning(
         'Embedding ', embedding,
@@ -112,29 +117,25 @@ ExportToCellbrowser <- function(
   }
 
   # Export metadata
-  if (all.meta)
-          df <- object@meta.data
-  else {
-      df <- data.frame(row.names = object@cell.names, check.names=FALSE)
-      for (field in meta.fields) {
-        if (field == ".ident") {
-          df$Cluster <- idents
-          enum.fields <- c(enum.fields, "Cluster")
-          cluster.field <- "Cluster"
-        } else {
-          name <- meta.fields.names[[field]]
-          if (is.null(name)) {
-            name <- field
-          }
-          #df[[name]] <- object[[field]][, 1]
-          df[[name]] <- FetchData(object, field)[, 1]
-          if (!is.numeric(df[[name]])) {
-            enum.fields <- c(enum.fields, name)
-          }
-        }
+  df <- data.frame(row.names = object@cell.names, check.names=FALSE)
+  for (field in meta.fields) {
+    if (field == ".ident") {
+      df$Cluster <- idents
+      enum.fields <- c(enum.fields, "Cluster")
+    } else {
+      name <- meta.fields.names[[field]]
+      if (is.null(name)) {
+        name <- field
       }
-      df <- data.frame(Cell=rownames(df), df, check.names=FALSE)
+      #df[[name]] <- object[[field]][, 1]
+      #df[[name]] <- FetchData(object, field)[, 1]
+      df[[name]] <- object@meta.data[[field]]
+      if (!is.numeric(df[[name]])) {
+        enum.fields <- c(enum.fields, name)
+      }
+    }
   }
+  df <- data.frame(Cell=rownames(df), df, check.names=FALSE)
 
   fname <- file.path(dir, "meta.tsv")
   message("Writing meta data to ", fname)
@@ -151,16 +152,23 @@ ExportToCellbrowser <- function(
   fname <- file.path(dir, file)
   if (is.null(markers.file) & !skip.markers) {
     if (length(levels(idents)) > 1) {
-      message("Running FindAllMarkers() and writing cluster markers to ", fname)
-      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE)
+      message("Running FindAllMarkers(), using ROC test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
+      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="roc", logfc.threshold = 0.35)
+      require(dplyr) # if this fails, install dplyr with install.packages("dplyr")
       top.markers <- markers %>% group_by(cluster) %>% top_n(markers.n, avg_logFC)
       write.table(top.markers, fname, quote=FALSE, sep="\t", row.names=FALSE)
     } else {
       file <- NULL
     }
   } else if (!skip.markers) {
+    message("Copying ", markers.file, " to ", fname)
     file.copy(markers.file, fname)
   }
+  else {
+      message("No marker genes file defined")
+      file <- NULL
+  }
+
   if (!is.null(file)) {
     markers.string <- sprintf(
       'markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',
@@ -168,7 +176,11 @@ ExportToCellbrowser <- function(
     )
   }
 
-  config <- 'name="%s"
+  config <- '
+# This is a bare-bones, auto-generated cellbrowser config file.
+# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+# for a full file that shows all possible options
+name="%s"
 shortLabel="%1$s"
 exprMatrix="exprMatrix.tsv.gz"
 #tags = ["10x", "smartseq2"]
@@ -198,7 +210,11 @@ coords=%s'
     markers.string,
     coords.string
   )
-  cat(config, file=file.path(dir, "cellbrowser.conf"))
+
+  confPath = file.path(dir, "cellbrowser.conf")
+  message("Writing cellbrowser config to ", confPath)
+  cat(config, file=confPath)
+
   message("Prepared cellbrowser directory ", dir)
 
   if (!is.null(cb.dir)) {

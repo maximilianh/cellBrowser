@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime
+import hashlib, timeit, datetime, keyword
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -63,6 +63,7 @@ if sys.version_info >= (3, 0):
 #dataDir = join(dirname(__file__), "..", "cbData")
 dataDir = None
 
+# the default html dir, used if the --htmlDir option is set but empty
 defOutDir = os.environ.get("CBOUT")
 
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
@@ -357,6 +358,8 @@ def cbScanpy_parseArgs():
     setDebug(options.debug)
     return args, options
 
+kwSet = set(keyword.kwlist)
+
 def lineFileNextRow(inFile, utfHacks=False):
     """
     parses tab-sep file with headers in first line
@@ -389,6 +392,17 @@ def lineFileNextRow(inFile, utfHacks=False):
 
     headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
     headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
+
+    # python does unfortunately not accept reserved names as named tuple names
+    # We append a useless string to avoid errors
+    if len(kwSet.intersection(headers))!=0:
+        newHeaders = []
+        for h in headers:
+            if h in kwSet:
+                h = h+"_Value"
+            newHeaders.append(h)
+        headers = newHeaders
+
     #headers = [x if x!="" else "noName" for x in headers]
     if headers[0]=="": # R does not name the first column by default
         headers[0]="rowName"
@@ -1791,10 +1805,11 @@ def splitMarkerTable(filename, geneToSym, outDir):
     seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
     headerLine = ifh.readline().rstrip("\r\n")
 
+    sep = sepForFile(filename)
     if headerLine == seuratLine or headerLine == seuratLine2:
         logging.info("Cluster marker file was recognized to be in Seurat format")
         # field 0 is not the gene ID, it has some weird suffix appended.
-        headers = ["WeirdGeneId", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
+        headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
         geneIdx = 7
         scoreIdx = 1
         clusterIdx = 6
@@ -1802,7 +1817,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
         otherEnd = 6
     else:
         logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
-        headers = headerLine.split('\t')
+        headers = headerLine.split(sep)
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
@@ -1813,7 +1828,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
     data = defaultdict(list)
     otherColumns = defaultdict(list)
-    sep = sepForFile(filename)
     for line in ifh:
         row = line.rstrip("\r\n").split(sep)
         clusterName = row[clusterIdx]
@@ -1894,7 +1908,7 @@ def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
-    logging.debug("Loading config from %s" % fname)
+    logging.info("Loading settings from %s" % fname)
     g = {}
     l = OrderedDict()
     execfile(fname, g, l)
@@ -2821,6 +2835,9 @@ def cbBuild(confFnames, outDir, port=None):
 
 def build(confFnames, outDir, port=None, doDebug=False):
     " build browser from config files confFnames into directory outDir and serve on port "
+    if outDir=="" or outDir==None:
+        outDir = defOutDir
+
     setDebug(doDebug)
     if type(confFnames)==type(""):
         # it's very easy to forget that the input should be a list so we tolerate a single string

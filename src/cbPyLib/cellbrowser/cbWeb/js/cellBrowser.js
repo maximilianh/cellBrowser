@@ -1411,15 +1411,15 @@ var tsnePlot = function() {
        function guessRadiusAlpha(dotCount) {
            /* return reasonable radius and alpha values for a number of dots */
            if (dotCount<3000)
-               return [4.0, 0.5];
+               return [4, 0.5];
            if (dotCount<5000)
-               return [3.0, 0.5];
+               return [3, 0.5];
            if (dotCount<9000)
-               return [2.0, 0.5];
+               return [2, 0.5];
            if (dotCount<15000)
-               return [3.0, 0.4];
-           if (dotCount<50000)
-               return [0.0, 0.3];
+               return [3, 0.4];
+           // more than 50k:
+           return [0, 0.3];
        }
 
        function makeRendConf(dbConf, dotCount) {

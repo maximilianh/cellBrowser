@@ -11,12 +11,16 @@ Convert a Seurat2 .rds file
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can use the program ``cbImportSeurat2`` to convert a ``rds`` file to a Cell
-Browser. You only have to specify the input .rds file, the output directory and
-a name for the dataset::
+Browser. You can create an .rds file in R as described in the Seurat tutorial::
+
+    saveRDS(pbmc, "pbmc3k_small.rds")
+
+Then, on the Unix command line, you specify the input .rds file, the output directory and
+the name for the dataset in the cell browser::
 
     cbImportSeurat2 pbmc3k_small.rds pbmc3kCb pbmc3k-rdsExport
 
-You can then go into the directory *pbmc3kCb* and run cbBuild to create the Cell Browser html files::
+Then go into the directory *pbmc3kCb* and run cbBuild to create the Cell Browser html files::
 
     cd pbmc3kCb
     cbBuild -o ~/public_html/cb

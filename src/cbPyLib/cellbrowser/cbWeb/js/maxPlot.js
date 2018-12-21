@@ -298,7 +298,7 @@ function MaxPlot(div, top, left, width, height, args) {
         div.style.fontSize = gTitleSize;
         div.id = 'mpTitle';
         //div.innerHTML = title;
-        div.style['color'] = "lightgrey";
+        div.style['color'] = "#B0B0B0";
         self.div.appendChild(div);
         self.titleDiv = div;
     }
@@ -605,12 +605,6 @@ function MaxPlot(div, top, left, width, height, args) {
             // move x to the left, so text is centered on x
             x = x - Math.round(textWidth*0.5);
 
-            // don't draw labels where the midpoint is off-screen
-            if (x<0 || y<0 || x>winWidth || y>winWidth) {
-                bboxArr.push( null );
-                continue;
-            }
-
             var textX1 = x;
             var textY1 = y;
             var textX2 = Math.round(x+textWidth);
@@ -645,6 +639,12 @@ function MaxPlot(div, top, left, width, height, args) {
                         }
                 }
             }
+            // don't draw labels where the midpoint is off-screen
+            if (x<0 || y<0 || x>winWidth || y>winWidth) {
+                bboxArr.push( null );
+                continue;
+            }
+
 
             ctx.strokeText(text,x,y); 
             ctx.fillText(text,x,y); 
