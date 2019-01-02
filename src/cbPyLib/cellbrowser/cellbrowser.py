@@ -1552,11 +1552,14 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         cellId = row[0]
         x = float(row[1])
         y = float(row[2])
-        minX = min(x, minX)
-        minY = min(y, minY)
-        maxX = max(x, maxX)
-        maxY = max(y, maxY)
         coords.append( (cellId, x, y) )
+
+        # special values meaning "unknown cellId"
+        if x!=12345 and y!=12345:
+            minX = min(x, minX)
+            minY = min(y, minY)
+            maxX = max(x, maxX)
+            maxY = max(y, maxY)
 
     if useTwoBytes:
         scaleX = 65535/(maxX-minX)
