@@ -1535,7 +1535,7 @@ def parseColors(fname):
 
 def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
-    Flip the y coordinates to make it more look like plots in R, for people transitioning from R.
+    Optionally flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
     logging.info("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
     coords = []
@@ -1554,7 +1554,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         y = float(row[2])
         coords.append( (cellId, x, y) )
 
-        # special values meaning "unknown cellId"
+        # special values (12345,12345) mean "unknown cellId"
         if x!=12345 and y!=12345:
             minX = min(x, minX)
             minY = min(y, minY)
@@ -1671,10 +1671,13 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
         else:
             x, y = coordTuple
             textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
-        minX = min(x, minX)
-        minY = min(y, minY)
-        maxX = max(x, maxX)
-        maxY = max(y, maxY)
+
+        # special values (12345,12345) mean "unknown cellId"
+        if x!=12345 and y!=12345:
+            minX = min(x, minX)
+            minY = min(y, minY)
+            maxX = max(x, maxX)
+            maxY = max(y, maxY)
 
         # all little endian
         if useTwoBytes:
