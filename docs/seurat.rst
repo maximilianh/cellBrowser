@@ -39,16 +39,19 @@ For Seurat 2, you have to load the function with this command::
 
 You can then write a Seurat object to a directory from which you can run cbBuild::
 
-    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall")
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", dataset.name="pbmcSmall")
 
-Or immediately convert the files to html and serve the result on port 8080 and open a web browser::
+Or immediately convert the files to html files in the directory ``htdocs`` and
+serve the result on port 8080 via http and open a web browser from R::
 
     ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
 
 Writing the expression matrix is somewhat slow. If you have already exported into the same 
 output directory before and just updated a part of the cell annotation data
 (e.g. clustering), you can use the argument *skip.matrix=TRUE* to save some
-time.
+time:
+
+    ExportToCellbrowser(pbmc_small, dir="pbmcSmall", dataset.name="pbmcSmall", skip-matrix=TRUE)
 
 Run a basic Seurat pipeline
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
