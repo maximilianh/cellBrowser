@@ -61,3 +61,9 @@ From the directory where your cellbrowser.conf is located, run::
 Navigate your internet browser to the name of the server (or localhost, if
 you're running this on your own machine) followed by :8888, e.g.
 http://localhost:8888.
+
+The output directory (/tmp/cb in the example) can hold multiple datasets. 
+If you have a second dataset in another directory that contains cellbrowser.conf,
+just make sure that the other cellbrowser.conf specifies a different dataset name 
+with `name=xxx`. Then run `cbBuild -o /tmp/db -p 8888` in the other
+directory to add the second dataset to your browser output directory.
