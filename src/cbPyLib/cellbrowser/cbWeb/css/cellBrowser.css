@@ -33,8 +33,9 @@ canvas { user-select: none }
 .tpIconButton { padding: 1px 2px 1px 2px; border-radius: 0; height:28px; width: 28px; cursor: default}
 .tpClicked { background-color: #AAA }
 .tpClicked:hover { background-color: #AAA }
-.btn-primary.load-dataset {float: right; margin-left: 10px; color: white;}
+.btn-primary.load-dataset {float: right; margin-left: 10px; color: white; font-size: 12px; margin-top: -4px;}
 .list-group-item.active>.btn-primary {color: #337ab7;background-color: #fff;}
+.list-group-item .badge {margin-top: -2px;}
 
 .link { text-decoration: underline; color: #0000EE; cursor: pointer; }
 
@@ -169,7 +170,7 @@ button { line-height: 12px }
 
 /* flying-sheep's suggestions */
 .ui-dialog-titlebar { border: none }
-button.list-group-item { background-color: #EEE }
+a.list-group-item { background-color: #EEE }
 .nav-tabs > li > a { border-top-left-radius: 4px; border-top-right-radius: 4px; background-color: #EEE; padding-left: 10px; padding-right: 10px; padding-top: 4px; padding-bottom:4px}
 .nav-tabs > li.active > a { background-color: #337ab7; color: white; border: 1px solid #EEE }
 /* .nav-tabs > li { background-color: #E9E9E9 } */
