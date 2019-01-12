@@ -45,8 +45,8 @@ ExportToCellbrowser <- function(
   skip.markers = FALSE,
   all.meta = FALSE
 ) {
-  if (substr(object@version, 1, 1)!='2') { 
-          stop("can only process Seurat2 objects, version of rds is ", object@version) 
+  if (substr(object@version, 1, 1)!='2') {
+          stop("can only process Seurat2 objects, version of rds is ", object@version)
   }
 
   #idents <- FetchData(object,c("ident"))$ident;
@@ -150,23 +150,32 @@ ExportToCellbrowser <- function(
   }
   file <- paste0("markers.", ext)
   fname <- file.path(dir, file)
-  if (is.null(markers.file) & !skip.markers) {
-    if (length(levels(idents)) > 1) {
-      message("Running FindAllMarkers(), using ROC test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
-      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="roc", logfc.threshold = 0.35)
-      require(dplyr) # if this fails, install dplyr with install.packages("dplyr")
-      top.markers <- markers %>% group_by(cluster) %>% top_n(markers.n, avg_logFC)
-      write.table(top.markers, fname, quote=FALSE, sep="\t", row.names=FALSE)
-    } else {
-      file <- NULL
-    }
-  } else if (!skip.markers) {
+
+  if (!is.null(markers.file) && !skip.markers) {
     message("Copying ", markers.file, " to ", fname)
     file.copy(markers.file, fname)
   }
-  else {
-      message("No marker genes file defined")
+  if (is.null(markers.file) && skip.markers) {
+    file <- NULL
+  }
+  if (is.null(markers.file) && !skip.markers) {
+    if (length(levels(idents)) > 1) {
+      message("Running FindAllMarkers(), using ROC test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
+      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="roc", logfc.threshold = 0.35)
+      markers.helper <- function(x) {
+        partition <- markers[x,]
+        ord <- order(partition$p_val_adj < 0.05, -partition$avg_logFC)
+        res <- x[ord]
+        res <- c(res[1:markers.n], rep(NA, length(x) - markers.n))
+        return(res)
+      }
+      markers.order <- ave(rownames(markers), markers$cluster, FUN=markers.helper)
+      top.markers <- markers[markers.order[!is.na(markers.order)],]
+      write.table(top.markers, fname, quote=FALSE, sep="\t", col.names=NA)
+    } else {
+      message("No clusters found in Seurat object, so no marker genes can be computed")
       file <- NULL
+    }
   }
 
   if (!is.null(file)) {
