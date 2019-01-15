@@ -348,6 +348,10 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
     skipMarkers = options.skipMarkers
     clusterField = options.clusterField
     markerFile = options.markerFile
+    if markerFile is None:
+        markerFileStr = "NULL"
+    else:
+        markerFileStr = '"%s"' % markerFile
 
     tsnePath = join(outDir, "tsne.coords.tsv")
     metaPath = join(outDir, "meta.tsv")
@@ -373,8 +377,8 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
         clusterStr = "'%s'" % clusterField
 
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = '%s', cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE)" %
-            (outDir, datasetName, markerFile, clusterStr, skipStr, skipMarkerStr))
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE)" %
+            (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr))
 
     writeRScript(cmds, scriptPath, "cbImportSeurat2")
     runRscript(scriptPath, logPath)

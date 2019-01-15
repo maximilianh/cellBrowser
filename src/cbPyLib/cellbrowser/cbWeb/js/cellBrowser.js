@@ -26,6 +26,9 @@ var tsnePlot = function() {
     var renderer = null;
     var gWinInfo = null; // .width and .height of the PIXI canvas
 
+    // last 10 genes
+    var gRecentGenes = [];
+
     // -- CONSTANTS
     var gTitle = "UCSC Cell Browser";
     const COL_PREFIX = "col_";
@@ -52,6 +55,8 @@ var tsnePlot = function() {
     var toolBarComboTop   = 2;
     var datasetComboWidth = 200;
     var layoutComboWidth = 150;
+    // width of a single gene cell in the meta gene bar tables
+    var gGeneCellWidth = 66;
 
     // height of bottom gene bar
     var geneBarHeight = 100;
@@ -1367,6 +1372,19 @@ var tsnePlot = function() {
             sel.addOption({text: geneSym, value: geneSym});
             sel.refreshOptions();
             sel.setTextboxValue(geneSym);
+
+            // update the "recent genes" div
+            for (var i = 0; i < gRecentGenes.length; i++) {
+                // remove previous gene entry with the same symbol
+                if (gRecentGenes[i][0]===geneSym) {
+                    gRecentGenes.splice(i, i);
+                    break;
+                }
+            }
+            gRecentGenes.unshift([geneSym, geneDesc]); // insert at position 0
+            gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
+            buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
+            $('.tpGeneBarCell').click( onGeneClick );
         }
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
@@ -1855,13 +1873,30 @@ var tsnePlot = function() {
         return colors;
     }
 
+    function alphaNumSearch(genes, saneSym) {
+        /* use alpha-num-only search in gene list for saneSym */
+        for (var i=0; i<genes.length; i++) {
+            var geneSym = genes[i][0];
+            if (saneSym===onlyAlphaNum(geneSym))
+                return geneSym;
+        }
+        return null;
+    }
+
     function onGeneClick (event) {
     /* user clicked on a gene in the gene table */
-        var geneIdx = parseInt(event.target.id.split("_")[1]); // the index of the gene
+        var saneSym = event.target.id.split("_")[1]; // the symbol of the gene, as only-alphaNum chars
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass("tpGeneBarCellSelected");
-        $('#tpGeneBarCell_'+geneIdx).addClass("tpGeneBarCellSelected");
-        var geneSym = db.conf.quickGenes[geneIdx][0];
+        $('#tpGeneBarCell_'+saneSym).addClass("tpGeneBarCellSelected");
+
+        // search through both quick and recent gene lists to find the real gene symbol
+        var geneSym = null;
+        var quickGenes = db.conf.quickGenes;
+        var geneSym = alphaNumSearch(quickGenes, saneSym)
+        if (geneSym===null)
+            geneSym = alphaNumSearch(gRecentGenes, saneSym)
+
         loadGeneAndColor(geneSym);
     }
 
@@ -2119,21 +2154,39 @@ var tsnePlot = function() {
 
     }
 
-    function buildGeneTable(htmls, tableWidth, cellWidth, geneInfos) {
-    /* create gene expression info table */
-        $('#tpGenes').remove();
+    function buildGeneTable(htmls, divId, title, subtitle, geneInfos) {
+    /* create gene expression info table. if htmls is null, update DIV with divId in-place. */
+        var doUpdate = false;
+        if (htmls===null) {
+            htmls = [];
+            doUpdate = true;
+        }
 
-        if (db.conf.quickGenes===undefined)
+        var tableWidth = metaBarWidth;
+        var cellWidth = gGeneCellWidth;
+
+        if (title) {
+            htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
+            htmls.push("<div style='padding-left:3px; font-weight:bold'>"+title+"<div>");
+            if (subtitle) {
+                htmls.push('<div style="margin-top:6px" class="tpHint">');
+                htmls.push(subtitle);
+                htmls.push('</div>');
+            }
+        }
+
+        if (doUpdate) {
+            $('#'+divId).empty();
+        }
+
+        if (geneInfos===undefined || geneInfos===null || geneInfos.length===0)
             return;
 
+        htmls.push("<div id='"+divId+"'>");
 
-        htmls.push("<div style='margin-top:8px' id='tpGenes'>");
-        htmls.push("<div style='padding-left:3px; font-weight:bold'>Quick Genes<div>");
-        htmls.push('<div style="margin-top:6px" class="tpHint">');
-        htmls.push('Hover or select cells to update colors.');
-        htmls.push('</div>');
         htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
+
 
         var colsPerRow = Math.round(tableWidth / cellWidth);
         var cellWidth = Math.round(tableWidth/colsPerRow);
@@ -2143,14 +2196,17 @@ var tsnePlot = function() {
             var geneInfo = geneInfos[i];
             var geneId   = geneInfo[0];
             var geneDesc = geneInfo[1];
-            var pubDesc = geneInfo[2];
             if (((i % colsPerRow) == 0) && (i!=0)) {
                 htmls.push("</tr><tr>");
             }
-            htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+i+'" class="tpGeneBarCell">'+geneId+'</td>');
+            htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
         }
         htmls.push("</tr></table>");
+        htmls.push("</div>");
 
+        if (doUpdate) {
+            $('#'+divId).html(htmls.join(""));
+        }
     }
 
     function likeEmptyString(label) {
@@ -2525,7 +2581,7 @@ var tsnePlot = function() {
     }
 
     function buildGeneCombo(htmls, id, left, width) {
-        /* datasets with a list of elements with a shortLabel attribute. Build combobox for them. */
+        /* Combobox that allows searching for genes */
         //htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
         htmls.push('<div class="tpToolBarItem" style="padding-left: 3px">');
         htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">Color by Gene</label>');
@@ -2738,7 +2794,12 @@ var tsnePlot = function() {
         htmls.push("<div id='tpGeneTab'>");
 
         buildGeneCombo(htmls, "tpGeneCombo", 0, metaBarWidth-10);
-        buildGeneTable(htmls, metaBarWidth, 66, db.conf.quickGenes);
+
+        buildGeneTable(htmls, "tpRecentGenes", "Recent Genes", "Hover or select cells to update colors", gRecentGenes);
+
+        //var myGenes = loadMyGenes();
+
+        buildGeneTable(htmls, "tpGenes", "Dataset Genes", null, db.conf.quickGenes);
 
         htmls.push("</div>"); // tpGeneTab
 
@@ -3422,12 +3483,11 @@ var tsnePlot = function() {
                 //console.log("sum "+sum+" avg "+avg);
             }
             var color = pal[avg];
-            //console.log("color "+color);
-            $("#tpGeneBarCell_"+i).css("background-color", "#"+color);
 	    var fontColor = "#333333";
 	    if (isDark(color))
 		fontColor = "white";
-	    $("#tpGeneBarCell_"+i).css("color", fontColor);
+            $("#tpGeneBarCell_"+onlyAlphaNum(sym)).css({"background-color": "#"+color, "color" : fontColor});
+	    //$("#tpGeneBarCell_"+i).css("color", fontColor);
         }
         console.timeEnd("avgCalc");
     }
@@ -3611,6 +3671,12 @@ var tsnePlot = function() {
     function sanitizeName(name) {
         /* ported from cellbrowser.py: remove non-alpha, allow underscores */
         var newName = name.replace(/[^a-zA-Z_0-9+]/g, "");
+        return newName;
+    }
+
+    function onlyAlphaNum(name) {
+        /* only allow alphanumeric characters */
+        var newName = name.replace(/[^a-zA-Z0-9+]/g, "");
         return newName;
     }
 

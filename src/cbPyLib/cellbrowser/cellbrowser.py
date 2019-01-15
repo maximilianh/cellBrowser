@@ -704,7 +704,6 @@ def discretizeArray(numVals, fieldMeta):
 
 def discretizeNumField(numVals, fieldMeta, numType):
     " given a list of numbers, add attributes to fieldMeta that describe the binning scheme "
-    #digArr, fieldMeta = discretizeArr_uniform(numVals, fieldMeta)
     digArr, fieldMeta = discretizeArray(numVals, fieldMeta)
 
     #deciles, binCounts, newVals = getDecilesWithZeros(numVals)
@@ -753,7 +752,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     floatCount = 0
     valCounts = defaultdict(int)
     newVals = []
-    nanVal = float('-inf') # NaN and sorting does not work. we want NaN always to be first.
+    nanVal = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
     for val in valList:
         fieldType = "string"
         newVal = val
@@ -785,8 +784,10 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
         fieldMeta["type"] = "float"
 
-    elif intCount+unknownCount==len(valList) and not forceEnum:
+    elif unknownCount==0 and intCount==len(valList) and not forceEnum:
         # field is an integer: convert to decile index
+        # if field is integer but contains NaNs, we treat it as a float, as int(-inf) is not defined in Python.
+        # (possibly: should we use -2^32 instead of -inf to encode Nan?)
         numVals = [int(x) for x in newVals]
         newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
         fieldMeta["type"] = "int"
