@@ -15,8 +15,8 @@ Browser. You can create an .rds file in R as described in the Seurat tutorial::
 
     saveRDS(pbmc, "pbmc3k_small.rds")
 
-Then, on the Unix command line, you specify the input .rds file, the output directory and
-the name for the dataset in the cell browser::
+Then, on the Unix command line, you specify the input .rds file and the output directory (the name
+in the cell browser defaults to the output directory name, but you can change this with -n)::
 
     cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport
 
