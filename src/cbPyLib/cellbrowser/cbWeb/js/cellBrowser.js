@@ -336,9 +336,9 @@ var tsnePlot = function() {
         htmls.push("<div class='list-group' style='width:"+buttonWidth+"px'>");
         for (var i = 0; i < gDatasetList.length; i++) {
             var dataset = gDatasetList[i];
-            var line = "<button id='tpDatasetButton_"+i+"' type='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+            var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
-            htmls.push('<a role="button" class="btn btn-primary btn-xs load-dataset">Open dataset</a>')
+            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset">Open dataset</button>')
 
             if (dataset.sampleCount!==undefined) {
                 var countDesc = prettyNumber(dataset.sampleCount);
@@ -351,7 +351,7 @@ var tsnePlot = function() {
                 htmls.push("<span class='badge'>"+tag+"</span>");
                 }
             }
-            htmls.push(dataset.shortLabel+"</button>");
+            htmls.push(dataset.shortLabel+"</a>");
             if (db!==null && db.name===dataset.name)
                 activeIdx = i;
         }
