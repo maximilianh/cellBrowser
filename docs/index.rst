@@ -24,10 +24,10 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
    installation
    basic_usage
    internet
+   tabsep
    seurat
    scanpy
    cellranger
-   tabsep
    advanced
    combine
    requirements
