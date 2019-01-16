@@ -24,6 +24,10 @@ your ~/.bashrc to point to your html directory::
  
     export CBOUT=/var/www
 
+Alternatively, you can create a file ~/.cellbrowser.conf and assign a value to htmlDir::
+
+    echo 'htmlDir = "/var/www"' >> ~/.cellbrowser.conf
+
 The -p 8888 is optional. A more permanent alternative to the -p option is to
 run a webserver on your machine and build directly into its web directory.
 
