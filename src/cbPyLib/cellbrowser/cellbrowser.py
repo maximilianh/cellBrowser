@@ -64,7 +64,9 @@ if sys.version_info >= (3, 0):
 dataDir = None
 
 # the default html dir, used if the --htmlDir option is set but empty
-defOutDir = os.environ.get("CBOUT")
+# this variable is initialized below (no forward declaration in Python)
+# just before cbBuild_parseArgs
+defOutDir = None
 
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
@@ -243,6 +245,58 @@ def copyPkgFile(relPath):
         logging.info("Wrote %s" % destPath)
         shutil.copy(srcPath, destPath)
 
+def execfile(filepath, globals=None, locals=None):
+    " version of execfile for both py2 and py3 "
+    logging.debug("Executing %s" % filepath)
+    if globals is None:
+        globals = {}
+    globals.update({
+        "__file__": filepath,
+        "__name__": "__main__",
+    })
+    with open(filepath, 'rb') as file:
+        exec(compile(file.read(), filepath, 'exec'), globals, locals)
+
+def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
+    """ parse python in fname and return variables as dictionary.
+    add the directory of fname to the dict as 'inDir'.
+    """
+    logging.info("Loading settings from %s" % fname)
+    g = {}
+    l = OrderedDict()
+    execfile(fname, g, l)
+
+    conf = l
+
+    for rt in requireTags:
+        if not rt in conf:
+            errAbort("The input configuration has to define the %s statement" % rt)
+        if rt=="tags":
+            if type(conf["tags"])!=type([]):
+                errAbort("'tags' in input config file must be a list")
+
+    conf["inDir"] = dirname(fname)
+
+    return conf
+
+def maybeLoadConfig(confFname):
+    if isfile(confFname):
+        conf = loadConfig(confFname, requireTags=[])
+    else:
+        logging.debug("Could not find %s, not loading config file" % confFname)
+        conf = {}
+    return conf
+
+cbConf = None
+def getConfig(tag, defValue=None):
+    " get a global cellbrowser config value from ~/.cellbrowser.conf "
+    global cbConf
+    if cbConf is None:
+        confPath = expanduser("~/.cellbrowser.conf")
+        cbConf = maybeLoadConfig(confPath)
+
+    return cbConf.get(tag, defValue)
+
 def main_parseArgs():
     " arg parser for __main__, only used internally "
     parser = optparse.OptionParser("""usage: %prog serve outDir port
@@ -261,6 +315,12 @@ def main_parseArgs():
     setDebug(options.debug)
 
     return args, options
+
+# ---- GLOBAL ----
+defOutDir = getConfig("htmlDir")
+if defOutDir is None:
+    defOutDir = os.environ.get("CBOUT")
+# ---- GLOBAL END ----
 
 def cbBuild_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -282,7 +342,7 @@ def cbBuild_parseArgs(showHelp=False):
     parser.add_option("-i", "--inConf", dest="inConf", action="append",
         help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times")
 
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT or ~/.cellbrowser.conf, current value: %default", default=defOutDir)
 
     parser.add_option("-p", "--port", dest="port", action="store",
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
@@ -1899,40 +1959,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
         fileCount += 1
     logging.info("Wrote %d .tsv.gz files into directory %s" % (fileCount, outDir))
 
-def execfile(filepath, globals=None, locals=None):
-    " version of execfile for both py2 and py3 "
-    logging.debug("Executing %s" % filepath)
-    if globals is None:
-        globals = {}
-    globals.update({
-        "__file__": filepath,
-        "__name__": "__main__",
-    })
-    with open(filepath, 'rb') as file:
-        exec(compile(file.read(), filepath, 'exec'), globals, locals)
-
-def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
-    """ parse python in fname and return variables as dictionary.
-    add the directory of fname to the dict as 'inDir'.
-    """
-    logging.info("Loading settings from %s" % fname)
-    g = {}
-    l = OrderedDict()
-    execfile(fname, g, l)
-
-    conf = l
-
-    for rt in requireTags:
-        if not rt in conf:
-            errAbort("The input configuration has to define the %s statement" % rt)
-        if rt=="tags":
-            if type(conf["tags"])!=type([]):
-                errAbort("'tags' in input config file must be a list")
-
-    conf["inDir"] = dirname(fname)
-
-    return conf
-
 #def guessConfig(options):
     #" guess reasonable config options from arguments "
     #conf = {}
@@ -3056,16 +3082,6 @@ def findDatasets(outDir):
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
-cbConf = None
-def getConfig(tag, defValue=None):
-    " get a global cellbrowser config value from ~/.cellbrowser.conf "
-    global cbConf
-    if cbConf is None:
-        confPath = expanduser("~/.cellbrowser.conf")
-        cbConf = maybeLoadConfig(confPath)
-
-    return cbConf.get(tag, defValue)
-
 def copyAllFiles(fromDir, subDir, toDir):
     " copy all files in fromDir/subDir to toDir/subDir "
     outDir = join(toDir, subDir)
@@ -3249,14 +3265,6 @@ def pipeLog(msg):
 def excepthook(type, value, traceback):
     from IPython import embed
     embed()
-
-def maybeLoadConfig(confFname):
-    if isfile(confFname):
-        conf = loadConfig(confFname, requireTags=[])
-    else:
-        logging.debug("Could not find %s, not loading config file" % confFname)
-        conf = {}
-    return conf
 
 def checkLayouts(conf):
     """ it's very easy to get the layout names wrong: check them and handle the special value 'all' """
