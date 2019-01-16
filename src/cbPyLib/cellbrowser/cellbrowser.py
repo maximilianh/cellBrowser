@@ -2436,6 +2436,15 @@ def getMd5Using(md5Cmd, fname):
     assert(err==0)
     return md5
 
+def md5WithPython(fname):
+    " get md5 using python lib "
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            hash_md5.update(chunk)
+    md5 = hash_md5.hexdigest()
+    return md5
+
 def md5ForFile(fname):
     " return the md5sum of a file. Use a command line tool, if possible. "
     logging.info("Getting md5 of %s" % fname)
@@ -2444,11 +2453,7 @@ def md5ForFile(fname):
     elif spawn.find_executable("md5")!=None:
         md5 = getMd5Using("md5", fname).split()[-1]
     else:
-        hash_md5 = hashlib.md5()
-        with open(fname, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                hash_md5.update(chunk)
-        md5 = hash_md5.hexdigest()
+        md5 = md5WithPython(fname)
     return md5
 
 def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf):
@@ -3051,6 +3056,16 @@ def findDatasets(outDir):
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
+cbConf = None
+def getConfig(tag, defValue=None):
+    " get a global cellbrowser config value from ~/.cellbrowser.conf "
+    global cbConf
+    if cbConf is None:
+        confPath = expanduser("~/.cellbrowser.conf")
+        cbConf = maybeLoadConfig(confPath)
+
+    return cbConf.get(tag, defValue)
+
 def copyAllFiles(fromDir, subDir, toDir):
     " copy all files in fromDir/subDir to toDir/subDir "
     outDir = join(toDir, subDir)
@@ -3072,6 +3087,38 @@ def copyStatic(baseDir, outDir):
     copyAllFiles(baseDir, "js", outDir)
     copyAllFiles(baseDir, "css", outDir)
 
+def writeVersionedLink(ofh, mask, webDir, relFname):
+    " write sprintf-formatted mask to ofh, but add ?md5 to jsFname first. Goal is to force cache reload in browser. "
+    # hack for jquery - avoid jquery button overriding any other button function
+    if relFname.endswith("jquery-ui.min.js"):
+        ofh.write("""<script>
+  $.fn.bsButton = $.fn.button.noConflict();
+  $.fn.bsTooltip = $.fn.tooltip.noConflict();
+</script>
+""")
+
+    filePath = join(webDir, relFname)
+    md5 = md5WithPython(filePath)
+    verFname = relFname+"?"+md5[:10]
+    outLine = mask % verFname
+    ofh.write(outLine+"\n")
+
+def writeGaScript(ofh, gaTag):
+    " write Google analytics script to ofh "
+    ofh.write("""
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=%s"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', '%s');
+</script>
+<!-- END - Google Analytics -->
+
+""" % (gaTag, gaTag))
+
 def makeIndexHtml(baseDir, datasets, outDir):
     dsList = []
     for ds in datasets:
@@ -3088,15 +3135,63 @@ def makeIndexHtml(baseDir, datasets, outDir):
         dsList.append(summDs)
 
     indexFname = join(baseDir, "html", "index.html")
-    indexStr = open(indexFname).read()
-    old = "datasetList = null"
-    new = "datasetList = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))
-    newIndexStr = indexStr.replace(old, new)
-    assert(newIndexStr!=indexStr)
+    #indexStr = open(indexFname).read()
+    datasetListJs = "var datasetList = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
+    #newIndexStr = indexStr.replace(old, new)
+    #assert(newIndexStr!=indexStr)
 
     newFname = join(outDir, "index.html")
     ofh = open(newFname, "w")
-    ofh.write(newIndexStr)
+
+    ofh.write("<!doctype html>\n")
+    ofh.write('<html>\n')
+    ofh.write('<head>\n')
+    ofh.write('<meta charset="utf-8">\n')
+    ofh.write('<title>UCSC Cell Browser</title>\n')
+
+    cssFnames = ["ext/jquery-ui-1.12.1.css", "ext/spectrum-1.8.0.css", "ext/jquery.contextMenu.css",
+        "ext/jquery.tipsy.1.0.3.min.css", "ext/bootstrap.min.css",
+        "ext/introjs.2.4.0.min.css", "ext/bootstrap-submenu.min.css",
+        "ext/bootstrap-dropmenu.min.css", "ext/font-awesome.css",
+        "ext/googleMaterialIcons.css", "ext/chosen.1.8.2.min.css",
+        "ext/select2.4.0.4.min.css", "ext/selectize.0.12.4.min.css",
+        "css/cellBrowser.css"]
+
+    for cssFname in cssFnames:
+        writeVersionedLink(ofh, '<link rel="stylesheet" href="%s">', baseDir, cssFname)
+
+    jsFnames = ["ext/FileSaver.1.1.20151003.min.js", "ext/jquery.3.1.1.min.js",
+        "ext/palette.js", "ext/spectrum.min.js",
+        "ext/chosen.jquery.min.js", "ext/mousetrap.min.js",
+        "ext/jquery.contextMenu.js", "ext/jquery.ui.position.min.js",
+        "ext/jquery.tipsy.min.js", "ext/intro.min.js", "ext/papaparse.min.js",
+        "ext/bootstrap.min.js", "ext/bootstrap-submenu.js", "ext/pako_inflate.min.js",
+        "ext/FastBitSet.js", "ext/hamster.js", "ext/split.js", "ext/normalizeWheel.js",
+        "ext/tablesort.js", "ext/tablesort.number.min.js", "ext/Chart.bundle.min.js",
+        "ext/chartjs-chart-box-and-violin-plot.js", "ext/jquery-ui.min.js",
+        "ext/select2.min.js", "ext/selectize.min.js", "ext/jquery.sparkline.min.js",
+        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js"]
+
+    # at UCSC, for grant reports, we need to get some idea how many IPs are using the cell browser
+    ofh.write('<script src="https://genome.ucsc.edu/js/cbTrackUsage.js"></script>\n')
+
+    for jsFname in jsFnames:
+        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname)
+
+    if getConfig("gaTag") is not None:
+        gaTag = getConfig("gaTag")
+        writeGaScript(ofh, gaTag)
+
+    ofh.write('</head>\n')
+    ofh.write('<body>\n')
+    ofh.write('<script>\n')
+    ofh.write(datasetListJs)
+    ofh.write('\n')
+    ofh.write('cellbrowser.loadData(datasetList);\n')
+    ofh.write('</script>\n');
+    ofh.write('</body>\n')
+    ofh.write('</html>\n')
+
     ofh.close()
 
     datasetLabels = [x["name"] for x in dsList]

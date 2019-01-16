@@ -28,5 +28,6 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
    scanpy
    cellranger
    tabsep
+   advanced
    combine
    requirements

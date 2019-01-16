@@ -5,7 +5,7 @@
 /* jshint -W097 */
 "use strict";
 
-var tsnePlot = function() {
+var cellbrowser = function() {
     var db = null; // the cbData object from cbData.js. Loads coords,
                    // annotations and gene expression vectors
 
