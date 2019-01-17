@@ -3718,7 +3718,7 @@ def generateDownloads(datasetName, outDir):
 
 def generateHtmls(datasetName, outDir):
     " generate downloads.html and summary.html in outDir, if they don't exist "
-    copyPkgFile("sampleConfig/summary.html", outDir, datasetName)
+    copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
     generateDownloads(datasetName, outDir)
 
 if __name__=="__main__":

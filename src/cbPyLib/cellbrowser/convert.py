@@ -429,6 +429,7 @@ def cbImportScanpyCli():
     import anndata
     ad = anndata.read_h5ad(inFname)
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix)
+    generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:
         errAbort("--port requires --htmlDir")
