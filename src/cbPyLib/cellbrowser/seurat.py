@@ -3,9 +3,8 @@
 import logging, optparse, sys, glob, os, datetime
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
-from .convert import generateDownloads
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
-from .cellbrowser import setDebug, build, isDebugMode
+from .cellbrowser import setDebug, build, isDebugMode, generateHtmls
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -260,9 +259,9 @@ def cbSeuratCli():
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
     coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
-    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":clusterField})
+    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
-    generateDownloads(datasetName, outDir)
+    generateHtmls(datasetName, outDir)
 
 def cbImportSeurat2_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -389,7 +388,7 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
     #coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
     #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
-    generateDownloads(datasetName, outDir)
+    generateHtmls(datasetName, outDir)
 
 def cbImportSeurat2Cli():
     " convert .rds to directory "

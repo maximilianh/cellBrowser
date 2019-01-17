@@ -233,17 +233,29 @@ def staticFileNextRow(relPath):
     for row in lineFileNextRow(fh):
         yield row
 
-def copyPkgFile(relPath):
-    " copy file from directory under the current package directory to current directory "
-    cwd = os.getcwd()
+def copyPkgFile(relPath, outDir=None, values=None):
+    """ copy file from directory under the current package directory to outDir or current directory
+    Don't overwrite if the file is already there.
+    """
+    if outDir is None:
+        outDir = os.getcwd()
     baseDir = dirname(__file__) # = directory of this script
     srcPath = join(baseDir, relPath)
-    destPath = join(cwd, basename(relPath))
+    destPath = join(outDir, basename(relPath))
     if isfile(destPath):
         logging.info("%s already exists, not overwriting" % destPath)
     else:
-        logging.info("Wrote %s" % destPath)
-        shutil.copy(srcPath, destPath)
+        if values is None:
+            shutil.copy(srcPath, destPath)
+            logging.info("Wrote %s" % destPath)
+        else:
+            logging.debug("Using %s as template for %s, vars %s" % (srcPath, destPath, values))
+            data = open(srcPath).read()
+            dataNew = data % values
+            ofh = open(destPath, "w")
+            ofh.write(dataNew)
+            ofh.close()
+            logging.info("Wrote %s" % destPath)
 
 def execfile(filepath, globals=None, locals=None):
     " version of execfile for both py2 and py3 "
@@ -3580,7 +3592,9 @@ def cbScanpyCli():
     adata = cbScanpy(matrixFname, confFname, figDir, logFname, matrixOutFname)
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
-    scanpyToCellbrowser(adata, outDir, datasetName=options.name, skipMatrix=True)
+    datasetName=options.name
+    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True)
+    generateHtmls(datasetName, outDir)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     " convert mtx to tab-sep without scanpy. gzip if needed "
@@ -3654,6 +3668,58 @@ def getAllFields(ifhs, sep):
                 allFields.append(field)
 
     return allFields, colCounts
+
+def generateDownloads(datasetName, outDir):
+    htmlFname = join(outDir, "downloads.html")
+    if isfile(htmlFname):
+        logging.info("%s exists, not overwriting" % htmlFname)
+        return
+
+    ofh = open(htmlFname, "w")
+    ofh.write("<b>Expression matrix:</b> <a href='%s/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a><p>\n" % datasetName)
+
+    cFname = join(outDir, "cellbrowser.conf")
+    if isfile(cFname):
+        conf = loadConfig(cFname)
+        if "unit" in conf:
+            ofh.write("Unit of expression matrix: %s<p>\n" % conf["unit"])
+
+    ofh.write("<b>Cell meta annotations:</b> <a href='%s/meta.tsv'>meta.tsv</a><p>" % datasetName)
+
+    markerFname = join(outDir, "markers.csv")
+    if not isfile(markerFname):
+        markerFname = join(outDir, "markers.tsv")
+
+    if isfile(markerFname):
+        baseName = basename(markerFname)
+        ofh.write("<b>Cluster Marker Genes:</b> <a href='%s/%s'>%s</a><p>\n" % (baseName, baseName, datasetName))
+
+    coordDescs = conf["coords"]
+    for coordDesc in coordDescs:
+        coordLabel = coordDesc["shortLabel"]
+        cleanName = sanitizeName(coordLabel.replace(" ", "_"))
+        coordFname = cleanName+".coords.tsv.gz"
+        ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
+
+    rdsFname = join(datasetName, "seurat.rds")
+    if isfile(rdsFname):
+        ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>" % rdsFname)
+
+    scriptFname = join(datasetName, "runSeurat.R")
+    if isfile(scriptFname):
+        ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>" % scriptFname)
+
+    logFname = join(datasetName, "analysisLog.txt")
+    if isfile(logFname):
+        ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
+
+    ofh.close()
+    logging.info("Wrote %s" % ofh.name)
+
+def generateHtmls(datasetName, outDir):
+    " generate downloads.html and summary.html in outDir, if they don't exist "
+    copyPkgFile("sampleConfig/summary.html", outDir, datasetName)
+    generateDownloads(datasetName, outDir)
 
 if __name__=="__main__":
     args, options = main_parseArgs()

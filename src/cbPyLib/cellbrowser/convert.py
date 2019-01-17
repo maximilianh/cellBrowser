@@ -7,6 +7,7 @@ from collections import defaultdict
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
 from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
+from .cellbrowser import generateHtmls
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -260,7 +261,7 @@ def crangerToCellbrowser(datasetName, inDir, outDir):
     writeCellbrowserConf(datasetName, coordDescs, confName, confArgs)
 
     crangerWriteMethods(inDir, outDir, matFname)
-    generateDownloads(datasetName, outDir)
+    generateHtmls(datasetName, outDir)
 
 def crangerWriteMethods(inDir, outDir, matFname):
     htmlFname = join(outDir, "methods.html")
@@ -283,53 +284,6 @@ def crangerWriteMethods(inDir, outDir, matFname):
 
     for key, value in iterItems(qcVals):
         ofh.write("%s: %s<br>\n" % (key, value))
-    ofh.close()
-    logging.info("Wrote %s" % ofh.name)
-
-def generateDownloads(datasetName, outDir):
-    htmlFname = join(outDir, "downloads.html")
-    if isfile(htmlFname):
-        logging.info("%s exists, not overwriting" % htmlFname)
-        return
-
-    ofh = open(htmlFname, "w")
-    ofh.write("<b>Expression matrix:</b> <a href='%s/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a><p>\n" % datasetName)
-
-    cFname = join(outDir, "cellbrowser.conf")
-    if isfile(cFname):
-        conf = loadConfig(cFname)
-        if "unit" in conf:
-            ofh.write("Unit of expression matrix: %s<p>\n" % conf["unit"])
-
-    ofh.write("<b>Cell meta annotations:</b> <a href='%s/meta.tsv'>meta.tsv</a><p>" % datasetName)
-
-    markerFname = join(outDir, "markers.csv")
-    if not isfile(markerFname):
-        markerFname = join(outDir, "markers.tsv")
-
-    if isfile(markerFname):
-        baseName = basename(markerFname)
-        ofh.write("<b>Cluster Marker Genes:</b> <a href='%s/%s'>%s</a><p>\n" % (baseName, baseName, datasetName))
-
-    coordDescs = conf["coords"]
-    for coordDesc in coordDescs:
-        coordLabel = coordDesc["shortLabel"]
-        cleanName = sanitizeName(coordLabel.replace(" ", "_"))
-        coordFname = cleanName+".coords.tsv.gz"
-        ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
-
-    rdsFname = join(datasetName, "seurat.rds")
-    if isfile(rdsFname):
-        ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>" % rdsFname)
-
-    scriptFname = join(datasetName, "runSeurat.R")
-    if isfile(scriptFname):
-        ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>" % scriptFname)
-
-    logFname = join(datasetName, "analysisLog.txt")
-    if isfile(logFname):
-        ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
-
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
