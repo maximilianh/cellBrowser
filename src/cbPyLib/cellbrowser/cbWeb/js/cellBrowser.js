@@ -3875,7 +3875,7 @@ var cellbrowser = function() {
                 if (j===geneListCol || j===exprCol)
                     geneListFormat(htmls, val, geneSym);
                 else if (j===pValCol)
-                    htmls.push(parseFloat(val).toFixed(4)); // four digits ought to be enough for everyone
+                    htmls.push(parseFloat(val).toPrecision(4)); // four digits ought to be enough for everyone
                 else
                     htmls.push(val);
                 htmls.push("</td>");
