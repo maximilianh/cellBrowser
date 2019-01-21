@@ -2650,7 +2650,6 @@ coords=%(coordStr)s
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
 
-    #fname = join(outDir, 'cellbrowser.conf')
     if isfile(fname):
         logging.info("Not overwriting %s, file already exists." % fname)
         return
@@ -2815,9 +2814,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
         fname = join(path, "meta.tsv")
         meta_df.to_csv(fname,sep='\t')
 
+    argDict = {}
     if clusterField:
         clusterFieldLabel = metaFields.get('louvain', 'louvain')
-        writeCellbrowserConf(datasetName, coordDescs, confName, args={'clusterField':clusterFieldLabel})
+        argDict = {'clusterField':clusterFieldLabel}
+
+    if isfile(confName):
+        logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
+    else:
+        writeCellbrowserConf(datasetName, coordDescs, confName, args=argDict)
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -3682,7 +3687,7 @@ def generateDownloads(datasetName, outDir):
     if isfile(cFname):
         conf = loadConfig(cFname)
         if "unit" in conf:
-            ofh.write("Unit of expression matrix: %s<p>\n" % conf["unit"])
+            ofh.write("Unit of expression matrix: %s<p>\n" % conf.get("unit", "unknown"))
 
     ofh.write("<b>Cell meta annotations:</b> <a href='%s/meta.tsv'>meta.tsv</a><p>" % datasetName)
 
