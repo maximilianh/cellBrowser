@@ -498,21 +498,24 @@ var cellbrowser = function() {
 
     function onSelectAllClick() {
     /* Edit - select all visible*/
+        clearSelectionState();
         renderer.selectClear();
         renderer.selectVisible();
-        //updateSelection();
         renderer.drawDots();
     }
 
     function onSelectNoneClick() {
     /* Edit - Select None */
+        clearSelectionState();
         renderer.selectClear();
         renderer.drawDots();
     }
 
-    function buildOneComboboxRow(htmls, comboWidth, rowIdx) {
+    function buildOneComboboxRow(htmls, comboWidth, rowIdx, queryExpr) {
         /* create one row of combobox elements in the select dialog */
-        htmls.push('<div>');
+        htmls.push('<div class="tpSelectRow" id="tpSelectRow_'+rowIdx+'">');
+        // or &#x274e; ?
+        htmls.push('<span style="cursor: default; font-size:1.2em" id="tpSelectRemove_'+rowIdx+'">&#xd7;</span>&nbsp;'); // unicode: mult sign
         htmls.push('<select name="type" id="tpSelectType_'+rowIdx+'">');
         htmls.push('<option value="meta">Cell annotation field</option><option value="expr">Expression of gene </option>');
         htmls.push('</select>');
@@ -524,22 +527,67 @@ var cellbrowser = function() {
         htmls.push('</select>');
 
         htmls.push('<select name="operator" id="tpSelectOperator_'+rowIdx+'">');
-        htmls.push('<option value="eq">is equal to</option>');
+        htmls.push('<option value="eq" selected>is equal to</option>');
         htmls.push('<option value="gt">is greater than</option>');
         htmls.push('<option value="lt">is less than</option>');
         htmls.push('</select>');
 
-        htmls.push('<input id="tpSelectValue_'+rowIdx+'" type="text" name="exprValue"></input>');
+        htmls.push('<input id="tpSelectValue_'+rowIdx+'" type="text" name="exprValue">');
+        htmls.push('</input>');
 
         htmls.push('<select id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
+        // if ("m" in queryExpr) {
+          //   var op = getQueryOp(queryExpr);
+            // var fieldName = query["m"];
+            //var fieldValue = queryExpr[op];
+            //var metaInfo = findMetaInfo(fieldName);
+            //for (var valIdx = 0; valIdx < metaInfo.valCounts.length; valIdx++) {
+            //    htmls.push('<option value="'+valIdx+'">'+metaInfo.valCounts[i][0]+'</option>');
+           // }
+       // }
         htmls.push('</select>');
+        htmls.push('</div>'); // tpSelectRow_<rowIdx>
 
         htmls.push('<p>');
     }
 
-    function connectOneComboboxRow(comboWidth, rowIdx) {
+    function findCellsUpdateMetaCombo(rowIdx, fieldIdx) {
+        /* given the row and the ID name of the field, setup the combo box row */
+        var valCounts = db.getMetaFields()[fieldIdx].valCounts;
+        if (valCounts===undefined) {
+            $('#tpSelectValue_'+rowIdx).show();
+            $('#tpSelectMetaValueEnum_'+rowIdx).hide();
+        } else {
+            $('#tpSelectValue_'+rowIdx).hide();
+            $('#tpSelectMetaValueEnum_'+rowIdx).empty();
+            for (var i = 0; i < valCounts.length; i++) {
+                var valName = valCounts[i][0];
+                $('#tpSelectMetaValueEnum_'+rowIdx).append("<option value='"+i+"'>"+valName+"</option>");
+            }
+            $('#tpSelectMetaValueEnum_'+rowIdx).show();
+        }
+    }
+
+    function findCellsUpdateRowType(rowIdx, rowType) {
+        if (rowType === "meta") {
+            $("#tpSelectType_"+rowIdx).val("meta");
+            $("#tpSelectGeneCombo_"+rowIdx).next().hide();
+            $("#tpSelectValue_"+rowIdx).hide();
+            $("#tpSelectMetaComboBox_"+rowIdx).show();
+            $('#tpSelectMetaCombo_'+rowIdx).val(0).trigger('chosen:updated'); // empty the meta dropdown
+            $("#tpSelectMetaValueEnum_"+rowIdx).show();
+        } else {
+            $("#tpSelectType_"+rowIdx).val("expr");
+            $("#tpSelectGeneCombo_"+rowIdx).next().show();
+            $("#tpSelectValue_"+rowIdx).show();
+            $("#tpSelectMetaComboBox_"+rowIdx).hide();
+            $("#tpSelectMetaValueEnum_"+rowIdx).hide();
+        }
+    }
+
+    function connectOneComboboxRow(comboWidth, rowIdx, query) {
         /* call the jquery inits and setup the change listeners for a combobox row */
-        /* a UI framework, like react or angular, would be very helpful here */
+        /* Yes, a UI framework, like react or angular, would be very helpful here */
 
         // auto-suggest for gene searches
         $('#tpSelectGeneCombo_'+rowIdx).selectize({
@@ -550,43 +598,43 @@ var cellbrowser = function() {
         });
         activateCombobox("tpSelectMetaCombo_"+rowIdx, comboWidth);
 
-        $("#tpSelectGeneCombo_"+rowIdx).next().hide();
-        $("#tpSelectValue_"+rowIdx).hide();
+        $('#tpSelectRemove_'+rowIdx).click( function(ev) {
+            //console.log(ev);
+            var rowToDel = (this.id).split("_")[1];
+            $("#tpSelectRow_"+rowToDel).remove();
+        });
+
+        //$("#tpSelectGeneCombo_"+rowIdx).next().hide();
+        //$("#tpSelectValue_"+rowIdx).hide();
+
+
+        var rowType = "gene";
+        var metaName = query["m"];
+        var op = getQueryOp(query);
+        if (metaName!==undefined) {
+            rowType = "meta";
+            var metaInfo = findMetaInfo(metaName);
+            findCellsUpdateRowType(rowIdx, rowType);
+            findCellsUpdateMetaCombo(rowIdx, metaInfo.index);
+        } else {
+            findCellsUpdateRowType(rowIdx, rowType);
+            selectizeSetValue("#tpSelectGeneCombo_"+rowIdx, query["g"]);
+        }
+        $("#tpSelectOperator_"+rowIdx).val(op);
+        $("#tpSelectValue_"+rowIdx).val(query[op]);
 
         $('#tpSelectMetaCombo_'+rowIdx).change(function(ev) {
             // when the user changes the meta field, update the list of meta field values in the dropdown
             var selVal = this.value;
-            var fieldId = parseInt(selVal.split("_")[1]);
-            var valCounts = db.getMetaFields()[fieldId].valCounts;
-            if (valCounts===undefined) {
-                $('#tpSelectValue_'+rowIdx).show();
-                $('#tpSelectMetaValueEnum_'+rowIdx).hide();
-            } else {
-                $('#tpSelectValue_'+rowIdx).hide();
-                $('#tpSelectMetaValueEnum_'+rowIdx).empty();
-                for (var i = 0; i < valCounts.length; i++) {
-                    var valName = valCounts[i][0];
-                    $('#tpSelectMetaValueEnum_'+rowIdx).append("<option value='"+i+"'>"+valName+"</option>");
-                }
-                $('#tpSelectMetaValueEnum_'+rowIdx).show();
-            }
+            var fieldIdx = parseInt(selVal.split("_")[1]);
+            findCellsUpdateMetaCombo(rowIdx, fieldIdx);
         });
 
         $('#tpSelectType_'+rowIdx).change(function(ev) {
             // when the user changes the gene expression / meta dropdown, hide/show the
             // respective other dropdowns
-            if (this.value === "meta") {
-                $("#tpSelectGeneCombo_"+rowIdx).next().hide();
-                $("#tpSelectValue_"+rowIdx).hide();
-                $("#tpSelectMetaComboBox_"+rowIdx).show();
-                $('#tpSelectMetaCombo_'+rowIdx).val(0).trigger('chosen:updated'); // empty the meta dropdown
-                $("#tpSelectMetaValueEnum_"+rowIdx).show();
-            } else {
-                $("#tpSelectGeneCombo_"+rowIdx).next().show();
-                $("#tpSelectValue_"+rowIdx).show();
-                $("#tpSelectMetaComboBox_"+rowIdx).hide();
-                $("#tpSelectMetaValueEnum_"+rowIdx).hide();
-            }
+            var rowType = this.value;
+            findCellsUpdateRowType(rowIdx, rowType);
         });
     }
 
@@ -596,8 +644,8 @@ var cellbrowser = function() {
         // XX TODO: non-enum meta data fields ???
         var queries = [];
 
-        var rowIdx = 1;
-        while ($("#tpSelectOperator_"+rowIdx).length > 0) {
+        var rowCount = $(".tpSelectRow").length;
+        for (var rowIdx=0;  rowIdx<rowCount; rowIdx++) {
             var query = {};
             var op = $('#tpSelectOperator_'+rowIdx).val();
 
@@ -620,7 +668,6 @@ var cellbrowser = function() {
                 query[op] = val;
             }
             queries.push(query);
-            rowIdx++;
         }
         return queries;
     }
@@ -629,19 +676,25 @@ var cellbrowser = function() {
     function lessThan(x, y) { return (x<y); }
     function equals(x, y) { return (x===y); }
 
+    function getQueryOp(query) {
+        if ("eq" in query) return "eq";
+        if ("gt" in query) return "gt";
+        if ("lt" in query) return "lt";
+    }
+
     function makeFuncAndVal(query) {
         /* return a comparator function and the value given a query object */
         var compFunc = equals;
-        if ("lt" in query)
-            compFunc = lessThan;
-        if ("gt" in query)
-            compFunc = greaterThan;
+        var val = query["eq"];
 
-        var val = query["eq"]
-        if (val===undefined)
-            val = query["lt"]
-        if (val===undefined)
-            val = query["gt"]
+        if ("lt" in query) {
+            compFunc = lessThan;
+            val = query["lt"];
+        }
+        if ("gt" in query) {
+            compFunc = greaterThan;
+            val = query["gt"];
+        }
 
         return [compFunc, val];
     }
@@ -685,6 +738,7 @@ var cellbrowser = function() {
         }
 
         function gotGeneVec(exprArr, sym, desc, funcVal) {
+            funcVal[1] = Number(funcVal[1]); // for gene queries, must be a number, not string
             var selCells = searchArrayForFuncAndVal(exprArr, funcVal)
             queryResults.push(selCells);
             doneQueries++;
@@ -717,6 +771,19 @@ var cellbrowser = function() {
         }
     }
 
+    function makeSampleQuery() {
+        /* find first enum meta field and return a query for its name and its first value */
+        var metaFieldInfo = db.conf.metaFields;
+        for (var i = 0; i < metaFieldInfo.length; i++) {
+            var field = metaFieldInfo[i];
+            if (field.type!=="enum")
+                continue;
+            var fieldName = field.name;
+            var val1 = field.valCounts[0][0];
+            return {"m":fieldName, "eq":val1};
+        }
+    }
+
     function onSelectComplexClick() {
     /* Edit - Find cells */
 
@@ -733,10 +800,11 @@ var cellbrowser = function() {
 
                 findCellsMatchingQueryList(queryList, function(cellIds) {
                     if (cellIds.length===0) {
-                        alert("No matching "+gSampleDesc+".");
+                        alert("No matching "+gSampleDesc+"s.");
                     } else {
                         renderer.selectSet(cellIds);
-                        changeUrl({'select':JSON.stringify(queryList)});
+                        //changeUrl({'select':JSON.stringify(queryList)});
+                        changeUrl({'select':JSURL.stringify(queryList)});
                         renderer.drawDots();
                         $("#tpDialog").dialog("close");
                     }
@@ -747,23 +815,39 @@ var cellbrowser = function() {
 
         var htmls = [];
 
+        // build from current query or create a sample query
+        var queries = [];
+        var queryStr = getVar("select");
+        if (queryStr!==null)
+            queries = JSURL.parse(queryStr);
+        else {
+            queries = [makeSampleQuery()];
+        }
+
         var comboWidth = 150;
-        buildOneComboboxRow(htmls, comboWidth, 1);
+
+        for (var i=0; i < queries.length; i++) {
+            var query = queries[i];
+            buildOneComboboxRow(htmls, comboWidth, i, query);
+        }
 
         htmls.push("<div id='tpSelectAddRowLink' class='link'>Add another search criterion</div>");
 
         showDialogBox(htmls, "Find cells based on annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
 
-        connectOneComboboxRow(comboWidth, 1);
+        for (i=0; i < queries.length; i++) {
+            var query = queries[i];
+            connectOneComboboxRow(comboWidth, i, query);
+        }
 
-        var rowIdx = 2;
+        var rowIdx = queries.length+1;
         $('#tpSelectAddRowLink').click( function(ev) {
             var htmls = [];
-            buildOneComboboxRow(htmls, comboWidth, rowIdx);
+            var rowIdx = $(".tpSelectRow").length;
+            var newRowQuery = makeSampleQuery();
+            buildOneComboboxRow(htmls, comboWidth, rowIdx, newRowQuery);
             $(htmls.join("")).insertBefore("#tpSelectAddRowLink");
-            //$('#tpSelectAddRowLink').insertBefore();
-            connectOneComboboxRow(comboWidth, rowIdx);
-            rowIdx++;
+            connectOneComboboxRow(comboWidth, rowIdx, newRowQuery);
         });
     }
 
@@ -834,7 +918,7 @@ var cellbrowser = function() {
                         gSelCellIds[cellId] = true;
                         }
                     $( this ).dialog( "close" );
-                    //updateSelection();
+                    clearSelectionState();
                     plotDots();
                     renderer.render(stage);
                     //alert(idList.length+ " " + gSampleDesc+"s are selected");
@@ -927,7 +1011,7 @@ var cellbrowser = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
-         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content"></span></a></li>');
+         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
          //htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
@@ -1347,6 +1431,20 @@ var cellbrowser = function() {
         }
     }
 
+    function selectizeSetValue(selector, name) {
+            /* little convenience method to set a selective dropdown to a given value */
+        if (name===undefined)
+            return;
+        var sel = $(selector)[0].selectize;
+        sel.addOption({text: name, value: name});
+        sel.setTextboxValue(name);
+        sel.refreshOptions();
+        // update the <select> element
+        $(selector).empty();
+        $(selector).append($('<option>', { value: name, text : name}));
+        //sel.setValue(name, true);
+    }
+
     function loadGeneAndColor(geneSym, onDone) {
         /* color by a gene, load the array into the renderer and call onDone or just redraw */
         if (onDone===undefined)
@@ -1368,10 +1466,7 @@ var cellbrowser = function() {
             onDone();
 
             // update the gene combo box
-            var sel = $('#tpGeneCombo')[0].selectize;
-            sel.addOption({text: geneSym, value: geneSym});
-            sel.refreshOptions();
-            sel.setTextboxValue(geneSym);
+            selectizeSetValue("#tpGeneCombo", geneSym);
 
             // update the "recent genes" div
             for (var i = 0; i < gRecentGenes.length; i++) {
@@ -1409,6 +1504,8 @@ var cellbrowser = function() {
 
        var loadsDone = 0;
 
+       var selList = null; // search expression to select, in format accepted by findCellsMatchingQueryList()
+
        function doneOnePart() {
        /* make sure renderer only draws when both coords and other data have loaded */
            loadsDone +=1;
@@ -1422,7 +1519,13 @@ var cellbrowser = function() {
                    renderer.setColors(legendGetColors(gLegend.rows));
 
                renderer.setTitle("Dataset: "+db.conf.shortLabel);
-               renderer.drawDots();
+               if (selList)
+                   findCellsMatchingQueryList(selList, function (cellIds) {
+                        renderer.selectSet(cellIds);
+                        renderer.drawDots();
+                   });
+               else
+                   renderer.drawDots();
            }
        }
 
@@ -1434,9 +1537,9 @@ var cellbrowser = function() {
                return [3, 0.5];
            if (dotCount<9000)
                return [2, 0.5];
-           if (dotCount<15000)
-               return [3, 0.4];
-           // more than 50k:
+           if (dotCount<30000)
+               return [1, 0.4];
+           // more than 28k:
            return [0, 0.3];
        }
 
@@ -1483,15 +1586,18 @@ var cellbrowser = function() {
        var colorBy = colorByInfo[1];
 
        // allow to override coloring by URL args
-       if (getVar("gene", null)!==null) {
+       if (getVar("gene")!==undefined) {
            colorType = "gene";
            colorBy = getVar("gene");
            activateTab("gene");
        }
-       else if (getVar("meta", null)!==null) {
+       else if (getVar("meta")!==undefined) {
            colorType = "meta";
            colorBy = getVar("meta");
            activateTab("meta");
+       }
+       if (getVar("select")!==undefined) {
+           selList = JSURL.parse(getVar("select"));
        }
 
        gLegend = {};
@@ -1883,6 +1989,15 @@ var cellbrowser = function() {
         return null;
     }
 
+    function phoneHome() {
+      /* add empty javascript to document so we can count usage at UCSC for grant reports */
+      /* -> does this pose a data protection issue? Need to document. Does it require opt-in ? */
+      var s = document.createElement( 'script' );
+      s.setAttribute( 'src', "https://cells.ucsc.edu/js/cbTrackUsage.js" );
+      s.async = true;
+      document.body.appendChild( s );
+    }
+
     function onGeneClick (event) {
     /* user clicked on a gene in the gene table */
         var saneSym = event.target.id.split("_")[1]; // the symbol of the gene, as only-alphaNum chars
@@ -1893,7 +2008,8 @@ var cellbrowser = function() {
         // search through both quick and recent gene lists to find the real gene symbol
         var geneSym = null;
         var quickGenes = db.conf.quickGenes;
-        var geneSym = alphaNumSearch(quickGenes, saneSym)
+        if (quickGenes)
+            geneSym = alphaNumSearch(quickGenes, saneSym)
         if (geneSym===null)
             geneSym = alphaNumSearch(gRecentGenes, saneSym)
 
@@ -2167,26 +2283,28 @@ var cellbrowser = function() {
 
         if (title) {
             htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
-            htmls.push("<div style='padding-left:3px; font-weight:bold'>"+title+"<div>");
+            htmls.push("<div style='padding-left:3px; font-weight:bold'>"+title+"</div>");
             if (subtitle) {
                 htmls.push('<div style="margin-top:6px" class="tpHint">');
                 htmls.push(subtitle);
                 htmls.push('</div>');
             }
+            htmls.push("</div>"); // divId_title
         }
 
         if (doUpdate) {
             $('#'+divId).empty();
         }
 
-        if (geneInfos===undefined || geneInfos===null || geneInfos.length===0)
-            return;
-
         htmls.push("<div id='"+divId+"'>");
+
+        if (geneInfos===undefined || geneInfos===null || geneInfos.length===0) {
+            htmls.push("</div>")
+            return;
+        }
 
         htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
-
 
         var colsPerRow = Math.round(tableWidth / cellWidth);
         var cellWidth = Math.round(tableWidth/colsPerRow);
@@ -2202,7 +2320,7 @@ var cellbrowser = function() {
             htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
         }
         htmls.push("</tr></table>");
-        htmls.push("</div>");
+        htmls.push("</div>"); // divId
 
         if (doUpdate) {
             $('#'+divId).html(htmls.join(""));
@@ -2786,7 +2904,7 @@ var cellbrowser = function() {
         htmls.push("<div id='tpAnnotTab'>");
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
-        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Hover over a '+gSampleDesc+' to show it below</div>');
+        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
         buildMetaPanel(htmls);
 
         htmls.push("</div>"); // tpAnnotTab
@@ -3011,6 +3129,7 @@ var cellbrowser = function() {
 
     function setupKeyboard() {
     /* bind the keyboard shortcut keys */
+        phoneHome();
         Mousetrap.bind('o', openDatasetDialog);
         Mousetrap.bind('c m', onMarkClearClick);
         Mousetrap.bind('h m', onMarkClick);
@@ -3029,6 +3148,7 @@ var cellbrowser = function() {
         Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('g', function() {$("#tpGeneCombo").selectize()[0].selectize.focus(); return false;});
         Mousetrap.bind('c l', onHideShowLabelsClick );
+        Mousetrap.bind('f', onSelectComplexClick );
 
     }
 
@@ -3199,15 +3319,13 @@ var cellbrowser = function() {
                 renderer.selectClear();
                 $('.tpLegend').removeClass('tpLegendSelect');
             }
-            console.log(ev);
-            var colIdx = gLegend.rows[legendId][4];
-            //gSelCellIds = findCellIdsForLegendIds(gClasses, [legendId], gSelCellIds);
-            renderer.selectByColor(colIdx);
+            var colorIndex = gLegend.rows[legendId][4];
+            renderer.selectByColor(colorIndex);
             menuBarShow("#tpFilterButton");
             menuBarShow("#tpOnlySelectedButton");
             $('#tpLegend_'+legendId).addClass('tpLegendSelect');
             gLegend.lastClicked=legendId;
-            //updateSelection();
+            clearSelectionState();
         }
         renderer.drawDots();
     }
@@ -3625,6 +3743,11 @@ var cellbrowser = function() {
         updateGeneTableColors([cellId]);
     }
 
+    function clearSelectionState() {
+        /* clear URL variable with select state, called when user clicks cells or unselects them */
+        delState("select");
+    }
+
     function onCellClickOrHover (cellIds, ev) {
         /* user clicks onto a circle with the mouse or hovers over one.
          * ev is undefined if not a click. */
@@ -3634,9 +3757,9 @@ var cellbrowser = function() {
         if (ev===undefined && selCells!==null && selCells.length!==0)
             return;
 
-        if (cellIds===null || cellIds.length===0)
+        if (cellIds===null || cellIds.length===0) {
             clearMetaAndGene();
-        else {
+        } else {
             var cellId = cellIds[0];
             db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci);}, onProgress);
             if (cellIds.length===1)
@@ -3645,6 +3768,7 @@ var cellbrowser = function() {
                 $("#tpMetaNote").html("...and "+(cellIds.length-1)+" other "+gSampleDesc+"s underneath");
                 $("#tpMetaNote").show();
             }
+            clearSelectionState();
         }
 
         updateGeneTableColors(cellIds);
@@ -3653,6 +3777,7 @@ var cellbrowser = function() {
             // it was a click
             if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey)
                 renderer.selectClear();
+            clearSelectionState();
             renderer.selectAdd(cellId);
             renderer.drawDots();
             event.stopPropagation();
@@ -3875,7 +4000,7 @@ var cellbrowser = function() {
                 if (j===geneListCol || j===exprCol)
                     geneListFormat(htmls, val, geneSym);
                 else if (j===pValCol)
-                    htmls.push(parseFloat(val).toPrecision(4)); // four digits ought to be enough for everyone
+                    htmls.push(parseFloat(val).toPrecision(5)); // five digits ought to be enough for everyone
                 else
                     htmls.push(val);
                 htmls.push("</td>");

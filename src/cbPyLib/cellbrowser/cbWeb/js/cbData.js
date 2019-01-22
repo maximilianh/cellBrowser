@@ -362,7 +362,7 @@ function CbDbFile(url) {
         var valToBin = {};
         sortArrOfArr(counts, 0); // sort by value
         for (var i=0; i<counts.length; i++) {
-            var val = counts[i];
+            var val = counts[i][0];
             valToBin[val] = i;
         }
 

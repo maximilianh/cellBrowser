@@ -45,6 +45,12 @@ ExportToCellbrowser <- function(
   skip.markers = FALSE,
   all.meta = FALSE
 ) {
+  if (!require("Seurat",character.only = TRUE)) {
+          stop("This script requires that Seurat (V2 or V3) is installed")
+  }
+  message("Seurat Version installed: ", packageVersion("Seurat"))
+  message("Object was created with Seurat version ", object@version)
+
   if (substr(object@version, 1, 1)!='2') {
           stop("can only process Seurat2 objects, version of rds is ", object@version)
   }
@@ -76,8 +82,10 @@ ExportToCellbrowser <- function(
   enum.fields <- c()
 
   # Export expression matrix
-  if (!skip.expr.matrix) {
-      df <- as.data.frame(as.matrix(GetAssayData(object = object)), check.names=FALSE)
+  if (!skip.expr.matrix) { 
+      mat <- as.matrix(object@raw.data)
+      #mat <- as.matrix(GetAssayData(object = object, slot="counts"))
+      df <- as.data.frame(mat, check.names=FALSE)
       df <- data.frame(gene=rownames(object@data), df, check.names = FALSE)
       gzPath <- file.path(dir, "exprMatrix.tsv.gz")
       z <- gzfile(gzPath, "w")
@@ -160,20 +168,21 @@ ExportToCellbrowser <- function(
   }
   if (is.null(markers.file) && !skip.markers) {
     if (length(levels(idents)) > 1) {
-      message("Running FindAllMarkers(), using ROC test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
-      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="roc", logfc.threshold = 0.35)
+      message("Running FindAllMarkers(), using wilcox test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
+      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="wilcox", logfc.threshold = 0.25)
       markers.helper <- function(x) {
         partition <- markers[x,]
         ord <- order(partition$p_val_adj < 0.05, -partition$avg_logFC)
         res <- x[ord]
-        res <- c(res[1:markers.n], rep(NA, length(x) - markers.n))
+        naCount <- max(0, length(x) - markers.n)
+        res <- c(res[1:markers.n], rep(NA, naCount))
         return(res)
       }
       markers.order <- ave(rownames(markers), markers$cluster, FUN=markers.helper)
       top.markers <- markers[markers.order[!is.na(markers.order)],]
       write.table(top.markers, fname, quote=FALSE, sep="\t", col.names=NA)
     } else {
-      message("No clusters found in Seurat object, so no marker genes can be computed")
+      message("No clusters found in Seurat object and no external marker file provided, so no marker genes can be computed")
       file <- NULL
     }
   }

@@ -98,6 +98,11 @@ function MaxPlot(div, top, left, width, height, args) {
         // for this to work, the body has to really cover the whole page
         //document.body.style.height = "100vh";
     }
+
+    function isHidden(x, y) {
+        /* special coords are used for circles that are off-screen or otherwise not visible */
+       return ((x===12345 && y===12345)) // not shown (e.g. no coordinate or off-screen)
+    }
     
     this.initPlot = function(args) {
         /* create a new scatter plot on the canvas */
@@ -496,9 +501,11 @@ function MaxPlot(div, top, left, width, height, args) {
         for (var i = 0; i < coords.length/2; i++) {
             var x = coords[i*2];
             var y = coords[i*2+1];
-            // simply ignore anything outside of current zoom range.
-            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY))
-                continue;
+            // set everything outside of current zoom range as hidden
+            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
+                pixelCoords[2*i] = 12345; // see isHidden()
+                pixelCoords[2*i+1] = 12345;
+            }
             var xPx = Math.round((x-minX)*xMult)+borderSize;
             // flipY: y-axis is flipped, so we do winHeight - pixel value
             var yPx = winHeight - Math.round((y-minY)*yMult)+borderSize;
@@ -519,7 +526,7 @@ function MaxPlot(div, top, left, width, height, args) {
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
-           if (pxX===0 && pxY===0)
+           if (isHidden(pxX, pxY))
                continue;
            var col = colors[coordColors[i]];
            ctx.fillStyle="#"+col;
@@ -741,7 +748,7 @@ function MaxPlot(div, top, left, width, height, args) {
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
-           if (pxX===0 && pxY===0)
+           if (isHidden(pxX, pxY))
                continue;
            var col = coordColors[i];
            count++;
@@ -756,7 +763,7 @@ function MaxPlot(div, top, left, width, height, args) {
                var cellId = selCells[i];
                var pxX = pxCoords[2*cellId];
                var pxY = pxCoords[2*cellId+1];
-               if (pxX===0 && pxY===0)
+               if (isHidden(pxX, pxY))
                    continue;
                // make sure that old leftover overlapping black circles don't shine through
                var col = coordColors[cellId];
@@ -798,7 +805,7 @@ function MaxPlot(div, top, left, width, height, args) {
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
-           if (pxX===0 && pxY===0)
+           if (isHidden(pxX, pxY))
                continue;
            var p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
 
@@ -838,7 +845,7 @@ function MaxPlot(div, top, left, width, height, args) {
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
-           if (pxX===0 && pxY===0)
+           if (isHidden(pxX, pxY))
                continue;
            var p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
 
@@ -867,7 +874,7 @@ function MaxPlot(div, top, left, width, height, args) {
                var cellId = selCells[i];
                var pxX = pxCoords[2*cellId];
                var pxY = pxCoords[2*cellId+1];
-               if (pxX===0 && pxY===0)
+               if (isHidden(pxX, pxY))
                    continue;
                var p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
                cData[p] = 0; 
@@ -1263,8 +1270,8 @@ function MaxPlot(div, top, left, width, height, args) {
         for (var i = 0; i < pxCoords.length/2; i++) {
             var pxX = pxCoords[2*i];
             var pxY = pxCoords[2*i+1];
-            if (pxX===0 && pxY===0)
-                continue;
+            if (isHidden(pxX, pxY))
+               continue;
             selCells.push(i);
         }
         self.selCells = selCells;
@@ -1302,8 +1309,8 @@ function MaxPlot(div, top, left, width, height, args) {
         for (var i = 0; i < pxCoords.length/2; i++) {
             var pxX = pxCoords[2*i];
             var pxY = pxCoords[2*i+1];
-            if (pxX===0 && pxY===0)
-                continue;
+            if (isHidden(pxX, pxY))
+               continue;
             if ((minX <= pxX) && (pxX <= maxX) && (minY <= pxY) && (pxY <= maxY)) {
                 self.selCells.push(i);
             }
@@ -1377,7 +1384,7 @@ function MaxPlot(div, top, left, width, height, args) {
         for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
-           if (pxX===0 && pxY===0)
+            if (isHidden(pxX, pxY))
                continue;
             var x1 = pxX - self.radius;
             var y1 = pxY - self.radius;
@@ -1433,16 +1440,6 @@ function MaxPlot(div, top, left, width, height, args) {
         div.style.height = selectHeight+"px";
         div.style.display = "block";
     };
-
-    //this.onHamster = function(ev, delta, deltaX, deltaY) {
-      //console.log(delta, deltaX, deltaY);
-      //console.log(ev);
-      //var pxX = ev.originalEvent.clientX - self.left;
-      //var pxY = ev.originalEvent.clientY - self.top;
-      //self.zoomBy(1+(0.01*delta), pxX, pxY);
-      //self.drawDots();
-      //ev.preventDefault();
-    //};
 
     this.onMouseMove = function(ev) {
         /* called when the mouse is moved over the Canvas */
