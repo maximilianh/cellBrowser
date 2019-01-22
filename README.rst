@@ -14,8 +14,8 @@ at http://cellbrowser.rtfd.io
 If you want us to add a single cell dataset to the website http://cells.ucsc.edu, 
 please contact us at cells@ucsc.edu. We are happy to add any dataset.
 
-This is a viewer for a static, precomputed layout. I you're looking for an interative layout, try 
-cellxgene or spring.
+This is a viewer for a static, precomputed layout. If you're looking for an interative layout, where you can 
+move the cells around and run algorithsm interactively, try Chan-Zuckerberg's own cellxgene or Spring.
 
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
