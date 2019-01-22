@@ -407,6 +407,9 @@ def cbScanpy_parseArgs():
     parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
             help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
 
+    parser.add_option("-g", "--genome", dest="genome", action="store",
+            help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
+
     parser.add_option("-n", "--name", dest="name", action="store",
             help="name of dataset in cell browser")
 
@@ -595,21 +598,18 @@ def readGeneToSym(fname):
     line1 = openFile(fname).readline().rstrip("\r\n")
     fieldCount = len(line1.split('\t'))
     if "geneId" not in line1:
+        logging.debug("geneID,symbol file does not start with 'geneId', parsing as key,value")
         d = parseDict(fname)
-    # my gencode tables contain a symbol for all genes
-    # the old format
-    elif line1=="transcriptId\tgeneId\tsymbol":
-        for row in lineFileNextRow(fname):
-            if row.symbol=="":
-                continue
-            d[row.geneId.split(".")[0]]=row.symbol
     # my new files are smaller and have headers
     elif line1=="#geneId\tsymbol" or fieldCount==2:
         d = {}
         for row in lineFileNextRow(fname):
             if row.symbol=="":
                 continue
-            d[row.geneId.split(".")[0]]=row.symbol
+            geneId = row.geneId
+            if geneId.startswith("EN") and "." in geneId:
+                geneId = geneId.split(".")[0]
+            d[geneId]=row.symbol
     else:
         assert(False) # symbols file does not have a header like #geneId<tab>symbol
     logging.debug("Found symbols for %d genes" % len(d))
@@ -1016,13 +1016,14 @@ def iterLineOffsets(ifh):
        start = ifh.tell()
 
 class MatrixTsvReader:
-    " open a .tsv file and yield rows via iterRows. gz and csv OK."
+    " open a .tsv or .csv file and yield rows via iterRows. gz and csv OK."
 
     def __init__(self, geneToSym=None):
+        " can automatically translate to symbols, if dict geneId -> sym is provided "
         self.geneToSym = geneToSym
 
     def open(self, fname, matType=None, usePyGzip=False):
-        " return something for iterMatrixTsv "
+        " open file and guess field sep and format of numbers (float or int) "
         if which("gunzip")==None:
             logging.warn("Gunzip not in PATH, falling back to Python's built-in")
             usePyGzip = True
@@ -1033,7 +1034,7 @@ class MatrixTsvReader:
         logging.debug("Opening %s" % fname)
         self.fname = fname
         if fname.endswith(".gz"):
-            # python's gzip is slower, but does not output an error if we read just 
+            # python's gzip is slower, but does not return an error if we read just 
             # a single line
             if usePyGzip:
                 self.ifh = openFile(fname)
@@ -1142,15 +1143,17 @@ class MatrixTsvReader:
                     symbol = geneToSym.get(gene)
                     if symbol is None:
                         skipIds += 1
-                        logging.warn("line %d: %s is not a valid Ensembl gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
-                        continue
+                        logging.warn("line %d: %s is not a valid gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
+                        symbol = gene
+
                     if symbol.isdigit():
-                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning." % (lineNo, symbol))
+                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix." % (lineNo, symbol))
 
             if symbol in doneGenes:
-                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence" % (lineNo, gene, symbol))
-                skipIds += 1
-                continue
+                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence for symbol, kept second occurence as original geneId" % (lineNo, gene, symbol))
+                symbol = gene
+                #skipIds += 1
+                #continue
 
             doneGenes.add(gene)
 
@@ -1159,7 +1162,7 @@ class MatrixTsvReader:
             yield gene, symbol, arr
 
         if skipIds!=0:
-            logging.warn("Skipped %d expression matrix lines because of duplication/unknown ID" % skipIds)
+            logging.warn("Kept %d genes as original IDs, of duplication or unknown ID" % skipIds)
 
     def iterRowsWithOffsets(self):
         " like iterRows, but also return offset and line length "
@@ -1789,7 +1792,7 @@ def runCommand(cmd):
         errAbort("Could not run: %s" % cmd)
     return 0
 
-def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
+def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter and not ".csv" in inFname.lower():
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
@@ -1810,7 +1813,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
 
     logging.info("Creating a clean ASCII-version of the expression matrix. Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
 
-    matIter = MatrixTsvReader()
+    matIter = MatrixTsvReader(geneToSym)
     matIter.open(inFname)
 
     sampleNames = matIter.getSampleNames()
@@ -1830,7 +1833,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter):
 
     count = 0
     for geneId, sym, exprArr in matIter.iterRows():
-        newRow = [geneId]
+        newRow = [geneId+"|"+sym]
         for idx in keepIdx:
             newRow.append(str(exprArr[idx]))
         ofh.write("\t".join(newRow))
@@ -1945,11 +1948,18 @@ def splitMarkerTable(filename, geneToSym, outDir):
     if len(data) > 200:
         errAbort("Your marker file has more than 200 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
 
+    # determine if the score field is most likely a p-value, needed for sorting
+    revSort = True
+    scoreHeader = headers[scoreIdx].lower()
+    logging.debug("score field has name '%s'" % scoreHeader)
+    if "p_val" in scoreHeader or "p-val" in scoreHeader or "p.val" in scoreHeader or "pval" in scoreHeader:
+        logging.debug("score field name '%s' looks like a p-Value, sorting normally" % scoreHeader)
+        revSort = False
 
     fileCount = 0
     sanNames = set()
     for clusterName, rows in iterItems(data):
-        #rows.sort(key=operator.itemgetter(2), reverse=True) # rev-sort by score (fold change)
+        rows.sort(key=operator.itemgetter(2), reverse=revSort)
         logging.debug("Cluster: %s" % clusterName)
         sanName = sanitizeName(clusterName)
         assert(sanName not in sanNames) # after sanitation, cluster names must be unique
@@ -2221,6 +2231,8 @@ def guessGeneIdType(inputObj):
         geneType = "gencode-human"
     elif geneId.startswith("ENSMUSG"):
         geneType =  "gencode-mouse"
+    elif geneId.startswith("KH2013:"):
+        geneType = "ciona-kh2013"
     else:
         geneType = "symbols"
 
@@ -2236,7 +2248,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     # removing those sample names that are not in the meta data
     matrixFname = getAbsPath(inConf, "exprMatrix")
     outConf["fileVersions"]["inMatrix"] = getFileVersion(matrixFname)
-    copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix)
+    copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym)
 
     # step2: discretize expression matrix for the viewer, compress and index to file
     #logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
@@ -3041,7 +3053,7 @@ def cbBuildCli():
 
     cbBuild(confFnames, outDir, port)
 
-def readMatrixAnndata(matrixFname, samplesOnRows=False):
+def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
     import scanpy.api as sc
     #adata = sc.read(matFname)
@@ -3053,6 +3065,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False):
         mtxDir = dirname(matrixFname)
         adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
         adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
+
+    elif matrixFname.endswith(".h5"):
+        logging.info("Loading expression matrix: 10X h5 format")
+        adata = sc.read_10x_h5(matrixFname, genome=genome)
 
     else:
         logging.info("Loading expression matrix: tab-sep format")
@@ -3194,7 +3210,7 @@ def makeIndexHtml(baseDir, datasets, outDir):
         writeVersionedLink(ofh, '<link rel="stylesheet" href="%s">', baseDir, cssFname)
 
     jsFnames = ["ext/FileSaver.1.1.20151003.min.js", "ext/jquery.3.1.1.min.js",
-        "ext/palette.js", "ext/spectrum.min.js",
+        "ext/palette.js", "ext/spectrum.min.js", "ext/jsurl2.js",
         "ext/chosen.jquery.min.js", "ext/mousetrap.min.js",
         "ext/jquery.contextMenu.js", "ext/jquery.ui.position.min.js",
         "ext/jquery.tipsy.min.js", "ext/intro.min.js", "ext/papaparse.min.js",
@@ -3327,7 +3343,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     sc.logging.print_versions()
 
     start = timeit.default_timer()
-    adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows)
+    adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows, genome=options.genome)
 
     if outMatrixFname is not None:
         anndataToTsv(adata, outMatrixFname)
