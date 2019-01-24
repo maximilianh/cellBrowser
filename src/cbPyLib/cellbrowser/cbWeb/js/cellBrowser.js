@@ -329,16 +329,17 @@ var cellbrowser = function() {
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
         var buttonWidth = 400;
         var tabsWidth = winWidth - buttonWidth - 70;
+        var listGroupHeight = winHeight - 100;
 
 
         var htmls = [];
         var activeIdx = 0;
-        htmls.push("<div class='list-group' style='width:"+buttonWidth+"px'>");
+        htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:fixed; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+buttonWidth+"px'>");
         for (var i = 0; i < gDatasetList.length; i++) {
             var dataset = gDatasetList[i];
             var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
-            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset">Open dataset</button>')
+            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset">Open</button>')
 
             if (dataset.sampleCount!==undefined) {
                 var countDesc = prettyNumber(dataset.sampleCount);
@@ -394,6 +395,8 @@ var cellbrowser = function() {
 
         showDialogBox(htmls, "Choose Cell Browser Dataset", {width: winWidth, height:winHeight, buttons: buttons});
 
+        var scroller = $("#tpDatasetList").overlayScrollbars({ });
+
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
             // load the current dataset when the user presses Return
@@ -407,16 +410,25 @@ var cellbrowser = function() {
         $(".list-group-item").click( function (ev) {
             selDatasetIdx = parseInt($(ev.target).data('datasetid')); // index of clicked dataset
             $(".list-group-item").removeClass("active");
-            $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in .html
+            $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in index.html
             openDatasetLoadPane(selDatasetIdx);
+        });
+
+        function openDatasetDoLoad(selDatasetIdx) {
+            var datasetName = gDatasetList[selDatasetIdx].name;
+            loadDataset(datasetName, true);
+            $(".ui-dialog-content").dialog("close");
+        }
+
+        $(".list-group-item").dblclick( function(ev) {
+            selDatasetIdx = parseInt($(this).data('datasetid'));
+            openDatasetDoLoad(selDatasetIdx);
         });
 
         $(".load-dataset").click( function (ev) {
             ev.preventDefault();
             selDatasetIdx = parseInt($(this).parents('.list-group-item').data('datasetid'));
-            var datasetName = gDatasetList[selDatasetIdx].name;
-            loadDataset(datasetName, true);
-            $(".ui-dialog-content").dialog("close");
+            openDatasetDoLoad(selDatasetIdx);
             return false;
         });
 
@@ -430,8 +442,11 @@ var cellbrowser = function() {
             $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
         });
 
-        if (activeIdx!==null)
+        if (activeIdx!==null) {
             $('#tpDatasetButton_'+activeIdx).bsButton("toggle"); // had to rename .button() in .html to bsButton
+            //scroller.scroll($("#tpDatasetButton_"+activeIdx)); // scroll left pane to current button
+            $('#tpDatasetList').overlayScrollbars().scroll($("#tpDatasetButton_"+activeIdx))
+        }
 
         // this is weird, but I have not found a better way to make the tab show up
         $("#tpOpenDialogTabs a:last").tab("show");
@@ -535,7 +550,7 @@ var cellbrowser = function() {
         htmls.push('<input id="tpSelectValue_'+rowIdx+'" type="text" name="exprValue">');
         htmls.push('</input>');
 
-        htmls.push('<select id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
+        htmls.push('<select style="max-width: 300px" id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
         // if ("m" in queryExpr) {
           //   var op = getQueryOp(queryExpr);
             // var fieldName = query["m"];
@@ -555,9 +570,12 @@ var cellbrowser = function() {
         /* given the row and the ID name of the field, setup the combo box row */
         var valCounts = db.getMetaFields()[fieldIdx].valCounts;
         if (valCounts===undefined) {
+            // this is a numeric field
             $('#tpSelectValue_'+rowIdx).show();
             $('#tpSelectMetaValueEnum_'+rowIdx).hide();
         } else {
+            // it's an enum field
+            $('#tpSelectMetaCombo_'+rowIdx).val("tpMetaVal_"+fieldIdx).trigger('chosen:updated'); // empty the meta dropdown
             $('#tpSelectValue_'+rowIdx).hide();
             $('#tpSelectMetaValueEnum_'+rowIdx).empty();
             for (var i = 0; i < valCounts.length; i++) {
@@ -574,7 +592,6 @@ var cellbrowser = function() {
             $("#tpSelectGeneCombo_"+rowIdx).next().hide();
             $("#tpSelectValue_"+rowIdx).hide();
             $("#tpSelectMetaComboBox_"+rowIdx).show();
-            $('#tpSelectMetaCombo_'+rowIdx).val(0).trigger('chosen:updated'); // empty the meta dropdown
             $("#tpSelectMetaValueEnum_"+rowIdx).show();
         } else {
             $("#tpSelectType_"+rowIdx).val("expr");
@@ -611,14 +628,16 @@ var cellbrowser = function() {
         var rowType = "gene";
         var metaName = query["m"];
         var op = getQueryOp(query);
-        if (metaName!==undefined) {
+        if (metaName==undefined) {
+            // this is a gene query
+            findCellsUpdateRowType(rowIdx, rowType);
+            selectizeSetValue("#tpSelectGeneCombo_"+rowIdx, query["g"]);
+        } else {
+            // it's a meta query
             rowType = "meta";
             var metaInfo = findMetaInfo(metaName);
             findCellsUpdateRowType(rowIdx, rowType);
             findCellsUpdateMetaCombo(rowIdx, metaInfo.index);
-        } else {
-            findCellsUpdateRowType(rowIdx, rowType);
-            selectizeSetValue("#tpSelectGeneCombo_"+rowIdx, query["g"]);
         }
         $("#tpSelectOperator_"+rowIdx).val(op);
         $("#tpSelectValue_"+rowIdx).val(query[op]);
@@ -788,7 +807,7 @@ var cellbrowser = function() {
     /* Edit - Find cells */
 
         var dlgHeight = 400;
-        var dlgWidth = 700;
+        var dlgWidth = 800;
         var buttons = {
 
             "Cancel" : function() {
@@ -818,7 +837,7 @@ var cellbrowser = function() {
         // build from current query or create a sample query
         var queries = [];
         var queryStr = getVar("select");
-        if (queryStr!==null)
+        if (queryStr!==undefined)
             queries = JSURL.parse(queryStr);
         else {
             queries = [makeSampleQuery()];
@@ -993,7 +1012,7 @@ var cellbrowser = function() {
          htmls.push('<li class="dropdown">');
            htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">File</a>');
            htmls.push('<ul class="dropdown-menu">');
-             htmls.push('<li><a href="#" id="tpOpenDatasetLink"><span class="dropmenu-item-label">Open Dataset...</span><span class="dropmenu-item-content">o</span></a></li>');
+             htmls.push('<li><a href="#" id="tpOpenDatasetLink"><span class="dropmenu-item-label">Open dataset...</span><span class="dropmenu-item-content">o</span></a></li>');
              //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Download Data</a>');
                //htmls.push('<ul class="dropdown-menu" id="tpDownloadMenu">');
                  //htmls.push('<li><a href="#" id="tpDownload_matrix">Gene Expression Matrix</a></li>');
@@ -1139,7 +1158,7 @@ var cellbrowser = function() {
     }
 
     function onProgress(ev) {
-        /* show progress bars */
+        /* update progress bars. The DOM elements of these were added in maxPlot (not optimal?)  */
         var url = ev.currentTarget.responseURL;
         if (url.search("exprMatrix.bin")!==-1)
             return;
@@ -1155,20 +1174,21 @@ var cellbrowser = function() {
             label = "Loading Coordinates";
         else if (url.endsWith(".bin"))
             label = "Loading cell annotations";
-        var labelId = "#tpProgressLabel"+index;
+
+        var labelId = "#mpProgressLabel"+index;
         $(labelId).html(label);
 
         var percent = Math.round(100 * (ev.loaded / ev.total));
 
         if (percent===100) {
-            $("#tpProgress"+index).css("width", percent+"%");
-            $("#tpProgress"+index).show(0);
+            $("#mpProgress"+index).css("width", percent+"%");
+            $("#mpProgress"+index).show(0);
             progressUrls.splice(index, 1);
-            $("#tpProgressDiv"+index).css("display", "none");
+            $("#mpProgressDiv"+index).css("display", "none");
         }
         else {
-            $("#tpProgress"+index).css("width", percent+"%");
-            $("#tpProgressDiv"+index).css("display", "inherit");
+            $("#mpProgress"+index).css("width", percent+"%");
+            $("#mpProgressDiv"+index).css("display", "inherit");
         }
     }
 
@@ -1479,7 +1499,7 @@ var cellbrowser = function() {
             gRecentGenes.unshift([geneSym, geneDesc]); // insert at position 0
             gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
             buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
-            $('.tpGeneBarCell').click( onGeneClick );
+            $('#tpRecentGenes .tpGeneBarCell').click( onGeneClick );
         }
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
@@ -1535,7 +1555,7 @@ var cellbrowser = function() {
                return [4, 0.5];
            if (dotCount<5000)
                return [3, 0.5];
-           if (dotCount<9000)
+           if (dotCount<15000)
                return [2, 0.5];
            if (dotCount<30000)
                return [1, 0.4];
@@ -2014,6 +2034,7 @@ var cellbrowser = function() {
             geneSym = alphaNumSearch(gRecentGenes, saneSym)
 
         loadGeneAndColor(geneSym);
+        event.stopPropagation();
     }
 
     function showDialogBox(htmlLines, title, options) {
@@ -2783,17 +2804,18 @@ var cellbrowser = function() {
 
         //htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
         //htmls.push('<button title="More info about this dataset" id="tpIconDatasetInfo" type="button" class="ui-button tpIconButton"><img title="More info about this dataset" src="img/info.png"></button>');
+        htmls.push('<button title="More info about this dataset: abstract, methods, download, etc." id="tpButtonInfo" type="button" class="ui-button tpIconButton">Info</button>');
         //htmls.push('</div>');
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
         //htmls.push("&emsp;");
-        var layoutLeft = 150;
+        var layoutLeft = 185;
         if (db.conf.hubUrl!==undefined)
             layoutLeft = 290;
         buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, layoutLeft, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
 
-        htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open Dataset...</button>');
+        htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open...</button>');
 
         var hubUrl = db.conf.hubUrl;
         if (hubUrl!==undefined) {
@@ -2814,7 +2836,8 @@ var cellbrowser = function() {
         //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );
         //$('#tpIconModeSelect').click( function() { activateMode("select")} );
         //$('#tpZoom100Button').click( onZoom100Click );
-        $('#tpIconDatasetInfo').click( function() { openDatasetDialog()});
+        //$('#tpIconDatasetInfo').click( function() { openDatasetDialog()});
+        $('#tpButtonInfo').click( openDatasetDialog );
 
         //$('#tpIconZoomIn').click( onZoomInClick );
         //$('#tpIconZoomOut').click( onZoomOutClick );
@@ -4236,6 +4259,12 @@ var cellbrowser = function() {
            div.id = "tpMaxPlot";
            renderer = new MaxPlot(div, canvTop, canvLeft, canvWidth, canvHeight);
            document.body.appendChild(div);
+
+           //var htmls = [];
+           //htmls.push("<div id='tpGeneProgress0'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");
+           //htmls.push("<div id='tpGeneProgress1'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");
+           //htmls.push("<div id='tpGeneProgress2'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");
+           //$(document.body).append(htmls.join(''));
        }
 
         buildEmptyLegendBar(metaBarWidth+metaBarMargin+renderer.width, toolBarHeight);
