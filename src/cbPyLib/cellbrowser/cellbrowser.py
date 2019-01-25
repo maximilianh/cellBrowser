@@ -1637,6 +1637,13 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
             maxX = max(x, maxX)
             maxY = max(y, maxY)
 
+    if useTwoBytes is None:
+        if len(coords)>100000:
+            useTwoBytes = True
+            logging.info("More than 100k cells, so automatically enabling two-byte encoding for coordinates")
+        else:
+            useTwoBytes = False
+
     if useTwoBytes:
         scaleX = 65535/(maxX-minX)
         scaleY = 65535/(maxY-minY)
@@ -2012,7 +2019,7 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
 
     outConf["desc"] = {}
 
-    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png"]:
+    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png", "protocol.pdf"]:
         inFname = makeAbs(inDir, fileBase)
         if not isfile(inFname):
             logging.info("%s does not exist" % inFname)
@@ -2278,7 +2285,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     coordFnames = makeAbsDict(inConf, "coords")
 
     flipY = inConf.get("flipY", False)
-    useTwoBytes = inConf.get("useTwoBytes", False)
+    useTwoBytes = inConf.get("useTwoBytes", None)
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -2698,7 +2705,15 @@ def anndataToTsv(ad, matFname, usePandas=False):
         ofh.write("\t".join(sampleNames))
         ofh.write("\n")
 
-        genes = ad.var.index.tolist()
+        # when reading 10X files, read_h5 puts the geneIds into a separate field
+        # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
+        if "gene_ids" in ad.var:
+            geneIdObj = ad.var["gene_ids"]
+            geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
+            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+        else:
+            genes = ad.var.index.tolist()
+
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
             if i % 2000==0:
@@ -3204,6 +3219,7 @@ def makeIndexHtml(baseDir, datasets, outDir):
         "ext/bootstrap-dropmenu.min.css", "ext/font-awesome.css",
         "ext/googleMaterialIcons.css", "ext/chosen.1.8.2.min.css",
         "ext/select2.4.0.4.min.css", "ext/selectize.0.12.4.min.css",
+        "ext/OverlayScrollbars.min.css", # 1.6.2, from https://cdnjs.com/libraries/overlayscrollbars
         "css/cellBrowser.css"]
 
     for cssFname in cssFnames:
@@ -3219,6 +3235,7 @@ def makeIndexHtml(baseDir, datasets, outDir):
         "ext/tablesort.js", "ext/tablesort.number.min.js", "ext/Chart.bundle.min.js",
         "ext/chartjs-chart-box-and-violin-plot.js", "ext/jquery-ui.min.js",
         "ext/select2.min.js", "ext/selectize.min.js", "ext/jquery.sparkline.min.js",
+        "ext/jquery.overlayScrollbars.min.js", # 1.6.2 from https://cdnjs.com/libraries/overlayscrollbars
         "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js"]
 
     # at UCSC, for grant reports, we need to get some idea how many IPs are using the cell browser

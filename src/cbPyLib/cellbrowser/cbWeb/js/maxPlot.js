@@ -5,7 +5,6 @@
 // TODO:
 // remove onNoHover
 // fix mouseout into body -> marquee stays
-// fix the aspect ratio of the zoom marquee
 
 function getAttr(obj, attrName, def) {
     var val = obj[attrName];
@@ -63,7 +62,7 @@ function MaxPlot(div, top, left, width, height, args) {
         selectDiv.style.border = "1px dotted black";
         selectDiv.style.position = "absolute";
         selectDiv.style.display  = "none";
-        selectDiv.pointerEvents = "none";
+        selectDiv.style.pointerEvents = "none";
         self.div.appendChild(selectDiv);
         self.selectBox = selectDiv; // we need this later
 
@@ -506,11 +505,13 @@ function MaxPlot(div, top, left, width, height, args) {
                 pixelCoords[2*i] = 12345; // see isHidden()
                 pixelCoords[2*i+1] = 12345;
             }
-            var xPx = Math.round((x-minX)*xMult)+borderSize;
-            // flipY: y-axis is flipped, so we do winHeight - pixel value
-            var yPx = winHeight - Math.round((y-minY)*yMult)+borderSize;
-            pixelCoords[2*i] = xPx;
-            pixelCoords[2*i+1] = yPx;
+            else {
+                var xPx = Math.round((x-minX)*xMult)+borderSize;
+                // flipY: y-axis is flipped, so we do winHeight - pixel value
+                var yPx = winHeight - Math.round((y-minY)*yMult)+borderSize;
+                pixelCoords[2*i] = xPx;
+                pixelCoords[2*i+1] = yPx;
+            }
         }
 
         console.timeEnd("scale");
@@ -1033,6 +1034,7 @@ function MaxPlot(div, top, left, width, height, args) {
             alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+self.colors.length+" color values but coordinates for "+(self.pxCoords.length/2)+" cells.");
 
         self.zoomFact = ((self.initZoom.maxX-self.initZoom.minX)/(self.zoomRange.maxX-self.zoomRange.minX));
+        console.log("Zoom window: "+JSON.stringify(self.zoomRange));
 
         console.log("Zoom factor: "+self.zoomFact);
         // make the circles a bit smaller than expected
@@ -1118,6 +1120,7 @@ function MaxPlot(div, top, left, width, height, args) {
     this.zoomTo = function(x1, y1, x2, y2) {
        /* zoom to rectangle defined by two points */
        // make sure that x1<x2 and y1<y2 - can happen if mouse movement was upwards
+       console.log("Zooming to pixels: ", x1, y1, x2, y2);
        var pxMinX = Math.min(x1, x2);
        var pxMaxX = Math.max(x1, x2);
 
@@ -1128,10 +1131,10 @@ function MaxPlot(div, top, left, width, height, args) {
        // by adapting the height. This is what Microsoft software does
        // It may be better to fix the aspect ratio of the zoom rectangle while zooming?
        // We probably do not want to distort the ratio.
-       var aspectRatio = self.width / self.height;
-       var rectWidth  = (pxMaxX-pxMinX);
-       var newHeight = rectWidth/aspectRatio;
-       pxMaxY = pxMinY + newHeight;
+       //var aspectRatio = self.width / self.height;
+       //var rectWidth  = (pxMaxX-pxMinX);
+       //var newHeight = rectWidth/aspectRatio;
+       //pxMaxY = pxMinY + newHeight;
 
        var zoomRange = self.zoomRange;
        // window size in data coordinates
@@ -1152,6 +1155,7 @@ function MaxPlot(div, top, left, width, height, args) {
        zoomRange.maxY = oldMinY + (pxMaxY * yMult);
 
        self.zoomRange = zoomRange;
+       console.log("Marquee zoom window: "+JSON.stringify(self.zoomRange));
 
        self.scaleData();
     };
@@ -1427,10 +1431,16 @@ function MaxPlot(div, top, left, width, height, args) {
        self.selectBox.style.height = 0;
     };
 
-    this.drawMarquee = function(x1, y1, x2, y2) {
+    this.drawMarquee = function(x1, y1, x2, y2, forceAspect) {
         /* draw the selection or zooming marquee using the DIVs created by setupMouse */
         var selectWidth = Math.abs(x1 - x2);
-        var selectHeight = Math.abs(y1 - y2);
+        var selectHeight = 0;
+        if (forceAspect) {
+            var aspectRatio = self.width / self.height;
+            selectHeight = selectWidth/aspectRatio;
+        } else
+            selectHeight = Math.abs(y1 - y2);
+
         var minX = Math.min(x1, x2);
         var minY = Math.min(y1, y2);
         var div = self.selectBox;
@@ -1478,8 +1488,13 @@ function MaxPlot(div, top, left, width, height, args) {
                 var yDiff = self.mouseDownY - clientY;
                 self.panBy(xDiff, yDiff);
             }
-            else 
-                self.drawMarquee(self.mouseDownX, self.mouseDownY, clientX, clientY);
+            else  {
+               var forceAspect = false;
+               var anyKey = (ev.metaKey || ev.altKey || ev.shiftKey);
+               if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey )
+                   forceAspect = true;
+               self.drawMarquee(self.mouseDownX, self.mouseDownY, clientX, clientY, forceAspect);
+            }
         }
     };
 
@@ -1571,8 +1586,17 @@ function MaxPlot(div, top, left, width, height, args) {
        var anyKey = (ev.metaKey || ev.altKey || ev.shiftKey);
 
        // zooming
-       if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey )
-           self.zoomTo(x1, y1, x2, y2);
+       if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey ) {
+           // get current coords of the marquee
+            var div = self.selectBox;
+            var zoomX1 = parseInt(div.style.left.replace("px","")) - canvasLeft;
+            var zoomY1 = parseInt(div.style.top.replace("px","")) - canvasTop;
+            var zoomX2 = zoomX1+parseInt(div.style.width.replace("px",""));
+            var zoomY2 = zoomY1+parseInt(div.style.height.replace("px",""));
+            var zoomY1 = self.height - zoomY1;
+            var zoomY2 = self.height - zoomY2;
+            self.zoomTo(zoomX1, zoomY1, zoomX2, zoomY2);
+       }
        // marquee select 
        else if ((self.dragMode==="select" && !anyKey) || ev.shiftKey ) {
            if (! ev.shiftKey)
@@ -1597,7 +1621,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var pxY = ev.clientY - self.top;
         var spinFact = 0.1;
         if (ev.ctrlKey) // = OSX pinch and zoom gesture
-            spinFact = 0.02;  // is too fast, so slow it down a little
+            spinFact = 0.08;  // is too fast, so slow it down a little
         var zoomFact = 1-(spinFact*normWheel.spinY);
         console.log("Wheel Zoom by "+zoomFact);
         self.zoomBy(zoomFact, pxX, pxY);

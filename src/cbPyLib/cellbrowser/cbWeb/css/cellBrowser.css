@@ -30,6 +30,8 @@ canvas { user-select: none }
 .ui-menu-item { font-size:13px }
 .ui-menu .ui-menu-item-wrapper { padding: 1px 1em 1px .4em; }
 .ui-tooltip { font-size: 13px }
+#tpButtonInfo { height: 25px; top: 2px; margin-right: 8px; width: 40px; border-radius: 4px }
+
 .tpIconButton { padding: 1px 2px 1px 2px; border-radius: 0; height:28px; width: 28px; cursor: default}
 .tpClicked { background-color: #AAA }
 .tpClicked:hover { background-color: #AAA }
@@ -188,7 +190,6 @@ a.list-group-item { background-color: #EEE }
 */
 
 .chosen-container-single .chosen-single { box-shadow: none; background: none; background-color: #f6f6f6 }
-
 
 /* ----- FOR SORTTABLE.JS ------- */
 th[role=columnheader]:not(.no-sort) {
