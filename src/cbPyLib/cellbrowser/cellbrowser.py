@@ -145,12 +145,12 @@ def nextEl(d):
     else:
         return d.next()
 
-def splitOnce(s, sep):
+def splitOnce(s, sep, splitCount=1):
     " split s only once on sep, for all python versions "
     if isPy3:
-        tup = s.split(sep, maxsplit=1)
+        tup = s.split(sep, maxsplit=splitCount)
     else:
-        tup = string.split(s, sep, maxsplit=1)
+        tup = string.split(s, sep, maxsplit=splitCount)
     return tup
 
 def which(prog):
@@ -3640,8 +3640,11 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     import numpy as np
     logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
 
-    genes = [l.strip() for l in openFile(geneFname)]
-    genes = [g.replace("\t", "|") for g in genes if g!=""]
+    genes = []
+    for l in openFile(geneFname):
+        geneId, sym = l.rstrip("\r\n").split("\t")[:2] # field 3 is "Gene Expression" in cr3
+        genes.append(geneId+"|"+sym)
+
     barcodes = [l.strip() for l in openFile(barcodeFname) if l!="\n"]
 
     logging.info("Read %d genes and %d barcodes" % (len(genes), len(barcodes)))
@@ -3750,6 +3753,10 @@ def generateDownloads(datasetName, outDir):
     logFname = join(datasetName, "analysisLog.txt")
     if isfile(logFname):
         ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
+
+    h5adFname = join(datasetName, "anndata.h5ad")
+    if isfile(h5adFname):
+        ofh.write("<b>Scanpy Anndata HDF5 file:</b> <a href='%s'>anndata.h5ad</a><p>" % h5adFname)
 
     ofh.close()
     logging.info("Wrote %s" % ofh.name)

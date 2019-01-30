@@ -339,7 +339,7 @@ var cellbrowser = function() {
             var dataset = gDatasetList[i];
             var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
-            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset">Open</button>')
+            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset" data-placement="bottom">Open</button>')
 
             if (dataset.sampleCount!==undefined) {
                 var countDesc = prettyNumber(dataset.sampleCount);
@@ -1033,8 +1033,8 @@ var cellbrowser = function() {
          htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
-         //htmls.push('<li><a id="tpSelectById" href="#">Search for ID...</a></li>');
-         //htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
+         htmls.push('<li><a id="tpSelectById" href="#">Search by ID...</a></li>');
+         htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
          htmls.push('</ul>'); // View dropdown
          htmls.push('</li>'); // View dropdown
 
@@ -2804,7 +2804,7 @@ var cellbrowser = function() {
 
         //htmls.push('<div class="btn-group" role="group" style="vertical-align:top">');
         //htmls.push('<button title="More info about this dataset" id="tpIconDatasetInfo" type="button" class="ui-button tpIconButton"><img title="More info about this dataset" src="img/info.png"></button>');
-        htmls.push('<button title="More info about this dataset: abstract, methods, download, etc." id="tpButtonInfo" type="button" class="ui-button tpIconButton">Info</button>');
+        htmls.push('<button title="More info about this dataset: abstract, methods, download, etc." id="tpButtonInfo" type="button" class="ui-button tpIconButton" data-placement="bottom">Info</button>');
         //htmls.push('</div>');
         //htmls.push('<img class="tpIconButton" id="tpIconDatasetInfo" data-placement="bottom" data-toggle="tooltip" title="More info about this dataset" src="img/info.png" style="height:18px;position:absolute;top:4px; left:'+(toolBarComboLeft+datasetComboWidth+60)+'px">');
 
@@ -2815,12 +2815,12 @@ var cellbrowser = function() {
         buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, layoutLeft, 2);
         //buildDatasetCombo(htmls, gDatasetList, "tpDatasetCombo", 100, 220, 0);
 
-        htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Open...</button>');
+        htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Open another dataset" data-placement="bottom">Open...</button>');
 
         var hubUrl = db.conf.hubUrl;
         if (hubUrl!==undefined) {
             var fullUrl = makeHubUrl();
-            htmls.push('<a target=_blank href="'+fullUrl+'" id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px">Genome Browser</a>');
+            htmls.push('<a target=_blank href="'+fullUrl+'" id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Show sequencing read coverage and gene expression on UCSC Genome Browser" data-placement="bottom">Genome Browser</a>');
         }
 
         htmls.push("</div>");
@@ -2831,6 +2831,8 @@ var cellbrowser = function() {
         //el.addEventListener("click"
 
         activateTooltip('.tpIconButton');
+        activateTooltip('#tpOpenUcsc');
+        activateTooltip('#tpOpenDatasetButton');
 
         //$('#tpIconModeMove').click( function() { activateMode("move")} );
         //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );

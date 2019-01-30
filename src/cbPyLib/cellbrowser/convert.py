@@ -235,25 +235,48 @@ def crangerToCellbrowser(datasetName, inDir, outDir):
 
     # convert the matrix
     outExprFname = join(outDir, "exprMatrix.tsv.gz")
+    # cellranger 2: filtered_feature_bc_matrix/<db>/matrix.mtx and not gzipped
     mask1 = join(inDir, "filtered_gene_bc_matrices/*/matrix.mtx")
-    logging.info("Looking for %s" % mask1)
-    matFnames = glob.glob(mask1)
-    if len(matFnames)!=0:
-        assert(len(matFnames)==1)
-        matFname = matFnames[0]
+    # cellranger 3: filtered_gene_bc_matrices and gzipped
+    mask2 = join(inDir, "filtered_feature_bc_matrix/matrix.mtx.gz")
+    # h5 file as fallback, requires scanpy
+    # cellranger3: filtered_feature_bc_matrix.h5
+    mask3 = join(inDir, "*filtered_*matri*.h5") # should work for cr 1, 2 and 3
+    matFnames1 = glob.glob(mask1)
+    matFnames2 = glob.glob(mask2)
+    matFnames3 = glob.glob(mask3)
+    logging.info("Looking for %s (cellranger 1/2) or %s (cellranger3) or %s" % (mask1, mask2, mask3))
+
+    # ugly code warning
+    if len(matFnames1)!=0:
+        # cellranger 1/2 files are not gziped
+        assert(len(matFnames1)==1)
+        matFname = matFnames1[0]
+        logging.info("Found %s" % matFname)
         barcodeFname = matFname.replace("matrix.mtx", "barcodes.tsv")
         geneFname = matFname.replace("matrix.mtx", "genes.tsv")
         mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
-    else:
-        mask2 = join(inDir, "*_filtered_gene_bc_matrices_h5.h5")
-        logging.info("Looking for %s" % mask2)
-        matFnames = glob.glob(mask2)
-        if len(matFnames)==0:
-            errAbort("Could not find matrix, neither as %s nor as %s" % (mask1, mask2))
+    elif len(matFnames2)!=0:
+        # cellranger 3 files are gzipped
+        assert(len(matFnames2)==1)
+        matFname = matFnames2[0]
+        logging.info("Found %s" % matFname)
+        barcodeFname = matFname.replace("matrix.mtx.gz", "barcodes.tsv.gz")
+        geneFname = matFname.replace("matrix.mtx.gz", "features.tsv.gz")
+        mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
+    elif len(matFnames3)!=0:
+        matFnames3 = glob.glob(mask3)
+        logging.info("Found %s" % matFnames3)
+        assert(len(matFnames3)==1)
+        matFname = matFnames3[0]
+
         import scanpy.api as sc
         logging.info("Reading matrix %s" % matFname)
         adata = readMatrixAnndata(matFname)
         anndataToTsv(adata, outExprFname)
+    else:
+        errAbort("Could not find matrix, neither as %s, %s nor %s" % (mask1, mask2, mask3))
+        logging.info("Looking for %s" % mask3)
 
     confName = join(outDir, "cellbrowser.conf")
     coordDescs = [{"file":"tsne.coords.csv", "shortLabel":"CellRanger t-SNE"}]
@@ -298,22 +321,34 @@ def crangerSignMarkers(dgeFname, markerFname, geneFname, maxPval, maxGenes):
     clusterToGenes = defaultdict(list)
 
     # read the significant markers and their p-Values
-    for line in open(dgeFname):
-        if line.startswith("Gene ID"):
-            if "Cluster 1 Weight" in line:
-                fieldsProCluster = 2
-                fileVersion = 1
-            else:
-                fieldsProCluster = 3
-                fileVersion = 2
-            continue
+    logging.info("Reading %s" % dgeFname)
+    ifh = open(dgeFname)
+
+    # determine file format
+    line1 = ifh.readline()
+    # cellranger 3
+    fileVersion = None
+    if line1.startswith("Feature ID"):
+        fieldsProCluster = 3
+        fileVersion = 3
+    # cellranger 1 or 2
+    elif line1.startswith("Gene ID"):
+        if "Cluster 1 Weight" in line:
+            fieldsProCluster = 2
+            fileVersion = 1
+        else:
+            fieldsProCluster = 3
+            fileVersion = 2
+    assert(fileVersion is not None) # unknown cellranger version?
+
+    for line in ifh:
         row = line.rstrip("\n\r").split(",")
         geneId = row[0]
         sym = row[1]
         clusterCount = int((len(row)-2) / fieldsProCluster)
         for clusterIdx in range(0, clusterCount):
             startField = (clusterIdx*fieldsProCluster)+2
-            if fileVersion==2:
+            if fileVersion>=2:
                 mean = float(row[startField])
                 fc = float(row[startField+1])
                 pVal = float(row[startField+2])

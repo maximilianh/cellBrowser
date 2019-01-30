@@ -18,7 +18,7 @@ MGIORTHO = join(dataDir, "mgi_HGNC_homologene_8Dec17.txt")
 EUREXPRESS = join(dataDir, "eurexpress_7Dec17.txt")
 DDD = join(dataDir, "DDG2P_18_10_2018.csv.gz")
 
-from cellbrowser import openStaticFile, staticFileNextRow, openFile
+from cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOne
 
 # ==== functions =====
     
@@ -92,7 +92,7 @@ def lineFileNextRow(inFile):
         # skip special chars in meta data and keep only ASCII
         line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
         line = line.rstrip("\n").rstrip("\r")
-        fields = string.split(line, "\t", maxsplit=len(headers)-1)
+        fields = splitOnce(line, "\t", len(headers)-1)
         try:
             rec = Record(*fields)
         except Exception as e:

@@ -35,7 +35,7 @@ ExportToCellbrowser <- function(
   dataset.name,
   meta.fields = NULL,
   meta.fields.names = NULL,
-  embeddings = c("tsne"),
+  embeddings = c("tsne", "pca", "umap"),
   markers.file = NULL,
   cluster.field = NULL,
   port = NULL,
@@ -100,13 +100,14 @@ ExportToCellbrowser <- function(
   for (embedding in embeddings) {
     #df <- Embeddings(object = object, reduction = embedding)
     emb <- dr[[embedding]]
+    if (is.null(emb)) {
+        message("Embedding ",embedding," does not exist in Seurat object. Skipping. ")
+        next
+    }
     #df <- slot(emb, "cell.embeddings")
     df <-  emb@cell.embeddings
     if (ncol(df) > 2) {
-      warning(
-        'Embedding ', embedding,
-        ' has more than 2 coordinates, taking only the first 2',
-      )
+      warning('Embedding ', embedding, ' has more than 2 coordinates, taking only the first 2')
       df <- df[, 1:2]
     }
     colnames(df) <- c("x", "y")

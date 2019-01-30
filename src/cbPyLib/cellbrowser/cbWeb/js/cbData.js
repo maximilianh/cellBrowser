@@ -28,7 +28,12 @@ var cbUtil = (function () {
             },
             error : function() {
                 if (!silent)
-                    alert("Could not load "+url); 
+                    if (url.search("dataset.json")>-1)
+                        alert("Could not find a dataset at "+url+". If you are sure that the link is correct, please "+
+                            "contact the administrator of this server, "+
+                            "or cells@ucsc.edu if this is running at UCSC. ");
+                    else
+                        alert("Could not load "+url); 
                 onSuccess(null);
             }
         });
