@@ -11,3 +11,4 @@ graft src/cbPyLib/cellbrowser/sampleConfig
 ##include cellbrowser/sampleConfig/seurat.conf
 include versioneer.py
 include src/cbPyLib/cellbrowser/_version.py
+graft src/cbPyLib/cellbrowser/R
