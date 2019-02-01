@@ -52,6 +52,9 @@ A minimal Scanpy pipeline
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Requirements: python3 with Scanpy installed, see https://scanpy.readthedocs.io/en/latest/installation.html.
+Please make sure that you install the igraph library. It's a requirement for the most basic scanpy features,
+but it's not an official requirement of scanpy. The command `pip install scanpy[louvain]` will make sure
+that igraph is installed.
 
 We provide a wrapper around Scanpy which runs filtering, PCA,
 nearest-neighbors, clustering, t-SNE and UMAP and formats them for cbBuild. An
