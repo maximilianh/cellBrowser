@@ -11,4 +11,5 @@ To read expression matrices in .mtx format, you have to install scipy:
 
     pip install scipy
 
-
+cbScanpy require that scanpy is installed. cbSeurat requires that the R that is run when you type `Rscript` has Seurat
+installed.
