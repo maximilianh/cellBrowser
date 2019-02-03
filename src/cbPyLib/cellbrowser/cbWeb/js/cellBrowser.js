@@ -24,6 +24,7 @@ var cellbrowser = function() {
     // uniqueKey is used to save manually defined colors to localStorage
 
     var renderer = null;
+    var renderer2 = null; // for split screen mode
     var gWinInfo = null; // .width and .height of the PIXI canvas
 
     // last 10 genes
@@ -124,7 +125,7 @@ var cellbrowser = function() {
     }
 
     function keys(o) {
-    /* return all keys of object */
+    /* return all keys of object as an array */
         var allKeys = [];
         for(var k in o) allKeys.push(k);
         return allKeys;
@@ -908,6 +909,21 @@ var cellbrowser = function() {
 
     function onSelectByIdClick() {
         /* Edit - select cells by ID */
+
+        function onSearchDone(searchRes) {
+            var idxArr = searchRes[0];
+            var notFoundIds = searchRes[1];
+
+            if (notFoundIds.length!==0) {
+                $('#tpNotFoundIds').text("Could not find these IDs: "+notFoundIds.join(", "));
+                $('#tpNotFoundHint').text("Please fix them and click the OK button to try again.");
+            } else
+                $( "#tpDialog" ).dialog( "close" );
+
+            renderer.selectSet(idxArr);
+            renderer.drawDots();
+        }
+
         var dlgHeight = 500;
         var dlgWidth = 500;
         var htmls = [];
@@ -916,92 +932,59 @@ var cellbrowser = function() {
             function() {
                 var idListStr = $("#tpIdList").val();
                 idListStr = idListStr.trim().replace(/\r\n/g,"\n");
-                gSelCellIds = {};
-                if (idListStr==="")
-                    return;
+                var idList = idListStr.split("\n");
+                var re = new RegExp("\\*");
+
+                var hasWildcards = $("#tpHasWildcard")[0].checked;
+                //if (re.exec(idListStr)!==null)
+                    //hasWildcards = true;
 
                 // first check the IDs
-                var allCellIds = getAllCellIdsAsDict();
-                var notFoundIds = [];
-                var idList = idListStr.split("\n");
-                for (var i = 0; i < idList.length; i++) {
-                    var cellId = idList[i];
-                    if (cellId==="")
-                        continue;
-                    if (!(cellId in allCellIds))
-                        notFoundIds.push(cellId);
+                db.loadFindCellIds(idList, onSearchDone, onProgressConsole, hasWildcards);
                 }
+        }
 
-                if (notFoundIds.length!==0) {
-                    //alert("Could not find these "+gSampleDesc+" IDs:"+ notFoundIds.join(", "));
-                    $('#tpNotFoundIds').text("Could not find these IDs: "+notFoundIds.join(", "));
-                    $('#tpNotFoundHint').text("Please fix them and click the OK button to try again.");
-                    }
-                else {
-                    for (i = 0; i < idList.length; i++) {
-                        var cellId = idList[i];
-                        if (cellId==="")
-                            continue;
-                        gSelCellIds[cellId] = true;
-                        }
-                    $( this ).dialog( "close" );
-                    clearSelectionState();
-                    plotDots();
-                    renderer.render(stage);
-                    //alert(idList.length+ " " + gSampleDesc+"s are selected");
-                }
-            }
-        };
-
-        htmls.push("<textarea id='tpIdList' style='height:320px;width:350px;display:block'>");
+        htmls.push("<textarea id='tpIdList' style='height:320px;width:400px;display:block'>");
         htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
+        htmls.push("<input id='tpHasWildcard' type='checkbox' style='margin-right: 10px' /> Allow RegEx search<br>e.g. enter '^TH' to find all IDs that start with 'TH'<br>or '-1$' to find all IDs that end with '-1'");
         var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
     }
 
     function onExportIdsClick() {
         /* Edit - Export cell IDs */
-        var idList = [];
-        for (var cellId in gSelCellIds) {
-            idList.push(cellId);
+        var selCells = renderer.getSelection();
+
+        function buildExportDialog(idList) {
+            /* callback when cellIds have arrived */
+            var dlgHeight = 500;
+
+            var htmls = [];
+            if (selCells===null)
+                htmls.push("No cells are selected. Shown below are the identifiers of all cells visible on the screen.<p>");
+
+            var idListEnc = encodeURIComponent(idList.join("\n"));
+            htmls.push("<textarea style='height:320px;width:350px;display:block'>");
+            htmls.push(idList.join("\n"));
+            htmls.push("</textarea>");
+
+            var buttons = {
+            "Download as file" : function() {
+                    var blob = new Blob([idList.join("\n")], {type: "text/plain;charset=utf-8"});
+                    saveAs(blob, "identifiers.txt");
+                },
+            "Copy to clipboard" : function() {
+                    $("textarea").select();
+                    document.execCommand('copy');
+                    $( this ).dialog( "close" );
+                }
+            };
+            showDialogBox(htmls, "List of "+idList.length+" selected IDs", {showClose:true, height:dlgHeight, width:400, buttons:buttons});
         }
 
-        var dlgHeight = 500;
-
-        var htmls = [];
-        if (idList.length===0)
-            {
-            htmls.push("No cells are selected. Shown below are the identifiers of all cells visible on the screen.<p>");
-            for (var i = 0; i < pixelCoords.length; i++)
-                idList.push(shownCoords[i][0]);
-            }
-
-        var idListEnc = encodeURIComponent(idList.join("\n"));
-        htmls.push("<textarea style='height:320px;width:350px;display:block'>");
-        htmls.push(idList.join("\n"));
-        htmls.push("</textarea>");
-
-        //htmls.push('<a style="text-decoration:underline" href="data:text/plain;charset=utf-8,'+idListEnc+'" download="identifiers.txt">Download as text file</a><br>');
-
-        //htmls.push('<a style="text-decoration:underline" href="data:text/plain;charset=utf-8,'+idListEnc+'" download="identifiers.txt">Download as text file</a><br>');
-
-        var buttons = {
-        "Download as file" :
-            function() {
-                var blob = new Blob([idList.join("\n")], {type: "text/plain;charset=utf-8"});
-                saveAs(blob, "identifiers.txt");
-            },
-        "Copy to clipboard" :
-            function() {
-                $("textarea").select();
-                document.execCommand('copy');
-                $( this ).dialog( "close" );
-            }
-        };
-
-
-        showDialogBox(htmls, "List of "+idList.length+" IDs", {showClose:true, height:dlgHeight, width:400, buttons:buttons});
+        db.loadCellIds(selCells, buildExportDialog);
     }
+
 
     function buildMenuBar() {
         /* draw the menubar at the top */
@@ -1038,10 +1021,10 @@ var cellbrowser = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
-         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f</span></a></li>');
+         htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f c</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
-         htmls.push('<li><a id="tpSelectById" href="#">Search by ID...</a></li>');
+         htmls.push('<li><a id="tpSelectById" href="#">Find by ID...<span class="dropmenu-item-content">f i</span></a></li>');
          htmls.push('<li><a id="tpExportIds" href="#">Export selected IDs...</a></li>');
          htmls.push('</ul>'); // View dropdown
          htmls.push('</li>'); // View dropdown
@@ -1053,6 +1036,7 @@ var cellbrowser = function() {
          htmls.push('<li><a href="#" id="tpZoomPlus"><span class="dropmenu-item-label">Zoom in</span><span class="dropmenu-item-content">+</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoomMinus"><span class="dropmenu-item-label">Zoom out</span><span class="dropmenu-item-content">-</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoom100Menu"><span class="dropmenu-item-label">Zoom 100%</span><span class="dropmenu-item-content">space</span></a></li>');
+         htmls.push('<li><a href="#" id="tpSplitMenu"><span class="dropmenu-item-label">Split screen</span><span class="dropmenu-item-content">t</span></a></li>');
 
          htmls.push('<li><hr class="half-rule"></li>');
 
@@ -1108,6 +1092,7 @@ var cellbrowser = function() {
        //$('#tpFilterButton').click( onHideSelectedClick );
        //$('#tpOnlySelectedButton').click( onShowOnlySelectedClick );
        $('#tpZoom100Menu').click( onZoom100Click );
+       $('#tpSplitMenu').click( onSplitClick );
        $('#tpZoomPlus').click( onZoomInClick );
        $('#tpZoomMinus').click( onZoomOutClick );
        //$('#tpShowAllButton').click( onShowAllClick );
@@ -1156,7 +1141,7 @@ var cellbrowser = function() {
        $("#tpLegendBar").css("height", window.innerHeight - menuBarHeight);
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
-       renderer.setSize(rendererWidth, rendererHeight);
+       renderer.setSize(rendererWidth, rendererHeight, false);
     }
 
     var progressUrls = [];
@@ -3181,12 +3166,25 @@ var cellbrowser = function() {
         Mousetrap.bind('+', onZoomInClick);
         Mousetrap.bind('n', onSelectNoneClick);
         Mousetrap.bind('a', onSelectAllClick);
+        Mousetrap.bind('m', function() {$('#tpMetaCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('d', function() {$('#tpDatasetCombo').trigger("chosen:open"); return false;});
-        Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
+        //Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('g', function() {$("#tpGeneCombo").selectize()[0].selectize.focus(); return false;});
         Mousetrap.bind('c l', onHideShowLabelsClick );
-        Mousetrap.bind('f', onSelectComplexClick );
+        Mousetrap.bind('f c', onSelectComplexClick );
+        Mousetrap.bind('f i', function() { onSelectByIdClick(); return false; } );
+        Mousetrap.bind('t', onSplitClick );
 
+        Mousetrap.bind('up', function() { renderer.movePerc(0, 0.1); renderer.drawDots(); } );
+        Mousetrap.bind('left', function() { renderer.movePerc(-0.1, 0); renderer.drawDots(); } );
+        Mousetrap.bind('right', function() { renderer.movePerc(0.1, 0); renderer.drawDots(); } );
+        Mousetrap.bind('down', function() { renderer.movePerc(0, -0.1); renderer.drawDots(); } );
+
+        // yay vim
+        Mousetrap.bind('i', function() { renderer.movePerc(0, 0.1); renderer.drawDots(); } );
+        Mousetrap.bind('j', function() { renderer.movePerc(-0.1, 0); renderer.drawDots(); } );
+        Mousetrap.bind('l', function() { renderer.movePerc(0.1, 0); renderer.drawDots(); } );
+        Mousetrap.bind('k', function() { renderer.movePerc(0, -0.1); renderer.drawDots(); } );
     }
 
     // https://stackoverflow.com/a/33861088/233871
@@ -3840,6 +3838,34 @@ var cellbrowser = function() {
         /* only allow alphanumeric characters */
         var newName = name.replace(/[^a-zA-Z0-9+]/g, "");
         return newName;
+    }
+
+    function onSplitClick() {
+        /* user clicked on View > Split Screen */
+        var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
+        var canvLeft   = renderer.left;
+
+        // remove split screen view
+        if (renderer2!==null) {
+            var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
+            renderer.setSize(canvWidth, rendererHeight);
+            renderer2.div.remove();
+            renderer2 = null;
+            return;
+        }
+
+        var newWidth = renderer.width/2;
+        renderer.setSize(newWidth, rendererHeight);
+
+        var div = document.createElement('div');
+        div.id = "tpMaxPlot2";
+        var canvTop  = menuBarHeight+toolBarHeight;
+        var canvLeft2 = canvLeft + renderer.width;
+        renderer2 = new MaxPlot(div, canvTop, canvLeft2, newWidth, rendererHeight, {"interact":false});
+        renderer2.canvas.style.borderLeft = "1px solid grey";
+        document.body.appendChild(div);
+        renderer.connect(renderer2);
+        renderer.drawDots();
     }
 
     function onClusterNameClick(clusterName) {

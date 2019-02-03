@@ -50,31 +50,38 @@ function MaxPlot(div, top, left, width, height, args) {
         self.ctx = null; // the canvas context
         self.canvas = addCanvasToDiv(div, top, left, width, height-gStatusHeight );
 
-        addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
-        addModeButtons(top+10, left+10, self);
-        addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
+        self.interact = false;
+        if (args===undefined || (args["interact"]!==false)) {
+            self.interact = true;
+
+            addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
+            addModeButtons(top+10, left+10, self);
+            addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
+            addTitleDiv(top+height-gTitleSize-gStatusHeight, left+5);
+
+            /* add the div used for the mouse selection/zoom rectangle to the DOM */
+            var selectDiv = document.createElement('div');
+            selectDiv.id = "mpSelectBox";
+            selectDiv.style.border = "1px dotted black";
+            selectDiv.style.position = "absolute";
+            selectDiv.style.display  = "none";
+            selectDiv.style.pointerEvents = "none";
+            self.div.appendChild(selectDiv);
+
+            // callbacks when user clicks or hovers over label or cell 
+            self.onLabelClick = null; // called on label click, args: text of label and event
+            self.onCellClick = null; // called on cell click, args: array of cellIds and event
+            self.onCellHover = null; // called on cell hover, arg: array of cellIds
+            self.onNoCellHover = null; // called on hover over empty background
+            self.onSelChange = null; // called when the selection has been changed, arg: array of cell Ids
+            // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
+            self.selectBox = selectDiv; // we need this later
+            self.setupMouse();
+        }
+
         addProgressBars(top+Math.round(height*0.3), left+30);
-        addTitleDiv(top+height-gTitleSize-gStatusHeight, left+5);
 
-        /* add the div used for the mouse selection/zoom rectangle to the DOM */
-        var selectDiv = document.createElement('div');
-        selectDiv.id = "mpSelectBox";
-        selectDiv.style.border = "1px dotted black";
-        selectDiv.style.position = "absolute";
-        selectDiv.style.display  = "none";
-        selectDiv.style.pointerEvents = "none";
-        self.div.appendChild(selectDiv);
-        self.selectBox = selectDiv; // we need this later
-
-        self.setupMouse();
         
-        // callbacks when user clicks or hovers over label or cell 
-        self.onLabelClick = null; // called on label click, args: text of label and event
-        self.onCellClick = null; // called on cell click, args: array of cellIds and event
-        self.onCellHover = null; // called on cell hover, arg: array of cellIds
-        self.onNoCellHover = null; // called on hover over empty background
-        self.onSelChange = null; // called when the selection has been changed, arg: array of cell Ids
-        // self.onZoom100Click: called when user clicks the zoom100 button. Implemented below.
 
         // timer that is reset on every mouse move
         self.timer = null;
@@ -939,10 +946,13 @@ function MaxPlot(div, top, left, width, height, args) {
        self.pxLabels = null;
        if (self.clusterLabels!==undefined && self.clusterLabels!==null)
            self.pxLabels = scaleLabels(self.clusterLabels, self.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
+
+       if (self.connPlot)
+            self.connPlot.pxCoords = self.pxCoords;
     }
 
-    this.setSize = function(width, height) {
-       /* resize canvas on the page re-scale the data and re-draw */
+    this.setSize = function(width, height, doRedraw) {
+       /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
        
        // css and canvas sizes: these must be identical, otherwise canvas gets super slow
        var canvWidth = width;
@@ -967,7 +977,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.scaleData();
        //clearCanvas(self.ctx, width, height);
-       self.drawDots();
+       if (doRedraw===undefined || doRedraw===true)
+           self.drawDots();
     };
 
     this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY) {
@@ -1076,6 +1087,9 @@ function MaxPlot(div, top, left, width, height, args) {
         if (self.doDrawLabels===true && self.pxLabels!==null) {
             self.pxLabelBbox = drawLabels(self.ctx, self.pxLabels, self.canvas.width, self.canvas.height, self.zoomFact);
         }
+
+        if (self.connPlot)
+            self.connPlot.drawDots();
     };
 
     this.cellsAtPixel = function(x, y) {
@@ -1201,6 +1215,25 @@ function MaxPlot(div, top, left, width, height, args) {
         self.zoomRange = newRange;
         self.scaleData();
         return newRange;
+    };
+
+    this.movePerc = function(xDiffFrac, yDiffFrac) {
+        /* move a certain percentage of current view. xDiff/yDiff are floats, e.g. 0.1 is 10% up */
+        var zr = self.zoomRange;
+        var xRange = Math.abs(zr.maxX-zr.minX);
+        var yRange = Math.abs(zr.maxY-zr.minY);
+
+        var xDiffAbs = xRange*xDiffFrac;
+        var yDiffAbs = yRange*yDiffFrac;
+
+        var newRange = {};
+        newRange.minX = zr.minX + xDiffAbs;
+        newRange.maxX = zr.maxX + xDiffAbs;
+        newRange.minY = zr.minY + yDiffAbs;
+        newRange.maxY = zr.maxY + yDiffAbs;
+
+        self.zoomRange = newRange;
+        self.scaleData();
     };
 
     this.panStart = function() {
@@ -1422,6 +1455,9 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.resetMarquee = function() {
        /* make the marquee disappear and reset its internal status */
+       if (!self.interact)
+           return;
+
        self.mouseDownX = null;
        self.mouseDownY = null;
        self.lastPanX = null;
@@ -1555,21 +1591,31 @@ function MaxPlot(div, top, left, width, height, args) {
 
        // user did not move the mouse, so this is a click
        if (mouseDidNotMove) {
+            // recognize a double click -> zoom
+            if (self.lastClick!==undefined && x2===self.lastClick[0] && y2===self.lastClick[1]) {
+                self.zoomBy(1.33);
+                self.lastClick = [-1,-1];
+            }
+            self.lastClick = [x2, y2];
+
             var clickedLabel = self.labelAt(x2, y2);
-            if (clickedLabel!==null)
+            if (clickedLabel!==null && self.doDrawLabels)
                 self.onLabelClick(clickedLabel, ev);
             else {
                 var clickedCellIds = self.cellsAt(x2, y2);
+                // click on a cell -> update selection and redraw
                 if (clickedCellIds!==null && self.onCellClick!==null) {
                     self.selCells = clickedCellIds;
-                    self.onCellClick(clickedCellIds, ev);
                     self.drawDots();
+                    self.onCellClick(clickedCellIds, ev);
+
                 }
                 else {
                 // user clicked onto background:
                 // reset selection and redraw
                     console.log("not moved at all: reset "+clientX+" "+self.mouseDownX+" "+self.mouseDownY+" "+clientY);
                     self.selectClear();
+                    
                     self.drawDots();
                 }
 
@@ -1620,7 +1666,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var pxX = ev.clientX - self.left;
         var pxY = ev.clientY - self.top;
         var spinFact = 0.1;
-        if (ev.ctrlKey) // = OSX pinch and zoom gesture
+        if (ev.ctrlKey) // = OSX pinch and zoom gesture (and no other OS/mouse combination?)
             spinFact = 0.08;  // is too fast, so slow it down a little
         var zoomFact = 1-(spinFact*normWheel.spinY);
         console.log("Wheel Zoom by "+zoomFact);
@@ -1664,13 +1710,13 @@ function MaxPlot(div, top, left, width, height, args) {
 
         self.resetMarquee();
 
-        self.icons["move"].style.backgroundColor = gButtonBackground; 
-        self.icons["zoom"].style.backgroundColor = gButtonBackground; 
-        self.icons["select"].style.backgroundColor = gButtonBackground; 
-        self.icons[modeName].style.backgroundColor = gButtonBackgroundClicked; 
+        if (self.interact) {
+            self.icons["move"].style.backgroundColor = gButtonBackground; 
+            self.icons["zoom"].style.backgroundColor = gButtonBackground; 
+            self.icons["select"].style.backgroundColor = gButtonBackground; 
+            self.icons[modeName].style.backgroundColor = gButtonBackgroundClicked; 
+        }
 
-        //var upModeName = modeName[0].toUpperCase() + modeName.slice(1);
-        //var buttonId = "mpIconMode"+upModeName;
     }
 
     this.randomDots = function(n, radius, mode) {
@@ -1697,6 +1743,26 @@ function MaxPlot(div, top, left, width, height, args) {
         return self;
 
     };
+
+    this.connect = function(plot2) {
+        /* connect this maxPlot to another maxPlot = keep them in sync.
+         * whenever this renderer draws, the other one will draw too. They share
+         * all internal state (at least at first) */
+        plot2.pxCoords = self.pxCoords;
+        plot2.colorArr = self.colorArr;
+        plot2.radius = self.radius;
+        plot2.selCells = self.selCells;
+        plot2.alpha = self.alpha;
+        plot2.doDrawLabels = self.doDrawLabels;
+        plot2.pxLabels = self.pxLabels;
+        plot2.pxLabelBbox = self.pxLabelBbox;
+        plot2.zoomRange = self.zoomRange;
+        plot2.initZoom = self.initZoom;
+        plot2.initRadius = self.initRadius;
+        plot2.colors = self.colors;
+
+        self.connPlot = plot2;
+    }
 
     // object constructor code
     self.initCanvas(div, top, left, width, height);
