@@ -299,6 +299,14 @@ var cellbrowser = function() {
     function openDatasetLoadPane(selDatasetIdx) {
         /* open dataset dialog: load html into the three panes  */
         var datasetName = gDatasetList[selDatasetIdx].name;
+        // the UCSC apache serves latin1, so we force it back to utf8
+        $.ajaxSetup({
+            'beforeSend' : function(xhr) {
+                if (xhr && xhr.overrideMimeType)
+                    xhr.overrideMimeType('text/html; charset=utf8');
+            },
+        });
+
         var descUrl = joinPaths([datasetName, "summary.html"]);
         $("#pane1").load(descUrl, function( response, status, xhr ) {
             if ( status === "error" ) {
@@ -1230,7 +1238,9 @@ var cellbrowser = function() {
        }
 
        var defaultMetaField = db.getDefaultColorField()[1];
-       if (fieldName!==defaultMetaField)
+       if (fieldName===defaultMetaField)
+           changeUrl({"meta":null, "gene":null});
+       else
            changeUrl({"meta":fieldName, "gene":null});
 
 
@@ -1552,13 +1562,15 @@ var cellbrowser = function() {
        function guessRadiusAlpha(dotCount) {
            /* return reasonable radius and alpha values for a number of dots */
            if (dotCount<3000)
-               return [4, 0.5];
-           if (dotCount<5000)
+               return [4, 0.7];
+           if (dotCount<6000)
+               return [4, 0.6];
+           if (dotCount<10000)
                return [3, 0.5];
-           if (dotCount<15000)
-               return [2, 0.5];
-           if (dotCount<30000)
-               return [1, 0.4];
+           if (dotCount<28000)
+               return [3, 0.3];
+           if (dotCount<35000)
+               return [1, 0.5];
            // more than 28k:
            return [0, 0.3];
        }
@@ -2882,7 +2894,7 @@ var cellbrowser = function() {
             var fieldName = field.label;
 
             // fields without binning and with too many unique values are greyed out
-            var isGrey = (field.diffValCount>100 && field.binMethod!==undefined);
+            var isGrey = (field.diffValCount>100 && field.binMethod===undefined);
 
             var addClass = "";
             var addTitle="";

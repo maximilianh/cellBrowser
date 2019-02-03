@@ -1,7 +1,7 @@
 # various format converters for single cell data:
 # - cellranger, mtx to tsv, matConcat, etc
 
-import logging, optparse, io, sys, os, shutil, operator, glob, re
+import logging, optparse, io, sys, os, shutil, operator, glob, re, json
 from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
@@ -203,37 +203,8 @@ def metaCat(inFnames, outFname, options):
     os.rename(tmpFname, outFname)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 
-def crangerToCellbrowser(datasetName, inDir, outDir):
-    " convert cellranger output to a cellbrowser directory "
-    makeDir(outDir)
-    # copy over the clusters
-    clustFname = join(inDir, "analysis/clustering/graphclust/clusters.csv")
-    if not isfile(clustFname):
-        logging.warn("Cannot find %s" % clustFname)
-        clustFname = join(inDir, "analysis/kmeans/10_clusters/clusters.csv")
-        logging.warn("Using%s instead" % clustFname)
-    metaFname = join(outDir, "meta.csv")
-    shutil.copy(clustFname, metaFname)
-
-    # copy over the t-SNE coords
-    tsneFname = join(inDir, "analysis/tsne/2_components/projection.csv")
-    if not isfile(tsneFname):
-        tsneFname = join(inDir, "analysis/tsne/projection.csv")
-    coordFname = join(outDir, "tsne.coords.csv")
-    shutil.copy(tsneFname, coordFname)
-
-    # copy over the markers
-    dgeFname = join(inDir, "analysis/diffexp/graphclust/differential_expression.csv")
-    if not isfile(dgeFname):
-        logging.warn("Not found: %s" % dgeFname)
-        dgeFname = join(inDir, "analysis/kmeans/10_clusters/differential_expression.csv")
-        logging.warn("Using instead: %s" % dgeFname)
-
-    markerFname = join(outDir, "markers.tsv")
-    geneFname = join(outDir, "gene2sym.tsv")
-    crangerSignMarkers(dgeFname, markerFname, geneFname, 0.01, 100)
-
-    # convert the matrix
+def importCellrangerMatrix(inDir, outDir):
+    " convert the cellranger 2 or 3 matrix, use the .mtx or .h5 file, whatever is available "
     outExprFname = join(outDir, "exprMatrix.tsv.gz")
     # cellranger 2: filtered_feature_bc_matrix/<db>/matrix.mtx and not gzipped
     mask1 = join(inDir, "filtered_gene_bc_matrices/*/matrix.mtx")
@@ -278,6 +249,43 @@ def crangerToCellbrowser(datasetName, inDir, outDir):
         errAbort("Could not find matrix, neither as %s, %s nor %s" % (mask1, mask2, mask3))
         logging.info("Looking for %s" % mask3)
 
+    return matFname
+
+def crangerToCellbrowser(datasetName, inDir, outDir, noMat):
+    " convert cellranger output to a cellbrowser directory "
+    makeDir(outDir)
+    # copy over the clusters
+    clustFname = join(inDir, "analysis/clustering/graphclust/clusters.csv")
+    if not isfile(clustFname):
+        logging.warn("Cannot find %s" % clustFname)
+        clustFname = join(inDir, "analysis/kmeans/10_clusters/clusters.csv")
+        logging.warn("Using%s instead" % clustFname)
+    metaFname = join(outDir, "meta.csv")
+    shutil.copy(clustFname, metaFname)
+
+    # copy over the t-SNE coords
+    tsneFname = join(inDir, "analysis/tsne/2_components/projection.csv")
+    if not isfile(tsneFname):
+        tsneFname = join(inDir, "analysis/tsne/projection.csv")
+    coordFname = join(outDir, "tsne.coords.csv")
+    shutil.copy(tsneFname, coordFname)
+
+    # copy over the markers
+    dgeFname = join(inDir, "analysis/diffexp/graphclust/differential_expression.csv")
+    if not isfile(dgeFname):
+        logging.warn("Not found: %s" % dgeFname)
+        dgeFname = join(inDir, "analysis/kmeans/10_clusters/differential_expression.csv")
+        logging.warn("Using instead: %s" % dgeFname)
+
+    markerFname = join(outDir, "markers.tsv")
+    geneFname = join(outDir, "gene2sym.tsv")
+    crangerSignMarkers(dgeFname, markerFname, geneFname, 0.01, 100)
+
+    if not noMat:
+        matFname = importCellrangerMatrix(inDir, outDir)
+    else:
+        matFname = "unknown"
+
     confName = join(outDir, "cellbrowser.conf")
     coordDescs = [{"file":"tsne.coords.csv", "shortLabel":"CellRanger t-SNE"}]
     confArgs =  {"meta" : "meta.csv", "clusterField" : "Cluster", "tags" : ["10x"]}
@@ -295,18 +303,23 @@ def crangerWriteMethods(inDir, outDir, matFname):
     import csv
     csvMask = join(inDir, "*_metrics_summary.csv")
     csvFnames = glob.glob(csvMask)
-    if len(csvFnames)==0:
-        logging.warn("Cannot find %s, not writing %s" % (csvMask, htmlFname))
-        return
 
-    qcVals = list(csv.DictReader(open(csvFnames[0])))[0]
+    jsonFname = join(inDir, "summary.json")
+    if len(csvFnames)==0:
+        if isfile(jsonFname):
+            qcVals = json.load(open(jsonFname))
+        else:
+            logging.warn("Cannot find %s nor %s, not writing %s" % (csvMask, htmlFname))
+            return
+    else:
+        qcVals = list(csv.DictReader(open(csvFnames[0])))[0]
 
     ofh = open(htmlFname, "w")
-    ofh.write("This dataset was imported from a CellRanger analysis directory with cbCellranger.<p><p>")
+    ofh.write("<p>This dataset was imported from a CellRanger analysis directory with cbCellranger.</p>\n")
     ofh.write("<p><b>QC metrics reported by CellRanger:</b></p>\n")
 
     for key, value in iterItems(qcVals):
-        ofh.write("%s: %s<br>\n" % (key, value))
+        ofh.write("<i>%s:</i> %s<br>\n" % (key, str(value)))
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
@@ -378,7 +391,7 @@ def cbCellrangerCli():
         logging.error("You have to specify at least an input and an output directory and a dataset name.")
         cbCellrangerCli_parseArgs(showHelp=True)
 
-    crangerToCellbrowser(options.datasetName, options.inDir, options.outDir)
+    crangerToCellbrowser(options.datasetName, options.inDir, options.outDir, options.noMat)
 
 def cbCellrangerCli_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -393,6 +406,7 @@ def cbCellrangerCli_parseArgs(showHelp=False):
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
     #parser.add_option("-g", "--geneSet", dest="geneSet", action="store", help="geneset, e.g. gencode28 or gencode-m13 or similar. Default: %default", default="gencode24")
     parser.add_option("-n", "--name", dest="datasetName", action="store", help="name of the dataset")
+    parser.add_option("-m", "--noMat", dest="noMat", action="store_true", help="do not export the matrix again, saves some time if you changed something small since the last run")
 
     (options, args) = parser.parse_args()
 

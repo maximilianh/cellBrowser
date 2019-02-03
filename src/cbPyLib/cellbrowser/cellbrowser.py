@@ -850,6 +850,9 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     valToInt = None
     assert(len(newVals)==len(valList))
 
+    if len(valCounts)==1:
+        logging.warn("Field contains only a single value")
+
     if floatCount+unknownCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
         # field is a floating point number: convert to decile index
         numVals = [float(x) for x in newVals]
@@ -971,6 +974,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["label"] = fieldName
 
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
+
         fieldType = fieldMeta["type"]
 
         if "metaOpt" in inConf and fieldName in inConf["metaOpt"]:
@@ -1663,6 +1667,12 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
 
     return newCoords
 
+def sliceRow(row, skipFields):
+    " yield all fields, except the ones with an index in skipFields "
+    for i, val in enumerate(row):
+        if i not in skipFields:
+            yield val
+
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     """ check and reorder the meta data, has to be in the same order as the
     expression matrix, write to fixedMetaFname """
@@ -1703,24 +1713,37 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     # filter the meta data file
     logging.info("Data contains %d samples/cells" % len(matrixSampleNames))
 
-    # slurp in the whole meta data
+    # slurp in the whole meta data, keep track of which fields contain only a single value
     tmpFname = fixedMetaFname+".tmp"
     ofh = open(tmpFname, "w")
     metaToRow = {}
     sep = sepForFile(metaFname)
+    fieldValues = defaultdict(set)
     for lNo, line in enumerate(open(metaFname)):
         row = line.rstrip("\r\n").split(sep)
         if lNo==0:
-            # copy header over
-            ofh.write("\t".join(row))
-            ofh.write("\n")
+            headers = row
             continue
         row = line.rstrip("\r\n").split(sep)
         metaToRow[row[0]] = row
 
-    # and write it in the right order
+        for fieldIdx, val in enumerate(row):
+            fieldValues[fieldIdx].add(val)
+
+    # find fields that contain only a single value
+    skipFields = set()
+    for fieldIdx, values in iterItems(fieldValues):
+        if len(values)==1:
+            logging.info("Field %d, '%s', has only a single value. Removing this field from meta data.")
+            skipFields.add(fieldIdx)
+
+    # write the header line, removing unused fields
+    ofh.write("\t".join(sliceRow(headers, skipFields)))
+    ofh.write("\n")
+
+    # and write the rows in the right order, also removing unused fields
     for matrixName in matrixSampleNames:
-        ofh.write("\t".join(metaToRow[matrixName]))
+        ofh.write("\t".join(sliceRow(metaToRow[matrixName], skipFields)))
         ofh.write("\n")
     ofh.close()
     os.rename(tmpFname, fixedMetaFname)
@@ -1887,15 +1910,15 @@ def splitMarkerTable(filename, geneToSym, outDir):
     if filename is None:
         return
     logging.info("Splitting cluster markers from %s into directory %s" % (filename, outDir))
-    #logging.debug("Splitting %s on first field" % filename)
     ifh = openFile(filename)
 
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
+    seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
     headerLine = ifh.readline().rstrip("\r\n")
 
     sep = sepForFile(filename)
-    if headerLine == seuratLine or headerLine == seuratLine2:
+    if headerLine == seuratLine or headerLine == seuratLine2 or headerLine == seuratLine3:
         logging.info("Cluster marker file was recognized to be in Seurat format")
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
@@ -3733,30 +3756,30 @@ def generateDownloads(datasetName, outDir):
 
     if isfile(markerFname):
         baseName = basename(markerFname)
-        ofh.write("<b>Cluster Marker Genes:</b> <a href='%s/%s'>%s</a><p>\n" % (baseName, baseName, datasetName))
+        ofh.write("<b>Cluster Marker Genes:</b> <a href='%s/%s'>%s</a><p>\n" % (datasetName, baseName, baseName))
 
     coordDescs = conf["coords"]
     for coordDesc in coordDescs:
         coordLabel = coordDesc["shortLabel"]
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         coordFname = cleanName+".coords.tsv.gz"
-        ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>" % (coordLabel, datasetName, coordFname, coordFname))
+        ofh.write("<b>%s coordinates:</b> <a href='%s/%s'>%s</a><br>\n" % (coordLabel, datasetName, coordFname, coordFname))
 
     rdsFname = join(datasetName, "seurat.rds")
     if isfile(rdsFname):
-        ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>" % rdsFname)
+        ofh.write("<b>Seurat R data file:</b> <a href='%s'>seurat.rds</a><p>\n" % rdsFname)
 
     scriptFname = join(datasetName, "runSeurat.R")
     if isfile(scriptFname):
-        ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>" % scriptFname)
+        ofh.write("<b>Seurat R analysis script:</b> <a href='%s'>runSeurat.R</a><p>\n" % scriptFname)
 
     logFname = join(datasetName, "analysisLog.txt")
     if isfile(logFname):
-        ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>" % logFname)
+        ofh.write("<b>Analysis Log File:</b> <a href='%s'>analysisLog.txt</a><p>\n" % logFname)
 
     h5adFname = join(datasetName, "anndata.h5ad")
     if isfile(h5adFname):
-        ofh.write("<b>Scanpy Anndata HDF5 file:</b> <a href='%s'>anndata.h5ad</a><p>" % h5adFname)
+        ofh.write("<b>Scanpy Anndata HDF5 file:</b> <a href='%s'>anndata.h5ad</a><p>\n" % h5adFname)
 
     ofh.close()
     logging.info("Wrote %s" % ofh.name)

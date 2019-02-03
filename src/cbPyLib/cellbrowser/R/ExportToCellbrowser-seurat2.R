@@ -206,6 +206,8 @@ exprMatrix="exprMatrix.tsv.gz"
 meta="meta.tsv"
 # possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
 geneIdType="auto"
+# file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
+# quickGenesFile=quickGenes.csv
 clusterField="%s"
 labelField="%2$s"
 enumFields=%s
