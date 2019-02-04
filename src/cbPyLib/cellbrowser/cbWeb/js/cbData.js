@@ -1068,12 +1068,18 @@ function CbDbFile(url) {
     this.preloadAllMeta = function() {
         /* start loading all meta value vectors and add them to db.allMeta */
         self.allMeta = {};
+
+        function doneMetaVec(arr, metaInfo, otherInfo) {
+            self.allMeta[metaInfo.name] = arr; 
+            delete self.metaCache[fieldIdx];
+        }
+
         var metaFieldInfo = self.getMetaFields();
         for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
            var fieldInfo = metaFieldInfo[fieldIdx];
            if (fieldInfo.type==="uniqueString")
                continue
-           self.loadMetaVec(fieldIdx, function(arr, metaInfo) { self.allMeta[fieldIdx] = arr; delete self.metaCache[fieldIdx] }, null);
+           self.loadMetaVec(fieldIdx, doneMetaVec, null);
         }
     }
 

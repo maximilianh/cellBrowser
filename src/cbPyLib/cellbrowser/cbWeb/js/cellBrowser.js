@@ -484,16 +484,20 @@ var cellbrowser = function() {
 
     function onSelChange(cellIds) {
     /* called each time when the selection has been changed */
+        if (cellIds.length===0 || cellIds===null) {
+            clearMetaAndGene();
+            clearSelectionState();
+        } else if (cellIds.length===1) {
+            var cellId = cellIds[0];
+            var cellCountBelow = cellIds.length-1;
+            db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci, cellCountBelow);}, onProgress);
+        } else
+            updateMetaBarManyCells(cellIds);
+
         updateGeneTableColors(cellIds);
         if ("geneSym" in gLegend)
             buildViolinPlot();
 
-        //if (cellIds.length===0)
-            //clearMetaAndGene();
-        //else if (cellIds.length===1)
-            //updateMetaBarOneCell(cellIds[0]);
-        //else
-            //updateMetaBarManyCells(cellIds);
     }
 
     function onSaveAsClick() {
@@ -2545,7 +2549,7 @@ var cellbrowser = function() {
 
     function onMetaMouseOver (event) {
     /* called when user hovers over meta element: shows the histogram of selected values */
-        var metaHist = gCurrentDataset.metaHist;
+        var metaHist = db.metaHist;
         if (metaHist===undefined)
             return;
 
@@ -2557,9 +2561,11 @@ var cellbrowser = function() {
             target = event.target.parentNode;
         var targetId = target.id;
 
-        var fieldId = parseInt(targetId.split("_")[1]);
+        var fieldIdx = parseInt(targetId.split("_")[1]);
 
-        var valHist = metaHist[fieldId];
+        var valCounts = db.getMetaFields()[fieldIdx].valCounts;
+
+        var valHist = metaHist[fieldIdx];
         var htmls = [];
         var otherCount = 0;
         var totalSum = 0;
@@ -2567,7 +2573,8 @@ var cellbrowser = function() {
             var valInfo  = valHist[i];
             var valCount = valInfo[0];
             var valFrac  = valInfo[1];
-            var valStr   = valInfo[2];
+            var valIdx   = valInfo[2];
+            var valStr   = valCounts[valIdx][0]; // 0 = label, 1 = count
 
             totalSum += valCount;
             // only show the top values, summarize everything else into "other"
@@ -2876,7 +2883,8 @@ var cellbrowser = function() {
         htmls.push("<div id='tpMetaPanel'>");
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var field = metaFieldInfo[i];
-            var fieldName = field.label;
+            var fieldLabel = field.label;
+            fieldLabel = fieldLabel.replace(/_/g, " ");
 
             // fields without binning and with too many unique values are greyed out
             var isGrey = (field.diffValCount>100 && field.binMethod===undefined);
@@ -2888,7 +2896,7 @@ var cellbrowser = function() {
                 addClass=" tpMetaLabelGrey";
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
-            htmls.push("<div id='tpMetaLabel_"+i+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldName+"</div>");
+            htmls.push("<div id='tpMetaLabel_"+i+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldLabel+"</div>");
 
             var styleAdd="";
             if (field.opt!==undefined) {
@@ -2912,6 +2920,7 @@ var cellbrowser = function() {
         var tabsWidth = metaBarWidth;
 
         var htmls = [];
+        htmls.push("<div id='tpMetaTip' style='display:none'></div>");
         htmls.push("<div id='tpLeftSidebar' style='position:absolute;left:0px;top:"+menuBarHeight+"px;width:"+metaBarWidth+"px'>");
 
         htmls.push("<div class='tpSidebarHeader'>Color Control</div>");
@@ -2926,7 +2935,8 @@ var cellbrowser = function() {
         htmls.push("<div id='tpAnnotTab'>");
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
-        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
+        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" id="tpHoverHint" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
+        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px; display: none" id="tpSelectHint" class="tpHint">Cells selected. No update on hovering.</div>');
         buildMetaPanel(htmls);
 
         htmls.push("</div>"); // tpAnnotTab
@@ -2957,7 +2967,7 @@ var cellbrowser = function() {
         $("#tpMetaCombo").change( onMetaComboChange );
         $(".tpMetaLabel").click( onMetaClick );
         $(".tpMetaValue").click( onMetaClick );
-        //$(".tpMetaValue").mouseover( onMetaMouseOver );
+        $(".tpMetaValue").mouseover( onMetaMouseOver );
         $(".tpMetaValue").mouseleave ( function() { $('#tpMetaTip').hide()} );
 
         // setup the right-click menu
@@ -3667,19 +3677,28 @@ var cellbrowser = function() {
 
     function updateMetaBarManyCells(cellIds) {
     /* update the meta fields on the left to reflect/summarize a list of cellIds */
-        var metaFields = gCurrentDataset.metaFields;
-        var metaData = gCurrentDataset.metaData;
+        var metaFieldInfos = db.getMetaFields();
+        //var metaData = gCurrentDataset.metaData;
         var cellCount = cellIds.length;
+
+        if (db.allMeta===undefined) {
+            alert("The meta information has not been loaded yet. Please wait and try again in a few seconds.");
+            return;
+        }
+
         $('#tpMetaTitle').text("Meta data of "+cellCount+" "+gSampleDesc+"s");
 
         // for every field...
         var metaHist = {};
-        for (var metaIdx = 0; metaIdx < metaFields.length; metaIdx++) {
+        // we skip the first field, as it's the ID and cannot be summarized
+        for (var metaIdx = 1; metaIdx < metaFieldInfos.length; metaIdx++) {
+            var fieldInfo = metaFieldInfos[metaIdx];
+            var metaVec = db.allMeta[fieldInfo.name];
             var metaCounts = {};
             // make an object of value -> count in the cells
             for (var i = 0; i < cellCount; i++) {
                 var cellId = cellIds[i];
-                var metaVal = metaData[cellId][metaIdx];
+                var metaVal = metaVec[cellId];
                 metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
             }
             // convert the object to an array (count, percent, value) and sort it by count
@@ -3737,7 +3756,7 @@ var cellbrowser = function() {
             //var label = metaFieldToLabel(metaFields[metaIdx]);
             //$('#tpMetaLabel_'+metaIdx).html(label+"<span class='tpMetaPerc'>"+(100*topPerc).toFixed(1)+"%</span>");
         }
-        gCurrentDataset.metaHist = metaHist;
+        db.metaHist = metaHist;
     }
 
     function clearMetaAndGene() {
@@ -3750,7 +3769,7 @@ var cellbrowser = function() {
         updateGeneTableColors(null);
     }
 
-    function updateMetaBarOneCell(cellInfo) {
+    function updateMetaBarOneCell(cellInfo, otherCellCount) {
         /* update the meta bar with meta data from a single cellId */
         $('#tpMetaTitle').text(METABOXTITLE);
         for (var i = 0; i < cellInfo.length; i++) {
@@ -3761,6 +3780,12 @@ var cellbrowser = function() {
             } else
                 $('#tpMeta_'+i).html(fieldValue);
             $('#tpMeta_'+i).attr('title', cellInfo[i]);
+        }
+        if (otherCellCount===0)
+            $("#tpMetaNote").hide();
+        else {
+            $("#tpMetaNote").html("...and "+(otherCellCount)+" other "+gSampleDesc+"s underneath");
+            $("#tpMetaNote").show();
         }
     }
 
@@ -3781,29 +3806,32 @@ var cellbrowser = function() {
     function clearSelectionState() {
         /* clear URL variable with select state, called when user clicks cells or unselects them */
         delState("select");
+
+        $("#tpHoverHint").show();
+        $("#tpSelectHint").hide();
     }
 
     function onCellClickOrHover (cellIds, ev) {
         /* user clicks onto a circle with the mouse or hovers over one.
          * ev is undefined if not a click. */
 
-        // do nothing if only hover but we already have a selection
+        // do nothing if only hover but something is already selected
         var selCells = renderer.getSelection();
-        if (ev===undefined && selCells!==null && selCells.length!==0)
+        if (ev===undefined && selCells!==null && selCells.length!==0) {
+            $("#tpHoverHint").hide();
+            $("#tpSelectHint").show();
             return;
+            }
+
+        $("#tpHoverHint").show();
+        $("#tpSelectHint").hide();
 
         if (cellIds===null || cellIds.length===0) {
             clearMetaAndGene();
         } else {
             var cellId = cellIds[0];
-            db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci);}, onProgress);
-            if (cellIds.length===1)
-                $("#tpMetaNote").hide();
-            else {
-                $("#tpMetaNote").html("...and "+(cellIds.length-1)+" other "+gSampleDesc+"s underneath");
-                $("#tpMetaNote").show();
-            }
-            clearSelectionState();
+            var cellCountBelow = cellIds.length-1;
+            db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci, cellCountBelow);}, onProgress);
         }
 
         updateGeneTableColors(cellIds);
