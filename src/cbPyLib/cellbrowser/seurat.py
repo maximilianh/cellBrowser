@@ -66,6 +66,8 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     " write the seurat R script to a file "
     cmds = []
     # try to install Seurat if not already installed
+    cmds.append("ver = R.Version()")
+    cmds.append("if (ver$major<3 || (ver$major==3 && ver$minor < 4)) { error('Sorry, Seurat requires at least R 3.4') } ")
     cmds.append("if (!require('Seurat',character.only = TRUE)) { install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')}")
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")

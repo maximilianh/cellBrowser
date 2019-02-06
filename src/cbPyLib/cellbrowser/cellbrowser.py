@@ -3424,15 +3424,15 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
+        adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
         if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
             pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
-            pipeLog("Dying cells cannot be removed - please check your expression matrix")
+            pipeLog("Apoptotic cells cannot be removed - please check your expression matrix")
             doMito = False
         else:
             doMito = True
 
             adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
-            adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
 
             sc.pl.violin(adata, ['n_genes', 'UMI_Count', 'percent_mito'], jitter=0.4, multi_panel=True)
 
@@ -3478,7 +3478,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             pipeLog('Regressing out percent_mito and number of UMIs')
             sc.pp.regress_out(adata, ['UMI_Count', 'percent_mito'])
         else:
-            pipeLog('Regressing out only number of UMIs')
+            pipeLog('Regressing out number of UMIs')
             sc.pp.regress_out(adata, ['UMI_Count'])
 
         #Scaling after regression 
