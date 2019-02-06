@@ -947,8 +947,11 @@ function MaxPlot(div, top, left, width, height, args) {
        if (self.clusterLabels!==undefined && self.clusterLabels!==null)
            self.pxLabels = scaleLabels(self.clusterLabels, self.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
 
-       if (self.connPlot)
+       if (self.connPlot) {
             self.connPlot.pxCoords = self.pxCoords;
+            self.connPlot.pxLabels = self.pxLabels;
+            self.connPlot.pxLabelBbox = self.pxLabelBbox;
+        }
     }
 
     this.setSize = function(width, height, doRedraw) {
