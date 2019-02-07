@@ -394,7 +394,7 @@ def cbScanpy_parseArgs():
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
-            help="gene-cell expression matrix file, possible formats: .h5ad, .csv, .xlsx, .h5, .loom, .mtx, .txt, .tab, .data")
+            help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab")
     parser.add_option("", "--init", dest="init", action="store_true",
             help="copy sample scanpy.conf to current directory")
 
@@ -2483,11 +2483,13 @@ def readMitos(idType):
 
     geneToSym = readGeneSymbols(idType, None)
     mitos = []
+    allGeneIds = []
     for geneId, sym in iterItems(geneToSym):
-        if sym.lower().startswith("MT-"):
+        allGeneIds.append(geneId)
+        if sym.lower().startswith("mt-"):
             mitos.append(geneId)
     if len(mitos)==0:
-        errAbort("Could not find any mitochondrial genes for gene ID type %s" % idType)
+        errAbort("Could not find any mitochondrial genes in cell browser gene lists for gene ID type %s. Example gene IDs from input file: " % (idType, allGeneIds[:10]))
     logging.debug("Found %d mitochondrial genes for %s, e.g. %s" % (len(mitos), idType, mitos[0]))
     return mitos
 
@@ -3679,6 +3681,9 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     mat = mat.tocsr()
 
     geneCount, cellCount = mat.shape
+    #if geneCount!=len(genes):
+    #logging.info
+
     assert(geneCount==len(genes)) # matrix gene count has to match gene tsv file line count
     assert(cellCount==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
 
