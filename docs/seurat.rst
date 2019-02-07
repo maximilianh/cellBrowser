@@ -59,22 +59,19 @@ Run a basic Seurat pipeline
 If you have never used Seurat before and just want to process an expression matrix
 as quickly as possible, this section is for you.
 
-First make sure that you can install the package "hdf5r" in R::
+If you do not have R installed yet, we recommend that you install it via conda.
+Follow these instructions to install the miniconda installer:
+https://conda.io/projects/conda/en/latest/user-guide/install/index.html#regular-installation
 
-    Rscript -e "install.packages('hdf5r' , dep=TRUE, repos='http://cran.r-project.org/')"
+When conda is installed, install R::
 
-If the above doesn't work, try installing the fake-hdf5r package, which means
-that you won't be able to read hdf5 files, but reading .mtx and of course
-tab-sep files will still work::
+    conda install r
 
-    Rscript -e "install.packages('remotes' , dep=TRUE, repos='http://cran.r-project.org/')"
-    Rscript -e "remotes::install_github('UCSF-TI/fake-hdf5r')"
+Then, again using conda, install Seurat::
 
-Then install Seurat into your default command line R (not RStudio or another R version you may have)::
+    conda install -c bioconda r-seurat 
 
-    Rscript -e "install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')"
-
-To run an example now, download the 10X pbmc3k expression matrix::
+To process an example dataset now, download the 10X pbmc3k expression matrix::
 
     rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
 
