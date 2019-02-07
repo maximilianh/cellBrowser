@@ -3666,9 +3666,15 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
 
     genes = []
+    sep = sepForFile(geneFname)
     for l in openFile(geneFname):
-        geneId, sym = l.rstrip("\r\n").split("\t")[:2] # field 3 is "Gene Expression" in cr3
-        genes.append(geneId+"|"+sym)
+        row = l.rstrip("\r\n").split(sep) # field 3 is "Gene Expression" in cr3
+        if len(row)>1:
+            geneId, sym = row[:2]
+            genes.append(geneId+"|"+sym)
+        else:
+            geneId = row[0]
+            genes.append(geneId)
 
     barcodes = [l.strip() for l in openFile(barcodeFname) if l!="\n"]
 
