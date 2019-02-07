@@ -3677,15 +3677,29 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     logging.info("Reading expression matrix...")
     mat = scipy.io.mmread(mtxFname)
 
-    logging.info("Converting to row-based layout...")
+    logging.info("Dimensions of matrix: %d , %d" % mat.shape)
+    #geneCount, cellCount = mat.shape
+
+    if mat.shape[0]==len(genes)-1:
+        genes = genes[1:]
+        logging.info("The genes file seems to have a GEO-like header, removed the first gene, genecount is now %d" % len(genes))
+
+    if mat.shape[1]==len(barcodes)-1:
+        barcodes = barcodes[1:]
+        logging.info("The barcodes file seems to have a GEO-like header, removed the first barcode, count is now %d" % len(barcodes))
+
+    if mat.shape[0]==len(barcodes):
+        logging.info("Matrix looks like it's in transposed format (genes on columns), so transposing matrix now")
+        mat = mat.transpose()
+        logging.info("New dimensions of matrix: %d , %d" % mat.shape)
+
+    logging.info("Converting matrix to row-based layout...")
     mat = mat.tocsr()
 
-    geneCount, cellCount = mat.shape
-    #if geneCount!=len(genes):
-    #logging.info
-
-    assert(geneCount==len(genes)) # matrix gene count has to match gene tsv file line count
-    assert(cellCount==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
+    print(mat.shape[0])
+    print(len(genes))
+    assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count
+    assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
 
     logging.info("Writing matrix to text")
     tmpFname = outFname+".tmp"
@@ -3696,7 +3710,7 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     ofh.write("\t".join(barcodes))
     ofh.write("\n")
 
-    for i in range(0, geneCount):
+    for i in range(0, len(genes)):
         if i%1000==0:
             logging.info("%d genes written..." % i)
         ofh.write(genes[i])
