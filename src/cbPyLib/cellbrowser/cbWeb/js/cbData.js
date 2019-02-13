@@ -6,6 +6,9 @@
 var cbUtil = (function () {
     var my = {};
 
+    // the byte range warning message will be shown only once, so we need a global flag
+    my.byteRangeWarningShown = false;
+
     my.joinPaths = function joinPaths(parts, separator) {
     // join paths together, taking care of duplicated /s
       return parts.map(function(part) { return part.trim().replace(/(^[\/]*|[\/]*$)/g, ''); }).join(separator || '/');
@@ -119,18 +122,34 @@ var cbUtil = (function () {
             // check if the expected length is OK. Some webservers don't support byte range 
             // requests.
             var expLength = this._end-this._start+1; // byte range is inclusive
-            if (binData.byteLength < expLength)
+
+            var dataLen = binData.byteLength;
+            if (!dataLen)
+                dataLen = binData.length;
+
+            if (dataLen < expLength)
                 alert("internal error cbData.js: chunk is too small. Does the HTTP server really support byte range requests?");
 
-            if (binData.byteLength > expLength) {
+            if (dataLen > expLength) {
                 console.log("Webserver does not support byte range requests, working around it, but this may be slow");
+                if (dataLen>30000000 && !my.byteRangeWarningShown) {
+                    alert("The webserver of this site does not support byte-range requests. " +
+                        "While the cell browser may work to some extent, it will " +
+                        " be slower and use more memory than normal. Please contact the administrator who setup this cell browser.");
+                    my.byteRangeWarningShown = true;
+                    }
+
                 if (this._arrType) {
-                    binData = new Uint8Array(binData);
-                    binData = binData.slice(this._start, this._end).buffer; // slice does not include the end
+                    if (this._arrType==="string")
+                        // for strings, it's easy to grab a part of it
+                        binData = binData.substring(this._start, this._end);
+                    else {
+                        // it's a bit harder if the data is a buffer
+                        binData = new Uint8Array(binData); // buffers don't support slicing, so cast to array first
+                        binData = binData.slice(this._start, this._end).buffer; // slice does not include the end
+                    }
                 }
-                else // binData is actually a normal string
-                    binData = binData.slice(this._start, this._end); // slice does not include the end
-                }
+            }
         }
 
         //if (url.endsWith(".gz"))
