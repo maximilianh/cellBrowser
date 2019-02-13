@@ -15,3 +15,8 @@ becomes cumbersome, you can also permanently set it through the environment
 variable CBOUT or by adding a line like this to ``~/.cellbrowser.conf``::
 
     htmlDir = "/data/www/cb/"
+
+Your webserver should support byte-range requests. Smaller datasets work
+without that, but for datasets with files larger than 30MB, a warning message
+will be shown once. Byte-ranges are active by default in Apache but may need to
+be activated in nginx. 
