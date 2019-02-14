@@ -252,7 +252,7 @@ var cellbrowser = function() {
     function updateMenu() {
     /* deactivate menu options based on current variables */
      // the "hide selected" etc menu options are only shown if some cells are selected
-     if (renderer.selCells===null) {
+     if (renderer.selCells.length===0) {
          menuBarHide("#tpOnlySelectedButton");
          menuBarHide("#tpFilterButton");
      }
@@ -964,7 +964,7 @@ var cellbrowser = function() {
             var dlgHeight = 500;
 
             var htmls = [];
-            if (selCells===null)
+            if (selCells.length===0)
                 htmls.push("No cells are selected. Shown below are the identifiers of all cells visible on the screen.<p>");
 
             var idListEnc = encodeURIComponent(idList.join("\n"));
@@ -1235,9 +1235,12 @@ var cellbrowser = function() {
 
        buildLegendForMetaIdx(fieldIdx);
        var renderColors = legendGetColors(gLegend.rows);
-       renderer.setColors(renderColors);
 
-       db.loadMetaVec(fieldIdx, function(carr) {renderer.setColorArr(carr); doneLoad(); } , onProgress);
+       db.loadMetaVec(
+           fieldIdx, 
+           function(carr) {renderer.setColors(renderColors); renderer.setColorArr(carr); doneLoad(); }, 
+           onProgress
+       );
 
        //changeUrl({"gene":null, "meta":fieldName});
        changeUrl({"pal":null});
@@ -1277,7 +1280,7 @@ var cellbrowser = function() {
         var arr2 = [];
 
         // code duplication, not very elegant, but avoids creating an array just for the indices
-        if (selCells===null)
+        if (selCells.length===0)
             // the version if no cells are selected
             for (var cellIdx = 0; cellIdx < exprVec.length; cellIdx++) {
                 var val = exprVec[cellIdx];
@@ -1432,7 +1435,7 @@ var cellbrowser = function() {
             buildViolinFromMeta(exprVec, db.conf.violinField, selCells);
         } else {
             // there is no violin field
-            if (selCells===null || selCells.length===0) {
+            if (selCells.length===0) {
                 // no selection, no violinField: default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
                 labelList = ['All cells'];
@@ -1476,9 +1479,7 @@ var cellbrowser = function() {
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
             _dump(binInfo);
             makeLegendExpr(geneSym, geneDesc, binInfo, exprArr, decArr);
-            //if (db.quickExpr===undefined)
-                //db.quickExpr = {};
-            //db.quickExpr[geneSym] = [exprArr, geneDesc, binInfo];
+
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
             buildLegendBar();
@@ -1750,7 +1751,6 @@ var cellbrowser = function() {
         renderer.zoom100();
         renderer.drawDots();
         $("#tpZoom100Button").blur(); // remove focus
-        //#$("#tpZoom100Button").tooltip('hide');
         ev.preventDefault();
         return false;
     }
@@ -2838,21 +2838,11 @@ var cellbrowser = function() {
         activateTooltip('#tpOpenUcsc');
         activateTooltip('#tpOpenDatasetButton');
 
-        //$('#tpIconModeMove').click( function() { activateMode("move")} );
-        //$('#tpIconModeZoom').click( function() { activateMode("zoom")} );
-        //$('#tpIconModeSelect').click( function() { activateMode("select")} );
-        //$('#tpZoom100Button').click( onZoom100Click );
-        //$('#tpIconDatasetInfo').click( function() { openDatasetDialog()});
         $('#tpButtonInfo').click( openDatasetDialog );
-
-        //$('#tpIconZoomIn').click( onZoomInClick );
-        //$('#tpIconZoomOut').click( onZoomOutClick );
-        //$('#tpIconZoom100').click( onZoom100Click );
 
         activateCombobox("tpDatasetCombo", datasetComboWidth);
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
-        //$('#tpGeneCombo').select2({ placeholder : "Gene Symbol"}); // preliminary setup, real setup will be in updateToolbar()
         $('#tpGeneCombo').selectize({
                 labelField : 'text',
                 valueField : 'id',
@@ -2982,6 +2972,25 @@ var cellbrowser = function() {
         $.contextMenu( menuOpt );
         // setup the tooltips
         //$('[title!=""]').tooltip();
+    }
+
+    function makeTooltipCont() {
+        /* make a div for the tooltips */
+        var ttDiv = document.createElement('div');
+        ttDiv.id = "tpTooltip";
+        ttDiv.style.position = "absolute";
+        //ttDiv.style.left = left+"px";
+        //ttDiv.style.top = top+"px";
+        ttDiv.style["padding"]="2px";
+        ttDiv.style["border"]="1px solid black";
+        ttDiv.style["border-radius"]="2px";
+        ttDiv.style["display"]="none";
+        ttDiv.style["cursor"]="pointer";
+        ttDiv.style["background-color"]="white";
+        ttDiv.style["box-shadow"]="0px 2px 4px rgba(0,0,0,0.3)";
+        ttDiv.style["user-select"]="none";
+        ttDiv.style["z-index"]="10";
+        return ttDiv;
     }
 
     function showIntro(addFirst) {
@@ -3760,7 +3769,7 @@ var cellbrowser = function() {
     }
 
     function clearMetaAndGene() {
-        /* clear the meta and gene field field info */
+        /* called when user hovers over nothing - clear the meta and gene field field info, hide the tooltip */
         var fieldCount = db.getMetaFields().length;
         for (var i = 0; i < fieldCount; i++) {
             $('#tpMeta_'+i).attr('title', "");
@@ -3817,7 +3826,7 @@ var cellbrowser = function() {
 
         // do nothing if only hover but something is already selected
         var selCells = renderer.getSelection();
-        if (ev===undefined && selCells!==null && selCells.length!==0) {
+        if (ev===undefined && selCells.length!==0) {
             $("#tpHoverHint").hide();
             $("#tpSelectHint").show();
             return;
@@ -3854,6 +3863,23 @@ var cellbrowser = function() {
        //$(document.body).append(htmls.join(""));
        console.log("Hover over "+clusterName);
        console.log(ev);
+       var labelStr = clusterName;
+
+       var acronyms = db.conf.acronyms;
+       if (acronyms!==undefined && clusterName in acronyms)
+           labelStr = acronyms[clusterName];
+
+       if (db.conf.markers!==undefined)
+            labelStr += "<br>Click to show marker gene list.";
+       $("#tpTooltip").css({
+        "display":"block",
+        "left" : ev.clientX+15,
+        "top" : ev.clientY,
+       }).html(labelStr);
+    }
+
+    function onNoClusterNameHover(ev) {
+        $("#tpTooltip").hide();
     }
 
     function sanitizeName(name) {
@@ -3868,32 +3894,17 @@ var cellbrowser = function() {
         return newName;
     }
 
+    function onActRendChange(otherRend) {
+        renderer = otherRend;
+    }
+
     function onSplitClick() {
         /* user clicked on View > Split Screen */
-        var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
-        var canvLeft   = renderer.left;
+        renderer.onActiveChange = onActRendChange;
+        renderer.split();
 
-        // remove split screen view
-        if (renderer2!==null) {
-            var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
-            renderer.setSize(canvWidth, rendererHeight);
-            renderer2.div.remove();
-            renderer2 = null;
-            return;
-        }
-
-        var newWidth = renderer.width/2;
-        renderer.setSize(newWidth, rendererHeight);
-
-        var div = document.createElement('div');
-        div.id = "tpMaxPlot2";
-        var canvTop  = menuBarHeight+toolBarHeight;
-        var canvLeft2 = canvLeft + renderer.width;
-        renderer2 = new MaxPlot(div, canvTop, canvLeft2, newWidth, rendererHeight, {"interact":false});
-        renderer2.canvas.style.borderLeft = "1px solid grey";
-        document.body.appendChild(div);
-        renderer.connect(renderer2);
-        renderer.drawDots();
+        //var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
+        //var canvLeft   = renderer.left;
     }
 
     function onClusterNameClick(clusterName) {
@@ -4328,6 +4339,9 @@ var cellbrowser = function() {
            renderer = new MaxPlot(div, canvTop, canvLeft, canvWidth, canvHeight);
            document.body.appendChild(div);
 
+           self.tooltipDiv = makeTooltipCont();
+           div.appendChild(self.tooltipDiv);
+
            //var htmls = [];
            //htmls.push("<div id='tpGeneProgress0'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");
            //htmls.push("<div id='tpGeneProgress1'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");
@@ -4342,6 +4356,7 @@ var cellbrowser = function() {
 
         renderer.onLabelClick = onClusterNameClick;
         renderer.onLabelHover = onClusterNameHover;
+        renderer.onNoLabelHover = onNoClusterNameHover;
         renderer.onCellClick = onCellClickOrHover;
         renderer.onCellHover = onCellClickOrHover;
         renderer.onNoCellHover = clearMetaAndGene;

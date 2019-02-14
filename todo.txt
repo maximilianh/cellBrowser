@@ -8,6 +8,8 @@
   - Dana Peer
   - Tara
 
+- when downloading the image, add the legend
+
 - example datasets:
   - pbmc3k -> cbScanpy
   - get the paga sample datasets?
