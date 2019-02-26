@@ -309,7 +309,7 @@ def crangerWriteMethods(inDir, outDir, matFname):
         if isfile(jsonFname):
             qcVals = json.load(open(jsonFname))
         else:
-            logging.warn("Cannot find %s nor %s, not writing %s" % (csvMask, htmlFname))
+            logging.warn("Cannot find %s nor %s, not writing %s" % (csvMask, jsonFname, htmlFname))
             return
     else:
         qcVals = list(csv.DictReader(open(csvFnames[0])))[0]
@@ -346,7 +346,7 @@ def crangerSignMarkers(dgeFname, markerFname, geneFname, maxPval, maxGenes):
         fileVersion = 3
     # cellranger 1 or 2
     elif line1.startswith("Gene ID"):
-        if "Cluster 1 Weight" in line:
+        if "Cluster 1 Weight" in line1:
             fieldsProCluster = 2
             fileVersion = 1
         else:

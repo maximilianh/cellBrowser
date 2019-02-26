@@ -3710,7 +3710,12 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     logging.info("Writing matrix to text")
     tmpFname = outFname+".tmp"
 
-    ofh = open(tmpFname, "w")
+    # could not find a cross-python way to open ofh for np.savetxt
+    # see https://github.com/maximilianh/cellBrowser/issues/73 and numpy ticket referenced therein
+    if isPy3:
+        ofh = open(tmpFname, "w")
+    else:
+        ofh = open(tmpFname, "wb")
 
     ofh.write("gene\t")
     ofh.write("\t".join(barcodes))
