@@ -29,7 +29,7 @@ def parseArgs():
             #help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
 
     parser.add_option("-n", "--name", dest="name", action="store",
-            help="name of dataset in cell browser")
+            help="internal name of dataset in cell browser. No spaces or special characters.")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug output")
 
@@ -76,6 +76,13 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
 
     writeMatrix = False
     if isfile(inData):
+        if inData.endswith(".mtx"):
+            logging.error("You specified an .mtx file as the input matrix")
+            logging.error("Seurat cannot read that. You need to specify the directory name, with a file matrix.mtx in it.")
+            logging.error("The directory also has to contain two other files, genes.tsv and barcodes.tsv")
+            logging.error("Please rename your input files if necessary")
+            exit(1)
+
         if inData.endswith(".rds"):
             cmds.append('mat = readRDS(file = "%s")' % inData)
         else:

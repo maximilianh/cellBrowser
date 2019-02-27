@@ -149,6 +149,7 @@ def metaCat(inFnames, outFname, options):
     allIds = set() # set with all cellIds
 
     for fileIdx, fname in enumerate(inFnames):
+        logging.info("Reading %s" % fname)
         headers = None
         for row in lineFileNextRow(fname):
             if headers is None:
@@ -405,7 +406,7 @@ def cbCellrangerCli_parseArgs(showHelp=False):
     parser.add_option("-i", "--inDir", dest="inDir", action="store", help="input folder with the cellranger analysis output. This is the directory with the two directories 'analysis' and 'filtered_gene_bc_matrices'")
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory")
     #parser.add_option("-g", "--geneSet", dest="geneSet", action="store", help="geneset, e.g. gencode28 or gencode-m13 or similar. Default: %default", default="gencode24")
-    parser.add_option("-n", "--name", dest="datasetName", action="store", help="name of the dataset")
+    parser.add_option("-n", "--name", dest="datasetName", action="store", help="name of the dataset. No spaces or special characters.")
     parser.add_option("-m", "--noMat", dest="noMat", action="store_true", help="do not export the matrix again, saves some time if you changed something small since the last run")
 
     (options, args) = parser.parse_args()

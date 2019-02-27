@@ -411,7 +411,7 @@ def cbScanpy_parseArgs():
             help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
 
     parser.add_option("-n", "--name", dest="name", action="store",
-            help="name of dataset in cell browser")
+            help="internal name of dataset in cell browser. No spaces or special characters.")
 
     parser.add_option("", "--test",
         dest="test",
@@ -1526,7 +1526,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     return matType
 
 def sepForFile(fname):
-    if ".csv" in fname:
+    if fname.endswith(".csv") or fname.endswith(".csv.gz") or fname.endswith(".csv.Z"):
         sep = ","
     else:
         sep = "\t"
