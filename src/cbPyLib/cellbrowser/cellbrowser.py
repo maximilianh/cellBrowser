@@ -465,8 +465,7 @@ def lineFileNextRow(inFile, utfHacks=False):
                 " Or it may be the wrong file type for this input, e.g. an expression matrix instead of a "
                 " coordinate file.")
 
-    headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
-    headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
+    headers = [sanitizeHeader(h) for h in headers]
 
     # python does unfortunately not accept reserved names as named tuple names
     # We append a useless string to avoid errors
@@ -953,6 +952,10 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     colors = parseColors(colorFname)
 
+    # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
+    # we have to strip special chars so fix the user's field names to our format
+    sanEnumFields = [sanitizeHeader(n) for n in enumFields]
+
     fieldInfo = []
     validFieldNames = set()
     for colIdx, (fieldName, col) in enumerate(colData):
@@ -961,9 +964,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         forceEnum = False
         if enumFields!=None:
-            forceEnum = (fieldName in enumFields)
+            forceEnum = (fieldName in sanEnumFields)
         # very dumb heuristic to recognize fields that should really not be treated as numbers
-        if "luster" in fieldName or "ouvain" in fieldName:
+        if "luster" in fieldName or "ouvain" in fieldName or (fieldName.startswith("res") and "." in fieldName):
             forceEnum=True
 
         cleanFieldName = cleanString(fieldName)
@@ -1049,10 +1052,8 @@ class MatrixTsvReader:
         else:
             self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
 
-        self.sep = "\t"
-        if ".csv" in fname.lower():
-            self.sep = ","
-            logging.debug("Field separator is %s" % repr(self.sep))
+        self.sep = sepForFile(fname)
+        logging.debug("Field separator is %s" % repr(self.sep))
 
         headLine = self.ifh.readline()
         headLine = headLine.rstrip("\r\n")
@@ -1906,6 +1907,15 @@ def sanitizeName(name):
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
+    return newName
+
+def sanitizeHeader(name):
+    " for tab-sep tables: replace nonalpha chars with  underscores "
+    assert(name!=None)
+    #newName = to_camel_case(name.replace(" ", "_"))
+    newName = re.sub("[^a-zA-Z0-9_]","_", name)
+    newName = re.sub("^_","", newName)  # remove _ prefix
+    logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     return newName
 
 def splitMarkerTable(filename, geneToSym, outDir):
