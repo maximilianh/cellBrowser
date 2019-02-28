@@ -1063,8 +1063,9 @@ class MatrixTsvReader:
 
         if matType is None:
             self.matType = self.autoDetectMatType(10)
-            logging.info("Numbers in matrix are of type '%s'", self.matType)
+            logging.info("Auto-detect: Numbers in matrix are of type '%s'", self.matType)
         else:
+            logging.debug("Pre-determined: Numbers in matrix are '%s'" % matType)
             self.matType = matType
 
     def close(self):
@@ -1460,7 +1461,7 @@ def exprEncode(geneDesc, exprArr, matType):
     logging.debug("raw - compression factor of %s: %f, before %d, after %d"% (geneDesc, fact, len(geneStr), len(geneCompr)))
     return geneCompr
 
-def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname):
+def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, matType=None):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
@@ -1481,8 +1482,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     highCount = 0
 
     matReader = MatrixTsvReader(geneToSym)
-    matReader.open(fname)
-    matType = matReader.getMatType()
+    matReader.open(fname, matType=matType)
+
+    if matType is None:
+        matType = matReader.getMatType()
+
     sampleNames = matReader.getSampleNames()
 
     geneCount = 0
@@ -2287,7 +2291,11 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
+    try:
+        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
+    except ValueError:
+        logging.warn("Oops. Mis-guessed the matrix data type, trying again and using floating point numbers")
+        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType="float")
 
     if matType=="int":
         outConf["matrixArrType"] = "Uint32"
