@@ -954,7 +954,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
     # we have to strip special chars so fix the user's field names to our format
-    sanEnumFields = [sanitizeHeader(n) for n in enumFields]
+    sanEnumFields = []
+    if enumFields is not None:
+        sanEnumFields = [sanitizeHeader(n) for n in enumFields]
 
     fieldInfo = []
     validFieldNames = set()
