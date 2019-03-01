@@ -31,6 +31,9 @@ Then you need at least three but ideally four files, they can be in .tsv or .csv
    columns, (cellName, x, y). The cellName must be the same as in the expression
    matrix and cell annotation meta data file. You can provide multiple files
    in this format, if you have run multiple dimensionality reduction algorithms.
+   You can also specify only a subset of the cells here. In this way, you can use
+   a single dimensionality reduction algorithm, but multiple subsets of the
+   cells, e.ge. one coord file per tissue.
 
 4. The (optional) table with cluster-specific marker genes. The first column is
    the cluster name (from the cell annotation meta file), the second column 
