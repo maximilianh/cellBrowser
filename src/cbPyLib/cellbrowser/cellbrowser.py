@@ -248,6 +248,11 @@ def copyPkgFile(relPath, outDir=None, values=None):
         if values is None:
             shutil.copy(srcPath, destPath)
             logging.info("Wrote %s" % destPath)
+            # egg-support commented out for now
+            #s = pkg_resources.resource_string(__name__, srcPath)
+            #ofh = open(destPath, "wb")
+            #ofh.write(s)
+            #ofh.close()
         else:
             logging.debug("Using %s as template for %s, vars %s" % (srcPath, destPath, values))
             data = open(srcPath).read()
@@ -3180,10 +3185,19 @@ def copyAllFiles(fromDir, subDir, toDir):
     outDir = join(toDir, subDir)
     makeDir(outDir)
     for filename in glob.glob(join(fromDir, subDir, '*')):
+    # egg-support commented out for now
+    #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
         if isdir(filename):
             continue
-        logging.debug("Copying %s to %s" % (filename, outDir))
+        #fullPath = join(fromDir, subDir, filename)
+        fullPath = filename
+        logging.debug("Copying %s to %s" % (fullPath, outDir))
         shutil.copy(filename, outDir)
+        #s = pkg_resources.resource_string(__name__, filename)
+        #outFname = join(outDir, filename)
+        #ofh = open(outFname, "wb")
+        #ofh.write(s)
+        #ofh.close()
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
