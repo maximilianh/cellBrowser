@@ -2629,7 +2629,7 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField", "visibility"]:
         copyConf(inConf, outConf, tag)
 
     if " " in inConf["name"]:
@@ -2820,8 +2820,11 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
         makeDir(path)
 
     for name in metaFields:
-        if name not in adata.obs.keys() and name!="percent_mito":
-            raise ValueError('There is no annotation field with the name `%s`.' % name)
+        if name not in adata.obs.keys():
+            logging.warn('There is no annotation field with the name `%s`.' % name)
+            if name not in ["percent_mito", "n_genes", "n_counts"]:
+                # tolerate missing default fields
+                raise ValueError()
 
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
@@ -3163,6 +3166,10 @@ def findDatasets(outDir):
 
         datasetDesc = json.load(open(fname))
         assert("name" in datasetDesc) # every dataset has to have a name
+
+        if datasetDesc.get("visibility")=="hide":
+            logging.debug("Dataset %s is set to hide, skipping" % datasetDesc["name"])
+            continue
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -3551,7 +3558,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
 
     neighbors = int(conf.get("louvainNeighbors", 6))
     res = int(conf.get("louvainRes", 1.0))
-    pipeLog('Performing Louvain Clustering, using %d PCs and %d neighbors' % (pc_nb, neighbors))
+    pipeLog('Performing Louvain Clustering, resolution %f, using %d PCs and %d neighbors' % (res, pc_nb, neighbors))
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=res)
     pipeLog("Found %d louvain clusters" % len(adata.obs['louvain'].unique()))

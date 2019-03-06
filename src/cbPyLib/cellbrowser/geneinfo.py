@@ -4,13 +4,16 @@ import logging, sys, optparse, re, unicodedata, string, csv
 from collections import defaultdict, namedtuple
 from os.path import join, basename, dirname, isfile
 
+from .cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOnce, iterItems, lineFileNextRow, setDebug
+
 dataDir = "geneAnnot"
 
+# no spaces/special chars in filenames - otherwise the URL will be rejected as invalid by urllib2
 HPRD = join(dataDir, "HPRD_molecular_class_081914.txt")
 HGNC = join(dataDir, "hgnc_complete_set_05Dec17.txt")
 SFARI = join(dataDir, "SFARI-Gene_genes_export06-12-2017.csv")
 OMIM = join(dataDir, "mim2gene.txt")
-COSMIC = join(dataDir, "Census_allWed Dec  6 18_35_54 2017.tsv")
+COSMIC = join(dataDir, "Census_allWed_Dec__6_18_35_54_2017.tsv")
 HPO = join(dataDir, "hpo_frequent_7Dec17.txt")
 BRAINSPANLMD = join(dataDir, "brainspan_genes.csv")
 BRAINSPANMOUSEDEV = join(dataDir, "brainspanMouse_9Dec17.txt")
@@ -18,7 +21,6 @@ MGIORTHO = join(dataDir, "mgi_HGNC_homologene_8Dec17.txt")
 EUREXPRESS = join(dataDir, "eurexpress_7Dec17.txt")
 DDD = join(dataDir, "DDG2P_18_10_2018.csv.gz")
 
-from .cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOnce, iterItems, lineFileNextRow
 
 # ==== functions =====
     
@@ -50,10 +52,7 @@ def parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options.debug)
     return args, options
 
 # ----------- main --------------
@@ -232,7 +231,7 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
             headers.append("_expr")
             headers.append("_geneLists")
             yield headers
-        sym = row.gene
+        sym = row[1]
         hprdClass = ""
         entrezId = symToEntrez.get(sym)
         omimId = entrezToOmim.get(entrezId, "")
@@ -311,10 +310,14 @@ def cbMarkerAnnotateCli():
     filename = args[0]
     outFname = args[1]
 
+    rowCount = 0
     ofh = open(outFname, "w")
     for row in tabGeneAnnotate(filename, symToEntrez, symToSfari, entrezToClass, entrezToOmim, entrezToCosmic, entrezToHpo, entrezToLmd, entrezToEuroexpress, humanToMouseEntrezList, entrezToBrainspanMouseDev):
         ofh.write("\t".join(row))
         ofh.write("\n")
+        rowCount +=1
     ofh.close()
+
+    logging.info("Annotated %d marker gene rows, output written to %s" % (rowCount, outFname))
 
 
