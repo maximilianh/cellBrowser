@@ -3519,7 +3519,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
-        #adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
+        adata.obs['n_counts'] = np.sum(adata.X, axis=1)
         if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
             pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
             pipeLog("Apoptotic cells cannot be removed - please check your expression matrix")
