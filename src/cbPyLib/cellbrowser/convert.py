@@ -164,15 +164,15 @@ def metaCat(inFnames, outFname, options):
     allIds = set() # set with all cellIds
 
     firstFields = []
-    if options.first!="":
+    if options.first!="" and options.first is not None:
         firstFields = options.first.split(",")
 
     for fileIdx, fname in enumerate(inFnames):
         logging.info("Reading %s" % fname)
         headers = None
-        for row in lineFileNextRow(fname):
+        for row in lineFileNextRow(fname, headerIsRow=True):
             if headers is None:
-                headers = row._fields[1:]
+                headers = row[1:]
                 logging.info("Reading %s, %d columns:  %s" % (fname, len(headers), repr(headers)))
                 allHeaders.extend(headers)
                 fieldCounts[fileIdx] = len(headers)

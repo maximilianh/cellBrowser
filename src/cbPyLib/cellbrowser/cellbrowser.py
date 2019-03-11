@@ -447,7 +447,7 @@ def cbScanpy_parseArgs():
 
 kwSet = set(keyword.kwlist)
 
-def lineFileNextRow(inFile, utfHacks=False):
+def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
     """
     parses tab-sep file with headers in first line
     yields collection.namedtuples
@@ -477,8 +477,6 @@ def lineFileNextRow(inFile, utfHacks=False):
                 " Or it may be the wrong file type for this input, e.g. an expression matrix instead of a "
                 " coordinate file.")
 
-    headers = [sanitizeHeader(h) for h in headers]
-
     # python does unfortunately not accept reserved names as named tuple names
     # We append a useless string to avoid errors
     if len(kwSet.intersection(headers))!=0:
@@ -495,9 +493,10 @@ def lineFileNextRow(inFile, utfHacks=False):
 
     if "" in headers:
         logging.error("Found empty cells in header line of %s" % inFile)
-        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to fix it.")
+        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to remove empty trailing columns.")
         assert(False)
 
+    # Python does not accept headers that start with a digit
     filtHeads = []
     for h in headers:
         if h[0].isdigit():
@@ -506,8 +505,14 @@ def lineFileNextRow(inFile, utfHacks=False):
             filtHeads.append(h)
     headers = filtHeads
 
+    origHeaders = headers
+    headers = [sanitizeHeader(h) for h in headers]
+
+    if headerIsRow:
+        yield origHeaders
 
     Record = namedtuple('tsvRec', headers)
+
     for line in fh:
         if line.startswith("#"):
             continue
