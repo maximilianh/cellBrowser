@@ -1148,22 +1148,28 @@ var cellbrowser = function() {
        renderer.setSize(rendererWidth, rendererHeight, false);
     }
 
-    var progressUrls = [];
+    var progressUrls = {}
 
     function onProgressConsole(ev) {
-        console.log(ev);
+        //console.log(ev);
     }
 
     function onProgress(ev) {
         /* update progress bars. The DOM elements of these were added in maxPlot (not optimal?)  */
         var url = ev.currentTarget.responseURL;
-        if (url.search("exprMatrix.bin")!==-1)
+        if (url.search("exprMatrix.bin")!==-1) // never show progress bar for single gene vector requests
             return;
 
-        var index = progressUrls.indexOf(url);
-        if (index===-1) {
-            progressUrls.push(url);
-            index = progressUrls.length-1;
+        var progressRowIdx = progressUrls[url]; // there can be multiple progress bars
+        if (progressRowIdx===undefined) {
+            // if there is none yet, find the first free index
+            progressRowIdx = 0;
+            for (var oldUrl in progressUrls) {
+                progressRowIdx = Math.max(progressRowIdx, progressUrls[oldUrl]);
+
+            }
+            progressRowIdx++;
+            progressUrls[url] = progressRowIdx;
         }
 
         var label = url;
@@ -1172,22 +1178,24 @@ var cellbrowser = function() {
         else if (url.endsWith(".bin"))
             label = "Loading cell annotations";
 
-        var labelId = "#mpProgressLabel"+index;
+        var labelId = "#mpProgressLabel"+progressRowIdx;
         $(labelId).html(label);
 
         var percent = Math.round(100 * (ev.loaded / ev.total));
 
-        if (percent===100) {
-            $("#mpProgress"+index).css("width", percent+"%");
-            $("#mpProgress"+index).show(0);
-            progressUrls.splice(index, 1);
-            $("#mpProgressDiv"+index).css("display", "none");
+        if (percent>=99) {
+            $("#mpProgress"+progressRowIdx).css("width", percent+"%");
+            $("#mpProgress"+progressRowIdx).show(0);
+            //progressUrls.splice(index, 1);
+            delete progressUrls[url];
+            $("#mpProgressDiv"+progressRowIdx).css("display", "none");
         }
         else {
-            $("#mpProgress"+index).css("width", percent+"%");
-            $("#mpProgressDiv"+index).css("display", "inherit");
+            $("#mpProgress"+progressRowIdx).css("width", percent+"%");
+            $("#mpProgressDiv"+progressRowIdx).css("display", "inherit");
         }
     }
+
 
     function colorByMetaField(fieldName, doneLoad) {
        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad */
@@ -2616,15 +2624,19 @@ var cellbrowser = function() {
 
     function loadCoordSet(coordIdx) {
         var newRadius = db.conf.coords[coordIdx].radius;
+        var colorOnMetaField = db.conf.coords[coordIdx].colorOnMeta;
         
         db.loadCoords(coordIdx,
                 function(coords, info, clusterMids) { 
                     gotCoords(coords,info,clusterMids, newRadius); 
+                    if (colorOnMetaField!==undefined)
+                        colorByMetaField(colorOnMetaField);
+                    else
+                        renderer.drawDots();
                     //if (newRadius) {
                         //renderer.port.initRadius = newRadius;
                         //renderer.port.radius = newRadius;
                     //}
-                    renderer.drawDots();
                 },
                 onProgress);
     }

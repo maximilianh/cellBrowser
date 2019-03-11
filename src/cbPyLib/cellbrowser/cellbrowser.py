@@ -423,7 +423,7 @@ def cbScanpy_parseArgs():
             help="internal name of dataset in cell browser. No spaces or special characters.")
 
     parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
-            help="optional list of comma-separated meta-fields to export from the annData object, in addition to cluster, number of genes, percent mitochondrial and number of UMIs")
+            help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
 
     parser.add_option("", "--test",
         dest="test",
@@ -2767,11 +2767,24 @@ def anndataToTsv(ad, matFname, usePandas=False):
     logging.info("Writing scanpy matrix to %s" % matFname)
     tmpFname = matFname+".tmp"
 
+    mat = ad.X
+
+    if ad.raw is not None:
+        usingRaw = False
+        try:
+            mat = ad.raw
+            usingRaw = True
+        except AttributeError:
+            pass
+
+        if usingRaw:
+            logging.info("Using ad.raw expression matrix")
+
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
-    mat = ad.X.transpose()
+    mat = mat.transpose()
     if scipy.sparse.issparse(mat):
         logging.info("Converting csc matrix to row-sparse matrix")
-        mat = mat.tocsr() # makes writing to a file 10X faster, thanks Alex Wolf!
+        mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
         logging.info("Converting anndata to pandas dataframe")
@@ -2831,7 +2844,8 @@ def makeDictDefaults(inVar, defaults):
         d[val] = defaults.get(val, val)
     return d
 
-def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
+def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField="louvain",
+        nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2909,22 +2923,27 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
         errAbort ('Couldnt find cluster markers list')
 
     ##Save metadata
-    if metaFields != None:
-        metaFields = makeDictDefaults(metaFields, metaLabels)
-        meta_df=pd.DataFrame()
-        for metaKey, metaLabel in iterItems(metaFields):
-            logging.debug("getting meta field: %s -> %s" % (metaKey, metaLabel))
-            if metaKey not in adata.obs:
-                logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
-            else:
-                temp=adata.obs[[metaKey]]
-                #if metaKey in metaLabels:
-                #logging.debug("Using new name %s -> %s" % (metaKey, metaLabels[metaKey]))
-                #temp.name = metaLabel
-                meta_df=pd.concat([meta_df,temp],axis=1)
-        meta_df.rename(metaFields, axis=1, inplace=True)
-        fname = join(path, "meta.tsv")
-        meta_df.to_csv(fname,sep='\t')
+    if metaFields is None:
+        metaFields = list(ad.obs.columns.values)
+
+    metaFields = makeDictDefaults(metaFields, metaLabels)
+
+    meta_df=pd.DataFrame()
+
+    for metaKey, metaLabel in iterItems(metaFields):
+        logging.debug("getting meta field: %s -> %s" % (metaKey, metaLabel))
+        if metaKey not in adata.obs:
+            logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
+        else:
+            temp=adata.obs[[metaKey]]
+            #if metaKey in metaLabels:
+            #logging.debug("Using new name %s -> %s" % (metaKey, metaLabels[metaKey]))
+            #temp.name = metaLabel
+            meta_df=pd.concat([meta_df,temp],axis=1)
+
+    meta_df.rename(metaFields, axis=1, inplace=True)
+    fname = join(path, "meta.tsv")
+    meta_df.to_csv(fname,sep='\t')
 
     argDict = {}
     if clusterField:
@@ -3171,7 +3190,7 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         adata = sc.read_10x_h5(matrixFname, genome=genome)
 
     else:
-        logging.info("Loading expression matrix: tab-sep format")
+        logging.info("Loading expression matrix: scanpy-supported format, like h5ad, loom, tab-separated, etc.")
         adata = sc.read(matrixFname, cache=False , first_column_names=True)
         if not samplesOnRows:
             logging.info("Transposing the expression matrix")
@@ -3730,7 +3749,7 @@ def cbScanpyCli():
     adata.write(adFname)
     datasetName=options.name
 
-    metaFields=["louvain", "percent_mito", "n_genes", "n_counts"]
+    metaFields=None # = export all fields
     if options.metaFields:
         metaFields.extend(metaFields.split(','))
 
