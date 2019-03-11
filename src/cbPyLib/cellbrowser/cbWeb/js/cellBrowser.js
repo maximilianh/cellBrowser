@@ -1510,11 +1510,14 @@ var cellbrowser = function() {
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
     }
 
-   function gotCoords(coords, info, clusterMids) {
+   function gotCoords(coords, info, clusterMids, newRadius) {
        /* called when the coordinates have been loaded */
        if (coords.length===0)
            alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
-       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY);
+       var opts = {};
+       if (newRadius)
+           opts["radius"] = newRadius;
+       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
    }
 
     function renderData() {
@@ -2612,8 +2615,17 @@ var cellbrowser = function() {
     }
 
     function loadCoordSet(coordIdx) {
+        var newRadius = db.conf.coords[coordIdx].radius;
+        
         db.loadCoords(coordIdx,
-                function(a,b,c) { gotCoords(a,b,c); renderer.drawDots();},
+                function(coords, info, clusterMids) { 
+                    gotCoords(coords,info,clusterMids, newRadius); 
+                    //if (newRadius) {
+                        //renderer.port.initRadius = newRadius;
+                        //renderer.port.radius = newRadius;
+                    //}
+                    renderer.drawDots();
+                },
                 onProgress);
     }
 
@@ -3114,9 +3126,13 @@ var cellbrowser = function() {
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);
         else {
-            pal = palette(palName, n);
-            if (palName==="tol-sq")
-                pal[0]='f4f7ff';
+            if (n==2)
+                pal = ["FF0000","0000FF"];
+            else {
+                pal = palette(palName, n);
+                if (palName==="tol-sq")
+                    pal[0]='f4f7ff';
+            }
         }
 
         return pal;

@@ -71,6 +71,10 @@ defOutDir = None
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
+# a special value that is used for both x and y to indicate that the cell should not be shown
+# must match the same value in maxPlot.js
+HIDDENCOORD = 12345
+
 coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
@@ -417,6 +421,9 @@ def cbScanpy_parseArgs():
 
     parser.add_option("-n", "--name", dest="name", action="store",
             help="internal name of dataset in cell browser. No spaces or special characters.")
+
+    parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
+            help="optional list of comma-separated meta-fields to export from the annData object, in addition to cluster, number of genes, percent mitochondrial and number of UMIs")
 
     parser.add_option("", "--test",
         dest="test",
@@ -1647,7 +1654,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         coords.append( (cellId, x, y) )
 
         # special values (12345,12345) mean "unknown cellId"
-        if x!=12345 and y!=12345:
+        if x!=HIDDENCOORD and y!=HIDDENCOORD:
             minX = min(x, minX)
             minY = min(y, minY)
             maxX = max(x, maxX)
@@ -1780,18 +1787,21 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     textOutTmp = textOutName+".tmp"
     textOfh = open(textOutTmp, "w")
 
+    missNames = []
+
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
-            x = 12345
-            y = 12345
+            #logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
+            missNames.append(sampleName)
+            x = HIDDENCOORD
+            y = HIDDENCOORD
         else:
             x, y = coordTuple
             textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
 
         # special values (12345,12345) mean "unknown cellId"
-        if x!=12345 and y!=12345:
+        if x!=HIDDENCOORD and y!=HIDDENCOORD:
             minX = min(x, minX)
             minY = min(y, minY)
             maxX = max(x, maxX)
@@ -1807,6 +1817,10 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
 
         xVals.append(x)
         yVals.append(y)
+
+    logging.info("Coordinate file %s: %d sample names that are in meta but not in coord file. E.g. %s" % \
+            (coordName, len(missNames), missNames[:3]))
+
 
     binFh.close()
     os.rename(tmpFname, coordBinFname)
@@ -2137,11 +2151,18 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     for i in range(len(labelVec)):
         #for (x, y), clusterIdx in zip(coords, labelVec):
         clusterIdx = labelVec[i]
-        clusterXVals[clusterIdx].append(xVals[i])
-        clusterYVals[clusterIdx].append(yVals[i])
+        x = xVals[i]
+        y = yVals[i]
+        if x==HIDDENCOORD and y==HIDDENCOORD:
+            continue
+        clusterXVals[clusterIdx].append(x)
+        clusterYVals[clusterIdx].append(y)
 
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
+        if len(xList)==0:
+            continue
+
         clusterName = labelVals[clustIdx]
         yList = clusterYVals[clustIdx]
         # get the midpoint of this cluster
@@ -2216,9 +2237,9 @@ def parseGeneInfo(geneToSym, fname):
             validSyms.add(sym)
 
     geneInfo = []
-    hasDesc = None
-    hasPmid = None
     for line in openFile(fname):
+        hasDesc = False
+        hasPmid = False
         if line.startswith("symbol"):
             continue
         sep = sepForFile(fname)
@@ -2343,18 +2364,24 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outConf["labelField"] = clusterLabelField
 
     newCoords = []
-    for coordIdx, coordInfo in enumerate(coordFnames):
-        coordFname = coordInfo["file"]
-        coordLabel = coordInfo["shortLabel"]
+    for coordIdx, inCoordInfo in enumerate(coordFnames):
+        coordFname = inCoordInfo["file"]
+        coordLabel = inCoordInfo["shortLabel"]
         coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
         coordBin = join(coordDir, "coords.bin")
         coordJson = join(coordDir, "coords.json")
+
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
         coordInfo["shortLabel"] = coordLabel
+        if "radius" in inCoordInfo:
+            coordInfo["radius"] = inCoordInfo["radius"]
+        if "colorOnMeta" in inCoordInfo:
+            coordInfo["colorOnMeta"] = inCoordInfo["colorOnMeta"]
+
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         textOutName = join(outDir, cleanName+".coords.tsv.gz")
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
@@ -3697,7 +3724,13 @@ def cbScanpyCli():
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
     datasetName=options.name
-    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True)
+
+    metaFields=["louvain", "percent_mito", "n_genes", "n_counts"]
+    if options.metaFields:
+        metaFields.extend(metaFields.split(','))
+
+    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True, metaFields=metaFields)
+
     generateHtmls(datasetName, outDir)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):

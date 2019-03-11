@@ -19,7 +19,7 @@ def cbToolCli_parseArgs(showHelp=False):
     matCat - merge expression matrices with one line per gene into a big matrix.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
-    metaCat - concat meta tables
+    metaCat - concat/join meta tables on the first (cell ID) field
 
     Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
@@ -31,6 +31,8 @@ def cbToolCli_parseArgs(showHelp=False):
         help="show debug messages")
     parser.add_option("", "--fixDots", dest="fixDots", action="store_true",
         help="try to fix R's mangling of various special chars to '.' in the cell IDs")
+    parser.add_option("", "--first", dest="first", action="store",
+        help="only for metaCat: names of fields to order first, comma-sep, e.g. disease,age. Not cellId, that's always the first field")
 
 
     (options, args) = parser.parse_args()
@@ -141,12 +143,29 @@ def matCat(inFnames, outFname):
     moveOrGzip(tmpFname, outFname)
     logging.info("Wrote %d lines (not counting header)" % lineCount)
 
+def reorderFields(row, firstFields):
+    " reorder the row to have firstFields first "
+    #logging.debug("Reordering row to have %s fields first" % firstFields)
+    newRow = [row[0]]
+    for idx in firstFields:
+        newRow.append(row[idx])
+
+    for i in range(1, len(row)):
+        if i not in firstFields:
+            newRow.append(row[i])
+
+    return newRow
+
 def metaCat(inFnames, outFname, options):
     " merge all tsv/csv columns in inFnames into a new file, outFname. Column 1 is ID to join on. "
     allHeaders = ["cellId"]
     allRows = defaultdict(dict) # cellId -> fileIdx -> list of non-ID fields
     fieldCounts = {} # fileIdx -> number of non-ID fields
     allIds = set() # set with all cellIds
+
+    firstFields = []
+    if options.first!="":
+        firstFields = options.first.split(",")
 
     for fileIdx, fname in enumerate(inFnames):
         logging.info("Reading %s" % fname)
@@ -182,26 +201,36 @@ def metaCat(inFnames, outFname, options):
             del allRows[rId]
         logging.info("Merged back rIds into normal data")
 
+    # find the field indices of the fields we're putting first
+    firstFieldIdx = []
+    for h in firstFields:
+        try:
+            idx = allHeaders.index(h)
+        except ValueError:
+            errAbort("Field %s specified on command line is not in the meta data file" % repr(h))
+        firstFieldIdx.append(idx)
+
     tmpFname = outFname+".tmp"
     ofh = openFile(tmpFname, "w")
+    allHeaders = reorderFields(allHeaders, firstFieldIdx)
     ofh.write("\t".join(allHeaders))
     ofh.write("\n")
 
     for cellId, rowData in iterItems(allRows):
-        row = []
+        row = [cellId]
         for fileIdx in range(0, len(inFnames)):
             if fileIdx in rowData:
                 row.extend(rowData[fileIdx])
             else:
                 row.extend([""]*fieldCounts[fileIdx])
 
-        ofh.write(cellId)
-        ofh.write("\t")
+        row = reorderFields(row, firstFieldIdx)
         ofh.write("\t".join(row))
         ofh.write("\n")
 
     ofh.close()
     os.rename(tmpFname, outFname)
+    logging.info("Output field order is: %s" % allHeaders)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 
 def importCellrangerMatrix(inDir, outDir):

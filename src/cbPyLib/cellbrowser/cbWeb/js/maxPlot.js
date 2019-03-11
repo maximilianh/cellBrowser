@@ -124,10 +124,25 @@ function MaxPlot(div, top, left, width, height, args) {
        return ((x===12345 && y===12345)) // not shown (e.g. no coordinate or off-screen)
     }
     
+    this.initPort = function(args) {
+        /* init all viewport related state (zoom, radius, alpha) */
+        self.port = {}; 
+        self.port.zoomRange = {}; // object with keys minX, , maxX, minY, maxY
+        self.port.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
+        self.port.doDrawLabels = true;  // should cluster labels be drawn?
+
+        // we keep a copy of the 'initial' arguments at 100% zoom
+        self.port.initZoom   = {};
+        self.port.initRadius = self.port.radius;                      // circle radius at full zoom
+        self.port.initAlpha   = getAttr(args, "alpha", 0.3);
+    };
+
     this.initPlot = function(args) {
         /* create a new scatter plot on the canvas */
         if (args===undefined)
             args = {};
+
+        self.globalOpts = args;
 
         self.mode = 1;   // drawing mode
 
@@ -146,16 +161,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         self.selCells   = [];  // IDs of cells that are selected (drawn in black)
 
-        self.port = {}; // all viewport related state (zoom, radius, alpha)
-        self.port.zoomRange = {}; // object with keys minX, , maxX, minY, maxY
-        self.port.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
-        self.port.doDrawLabels = true;  // should cluster labels be drawn?
-
-        // we keep a copy of the 'initial' arguments at 100% zoom
-        self.port.initZoom   = {};
-        self.port.initRadius = self.port.radius;                      // circle radius at full zoom
-        self.port.initAlpha   = getAttr(args, "alpha", 0.3);
-
+        self.initPort(args);
 
         // mouse drag is modal: can be "select", "move" or "zoom"
         self.dragMode = "select";
@@ -532,6 +538,7 @@ function MaxPlot(div, top, left, width, height, args) {
     }
 
     function drawRect(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
+        /* draw not circles but tiny rectangles. Maybe good enough for 2pixels sizes */
        console.log("Drawing "+coordColors.length+" rectangles, with fillRect");
        ctx.save();
        ctx.globalAlpha = alpha;
@@ -560,6 +567,7 @@ function MaxPlot(div, top, left, width, height, args) {
        }
        console.log(count+" rectangles drawn (including selection)");
        ctx.restore();
+       return count;
     }
 
     function drawCirclesStupid(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
@@ -567,9 +575,12 @@ function MaxPlot(div, top, left, width, height, args) {
        console.log("Drawing "+coordColors.length+" circles with stupid renderer");
        ctx.globalAlpha = alpha;
        var dblSize = 2*radius;
+       var count = 0;
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
+           if (isHidden(pxX, pxY))
+               continue;
            var col = colors[coordColors[i]];
            ctx.fillStyle="#"+col;
            //ctx.fillRect(pxX-size, pxY-size, dblSize, dblSize);
@@ -577,7 +588,9 @@ function MaxPlot(div, top, left, width, height, args) {
            ctx.arc(pxX, pxY, radius, 0, 2 * Math.PI);
            ctx.closePath();
            ctx.fill();
+           count++;
        }
+       return count;
     }
 
     function intersectRect(r1left, r1right, r1top, r1bottom, r2left, r2right, r2top, r2bottom) {
@@ -786,6 +799,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
        console.log(count +" circles drawn");
        ctx.restore();
+       return count;
     }
 
     function hexToInt(colors) {
@@ -852,6 +866,8 @@ function MaxPlot(div, top, left, width, height, args) {
        var rgbColors = hexToInt(colors);
        var invAlpha = 1.0 - alpha;
 
+       var count = 0;
+
        // alpha-blend pixels into array
        for (var i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
@@ -877,6 +893,7 @@ function MaxPlot(div, top, left, width, height, args) {
            cData[p+1] = mixG;
            cData[p+2] = mixB;
            cData[p+3] = 255; // no transparency... ever?
+           count++;
        }
        
        // overdraw the selection as black pixels
@@ -893,6 +910,7 @@ function MaxPlot(div, top, left, width, height, args) {
        }
 
        self.ctx.putImageData(canvasData, 0, 0);
+       return count;
     }
 
     function findRange(coords) {
@@ -985,11 +1003,16 @@ function MaxPlot(div, top, left, width, height, args) {
            self.drawDots();
     };
 
-    this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY) {
+    this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY, opts) {
        /* specify new coordinates of circles to draw, an array of (x,y) coordinates */
        /* Scale data to current screen dimensions */
        /* clusterLabels is optional: array of [x, y, labelString]*/
-       /* minX, maxX, etc are optional */
+       /* minX, maxX, etc are optional 
+        * opts are optional arguments like radius, alpha etc, see initPlot/args */
+       var coordOpts = cloneObj(self.globalOpts);
+       copyObj(opts, coordOpts);
+       self.initPort(coordOpts);
+
        if (coords.length === 0)
            alert("cbDraw-setCoords called with no coordinates");
 
@@ -1005,7 +1028,17 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.coords.orig = coords;
        self.coords.labels = clusterLabels;
-       setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
+
+       var count = 0;
+       for (var i = 0; i < coords.length/2; i++) {
+           var cellX = coords[i*2];
+           var cellY = coords[i*2+1];
+           if (!(isHidden(cellX, cellY)))
+               count++;
+       }
+
+       //setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
+       setStatus(count+ " visible " + self.gSampleDescription+"s loaded");
 
        self.scaleData();
     };
@@ -1059,6 +1092,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var coords = self.coords.px;
         var pal = self.col.pal;
         var colArr = self.col.arr;
+        var count = 0;
 
         if (alpha===undefined)
              alert("internal error: alpha is not defined");
@@ -1068,26 +1102,28 @@ function MaxPlot(div, top, left, width, height, args) {
             alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+pal.length+" color values but coordinates for "+(coords.length/2)+" cells.");
 
         if (radius===0) {
-            drawPixels(self.ctx, self.canvas.width, self.canvas.height, coords, 
+            count = drawPixels(self.ctx, self.canvas.width, self.canvas.height, coords, 
                 colArr, pal, alpha, self.selCells);
         }
 
         else if (radius===1 || radius===2) {
-            drawRect(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
+            count = drawRect(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
         }
         else {
             switch (self.mode) {
                 case 0:
-                    drawCirclesStupid(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
+                    count = drawCirclesStupid(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
                     break;
                 case 1:
-                    drawCirclesDrawImage(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
+                    count = drawCirclesDrawImage(self.ctx, coords, colArr, pal, radius, alpha, self.selCells);
                     break;
                 case 2:
                     break;
             }
         }
 
+        self.count = count;
+        
         console.timeEnd("draw");
 
         if (self.port.doDrawLabels===true && self.coords.labels!==null) {
