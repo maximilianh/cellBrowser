@@ -403,7 +403,7 @@ def cbScanpy_parseArgs():
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
-            help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab")
+            help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab, .loom, .h5ad. Existing meta data from .loom and .h5ad will be kept and exported.")
     parser.add_option("", "--init", dest="init", action="store_true",
             help="copy sample scanpy.conf to current directory")
 
