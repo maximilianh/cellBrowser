@@ -422,8 +422,8 @@ def cbScanpy_parseArgs():
     parser.add_option("-n", "--name", dest="name", action="store",
             help="internal name of dataset in cell browser. No spaces or special characters.")
 
-    parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
-            help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
+    #parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
+            #help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
 
     parser.add_option("", "--test",
         dest="test",
@@ -2632,7 +2632,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
-    # this obscure command gets the cell identifiers in the dataset directory
+    # this obscure command gets file with the the cell identifiers in the dataset directory
     sampleNameFname = join(datasetDir, "metaFields", outConf["metaFields"][0]["name"]+".bin.gz")
     logging.debug("Reading meta sample names from %s" % sampleNameFname)
 
@@ -2865,13 +2865,6 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     if not isdir(path):
         makeDir(path)
 
-    for name in metaFields:
-        if name not in adata.obs.keys():
-            logging.warn('There is no annotation field with the name `%s`.' % name)
-            if name not in ["percent_mito", "n_genes", "n_counts"]:
-                # tolerate missing default fields
-                raise ValueError()
-
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
         logging.warn("%s already exists. Overwriting existing files." % confName)
@@ -2924,7 +2917,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     ##Save metadata
     if metaFields is None:
-        metaFields = list(ad.obs.columns.values)
+        metaFields = list(adata.obs.columns.values)
+    else:
+        # check that field names exist
+        for name in metaFields:
+            if name not in adata.obs.keys():
+                logging.warn('There is no annotation field with the name `%s`.' % name)
+                if name not in ["percent_mito", "n_genes", "n_counts"]:
+                    # tolerate missing default fields
+                    raise ValueError()
 
     metaFields = makeDictDefaults(metaFields, metaLabels)
 
@@ -3518,7 +3519,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
-        adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
+        #adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
         if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
             pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
             pipeLog("Apoptotic cells cannot be removed - please check your expression matrix")
@@ -3528,10 +3529,10 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
 
             adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
 
-            sc.pl.violin(adata, ['n_genes', 'UMI_Count', 'percent_mito'], jitter=0.4, multi_panel=True)
+            sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
 
-            fig1=sc.pl.scatter(adata, x='UMI_Count', y='percent_mito', save="_percent_mito")
-            fig2=sc.pl.scatter(adata, x='UMI_Count', y='n_genes', save="_gene_count")
+            fig1=sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
+            fig2=sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
 
             adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
 
@@ -3750,8 +3751,8 @@ def cbScanpyCli():
     datasetName=options.name
 
     metaFields=None # = export all fields
-    if options.metaFields:
-        metaFields.extend(metaFields.split(','))
+    #if options.metaFields:
+        #metaFields.extend(metaFields.split(','))
 
     scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True, metaFields=metaFields)
 
