@@ -1229,7 +1229,7 @@ var cellbrowser = function() {
 
        var fieldInfo = db.getMetaFields()[fieldIdx];
 
-       if (fieldInfo.diffValCount > MAXCOLORCOUNT && fieldInfo.binMethod===undefined) {
+       if (fieldInfo.diffValCount > MAXCOLORCOUNT && fieldInfo.type==="enum") {
            warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
            return null;
        }
@@ -1241,12 +1241,19 @@ var cellbrowser = function() {
            changeUrl({"meta":fieldName, "gene":null});
 
 
-       buildLegendForMetaIdx(fieldIdx);
        var renderColors = legendGetColors(gLegend.rows);
 
        db.loadMetaVec(
            fieldIdx, 
-           function(carr) {renderer.setColors(renderColors); renderer.setColorArr(carr); doneLoad(); }, 
+           function(metaArr) {
+               renderer.setColors(renderColors); 
+               if (fieldInfo.type!=="enum") {
+                   binMethod
+               }
+               renderer.setColorArr(metaArr); 
+               buildLegendForMetaIdx(fieldIdx);
+               doneLoad(); 
+           }, 
            onProgress
        );
 
@@ -3731,6 +3738,10 @@ var cellbrowser = function() {
         for (var metaIdx = 1; metaIdx < metaFieldInfos.length; metaIdx++) {
             var fieldInfo = metaFieldInfos[metaIdx];
             var metaVec = db.allMeta[fieldInfo.name];
+            if (metaVec===undefined) {
+                $('#tpMeta_'+metaIdx).html("(unique identifier field)");
+                continue;
+            }
             var metaCounts = {};
             // make an object of value -> count in the cells
             for (var i = 0; i < cellCount; i++) {
