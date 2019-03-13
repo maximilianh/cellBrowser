@@ -75,6 +75,11 @@ CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 # must match the same value in maxPlot.js
 HIDDENCOORD = 12345
 
+# special value representing NaN in floating point arrays
+FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
+# special value representing NaN in integer arrays, again, we want this to be first after sorting
+INTNAN = -2**16
+
 coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
@@ -826,6 +831,17 @@ def likeEmptyString(val):
     " returns true if string is a well-known synonym of 'unknown' or 'NaN'. ported from cellbrowser.js "
     return val.strip() in emptyVals
 
+def floatToIntList(vals):
+    " convert a list of floats to a integers, take care of -inf values "
+    newVals = []
+    for x in vals:
+        if x==FLOATNAN:
+            newVals.append(INTNAN)
+        else:
+            newVals.append(int(x))
+    return newVals
+
+
 def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
@@ -840,14 +856,13 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     floatCount = 0
     valCounts = defaultdict(int)
     newVals = []
-    nanVal = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
     for val in valList:
         fieldType = "string"
         newVal = val
 
         if likeEmptyString(val):
             unknownCount += 1
-            newVal = nanVal
+            newVal = FLOATNAN
         else:
             try:
                 newVal = int(val)
@@ -869,19 +884,25 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     if len(valCounts)==1:
         logging.warn("Field contains only a single value")
 
-    if floatCount+unknownCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
-        # field is a floating point number: convert to decile index
-        numVals = [float(x) for x in newVals]
-        newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
-        fieldMeta["type"] = "float"
-
-    elif unknownCount==0 and intCount==len(valList) and not forceEnum:
+    if intCount+unknownCount==len(valList) and not forceEnum:
         # field is an integer: convert to decile index
         # if field is integer but contains NaNs, we treat it as a float, as int(-inf) is not defined in Python.
         # (possibly: should we use -2^32 instead of -inf to encode Nan?)
-        numVals = [int(x) for x in newVals]
-        newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
+        newVals = floatToIntList(newVals)
+        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
+        assert(min(newVals) > -2**16) # please contact us if you need very big numbers
+        assert(max(newVals) < 2**16)  # please contact us if you need very big numbers
+        fieldMeta["arrType"] = "int32"
+        fieldMeta["_fmt"] = "<i"
         fieldMeta["type"] = "int"
+
+    elif floatCount+unknownCount==len(valList) and not forceEnum:
+        # field is a floating point number: convert to decile index
+        newVals = [float(x) for x in newVals]
+        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
+        fieldMeta["arrType"] = "float32"
+        fieldMeta["_fmt"] = "<f"
+        fieldMeta["type"] = "float"
 
     elif len(valCounts)==len(valList) and not forceEnum:
         # field is a unique string
@@ -907,7 +928,8 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
                     foundColors +=1
                 else:
                     notFound.add(val)
-                    colArr.append("DDDDDD") # wonder if I should not stop here
+                    colArr.append("DDDDDD") # wonder if I should not stop here instead of using grey
+
             if foundColors > 0:
                 fieldMeta["colors"] = colArr
                 if len(notFound)!=0:
@@ -3489,7 +3511,8 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if conf.get("doTrimCells", True):
         minGenes = conf.get("minGenes", 200)
         pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
-        sc.pp.filter_cells(adata, min_genes=minGenes)
+        sc.pp.filter_cells(adata, min_genes=minGenes) # adds n_genes to adata
+
     if conf.get("doTrimGenes", True):
         minCells = conf.get("minCells", 3)
         pipeLog("Basic filtering: keep only gene with min %d cells" % (minCells))
@@ -3502,7 +3525,11 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if len(list(adata.var_names))==0:
         errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
 
+    if not "n_counts" in list(adata.obs.columns.values):
+        adata.obs['n_counts'] = np.sum(adata.X, axis=1)
+
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
+
     if conf.get("doFilterMito", True):
         geneIdType = conf.get("geneIdType")
         if geneIdType is None or geneIdType=="auto":
@@ -3519,7 +3546,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
-        adata.obs['n_counts'] = np.sum(adata.X, axis=1)
+
         if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
             pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
             pipeLog("Apoptotic cells cannot be removed - please check your expression matrix")
@@ -3529,10 +3556,13 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
 
             adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
 
-            sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
+            obsFields = list(adata.obs.columns.values)
+            if "n_genes" in obsFields: # n_counts is always there
+                sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
+                fig1 = sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
 
-            fig1=sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
-            fig2=sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
+            if "n_counts" in obsFields:
+                fig2 = sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
 
             adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
 
@@ -3571,10 +3601,10 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if conf.get("doRegress", True):
         if doMito:
             pipeLog('Regressing out percent_mito and number of UMIs')
-            sc.pp.regress_out(adata, ['UMI_Count', 'percent_mito'])
+            sc.pp.regress_out(adata, ['n_count', 'percent_mito'])
         else:
             pipeLog('Regressing out number of UMIs')
-            sc.pp.regress_out(adata, ['UMI_Count'])
+            sc.pp.regress_out(adata, ['n_count'])
 
         #Scaling after regression 
         maxValue = conf.get("regressMax", 10)
