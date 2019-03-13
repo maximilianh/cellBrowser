@@ -2786,8 +2786,6 @@ def anndataToTsv(ad, matFname, usePandas=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
-    logging.info("Writing scanpy matrix to %s" % matFname)
-    tmpFname = matFname+".tmp"
 
     mat = ad.X
 
@@ -2801,6 +2799,12 @@ def anndataToTsv(ad, matFname, usePandas=False):
 
         if usingRaw:
             logging.info("Using ad.raw expression matrix")
+
+
+    rowCount, colCount = mat.shape
+    logging.info("Writing scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, matFname))
+    tmpFname = matFname+".tmp"
+
 
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
     mat = mat.transpose()
@@ -3601,10 +3605,10 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if conf.get("doRegress", True):
         if doMito:
             pipeLog('Regressing out percent_mito and number of UMIs')
-            sc.pp.regress_out(adata, ['n_count', 'percent_mito'])
+            sc.pp.regress_out(adata, ['n_counts', 'percent_mito'])
         else:
             pipeLog('Regressing out number of UMIs')
-            sc.pp.regress_out(adata, ['n_count'])
+            sc.pp.regress_out(adata, ['n_counts'])
 
         #Scaling after regression 
         maxValue = conf.get("regressMax", 10)
