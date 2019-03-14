@@ -80,6 +80,9 @@ FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to 
 # special value representing NaN in integer arrays, again, we want this to be first after sorting
 INTNAN = -2**16
 
+# how many characters shall we keep in version identifiers, we do it like git
+MD5LEN = 10
+
 coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
@@ -1040,6 +1043,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         binFh.close()
 
         runGzip(binName)
+
+        md5 = md5WithPython(binName)
+        fieldMeta["md5"] = md5
 
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
@@ -3302,7 +3308,7 @@ def writeVersionedLink(ofh, mask, webDir, relFname):
 
     filePath = join(webDir, relFname)
     md5 = md5WithPython(filePath)
-    verFname = relFname+"?"+md5[:10]
+    verFname = relFname+"?"+md5[:MD5LEN]
     outLine = mask % verFname
     ofh.write(outLine+"\n")
 
