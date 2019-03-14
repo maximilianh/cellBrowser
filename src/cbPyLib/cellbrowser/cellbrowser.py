@@ -80,7 +80,8 @@ FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to 
 # special value representing NaN in integer arrays, again, we want this to be first after sorting
 INTNAN = -2**16
 
-# how many characters shall we keep in version identifiers, we do it like git
+# how many md5 characters to keep in version identifiers. We load all files using their md5 to address
+# internet browser caching
 MD5LEN = 10
 
 coordLabels = {
@@ -1044,8 +1045,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         runGzip(binName)
 
-        md5 = md5WithPython(binName)
-        fieldMeta["md5"] = md5
+        fieldMeta["md5"] = md5WithPython(binName)[:MD5LEN]
 
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
@@ -2792,6 +2792,9 @@ def anndataToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
+
+    if useRaw and ad.raw is None:
+        logging.warn("The option to export raw expression data is set, but the scanpy object has no 'raw' attribute. Exporting the processed scanpy matrix. Some genes may be missing.")
 
     if useRaw and ad.raw is not None:
         mat = ad.raw.X
