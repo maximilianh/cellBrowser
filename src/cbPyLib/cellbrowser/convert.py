@@ -462,6 +462,9 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser.add_option("-i", "--inFile", dest="inFile", action="store",
         help="input .h5ad file. Required parameter")
 
+    parser.add_option("-r", "--raw", dest="useRaw", action="store_true",
+        help="use the ad.raw data (usually read counts), instead of the normalized and corrected matrix, when exporting the matrix")
+
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
         help="Output directory. Required parameter")
 
@@ -507,7 +510,7 @@ def cbImportScanpyCli():
 
     import anndata
     ad = anndata.read_h5ad(inFname)
-    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix)
+    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=options.useRaw)
     generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:

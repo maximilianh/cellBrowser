@@ -2782,39 +2782,34 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def anndataToTsv(ad, matFname, usePandas=False):
+def anndataToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
 
-    mat = ad.X
-
-    if ad.raw is not None:
-        usingRaw = False
-        try:
-            mat = ad.raw
-            usingRaw = True
-        except AttributeError:
-            pass
-
-        if usingRaw:
-            logging.info("Using ad.raw expression matrix")
-
+    if useRaw and ad.raw is not None:
+        mat = ad.raw.X
+        var = ad.raw.var
+        logging.info("Processed matrix has size (%d cells, %d genes)" % (mat.shape[0], mat.shape[1]))
+        logging.info("Using raw expression matrix")
+    else:
+        mat = ad.X
+        var = ad.var
 
     rowCount, colCount = mat.shape
     logging.info("Writing scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, matFname))
     tmpFname = matFname+".tmp"
 
-
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
-    mat = mat.transpose()
+    mat = mat.T
+
     if scipy.sparse.issparse(mat):
         logging.info("Converting csc matrix to row-sparse matrix")
         mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
         logging.info("Converting anndata to pandas dataframe")
-        data_matrix=pd.DataFrame(mat, index=ad.var.index.tolist(), columns=ad.obs.index.tolist())
+        data_matrix=pd.DataFrame(mat, index=var.index.tolist(), columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
         data_matrix.to_csv(tmpFname, sep='\t', index=True)
     else:
@@ -2828,12 +2823,12 @@ def anndataToTsv(ad, matFname, usePandas=False):
 
         # when reading 10X files, read_h5 puts the geneIds into a separate field
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
-        if "gene_ids" in ad.var:
-            geneIdObj = ad.var["gene_ids"]
+        if "gene_ids" in var:
+            geneIdObj = var["gene_ids"]
             geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
             genes = [x+"|"+y for (x,y) in geneIdAndSyms]
         else:
-            genes = ad.var.index.tolist()
+            genes = var.index.tolist()
 
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
@@ -2902,7 +2897,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     if not skipMatrix:
         matFname = join(path, 'exprMatrix.tsv.gz')
-        anndataToTsv(adata, matFname)
+        anndataToTsv(adata, matFname, useRaw=useRaw)
 
     if coordFields=="all" or coordFields is None:
         coordFields = coordLabels
@@ -3220,7 +3215,7 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         logging.info("Loading expression matrix: scanpy-supported format, like h5ad, loom, tab-separated, etc.")
         adata = sc.read(matrixFname, cache=False , first_column_names=True)
         if not samplesOnRows:
-            logging.info("Transposing the expression matrix")
+            logging.debug("Scanpy defaults to samples on lines, so transposing the expression matrix")
             adata = adata.T
 
     return adata
@@ -3506,8 +3501,12 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     start = timeit.default_timer()
     adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows, genome=options.genome)
 
+    adata.raw = adata # this is doing much more than assigning, it calls implicitely a function that copies
+    # a few things around. See the anndata source code under basic.py
+
+    useRaw = conf.get("useRaw", True)
     if outMatrixFname is not None:
-        anndataToTsv(adata, outMatrixFname)
+        anndataToTsv(adata, outMatrixFname, useRaw=useRaw)
 
     pipeLog("Data has %d samples/observations" % len(adata.obs))
     pipeLog("Data has %d genes/variables" % len(adata.var))
@@ -3755,16 +3754,16 @@ def cbScanpyCli():
     global options
     args, options = cbScanpy_parseArgs()
 
+    if options.init:
+        copyPkgFile("sampleConfig/scanpy.conf")
+        sys.exit(1)
+
     try:
         import scanpy.api as sc
     except:
         print("The Python package 'scanpy' is not installed in the current interpreter %s" % sys.executable)
         print("Please install it following the instructions at https://scanpy.readthedocs.io/en/latest/installation.html")
         print("Then re-run this command.")
-        sys.exit(1)
-
-    if options.init:
-        copyPkgFile("sampleConfig/scanpy.conf")
         sys.exit(1)
 
     matrixFname = options.exprMatrix
@@ -3788,7 +3787,7 @@ def cbScanpyCli():
     #if options.metaFields:
         #metaFields.extend(metaFields.split(','))
 
-    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True, metaFields=metaFields)
+    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True, metaFields=metaFields, useRaw=True)
 
     generateHtmls(datasetName, outDir)
 

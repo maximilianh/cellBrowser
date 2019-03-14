@@ -75,10 +75,3 @@ Edit the *scanpy.conf* file and adapt it to your needs or just leave the default
     cd scanpyout
     cbBuild -o ~/public_html/cb -p 8888
 
-Currently only the genes are exported that were used by Scanpy and only their
-normalized and log'ed value, so the matrix after filtering. This has
-advantages, but also disadvantages.  Contact us if you have an opinion on which
-expression value should be shown. To show all genes, you can also manually
-overwrite exprMatrix.tsv.gz with your original expression matrix in the output
-directory ("scanpyout" in the example).
-
