@@ -1044,8 +1044,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         binFh.close()
 
         runGzip(binName)
+        zippedName = binName+".gz"
 
-        fieldMeta["md5"] = md5WithPython(binName)[:MD5LEN]
+        fieldMeta["md5"] = md5WithPython(zippedName)[:MD5LEN]
 
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
