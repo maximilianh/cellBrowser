@@ -76,8 +76,10 @@ CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 HIDDENCOORD = 12345
 
 # special value representing NaN in floating point arrays
+# must match the same value in cellBrowser.js
 FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
 # special value representing NaN in integer arrays, again, we want this to be first after sorting
+# must match the same value in cellBrowser.js
 INTNAN = -2**16
 
 # how many md5 characters to keep in version identifiers. We load all files using their md5 to address
@@ -888,16 +890,26 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     if len(valCounts)==1:
         logging.warn("Field contains only a single value")
 
+
     if intCount+unknownCount==len(valList) and not forceEnum:
-        # field is an integer: convert to decile index
-        # if field is integer but contains NaNs, we treat it as a float, as int(-inf) is not defined in Python.
-        # (possibly: should we use -2^32 instead of -inf to encode Nan?)
+        # field is an integer
         newVals = floatToIntList(newVals)
         #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
-        assert(min(newVals) > -2**16) # please contact us if you need very big numbers
-        assert(max(newVals) < 2**16)  # please contact us if you need very big numbers
-        fieldMeta["arrType"] = "int32"
-        fieldMeta["_fmt"] = "<i"
+        #assert(min(newVals) > -2**32) # please contact us if you need very big numbers
+        #assert(max(newVals) < 2**32)  # please contact us if you need very big numbers
+        #minVal = min(newVals)
+        #maxVal = max(newVals)
+        #if minVal > -2**16 and maxVal < 2**16:
+            #fieldMeta["arrType"] = "int32"
+            #fieldMeta["_fmt"] = "<l" # signed long, 4 bytes
+        #elif minVal >= 1 and maxVal < 2**32:
+            #fieldMeta["arrType"] = "uint32" # unsigned long, 4 bytes
+            #fieldMeta["_fmt"] = "<L"
+
+        # JS supports only 32bit signed ints so we store integers as floats
+        newVals = [float(x) for x in newVals]
+        fieldMeta["arrType"] = "float32"
+        fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "int"
 
     elif floatCount+unknownCount==len(valList) and not forceEnum:
@@ -1855,9 +1867,11 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     logging.info("Coordinate file %s: %d sample names that are in meta but not in coord file. E.g. %s" % \
             (coordName, len(missNames), missNames[:3]))
 
-
     binFh.close()
     os.rename(tmpFname, coordBinFname)
+
+    md5 = md5WithPython(coordBinFname)
+    coordInfo["md5"] = md5[:MD5LEN]
 
     coordInfo["minX"] = minX
     coordInfo["maxX"] = maxX
@@ -2419,7 +2433,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         textOutName = join(outDir, cleanName+".coords.tsv.gz")
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
-        newCoords.append( coordInfo )
 
         if hasLabels:
             clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
@@ -2428,6 +2441,9 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             midFh = open(midFname, "w")
             json.dump(clusterMids, midFh, indent=2)
             logging.info("Wrote cluster labels and midpoints to %s" % midFname)
+            addMd5(coordInfo, midFname, keyName="labelMd5")
+
+        newCoords.append( coordInfo )
 
     outConf["coords"] = newCoords
     copyConf(inConf, outConf, "labelField")
@@ -2479,13 +2495,13 @@ def readQuickGenes(inConf, geneToSym, outConf):
         logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
 
 def getFileVersion(fname):
-    metaVersion = {}
-    metaVersion["fname"] = fname
-    hexHash = md5ForFile(fname)
-    metaVersion["md5"] = hexHash
-    metaVersion["size"] = getsize(fname)
-    metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
-    return metaVersion
+    data = {}
+    data["fname"] = fname
+    addMd5(data, fname)
+    #data["md5"] = hexHash
+    data["size"] = getsize(fname)
+    data["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
+    return data
 
 def checkFieldNames(outConf, fieldNames, validFieldNames):
     " make sure that all fieldNames in outConf are valid field names. errAbort is not. "
@@ -2613,12 +2629,12 @@ def md5WithPython(fname):
     md5 = hash_md5.hexdigest()
     return md5
 
-def md5ForFile(fname):
+def md5ForFile(fname, isSmall=False):
     " return the md5sum of a file. Use a command line tool, if possible. "
-    logging.info("Getting md5 of %s" % fname)
-    if spawn.find_executable("md5sum")!=None:
+    logging.debug("Getting md5 of %s" % fname)
+    if spawn.find_executable("md5sum")!=None and not isSmall:
         md5 = getMd5Using("md5sum", fname).split()[0]
-    elif spawn.find_executable("md5")!=None:
+    elif spawn.find_executable("md5")!=None and not isSmall:
         md5 = getMd5Using("md5", fname).split()[-1]
     else:
         md5 = md5WithPython(fname)
@@ -3230,6 +3246,11 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
 
     return adata
 
+def addMd5(d, fname, keyName="md5", isSmall=False):
+    " add a key 'md5' to dict d with first MD5LEN letters of fname "
+    logging.debug("Getting md5 of %s" % fname)
+    d[keyName] = md5ForFile(fname, isSmall=isSmall)[:MD5LEN]
+
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
     contents as a list A dataset description is a list with three members: A
@@ -3248,6 +3269,7 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
+        addMd5(datasetDesc, fname, isSmall=True)
         assert("name" in datasetDesc) # every dataset has to have a name
 
         if datasetDesc.get("visibility")=="hide":
@@ -3338,7 +3360,8 @@ def makeIndexHtml(baseDir, datasets, outDir):
         summDs = {
                 "shortLabel" : ds["shortLabel"],
                 "sampleCount" : ds["sampleCount"],
-                "name" : ds["name"]
+                "name" : ds["name"],
+                "md5" : ds["md5"]
                 }
 
         if "tags" in ds:
