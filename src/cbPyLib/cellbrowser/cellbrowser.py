@@ -1799,7 +1799,8 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     skipFields = set()
     for fieldIdx, values in iterItems(fieldValues):
         if len(values)==1:
-            logging.info("Field %d, '%s', has only a single value. Removing this field from meta data.")
+            logging.info("Field %d, '%s', has only a single value. Removing this field from meta data." %
+                    (fieldIdx, headers[fieldIdx] ))
             skipFields.add(fieldIdx)
 
     # write the header line, removing unused fields
@@ -1811,6 +1812,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         ofh.write("\t".join(sliceRow(metaToRow[matrixName], skipFields)))
         ofh.write("\n")
     ofh.close()
+
     os.rename(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, mustFilterMatrix
