@@ -1682,7 +1682,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Optionally flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
-    logging.info("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
+    logging.debug("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
     coords = []
     maxY = 0
     minX = 2^32
@@ -1740,7 +1740,7 @@ def sliceRow(row, skipFields):
 
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     """ check and reorder the meta data, has to be in the same order as the
-    expression matrix, write to fixedMetaFname """
+    expression matrix, write to fixedMetaFname. Remove single-value fields. """
 
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
     metaSampleNames = readSampleNames(metaFname)
@@ -1798,6 +1798,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     # find fields that contain only a single value
     skipFields = set()
     for fieldIdx, values in iterItems(fieldValues):
+        #logging.debug("fieldIdx %d, values %s" % (fieldIdx, values))
         if len(values)==1:
             logging.info("Field %d, '%s', has only a single value. Removing this field from meta data." %
                     (fieldIdx, headers[fieldIdx] ))
@@ -1822,7 +1823,8 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     Also return as a list.
     """
     tmpFname = coordBinFname+".tmp"
-    logging.info("Writing coordinates to %s and %s" % (coordBinFname, coordJson))
+    logging.info("Writing coordinates for %s" % (coordName))
+    logging.debug("Writing coordinates to %s and %s" % (coordBinFname, coordJson))
     binFh = open(tmpFname, "wb")
 
     minX = 2^32
@@ -1866,7 +1868,8 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
         xVals.append(x)
         yVals.append(y)
 
-    logging.info("Coordinate file %s: %d sample names that are in meta but not in coord file. E.g. %s" % \
+    if len(missNames)!=0:
+        logging.info("%s: %d cells have meta but no coord. E.g. %s" % \
             (coordName, len(missNames), missNames[:3]))
 
     binFh.close()
@@ -1887,7 +1890,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     textOfh.close()
     runGzip(textOutTmp, textOutName)
 
-    logging.info("Wrote %d coordinates to %s and %s" % (len(sampleNames), coordBinFname, textOutName))
+    logging.debug("Wrote %d coordinates to %s and %s" % (len(sampleNames), coordBinFname, textOutName))
     return coordInfo, xVals, yVals
 
 def runCommand(cmd):
@@ -1994,7 +1997,8 @@ def splitMarkerTable(filename, geneToSym, outDir):
     """
     if filename is None:
         return
-    logging.info("Splitting cluster markers from %s into directory %s" % (filename, outDir))
+    logging.debug("Reading cluster markers from %s" % (filename))
+    logging.debug("Splitting cluster markers into directory %s" % (outDir))
     ifh = openFile(filename)
 
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
@@ -2186,7 +2190,6 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     calculate the positions (centers) for the cluster labels
     given a coord list and a vector of the same size with the label indices, return a list of [x, y, coordLabel]
     """
-    logging.info("Calculating cluster midpoints")
     assert(len(xVals)==len(labelVec)==len(yVals))
 
     # prep the arrays
@@ -2417,6 +2420,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     for coordIdx, inCoordInfo in enumerate(coordFnames):
         coordFname = inCoordInfo["file"]
         coordLabel = inCoordInfo["shortLabel"]
+        logging.info("Parsing coordinates for "+coordLabel)
         coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
@@ -2437,12 +2441,13 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
         if hasLabels:
+            logging.info("Calculating cluster midpoints for "+coordLabel)
             clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
 
             midFname = join(coordDir, "clusterLabels.json")
             midFh = open(midFname, "w")
             json.dump(clusterMids, midFh, indent=2)
-            logging.info("Wrote cluster labels and midpoints to %s" % midFname)
+            logging.debug("Wrote cluster labels and midpoints to %s" % midFname)
             addMd5(coordInfo, midFname, keyName="labelMd5")
 
         newCoords.append( coordInfo )

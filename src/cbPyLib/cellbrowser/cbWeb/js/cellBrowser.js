@@ -589,6 +589,8 @@ var cellbrowser = function() {
     function findCellsUpdateMetaCombo(rowIdx, fieldIdx) {
         /* given the row and the ID name of the field, setup the combo box row */
         var valCounts = db.getMetaFields()[fieldIdx].valCounts;
+        $('#tpSelectMetaCombo_'+rowIdx).val("tpMetaVal_"+fieldIdx).trigger('chosen:updated'); // update the meta dropdown
+
         if (valCounts===undefined) {
             // this is a numeric field
             $('#tpSelectValue_'+rowIdx).val("");
@@ -596,7 +598,6 @@ var cellbrowser = function() {
             $('#tpSelectMetaValueEnum_'+rowIdx).hide();
         } else {
             // it's an enum field
-            $('#tpSelectMetaCombo_'+rowIdx).val("tpMetaVal_"+fieldIdx).trigger('chosen:updated'); // empty the meta dropdown
             $('#tpSelectValue_'+rowIdx).hide();
             $('#tpSelectMetaValueEnum_'+rowIdx).empty();
             for (var i = 0; i < valCounts.length; i++) {
@@ -704,11 +705,12 @@ var cellbrowser = function() {
                 query["m"] = metaName;
 
                 var val = null;
-                var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
                 if (metaInfo.type==="enum") {
+                    var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
                     var valIdx = parseInt(selVal);
                     val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
                 } else {
+                    var selVal = $('#tpSelectValue_'+rowIdx).val();
                     val = parseFloat(selVal);
                 }
 
@@ -838,7 +840,7 @@ var cellbrowser = function() {
         }
     }
 
-    function onSelectComplexClick() {
+    function onFindCellsClick() {
     /* Edit - Find cells */
 
         var dlgHeight = 400;
@@ -879,13 +881,16 @@ var cellbrowser = function() {
         var queries = [];
         var queryStr = getVar("select");
 
+        if (queryStr===undefined)
+            queryStr = localStorage.getItem("select");
+
         if (queryStr===undefined || queryStr===null)
             queries = [makeSampleQuery()];
         else {
             queries = JSURL.parse(queryStr);
         }
 
-        var comboWidth = 150;
+        var comboWidth = 250;
 
         for (var i=0; i < queries.length; i++) {
             var query = queries[i];
@@ -1141,7 +1146,7 @@ var cellbrowser = function() {
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
        $('#tpSelectInvert').click( onSelectInvertClick );
-       $('#tpSelectComplex').click( onSelectComplexClick );
+       $('#tpSelectComplex').click( onFindCellsClick );
        $('#tpDownloadMenu li a').click( onDownloadClick );
 
        // This version is more like OSX/Windows:
@@ -2355,7 +2360,7 @@ var cellbrowser = function() {
 
     }
 
-    function buildGeneTable(htmls, divId, title, subtitle, geneInfos) {
+    function buildGeneTable(htmls, divId, title, subtitle, geneInfos, noteStr) {
     /* create gene expression info table. if htmls is null, update DIV with divId in-place. */
         var doUpdate = false;
         if (htmls===null) {
@@ -2384,6 +2389,8 @@ var cellbrowser = function() {
         htmls.push("<div id='"+divId+"'>");
 
         if (geneInfos===undefined || geneInfos===null || geneInfos.length===0) {
+            if (noteStr!==undefined)
+                htmls.push(noteStr);
             htmls.push("</div>")
             return;
         }
@@ -2693,7 +2700,7 @@ var cellbrowser = function() {
 
     function buildComboBox(htmls, id, entries, selIdx, placeholder, width) {
     /* make html for a combo box and add lines to htmls list */
-        htmls.push('<select style="'+width+'px" id="'+id+'" data-placeholder="'+placeholder+'" class="tpCombo">');
+        htmls.push('<select style=width:"'+width+'px" id="'+id+'" data-placeholder="'+placeholder+'" class="tpCombo">');
         for (var i = 0; i < entries.length; i++) {
             var isSelStr = "";
             var entry = entries[i];
@@ -2816,16 +2823,16 @@ var cellbrowser = function() {
         var metaFieldInfo = db.getMetaFields();
         htmls.push('<div id="'+idOuter+'" style="padding-left:2px; display:inline">');
         var entries = [["_none", ""]];
-        for (var i = 0; i < metaFieldInfo.length; i++) {
+        for (var i = 1; i < metaFieldInfo.length; i++) { // starts at 1, skip ID field
             var field = metaFieldInfo[i];
             var fieldName = field.label;
-            var hasTooManyVals = (field.diffValCount>100);
-            if (hasTooManyVals)
-                continue;
+            //var hasTooManyVals = (field.diffValCount>100);
+            //if (hasTooManyVals)
+                //continue;
             entries.push( ["tpMetaVal_"+i, fieldName] );
         }
 
-        buildComboBox(htmls, id, entries, 0, "select a field...", metaBarWidth);
+        buildComboBox(htmls, id, entries, 0, "select a field...", metaBarWidth+50);
         htmls.push('</div>');
     }
 
@@ -3032,7 +3039,7 @@ var cellbrowser = function() {
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" id="tpHoverHint" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
-        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px; display: none" id="tpSelectHint" class="tpHint">Cells selected. No update on hovering.</div>');
+        htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px; display: none" id="tpSelectHint" class="tpHint">Cells selected. No update on hover.</div>');
         buildMetaPanel(htmls);
 
         htmls.push("</div>"); // tpAnnotTab
@@ -3045,7 +3052,8 @@ var cellbrowser = function() {
 
         //var myGenes = loadMyGenes();
 
-        buildGeneTable(htmls, "tpGenes", "Dataset Genes", null, db.conf.quickGenes);
+        var noteStr = "No genes defined. Use the setting quickGenesFile in cellbrowser.conf to add a file with gene symbols that will be shown here";
+        buildGeneTable(htmls, "tpGenes", "Dataset Genes", null, db.conf.quickGenes, noteStr);
 
         htmls.push("</div>"); // tpGeneTab
 
@@ -3300,7 +3308,7 @@ var cellbrowser = function() {
         //Mousetrap.bind('l', function() {$('#tpLayoutCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('g', function() {$("#tpGeneCombo").selectize()[0].selectize.focus(); return false;});
         Mousetrap.bind('c l', onHideShowLabelsClick );
-        Mousetrap.bind('f c', onSelectComplexClick );
+        Mousetrap.bind('f c', onFindCellsClick );
         Mousetrap.bind('f i', function() { onSelectByIdClick(); return false; } );
         Mousetrap.bind('t', onSplitClick );
 
@@ -3896,6 +3904,7 @@ var cellbrowser = function() {
             $('#tpMeta_'+i).attr('title', "");
             $('#tpMeta_'+i).html("");
         }
+        $('#tpMetaNote').hide();
         updateGeneTableColors(null);
     }
 

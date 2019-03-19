@@ -1316,7 +1316,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.selectSet = function(cellIds) {
         /* set selection to an array of integer cellIds */
-        self.selectClear();
+        self.selCells.length = 0;
         self.selCells.push(...cellIds); // "extend" = array spread syntax, https://davidwalsh.name/spread-operator
         self._selUpdate();
     };

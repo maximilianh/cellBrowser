@@ -1,5 +1,5 @@
 # various format converters for single cell data:
-# - cellranger, mtx to tsv, matConcat, etc
+# - cellranger, mtx to tsv, matcat, metaCat etc
 
 import logging, optparse, io, sys, os, shutil, operator, glob, re, json
 from collections import defaultdict
@@ -176,6 +176,7 @@ def metaCat(inFnames, outFname, options):
                 logging.info("Reading %s, %d columns:  %s" % (fname, len(headers), repr(headers)))
                 allHeaders.extend(headers)
                 fieldCounts[fileIdx] = len(headers)
+                continue
 
             cellId = row[0]
             allIds.add(cellId)
