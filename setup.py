@@ -45,6 +45,7 @@ setuptools.setup(
         #'mypkg': ['data/*.dat'],
     #}
 
+    zip_safe = False, # do not allow install as an egg, we need to access the .html, .js, .css, etc files
     classifiers=[
         "Programming Language :: Python :: 2",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",

@@ -71,6 +71,21 @@ defOutDir = None
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
 #CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
 
+# a special value that is used for both x and y to indicate that the cell should not be shown
+# must match the same value in maxPlot.js
+HIDDENCOORD = 12345
+
+# special value representing NaN in floating point arrays
+# must match the same value in cellBrowser.js
+FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
+# special value representing NaN in integer arrays, again, we want this to be first after sorting
+# must match the same value in cellBrowser.js
+INTNAN = -2**16
+
+# how many md5 characters to keep in version identifiers. We load all files using their md5 to address
+# internet browser caching
+MD5LEN = 10
+
 coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
@@ -248,6 +263,11 @@ def copyPkgFile(relPath, outDir=None, values=None):
         if values is None:
             shutil.copy(srcPath, destPath)
             logging.info("Wrote %s" % destPath)
+            # egg-support commented out for now
+            #s = pkg_resources.resource_string(__name__, srcPath)
+            #ofh = open(destPath, "wb")
+            #ofh.write(s)
+            #ofh.close()
         else:
             logging.debug("Using %s as template for %s, vars %s" % (srcPath, destPath, values))
             data = open(srcPath).read()
@@ -394,7 +414,7 @@ def cbScanpy_parseArgs():
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
-            help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab")
+            help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab, .loom, .h5ad. Existing meta data from .loom and .h5ad will be kept and exported.")
     parser.add_option("", "--init", dest="init", action="store_true",
             help="copy sample scanpy.conf to current directory")
 
@@ -411,7 +431,10 @@ def cbScanpy_parseArgs():
             help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
 
     parser.add_option("-n", "--name", dest="name", action="store",
-            help="name of dataset in cell browser")
+            help="internal name of dataset in cell browser. No spaces or special characters.")
+
+    #parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
+            #help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
 
     parser.add_option("", "--test",
         dest="test",
@@ -435,7 +458,7 @@ def cbScanpy_parseArgs():
 
 kwSet = set(keyword.kwlist)
 
-def lineFileNextRow(inFile, utfHacks=False):
+def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
     """
     parses tab-sep file with headers in first line
     yields collection.namedtuples
@@ -465,9 +488,6 @@ def lineFileNextRow(inFile, utfHacks=False):
                 " Or it may be the wrong file type for this input, e.g. an expression matrix instead of a "
                 " coordinate file.")
 
-    headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
-    headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
-
     # python does unfortunately not accept reserved names as named tuple names
     # We append a useless string to avoid errors
     if len(kwSet.intersection(headers))!=0:
@@ -484,9 +504,10 @@ def lineFileNextRow(inFile, utfHacks=False):
 
     if "" in headers:
         logging.error("Found empty cells in header line of %s" % inFile)
-        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to fix it.")
+        logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to remove empty trailing columns.")
         assert(False)
 
+    # Python does not accept headers that start with a digit
     filtHeads = []
     for h in headers:
         if h[0].isdigit():
@@ -495,8 +516,14 @@ def lineFileNextRow(inFile, utfHacks=False):
             filtHeads.append(h)
     headers = filtHeads
 
+    origHeaders = headers
+    headers = [sanitizeHeader(h) for h in headers]
+
+    if headerIsRow:
+        yield origHeaders
 
     Record = namedtuple('tsvRec', headers)
+
     for line in fh:
         if line.startswith("#"):
             continue
@@ -810,6 +837,17 @@ def likeEmptyString(val):
     " returns true if string is a well-known synonym of 'unknown' or 'NaN'. ported from cellbrowser.js "
     return val.strip() in emptyVals
 
+def floatToIntList(vals):
+    " convert a list of floats to a integers, take care of -inf values "
+    newVals = []
+    for x in vals:
+        if x==FLOATNAN:
+            newVals.append(INTNAN)
+        else:
+            newVals.append(int(x))
+    return newVals
+
+
 def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
@@ -824,14 +862,13 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     floatCount = 0
     valCounts = defaultdict(int)
     newVals = []
-    nanVal = float('-inf') # NaN and sorting does not work. we want NaN always to be first, so encode as -inf
     for val in valList:
         fieldType = "string"
         newVal = val
 
         if likeEmptyString(val):
             unknownCount += 1
-            newVal = nanVal
+            newVal = FLOATNAN
         else:
             try:
                 newVal = int(val)
@@ -853,19 +890,35 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     if len(valCounts)==1:
         logging.warn("Field contains only a single value")
 
-    if floatCount+unknownCount==len(valList) and intCount!=len(valList) and len(valCounts) > 10 and not forceEnum:
-        # field is a floating point number: convert to decile index
-        numVals = [float(x) for x in newVals]
-        newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
-        fieldMeta["type"] = "float"
 
-    elif unknownCount==0 and intCount==len(valList) and not forceEnum:
-        # field is an integer: convert to decile index
-        # if field is integer but contains NaNs, we treat it as a float, as int(-inf) is not defined in Python.
-        # (possibly: should we use -2^32 instead of -inf to encode Nan?)
-        numVals = [int(x) for x in newVals]
-        newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
+    if intCount+unknownCount==len(valList) and not forceEnum:
+        # field is an integer
+        newVals = floatToIntList(newVals)
+        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
+        #assert(min(newVals) > -2**32) # please contact us if you need very big numbers
+        #assert(max(newVals) < 2**32)  # please contact us if you need very big numbers
+        #minVal = min(newVals)
+        #maxVal = max(newVals)
+        #if minVal > -2**16 and maxVal < 2**16:
+            #fieldMeta["arrType"] = "int32"
+            #fieldMeta["_fmt"] = "<l" # signed long, 4 bytes
+        #elif minVal >= 1 and maxVal < 2**32:
+            #fieldMeta["arrType"] = "uint32" # unsigned long, 4 bytes
+            #fieldMeta["_fmt"] = "<L"
+
+        # JS supports only 32bit signed ints so we store integers as floats
+        newVals = [float(x) for x in newVals]
+        fieldMeta["arrType"] = "float32"
+        fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "int"
+
+    elif floatCount+unknownCount==len(valList) and not forceEnum:
+        # field is a floating point number: convert to decile index
+        newVals = [float(x) for x in newVals]
+        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
+        fieldMeta["arrType"] = "float32"
+        fieldMeta["_fmt"] = "<f"
+        fieldMeta["type"] = "float"
 
     elif len(valCounts)==len(valList) and not forceEnum:
         # field is a unique string
@@ -891,7 +944,8 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
                     foundColors +=1
                 else:
                     notFound.add(val)
-                    colArr.append("DDDDDD") # wonder if I should not stop here
+                    colArr.append("DDDDDD") # wonder if I should not stop here instead of using grey
+
             if foundColors > 0:
                 fieldMeta["colors"] = colArr
                 if len(notFound)!=0:
@@ -953,17 +1007,23 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     colors = parseColors(colorFname)
 
+    # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
+    # we have to strip special chars so fix the user's field names to our format
+    sanEnumFields = []
+    if enumFields is not None:
+        sanEnumFields = [sanitizeHeader(n) for n in enumFields]
+
     fieldInfo = []
     validFieldNames = set()
     for colIdx, (fieldName, col) in enumerate(colData):
         logging.info("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
-        forceEnum = False
-        if enumFields!=None:
-            forceEnum = (fieldName in enumFields)
-        # very dumb heuristic to recognize fields that should really not be treated as numbers
-        if "luster" in fieldName or "ouvain" in fieldName:
+        forceEnum = (fieldName in sanEnumFields)
+        # very dumb heuristic to recognize fields that should not be treated as numbers but as enums
+        # res.0.6 is the default field name for Seurat clustering. Field header sanitizing changes it to
+        # res_0_6 which is not optimal, but namedtuple doesn't allow dots in names
+        if "luster" in fieldName or "ouvain" in fieldName or (fieldName.startswith("res_") and "_" in fieldName):
             forceEnum=True
 
         cleanFieldName = cleanString(fieldName)
@@ -996,6 +1056,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         binFh.close()
 
         runGzip(binName)
+        zippedName = binName+".gz"
+
+        fieldMeta["md5"] = md5WithPython(zippedName)[:MD5LEN]
 
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
@@ -1049,10 +1112,8 @@ class MatrixTsvReader:
         else:
             self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
 
-        self.sep = "\t"
-        if ".csv" in fname.lower():
-            self.sep = ","
-            logging.debug("Field separator is %s" % repr(self.sep))
+        self.sep = sepForFile(fname)
+        logging.debug("Field separator is %s" % repr(self.sep))
 
         headLine = self.ifh.readline()
         headLine = headLine.rstrip("\r\n")
@@ -1063,8 +1124,9 @@ class MatrixTsvReader:
 
         if matType is None:
             self.matType = self.autoDetectMatType(10)
-            logging.info("Numbers in matrix are of type '%s'", self.matType)
+            logging.info("Auto-detect: Numbers in matrix are of type '%s'", self.matType)
         else:
+            logging.debug("Pre-determined: Numbers in matrix are '%s'" % matType)
             self.matType = matType
 
     def close(self):
@@ -1460,7 +1522,7 @@ def exprEncode(geneDesc, exprArr, matType):
     logging.debug("raw - compression factor of %s: %f, before %d, after %d"% (geneDesc, fact, len(geneStr), len(geneCompr)))
     return geneCompr
 
-def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname):
+def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, matType=None):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
@@ -1481,8 +1543,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     highCount = 0
 
     matReader = MatrixTsvReader(geneToSym)
-    matReader.open(fname)
-    matType = matReader.getMatType()
+    matReader.open(fname, matType=matType)
+
+    if matType is None:
+        matType = matReader.getMatType()
+
     sampleNames = matReader.getSampleNames()
 
     geneCount = 0
@@ -1526,7 +1591,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     return matType
 
 def sepForFile(fname):
-    if ".csv" in fname:
+    if fname.endswith(".csv") or fname.endswith(".csv.gz") or fname.endswith(".csv.Z"):
         sep = ","
     else:
         sep = "\t"
@@ -1635,7 +1700,7 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         coords.append( (cellId, x, y) )
 
         # special values (12345,12345) mean "unknown cellId"
-        if x!=12345 and y!=12345:
+        if x!=HIDDENCOORD and y!=HIDDENCOORD:
             minX = min(x, minX)
             minY = min(y, minY)
             maxX = max(x, maxX)
@@ -1734,7 +1799,8 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     skipFields = set()
     for fieldIdx, values in iterItems(fieldValues):
         if len(values)==1:
-            logging.info("Field %d, '%s', has only a single value. Removing this field from meta data.")
+            logging.info("Field %d, '%s', has only a single value. Removing this field from meta data." %
+                    (fieldIdx, headers[fieldIdx] ))
             skipFields.add(fieldIdx)
 
     # write the header line, removing unused fields
@@ -1746,6 +1812,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         ofh.write("\t".join(sliceRow(metaToRow[matrixName], skipFields)))
         ofh.write("\n")
     ofh.close()
+
     os.rename(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, mustFilterMatrix
@@ -1768,18 +1835,21 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     textOutTmp = textOutName+".tmp"
     textOfh = open(textOutTmp, "w")
 
+    missNames = []
+
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
-            x = 12345
-            y = 12345
+            #logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
+            missNames.append(sampleName)
+            x = HIDDENCOORD
+            y = HIDDENCOORD
         else:
             x, y = coordTuple
             textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
 
         # special values (12345,12345) mean "unknown cellId"
-        if x!=12345 and y!=12345:
+        if x!=HIDDENCOORD and y!=HIDDENCOORD:
             minX = min(x, minX)
             minY = min(y, minY)
             maxX = max(x, maxX)
@@ -1796,8 +1866,14 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
         xVals.append(x)
         yVals.append(y)
 
+    logging.info("Coordinate file %s: %d sample names that are in meta but not in coord file. E.g. %s" % \
+            (coordName, len(missNames), missNames[:3]))
+
     binFh.close()
     os.rename(tmpFname, coordBinFname)
+
+    md5 = md5WithPython(coordBinFname)
+    coordInfo["md5"] = md5[:MD5LEN]
 
     coordInfo["minX"] = minX
     coordInfo["maxX"] = maxX
@@ -1902,6 +1978,15 @@ def sanitizeName(name):
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
+    return newName
+
+def sanitizeHeader(name):
+    " for tab-sep tables: replace nonalpha chars with  underscores "
+    assert(name!=None)
+    #newName = to_camel_case(name.replace(" ", "_"))
+    newName = re.sub("[^a-zA-Z0-9_]","_", name)
+    newName = re.sub("^_","", newName)  # remove _ prefix
+    logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     return newName
 
 def splitMarkerTable(filename, geneToSym, outDir):
@@ -2116,11 +2201,18 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     for i in range(len(labelVec)):
         #for (x, y), clusterIdx in zip(coords, labelVec):
         clusterIdx = labelVec[i]
-        clusterXVals[clusterIdx].append(xVals[i])
-        clusterYVals[clusterIdx].append(yVals[i])
+        x = xVals[i]
+        y = yVals[i]
+        if x==HIDDENCOORD and y==HIDDENCOORD:
+            continue
+        clusterXVals[clusterIdx].append(x)
+        clusterYVals[clusterIdx].append(y)
 
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
+        if len(xList)==0:
+            continue
+
         clusterName = labelVals[clustIdx]
         yList = clusterYVals[clustIdx]
         # get the midpoint of this cluster
@@ -2195,9 +2287,9 @@ def parseGeneInfo(geneToSym, fname):
             validSyms.add(sym)
 
     geneInfo = []
-    hasDesc = None
-    hasPmid = None
     for line in openFile(fname):
+        hasDesc = False
+        hasPmid = False
         if line.startswith("symbol"):
             continue
         sep = sepForFile(fname)
@@ -2287,7 +2379,11 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
+    try:
+        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
+    except ValueError:
+        logging.warn("Oops. Mis-guessed the matrix data type, trying again and using floating point numbers")
+        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType="float")
 
     if matType=="int":
         outConf["matrixArrType"] = "Uint32"
@@ -2318,22 +2414,27 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outConf["labelField"] = clusterLabelField
 
     newCoords = []
-    for coordIdx, coordInfo in enumerate(coordFnames):
-        coordFname = coordInfo["file"]
-        coordLabel = coordInfo["shortLabel"]
+    for coordIdx, inCoordInfo in enumerate(coordFnames):
+        coordFname = inCoordInfo["file"]
+        coordLabel = inCoordInfo["shortLabel"]
         coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
         coordBin = join(coordDir, "coords.bin")
         coordJson = join(coordDir, "coords.json")
+
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
         coordInfo["shortLabel"] = coordLabel
+        if "radius" in inCoordInfo:
+            coordInfo["radius"] = inCoordInfo["radius"]
+        if "colorOnMeta" in inCoordInfo:
+            coordInfo["colorOnMeta"] = inCoordInfo["colorOnMeta"]
+
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         textOutName = join(outDir, cleanName+".coords.tsv.gz")
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
-        newCoords.append( coordInfo )
 
         if hasLabels:
             clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
@@ -2342,6 +2443,9 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             midFh = open(midFname, "w")
             json.dump(clusterMids, midFh, indent=2)
             logging.info("Wrote cluster labels and midpoints to %s" % midFname)
+            addMd5(coordInfo, midFname, keyName="labelMd5")
+
+        newCoords.append( coordInfo )
 
     outConf["coords"] = newCoords
     copyConf(inConf, outConf, "labelField")
@@ -2393,13 +2497,13 @@ def readQuickGenes(inConf, geneToSym, outConf):
         logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
 
 def getFileVersion(fname):
-    metaVersion = {}
-    metaVersion["fname"] = fname
-    hexHash = md5ForFile(fname)
-    metaVersion["md5"] = hexHash
-    metaVersion["size"] = getsize(fname)
-    metaVersion["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
-    return metaVersion
+    data = {}
+    data["fname"] = fname
+    addMd5(data, fname)
+    #data["md5"] = hexHash
+    data["size"] = getsize(fname)
+    data["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
+    return data
 
 def checkFieldNames(outConf, fieldNames, validFieldNames):
     " make sure that all fieldNames in outConf are valid field names. errAbort is not. "
@@ -2527,12 +2631,12 @@ def md5WithPython(fname):
     md5 = hash_md5.hexdigest()
     return md5
 
-def md5ForFile(fname):
+def md5ForFile(fname, isSmall=False):
     " return the md5sum of a file. Use a command line tool, if possible. "
-    logging.info("Getting md5 of %s" % fname)
-    if spawn.find_executable("md5sum")!=None:
+    logging.debug("Getting md5 of %s" % fname)
+    if spawn.find_executable("md5sum")!=None and not isSmall:
         md5 = getMd5Using("md5sum", fname).split()[0]
-    elif spawn.find_executable("md5")!=None:
+    elif spawn.find_executable("md5")!=None and not isSmall:
         md5 = getMd5Using("md5", fname).split()[-1]
     else:
         md5 = md5WithPython(fname)
@@ -2575,7 +2679,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
-    # this obscure command gets the cell identifiers in the dataset directory
+    # this obscure command gets file with the the cell identifiers in the dataset directory
     sampleNameFname = join(datasetDir, "metaFields", outConf["metaFields"][0]["name"]+".bin.gz")
     logging.debug("Reading meta sample names from %s" % sampleNameFname)
 
@@ -2604,7 +2708,7 @@ def convertDataset(inConf, outConf, datasetDir):
 
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField", "visibility"]:
         copyConf(inConf, outConf, tag)
 
     if " " in inConf["name"]:
@@ -2703,22 +2807,37 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def anndataToTsv(ad, matFname, usePandas=False):
+def anndataToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
     import scipy.sparse
-    logging.info("Writing scanpy matrix to %s" % matFname)
+
+    if useRaw and ad.raw is None:
+        logging.warn("The option to export raw expression data is set, but the scanpy object has no 'raw' attribute. Exporting the processed scanpy matrix. Some genes may be missing.")
+
+    if useRaw and ad.raw is not None:
+        mat = ad.raw.X
+        var = ad.raw.var
+        logging.info("Processed matrix has size (%d cells, %d genes)" % (mat.shape[0], mat.shape[1]))
+        logging.info("Using raw expression matrix")
+    else:
+        mat = ad.X
+        var = ad.var
+
+    rowCount, colCount = mat.shape
+    logging.info("Writing scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, matFname))
     tmpFname = matFname+".tmp"
 
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
-    mat = ad.X.transpose()
+    mat = mat.T
+
     if scipy.sparse.issparse(mat):
         logging.info("Converting csc matrix to row-sparse matrix")
-        mat = mat.tocsr() # makes writing to a file 10X faster, thanks Alex Wolf!
+        mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
         logging.info("Converting anndata to pandas dataframe")
-        data_matrix=pd.DataFrame(mat, index=ad.var.index.tolist(), columns=ad.obs.index.tolist())
+        data_matrix=pd.DataFrame(mat, index=var.index.tolist(), columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
         data_matrix.to_csv(tmpFname, sep='\t', index=True)
     else:
@@ -2732,12 +2851,12 @@ def anndataToTsv(ad, matFname, usePandas=False):
 
         # when reading 10X files, read_h5 puts the geneIds into a separate field
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
-        if "gene_ids" in ad.var:
-            geneIdObj = ad.var["gene_ids"]
+        if "gene_ids" in var:
+            geneIdObj = var["gene_ids"]
             geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
             genes = [x+"|"+y for (x,y) in geneIdAndSyms]
         else:
-            genes = ad.var.index.tolist()
+            genes = var.index.tolist()
 
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
@@ -2774,7 +2893,8 @@ def makeDictDefaults(inVar, defaults):
         d[val] = defaults.get(val, val)
     return d
 
-def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percent_mito", "n_genes", "n_counts"], clusterField="louvain", nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
+def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField="louvain",
+        nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2794,10 +2914,6 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
     if not isdir(path):
         makeDir(path)
 
-    for name in metaFields:
-        if name not in adata.obs.keys() and name!="percent_mito":
-            raise ValueError('There is no annotation field with the name `%s`.' % name)
-
     confName = join(path, "cellbrowser.conf")
     if isfile(confName):
         logging.warn("%s already exists. Overwriting existing files." % confName)
@@ -2809,7 +2925,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
 
     if not skipMatrix:
         matFname = join(path, 'exprMatrix.tsv.gz')
-        anndataToTsv(adata, matFname)
+        anndataToTsv(adata, matFname, useRaw=useRaw)
 
     if coordFields=="all" or coordFields is None:
         coordFields = coordLabels
@@ -2849,22 +2965,35 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=["louvain", "percen
         errAbort ('Couldnt find cluster markers list')
 
     ##Save metadata
-    if metaFields != None:
-        metaFields = makeDictDefaults(metaFields, metaLabels)
-        meta_df=pd.DataFrame()
-        for metaKey, metaLabel in iterItems(metaFields):
-            logging.debug("getting meta field: %s -> %s" % (metaKey, metaLabel))
-            if metaKey not in adata.obs:
-                logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
-            else:
-                temp=adata.obs[[metaKey]]
-                #if metaKey in metaLabels:
-                #logging.debug("Using new name %s -> %s" % (metaKey, metaLabels[metaKey]))
-                #temp.name = metaLabel
-                meta_df=pd.concat([meta_df,temp],axis=1)
-        meta_df.rename(metaFields, axis=1, inplace=True)
-        fname = join(path, "meta.tsv")
-        meta_df.to_csv(fname,sep='\t')
+    if metaFields is None:
+        metaFields = list(adata.obs.columns.values)
+    else:
+        # check that field names exist
+        for name in metaFields:
+            if name not in adata.obs.keys():
+                logging.warn('There is no annotation field with the name `%s`.' % name)
+                if name not in ["percent_mito", "n_genes", "n_counts"]:
+                    # tolerate missing default fields
+                    raise ValueError()
+
+    metaFields = makeDictDefaults(metaFields, metaLabels)
+
+    meta_df=pd.DataFrame()
+
+    for metaKey, metaLabel in iterItems(metaFields):
+        logging.debug("getting meta field: %s -> %s" % (metaKey, metaLabel))
+        if metaKey not in adata.obs:
+            logging.warn(str(metaKey) + ' field is not present in the AnnData.obs object')
+        else:
+            temp=adata.obs[[metaKey]]
+            #if metaKey in metaLabels:
+            #logging.debug("Using new name %s -> %s" % (metaKey, metaLabels[metaKey]))
+            #temp.name = metaLabel
+            meta_df=pd.concat([meta_df,temp],axis=1)
+
+    meta_df.rename(metaFields, axis=1, inplace=True)
+    fname = join(path, "meta.tsv")
+    meta_df.to_csv(fname,sep='\t')
 
     argDict = {}
     if clusterField:
@@ -3111,13 +3240,18 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         adata = sc.read_10x_h5(matrixFname, genome=genome)
 
     else:
-        logging.info("Loading expression matrix: tab-sep format")
+        logging.info("Loading expression matrix: scanpy-supported format, like h5ad, loom, tab-separated, etc.")
         adata = sc.read(matrixFname, cache=False , first_column_names=True)
         if not samplesOnRows:
-            logging.info("Transposing the expression matrix")
+            logging.debug("Scanpy defaults to samples on lines, so transposing the expression matrix")
             adata = adata.T
 
     return adata
+
+def addMd5(d, fname, keyName="md5", isSmall=False):
+    " add a key 'md5' to dict d with first MD5LEN letters of fname "
+    logging.debug("Getting md5 of %s" % fname)
+    d[keyName] = md5ForFile(fname, isSmall=isSmall)[:MD5LEN]
 
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
@@ -3137,7 +3271,12 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
+        addMd5(datasetDesc, fname, isSmall=True)
         assert("name" in datasetDesc) # every dataset has to have a name
+
+        if datasetDesc.get("visibility")=="hide":
+            logging.debug("Dataset %s is set to hide, skipping" % datasetDesc["name"])
+            continue
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -3160,10 +3299,19 @@ def copyAllFiles(fromDir, subDir, toDir):
     outDir = join(toDir, subDir)
     makeDir(outDir)
     for filename in glob.glob(join(fromDir, subDir, '*')):
+    # egg-support commented out for now
+    #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
         if isdir(filename):
             continue
-        logging.debug("Copying %s to %s" % (filename, outDir))
+        #fullPath = join(fromDir, subDir, filename)
+        fullPath = filename
+        logging.debug("Copying %s to %s" % (fullPath, outDir))
         shutil.copy(filename, outDir)
+        #s = pkg_resources.resource_string(__name__, filename)
+        #outFname = join(outDir, filename)
+        #ofh = open(outFname, "wb")
+        #ofh.write(s)
+        #ofh.close()
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -3188,7 +3336,7 @@ def writeVersionedLink(ofh, mask, webDir, relFname):
 
     filePath = join(webDir, relFname)
     md5 = md5WithPython(filePath)
-    verFname = relFname+"?"+md5[:10]
+    verFname = relFname+"?"+md5[:MD5LEN]
     outLine = mask % verFname
     ofh.write(outLine+"\n")
 
@@ -3214,7 +3362,8 @@ def makeIndexHtml(baseDir, datasets, outDir):
         summDs = {
                 "shortLabel" : ds["shortLabel"],
                 "sampleCount" : ds["sampleCount"],
-                "name" : ds["name"]
+                "name" : ds["name"],
+                "md5" : ds["md5"]
                 }
 
         if "tags" in ds:
@@ -3387,8 +3536,12 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     start = timeit.default_timer()
     adata = readMatrixAnndata(matrixFname, samplesOnRows=options.samplesOnRows, genome=options.genome)
 
+    adata.raw = adata # this is doing much more than assigning, it calls implicitely a function that copies
+    # a few things around. See the anndata source code under basic.py
+
+    useRaw = conf.get("useRaw", True)
     if outMatrixFname is not None:
-        anndataToTsv(adata, outMatrixFname)
+        anndataToTsv(adata, outMatrixFname, useRaw=useRaw)
 
     pipeLog("Data has %d samples/observations" % len(adata.obs))
     pipeLog("Data has %d genes/variables" % len(adata.var))
@@ -3396,7 +3549,8 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if conf.get("doTrimCells", True):
         minGenes = conf.get("minGenes", 200)
         pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
-        sc.pp.filter_cells(adata, min_genes=minGenes)
+        sc.pp.filter_cells(adata, min_genes=minGenes) # adds n_genes to adata
+
     if conf.get("doTrimGenes", True):
         minCells = conf.get("minCells", 3)
         pipeLog("Basic filtering: keep only gene with min %d cells" % (minCells))
@@ -3409,7 +3563,11 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if len(list(adata.var_names))==0:
         errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
 
+    if not "n_counts" in list(adata.obs.columns.values):
+        adata.obs['n_counts'] = np.sum(adata.X, axis=1)
+
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
+
     if conf.get("doFilterMito", True):
         geneIdType = conf.get("geneIdType")
         if geneIdType is None or geneIdType=="auto":
@@ -3426,7 +3584,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
 
-        adata.obs['UMI_Count'] = np.sum(adata.X, axis=1)
+
         if(len(mito_genes)==0): # no single mitochondrial gene in the expression matrix ?
             pipeLog("WARNING - No single mitochondrial gene was found in the expression matrix.")
             pipeLog("Apoptotic cells cannot be removed - please check your expression matrix")
@@ -3436,10 +3594,13 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
 
             adata.obs['percent_mito'] = np.sum(adata[:, mito_genes].X, axis=1) / np.sum(adata.X, axis=1)
 
-            sc.pl.violin(adata, ['n_genes', 'UMI_Count', 'percent_mito'], jitter=0.4, multi_panel=True)
+            obsFields = list(adata.obs.columns.values)
+            if "n_genes" in obsFields: # n_counts is always there
+                sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
+                fig1 = sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
 
-            fig1=sc.pl.scatter(adata, x='UMI_Count', y='percent_mito', save="_percent_mito")
-            fig2=sc.pl.scatter(adata, x='UMI_Count', y='n_genes', save="_gene_count")
+            if "n_counts" in obsFields:
+                fig2 = sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
 
             adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
 
@@ -3478,10 +3639,10 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     if conf.get("doRegress", True):
         if doMito:
             pipeLog('Regressing out percent_mito and number of UMIs')
-            sc.pp.regress_out(adata, ['UMI_Count', 'percent_mito'])
+            sc.pp.regress_out(adata, ['n_counts', 'percent_mito'])
         else:
             pipeLog('Regressing out number of UMIs')
-            sc.pp.regress_out(adata, ['UMI_Count'])
+            sc.pp.regress_out(adata, ['n_counts'])
 
         #Scaling after regression 
         maxValue = conf.get("regressMax", 10)
@@ -3517,7 +3678,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
 
     neighbors = int(conf.get("louvainNeighbors", 6))
     res = int(conf.get("louvainRes", 1.0))
-    pipeLog('Performing Louvain Clustering, using %d PCs and %d neighbors' % (pc_nb, neighbors))
+    pipeLog('Performing Louvain Clustering, resolution %f, using %d PCs and %d neighbors' % (res, pc_nb, neighbors))
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=res)
     pipeLog("Found %d louvain clusters" % len(adata.obs['louvain'].unique()))
@@ -3628,16 +3789,16 @@ def cbScanpyCli():
     global options
     args, options = cbScanpy_parseArgs()
 
+    if options.init:
+        copyPkgFile("sampleConfig/scanpy.conf")
+        sys.exit(1)
+
     try:
         import scanpy.api as sc
     except:
         print("The Python package 'scanpy' is not installed in the current interpreter %s" % sys.executable)
         print("Please install it following the instructions at https://scanpy.readthedocs.io/en/latest/installation.html")
         print("Then re-run this command.")
-        sys.exit(1)
-
-    if options.init:
-        copyPkgFile("sampleConfig/scanpy.conf")
         sys.exit(1)
 
     matrixFname = options.exprMatrix
@@ -3656,7 +3817,13 @@ def cbScanpyCli():
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
     datasetName=options.name
-    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True)
+
+    metaFields=None # = export all fields
+    #if options.metaFields:
+        #metaFields.extend(metaFields.split(','))
+
+    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMatrix=True, metaFields=metaFields, useRaw=True)
+
     generateHtmls(datasetName, outDir)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
@@ -3710,7 +3877,12 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     logging.info("Writing matrix to text")
     tmpFname = outFname+".tmp"
 
-    ofh = open(tmpFname, "w")
+    # could not find a cross-python way to open ofh for np.savetxt
+    # see https://github.com/maximilianh/cellBrowser/issues/73 and numpy ticket referenced therein
+    if isPy3:
+        ofh = open(tmpFname, "w")
+    else:
+        ofh = open(tmpFname, "wb")
 
     ofh.write("gene\t")
     ofh.write("\t".join(barcodes))

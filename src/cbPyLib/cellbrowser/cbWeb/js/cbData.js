@@ -175,6 +175,8 @@ var cbUtil = (function () {
             return Float64Array;
         if ((typeStr==="float" || typeStr=="float32"))
             return Float32Array;
+        else if (typeStr==="int32")
+            return Int32Array;
         else if (typeStr==="uint32" || typeStr=="dword")
             return Uint32Array;
         else if (typeStr==="uint16" || typeStr=="word")
@@ -247,6 +249,9 @@ function CbDbFile(url) {
     self.quickExpr = {}; // uncompressed expression arrays
     self.allMeta = {};   // uncompressed meta arrays
 
+    // special values representing NaN in data arrays, must match same variables in cellBrowser.py
+    var FLOATNAN = Number.NEGATIVE_INFINITY; // NaN and sorting does not work. we want NaN always to be first, so encode as -inf
+
     this.conf = null;
 
     this.loadConfig = function(onDone) {
@@ -297,10 +302,14 @@ function CbDbFile(url) {
            return;
         }
         var binUrl = cbUtil.joinPaths([self.url, "coords", coordInfo.name, "coords.bin"]);
+        if (coordInfo.md5)
+            binUrl += "?"+coordInfo.md5
         var arrType = cbUtil.makeType(coordInfo.type || "float64");
         cbUtil.loadFile(binUrl, arrType, binDone, onProgress, coordInfo);
 
         var jsonUrl = cbUtil.joinPaths([self.url, "coords", coordInfo.name, "clusterLabels.json"]);
+        if (coordInfo.labelMd5)
+            jsonUrl += "?"+coordInfo.labelMd5
         cbUtil.loadJson(jsonUrl, jsonDone, true);
     };
 
@@ -319,22 +328,35 @@ function CbDbFile(url) {
         var metaInfo = self.conf.metaFields[fieldIdx];
         var fieldName = metaInfo.name;
         var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
+        if (metaInfo.md5)
+            binUrl += "?"+metaInfo.md5;
         cbUtil.loadFile(binUrl, arrType, 
                 onMetaDone,
                 onProgress, metaInfo);
     }
 
-    this.loadMetaVec = function(fieldIdx, onDone, onProgress, otherInfo) {
+    this.loadMetaVec = function(fieldIdx, onDone, binCount, onProgress, otherInfo) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
      * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
      * Keep all compressed arrays in metaCache;
+     * Numerical meta data (int/float) is discretized, binning info is written to metaInfo.binInfo
+     * and the original data is added to metaInfo.origVals
      * */
 
         function onMetaDone(comprBytes, metaInfo) {
             self.metaCache[fieldIdx] = comprBytes; 
             var arrType = cbUtil.makeType(metaInfo.arrType);
-            var arr = pako.ungzip(comprBytes);
-            arr = new arrType(arr);
+            var bytes = pako.ungzip(comprBytes);
+            var buffer = bytes.buffer;
+            var arr = new arrType(buffer);
+            if (metaInfo.arrType==="float32") {
+                // numeric arrays have to be binned on the client. They are always floats.
+                var discRes = discretizeArray(arr, binCount, FLOATNAN);
+                metaInfo.origVals = arr; // keep original values, so we can later query for them
+                arr = discRes.dArr;
+                metaInfo.binInfo = discRes.binInfo;
+                //metaInfo.valCounts = binInfoToValCounts(discRes.binInfo);
+            }
             onDone(arr, metaInfo, otherInfo);
         }
 
@@ -392,23 +414,14 @@ function CbDbFile(url) {
             });
     }
 
-    function countAndSort(arr) {
-        /* count values in array, return an array of [value, count] */
-        //var counts = {};
-        var counts = new Map();
-        for (var i=0; i < arr.length; i++) {
-            var num = arr[i];
-            //counts[num] = counts[num] ? counts[num] + 1 : 1;
-            counts.set(num, (counts.get(num) | 0) + 1);
-        }
-        var entries = Array.from(counts.entries());
-        entries.sort(function(a,b) { return a[0]-b[0]});
-        return entries;
-    }
-
     function arrToEnum(arr, counts) {
-        /* replace values in array with their enum-index */
-        // make a mapping value -> bin
+        /* given an array of numbers, count how often each number appears.
+         * return an obj with two keys:
+         * - dArr is the new array with the index of each value
+         * - binInfo is an array with for each index a tuple of (value, value, count) 
+         */
+        // replace values in array with their enum-index
+        // -> make a mapping value -> bin
         var valToBin = {};
         sortArrOfArr(counts, 0); // sort by value
         for (var i=0; i<counts.length; i++) {
@@ -454,40 +467,86 @@ function CbDbFile(url) {
 	return lo;
     }
 
-    function findBins(numVals, breakVals) {
+    function findBins(numVals, bin0Val, breakVals) {
     /*
-    find the bin index for the break defined by breakVals for every value in numVals.
-    The comparison uses "<=" ("left"). The first bin is therefore just the value of
-    the first break, which makes sense for the most common case, 0, going into
-    a special bin.  (for speed, 0 is hardcoded to always go into
-    bin0). The caller can decrease break0 for more natural results in cases
-    where special treatment of bin0 is not intended, e.g. when 0 does not appear.
-    Also returns an array with the count for every bin.
+    Discretize an array of expression values.
+
+    Find the bin index for the break defined by breakVals for every value in numVals.
+    The comparison uses "<=" ("left"). Also returns an array with the count for every bin.
     */
 	
         var dArr = new Uint8Array(numVals.length); 
-        var binCounts = new Uint32Array(breakVals.length);
+        var binCounts = new Uint32Array(breakVals.length+1); // bin0 is a special bin, so +1
 
         for (var i=0; i<numVals.length; i++) {
             var val = numVals[i];
             var binIdx = 0;
-            if (val!==0) // special case for 0, saves some time
-                binIdx = smoolakBS_left(breakVals, numVals[i]);
+            if (val!==bin0Val)
+                binIdx = smoolakBS_left(breakVals, numVals[i])+1; // bin0 is reserved, so +1
             dArr[i] = binIdx;
             binCounts[binIdx]++;
         }
         return {"dArr":dArr, "binCounts":binCounts};
     }
 
-    function discretizeArray(arr, maxBinCount) {
+    function findBins_meta(numVals, breakVals, nanValue) {
+    /*
+    Discretize an array of any numbers. See findBins_expr
+    Put into bins an array of numbers, some of which may be NaN, given the breaks.
+    bin0 is reserved for NaN.
+    NaN is encoded in numVals as nanValues, which has to smaller than any other value.
+
+    Find the bin index for the break defined by breakVals for every value in numVals.
+    The comparison uses "<=" ("left"). 
+    Also returns an array with the count for every bin.
+
+    */
+	
+        var dArr = new Uint8Array(numVals.length); 
+        var binCounts = new Uint32Array(breakVals.length-1);
+        var breaks = breakVals.slice(2);
+
+        for (var i=0; i<numVals.length; i++) {
+            var val = numVals[i];
+            var binIdx = 0;
+            if (val!==nanValue)
+                binIdx = smoolakBS_left(breaks, numVals[i]);
+            dArr[i] = binIdx+1;
+            binCounts[binIdx]++;
+        }
+        return {"dArr":dArr, "binCounts":binCounts};
+    }
+
+    function discretizeArray(arr, maxBinCount, bin0Val) {
         /* discretize numeric values to deciles. return an obj with dArr and binInfo */
         /* ported from Python cbAdd:discretizeArray */
+        /* supports NaN special values */
+
+        //var isMeta = False;
+        //var findFunc = findBins_expr;
+        //var metaNan = null; // expr data doesn't have NaNs
+
+        //if (dataType==="float") {
+            //isMeta = True;
+            //metaNan = FLOATNAN;
+            //findFunc = findBins_meta;
+        //}
+        //else if (dataType==="int") {
+            //isMeta = True;
+            //metaNan = INTNAN;
+            //findFunc = findBins_meta;
+        //}
+
         var counts = countAndSort(arr);
 
         // if we have just a few values, do not do any binning, just count
         if (counts.length < maxBinCount)
             return arrToEnum(arr, counts);
 
+        // From now on, we treat NAs/0s separately, so remove their counts
+        if (counts[0][0]===bin0Val) // NA is always first, as we defined it as -inf
+            counts.shift(); // remove first element
+        
         // make array of count-indices of the breaks
         // e.g. if maxBinCount=10, breakPercs is [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         var breakPercs = [];
@@ -495,41 +554,50 @@ function CbDbFile(url) {
         for (var i=0; i<maxBinCount; i++)
             breakPercs.push( binPerc*i );
 
+        // for each percentage, get the index
         var countLen = counts.length;
         var breakIndices = [];
         for (var i=0; i < breakPercs.length; i++) {
             var bp = breakPercs[i];
             breakIndices.push( Math.round(bp*countLen) );
         }
-        breakIndices.push(countLen-1); // the last break is always a special case
+        breakIndices.push(countLen-1); // the last break is always a special case. Here we set it to the last element.
+        // now we have 11 breaks for 10 bins
 
-        // make array with values at the break indices
+        var minVal = counts[breakIndices[0]][0];
+
+        // make array with values at the break indices except the first one, as comparison is <=
         var breakValues = [];
-        for (var i=0; i < breakIndices.length; i++) {
+        for (var i=1; i < breakIndices.length; i++) {
             var breakIdx = breakIndices[i];
             var breakVal = counts[breakIdx][0];
-            // for expression vectors without a 0,
-            // we don't want special handling of the value 0:
-            // force break0 to be 0, so bin0 covers 0-break1
-            if (i===0 && breakVal!==0)
-                breakVal = 0;
             breakValues.push( breakVal );
         }
-
-        var fb = findBins(arr, breakValues);
+        
+        var fb = findBins(arr, bin0Val, breakValues);
         var dArr = fb.dArr;
         var binCounts = fb.binCounts;
 
-        var binInfo = [];
-        for (var i=0; i<binCounts.length; i++) {
-            var binMax = parseFloat(breakValues[i]);
-            var binMin = 0.0;
-            if (i===0)
-                binMin = binMax;
-            else
-                binMin = parseFloat(breakValues[i-1]);
+        // we should have 11 breaks/10bins but 12 values in binCounts
+        //assert(len(breakVals)==12));
+        //assert(len(binCounts)==11));
+        //assert((len(binCounts)+1 == len(breakVals)));
 
-            var binCount = binCounts[i];
+        // convert to format (min, max, count)
+        // bin0 has special min/max of "Unknown" or 0
+        var binInfo = [];
+        var bin0MinMax = "Unknown";
+        if (bin0Val===0)
+            bin0MinMax = 0;
+
+        binInfo.push( [bin0MinMax, bin0MinMax, binCounts[0]] );
+
+        for (var i=0; i<breakValues.length; i++) { // starts at 1, as bin0 is special case
+            var binMin = minVal;
+            if (i!==0)
+                binMin = parseFloat(breakValues[i-1]);
+            var binMax = parseFloat(breakValues[i]);
+            var binCount = binCounts[i+1];
             binInfo.push( [binMin, binMax, binCount] );
         }
 
@@ -543,7 +611,7 @@ function CbDbFile(url) {
 
         function onLoadedVec(exprArr, geneSym, geneDesc) {
             console.time("discretize");
-            var da = discretizeArray(exprArr, binCount);
+            var da = discretizeArray(exprArr, binCount, 0);
             console.timeEnd("discretize");
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
@@ -657,43 +725,6 @@ function CbDbFile(url) {
     /* return field index of default cluster field */
         var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", self.conf.clusterField);
         return idx;
-    };
-
-    this.preloadAllMeta = function() {
-        /* start loading all meta value vectors and add them to db.allMeta */
-        self.allMeta = {};
-        var metaFieldInfo = self.getMetaFields();
-        for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
-           var fieldInfo = metaFieldInfo[fieldIdx];
-           if (fieldInfo.type==="uniqueString")
-               continue
-           self.loadMetaVec(fieldIdx, function(arr, metaInfo) { self.allMeta[fieldIdx] = arr; delete self.metaCache[fieldIdx] }, null);
-        }
-    }
-
-    this.preloadGenes = function(geneSyms, onDone, onProgress, exprBinCount) {
-       /* start loading the gene expression vectors in the background. call onDone when done. */
-       var validGenes = self.getGenes();
-       var loadCounter = 0;
-       if (geneSyms) {
-           for (var i=0; i<geneSyms.length; i++) {
-               var sym = geneSyms[i][0];
-               if (! (sym in validGenes)) {
-                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
-                  continue;
-               }
-
-                self.loadExprAndDiscretize(
-                   sym, 
-                   function(exprVec, discExprVec, geneSym, geneDesc, binInfo) { 
-                       //onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
-                       self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
-                       loadCounter++; 
-                       if (loadCounter===geneSyms.length) onDone(); 
-                   },
-                   onProgress, exprBinCount);
-           }
-       }
     };
 
     this.loadCellIds = function(idxArray, onDone, onProgress) {
@@ -818,12 +849,12 @@ function CbDbFile(url) {
     }
 
     function countAndSort(arr) {
-        /* count values in array, return an array of [value, count] */
+        /* count values in array, return an array of [value, count]. */
         //var counts = {};
         var counts = new Map();
         for (var i=0; i < arr.length; i++) {
             var num = arr[i];
-            //counts[num] = counts[num] ? counts[num] + 1 : 1;
+            //without the Map(), it's a bit slower: counts[num] = counts[num] ? counts[num] + 1 : 1;
             counts.set(num, (counts.get(num) | 0) + 1);
         }
         var entries = Array.from(counts.entries());
@@ -879,88 +910,6 @@ function CbDbFile(url) {
 	return lo;
     }
 
-    function findBins(numVals, breakVals) {
-    /*
-    find the bin index for the break defined by breakVals for every value in numVals.
-    The comparison uses "<=" ("left"). The first bin is therefore just the value of
-    the first break, which makes sense for the most common case, 0, going into
-    a special bin.  (for speed, 0 is hardcoded to always go into
-    bin0). The caller can decrease break0 for more natural results in cases
-    where special treatment of bin0 is not intended, e.g. when 0 does not appear.
-    Also returns an array with the count for every bin.
-    */
-	
-        var dArr = new Uint8Array(numVals.length); 
-        var binCounts = new Uint32Array(breakVals.length);
-
-        for (var i=0; i<numVals.length; i++) {
-            var val = numVals[i];
-            var binIdx = 0;
-            if (val!==0) // special case for 0, saves some time
-                binIdx = smoolakBS_left(breakVals, numVals[i]);
-            dArr[i] = binIdx;
-            binCounts[binIdx]++;
-        }
-        return {"dArr":dArr, "binCounts":binCounts};
-    }
-
-    function discretizeArray(arr, maxBinCount) {
-        /* discretize numeric values to deciles. return an obj with dArr and binInfo */
-        /* ported from Python cbAdd:discretizeArray */
-        var counts = countAndSort(arr);
-
-        // if we have just a few values, do not do any binning, just count
-        if (counts.length < maxBinCount)
-            return arrToEnum(arr, counts);
-
-        // make array of count-indices of the breaks
-        // e.g. if maxBinCount=10, breakPercs is [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-        var breakPercs = [];
-        var binPerc = 1.0/maxBinCount;
-        for (var i=0; i<maxBinCount; i++)
-            breakPercs.push( binPerc*i );
-
-        var countLen = counts.length;
-        var breakIndices = [];
-        for (var i=0; i < breakPercs.length; i++) {
-            var bp = breakPercs[i];
-            breakIndices.push( Math.round(bp*countLen) );
-        }
-        breakIndices.push(countLen-1); // the last break is always a special case
-
-        // make array with values at the break indices
-        var breakValues = [];
-        for (var i=0; i < breakIndices.length; i++) {
-            var breakIdx = breakIndices[i];
-            var breakVal = counts[breakIdx][0];
-            // for expression vectors without a 0,
-            // we don't want special handling of the value 0:
-            // force break0 to be 0, so bin0 covers 0-break1
-            if (i===0 && breakVal!==0)
-                breakVal = 0;
-            breakValues.push( breakVal );
-        }
-
-        var fb = findBins(arr, breakValues);
-        var dArr = fb.dArr;
-        var binCounts = fb.binCounts;
-
-        var binInfo = [];
-        for (var i=0; i<binCounts.length; i++) {
-            var binMax = parseFloat(breakValues[i]);
-            var binMin = 0.0;
-            if (i===0)
-                binMin = binMax;
-            else
-                binMin = parseFloat(breakValues[i-1]);
-
-            var binCount = binCounts[i];
-            binInfo.push( [binMin, binMax, binCount] );
-        }
-
-        return {"dArr": dArr, "binInfo": binInfo};
-    }
-
     this.loadExprAndDiscretize = function(geneSym, onDone, onProgress, binCount) {
     /* given a geneSym (string), retrieve array of array put into binCount bins
      * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
@@ -968,7 +917,7 @@ function CbDbFile(url) {
 
         function onLoadedVec(exprArr, geneSym, geneDesc) {
             console.time("discretize");
-            var da = discretizeArray(exprArr, binCount);
+            var da = discretizeArray(exprArr, binCount, 0);
             console.timeEnd("discretize");
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
@@ -1084,8 +1033,9 @@ function CbDbFile(url) {
         return idx;
     };
 
-    this.preloadAllMeta = function() {
-        /* start loading all meta value vectors and add them to db.allMeta */
+    this.preloadAllMeta = function(binCount) {
+        /* start loading all meta value vectors and add them to db.allMeta. binCount
+         * is used for client-discretized numerical meta fields. */
         self.allMeta = {};
 
         function doneMetaVec(arr, metaInfo, otherInfo) {
@@ -1098,7 +1048,7 @@ function CbDbFile(url) {
            var fieldInfo = metaFieldInfo[fieldIdx];
            if (fieldInfo.type==="uniqueString")
                continue
-           self.loadMetaVec(fieldIdx, doneMetaVec, null);
+           self.loadMetaVec(fieldIdx, doneMetaVec, binCount);
         }
     }
 

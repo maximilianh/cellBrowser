@@ -787,6 +787,9 @@ var cellbrowser = function() {
         }
 
         function gotMetaArr(metaArr, metaInfo, funcVal) {
+            /* filter meta data array with funcVal = function + value  */
+            if (metaInfo.origVals)
+                metaArr = metaInfo.origVals; // numerical attributes have the original numbers stored away
             var selCells = searchArrayForFuncAndVal(metaArr, funcVal)
             queryResults.push(selCells);
             doneQueries++;
@@ -805,8 +808,12 @@ var cellbrowser = function() {
                 var fieldName = query.m;
                 var fieldIdx = cbUtil.findIdxWhereEq(db.conf.metaFields, "name", fieldName);
                 var findVal = funcVal[1];
-                var fieldValIdx = findMetaValIndex(fieldIdx, findVal);
-                db.loadMetaVec(fieldIdx, gotMetaArr, null, [funcVal[0], fieldValIdx]);
+
+                var metaInfo = db.getMetaFields()[fieldIdx];
+                if (metaInfo.type==="enum")
+                    findVal = findMetaValIndex(fieldIdx, findVal);
+
+                db.loadMetaVec(fieldIdx, gotMetaArr, exprBinCount, null, [funcVal[0], findVal]);
             }
         }
     }
@@ -832,6 +839,10 @@ var cellbrowser = function() {
         var buttons = {
 
             "Cancel" : function() {
+                    // save state even if user presses cancel  - good idea?
+                    var queryStr = JSURL.stringify(queryList);
+                    var queryList = readSelectForm();
+                    localStorage.setItem("select", queryStr);
                     $(this).dialog("close");
             },
 
@@ -844,7 +855,9 @@ var cellbrowser = function() {
                     } else {
                         renderer.selectSet(cellIds);
                         //changeUrl({'select':JSON.stringify(queryList)});
-                        changeUrl({'select':JSURL.stringify(queryList)});
+                        var queryStr = JSURL.stringify(queryList);
+                        changeUrl({'select':queryStr});
+                        localStorage.setItem("select", queryStr);
                         renderer.drawDots();
                         $("#tpDialog").dialog("close");
                     }
@@ -858,6 +871,10 @@ var cellbrowser = function() {
         // build from current query or create a sample query
         var queries = [];
         var queryStr = getVar("select");
+
+        if (queryStr===undefined)
+            queryStr = localStorage.getItem("select");
+
         if (queryStr!==undefined)
             queries = JSURL.parse(queryStr);
         else {
@@ -1156,22 +1173,30 @@ var cellbrowser = function() {
        renderer.setSize(rendererWidth, rendererHeight, false);
     }
 
-    var progressUrls = [];
+    var progressUrls = {}
 
     function onProgressConsole(ev) {
-        console.log(ev);
+        //console.log(ev);
     }
 
     function onProgress(ev) {
         /* update progress bars. The DOM elements of these were added in maxPlot (not optimal?)  */
         var url = ev.currentTarget.responseURL;
-        if (url.search("exprMatrix.bin")!==-1)
+        url = url.split("?")[0]; // strip off the md5 checksum
+
+        if (url.search("exprMatrix.bin")!==-1) // never show progress bar for single gene vector requests
             return;
 
-        var index = progressUrls.indexOf(url);
-        if (index===-1) {
-            progressUrls.push(url);
-            index = progressUrls.length-1;
+        var progressRowIdx = progressUrls[url]; // there can be multiple progress bars
+        if (progressRowIdx===undefined) {
+            // if there is none yet, find the first free index
+            progressRowIdx = 0;
+            for (var oldUrl in progressUrls) {
+                progressRowIdx = Math.max(progressRowIdx, progressUrls[oldUrl]);
+
+            }
+            progressRowIdx++;
+            progressUrls[url] = progressRowIdx;
         }
 
         var label = url;
@@ -1180,22 +1205,24 @@ var cellbrowser = function() {
         else if (url.endsWith(".bin"))
             label = "Loading cell annotations";
 
-        var labelId = "#mpProgressLabel"+index;
+        var labelId = "#mpProgressLabel"+progressRowIdx;
         $(labelId).html(label);
 
         var percent = Math.round(100 * (ev.loaded / ev.total));
 
-        if (percent===100) {
-            $("#mpProgress"+index).css("width", percent+"%");
-            $("#mpProgress"+index).show(0);
-            progressUrls.splice(index, 1);
-            $("#mpProgressDiv"+index).css("display", "none");
+        if (percent>=99) {
+            $("#mpProgress"+progressRowIdx).css("width", percent+"%");
+            $("#mpProgress"+progressRowIdx).show(0);
+            //progressUrls.splice(index, 1);
+            delete progressUrls[url];
+            $("#mpProgressDiv"+progressRowIdx).css("display", "none");
         }
         else {
-            $("#mpProgress"+index).css("width", percent+"%");
-            $("#mpProgressDiv"+index).css("display", "inherit");
+            $("#mpProgress"+progressRowIdx).css("width", percent+"%");
+            $("#mpProgressDiv"+progressRowIdx).css("display", "inherit");
         }
     }
+
 
     function colorByMetaField(fieldName, doneLoad) {
        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad */
@@ -1229,7 +1256,12 @@ var cellbrowser = function() {
 
        var fieldInfo = db.getMetaFields()[fieldIdx];
 
-       if (fieldInfo.diffValCount > MAXCOLORCOUNT && fieldInfo.binMethod===undefined) {
+       if (fieldInfo.type==="uniqueString") {
+           warn("This field contains a unique identifier. You cannot color on such a field. However, you can search for values in this field using 'Edit > Find by ID'.");
+           return null;
+       }
+
+       if (fieldInfo.diffValCount > MAXCOLORCOUNT && fieldInfo.type==="enum") {
            warn("This field has "+fieldInfo.diffValCount+" different values. Coloring on a field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
            return null;
        }
@@ -1241,12 +1273,16 @@ var cellbrowser = function() {
            changeUrl({"meta":fieldName, "gene":null});
 
 
-       buildLegendForMetaIdx(fieldIdx);
-       var renderColors = legendGetColors(gLegend.rows);
-
        db.loadMetaVec(
            fieldIdx, 
-           function(carr) {renderer.setColors(renderColors); renderer.setColorArr(carr); doneLoad(); }, 
+           function(metaArr, newMetaInfo) {
+               buildLegendForMetaIdx(fieldIdx);
+               var renderColors = legendGetColors(gLegend.rows);
+               renderer.setColors(renderColors); 
+               renderer.setColorArr(metaArr); 
+               doneLoad(); 
+           }, 
+           exprBinCount,
            onProgress
        );
 
@@ -1418,6 +1454,7 @@ var cellbrowser = function() {
                     var dataList = splitExprByMeta(exprVec, metaArr, selCells);
                     buildViolinFromValues(labelList, dataList);
                 },
+                exprBinCount,
                 null);
     }
 
@@ -1518,11 +1555,14 @@ var cellbrowser = function() {
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
     }
 
-   function gotCoords(coords, info, clusterMids) {
+   function gotCoords(coords, info, clusterMids, newRadius) {
        /* called when the coordinates have been loaded */
        if (coords.length===0)
            alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
-       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY);
+       var opts = {};
+       if (newRadius)
+           opts["radius"] = newRadius;
+       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
    }
 
     function renderData() {
@@ -1643,7 +1683,7 @@ var cellbrowser = function() {
 
        if (db.conf.quickGenes)
            db.preloadGenes(db.conf.quickGenes, function() { updateGeneTableColors(null); }, onProgressConsole, exprBinCount);
-       db.preloadAllMeta();
+       db.preloadAllMeta(exprBinCount);
     }
 
     function onTransClick(ev) {
@@ -1854,6 +1894,9 @@ var cellbrowser = function() {
     function legendGetColors(rows) {
     /* go over the legend lines: create an array of colors in the order of their meta value indexes.
      * (the values in the legend may be sorted not in the order of their internal indices) */
+        if (rows===undefined)
+            return [];
+
         var colArr = [];
         for (var i = 0; i < rows.length; i++) {
             var row = rows[i];
@@ -1871,7 +1914,7 @@ var cellbrowser = function() {
     function legendChangePaletteAndRebuild(palName) {
         /* change the legend color palette and put it into the URL */
         var rows = gLegend.rows;
-        var success = legendSetPalette(gLegend, palName, gLegend.metaFieldIdx);
+        var success = legendSetPalette(gLegend, palName);
         if (success) {
             if (palName==="default")
                 changeUrl({"pal":null});
@@ -1883,10 +1926,10 @@ var cellbrowser = function() {
         }
     }
 
-    function legendSetPalette(legend, origPalName, metaFieldIndex) {
+    function legendSetPalette(legend, origPalName) {
     /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors.
-     * metaFieldIndex is optional. If it is set, will use the predefined colors that are
-     * in the field configuration.
+     * Will use the predefined colors that are
+     * in the legend.metaInfo.colors configuration, if present.
      * */
         var palName = origPalName;
 
@@ -1906,8 +1949,8 @@ var cellbrowser = function() {
         var pal = null;
         var usePredefined = false;
         // if this is a field for which colors were defined manually, use them
-        if (metaFieldIndex!==undefined && db.conf.metaFields[metaFieldIndex].colors!==undefined && origPalName==="default") {
-            pal = db.conf.metaFields[metaFieldIndex].colors;
+        if (legend.metaInfo!==undefined && legend.metaInfo.colors!==undefined && origPalName==="default") {
+            pal = legend.metaInfo.colors;
             usePredefined = true;
         } else
             pal = makeColorPalette(palName, n);
@@ -1931,6 +1974,27 @@ var cellbrowser = function() {
         return true;
     }
 
+     function labelForBinMinMax(binMin, binMax) {
+        /* given the min/max of a numeric value bin, return a good legend for it */
+        // pretty print the numbers
+        const minDig = 2;
+        //if (binMin % 1 === 0) // % 1 = fractional part
+            //minDig = 0
+
+        const maxDig = 2;
+        //if (binMin % 1 === 0)
+         //   maxDig = 0
+
+        var legLabel = "";
+        if (binMin==="Unknown")
+            legLabel = "Unknown";
+        else if (binMin!==binMax)
+            legLabel = binMin.toFixed(minDig)+' - '+binMax.toFixed(maxDig);
+        else
+            legLabel = binMin.toFixed(minDig);
+        return legLabel;
+    }
+
     function makeLegendRowsNumeric(binInfo) {
         /* return an array of legend lines given bin info from gene expression or a numeric meta field  */
         var legendRows = [];
@@ -1951,22 +2015,7 @@ var cellbrowser = function() {
             var count  = binInfo[binIdx][2];
             var legendId = binIdx;
 
-            // pretty print the numbers
-            var minDig = 2;
-            //if (binMin % 1 === 0) // % 1 = fractional part
-                //minDig = 0
-
-            var maxDig = 2;
-            //if (binMin % 1 === 0)
-             //   maxDig = 0
-
-            var legLabel = null;
-            if (binMin==="Unknown")
-                legLabel = "Unknown";
-            else if (binMin!==binMax)
-                legLabel = binMin.toFixed(minDig)+' - '+binMax.toFixed(maxDig);
-            else
-                legLabel = binMin.toFixed(minDig);
+            var legLabel = labelForBinMinMax(binMin, binMax);
 
             var uniqueKey = legLabel;
             var legColor = null;
@@ -2380,6 +2429,7 @@ var cellbrowser = function() {
                 binMin+=stepSize;
             }
         } else if (binMethod==="quantiles") {
+            // newer method for pre-quantified fields
             var binMin = fieldInfo.minVal;
             var breaks = fieldInfo.breaks;
             var binCounts = fieldInfo.binCounts;
@@ -2408,13 +2458,16 @@ var cellbrowser = function() {
             }
         }
         else 
-            alert("invalid value for meta field binMethod: "+binMethod); 
+            // these days, we don't pre-quantify anymore. The binning is done on the client now
+            // and the meta loading function adds the bin info to the field info object
+            //alert("invalid value for meta field binMethod: "+binMethod); 
+            binInfo = fieldInfo.binInfo;
 
         return binInfo;
     }
 
     function makeLegendMeta(metaIndex, sortBy) {
-    /* Build a new gLegend object and return it */
+    /* Build a new legend object and return it */
         var legend = {};
         legend.type = "meta";
         legend.metaFieldIdx = metaIndex;
@@ -2423,13 +2476,14 @@ var cellbrowser = function() {
         var fieldInfo = db.getMetaFields()[metaIndex];
         legend.fieldName = fieldInfo.label;
         legend.title = legend.fieldName.replace(/_/g, " ");
+        legend.metaInfo = fieldInfo;
 
         // numeric meta fields are a special case
         if (fieldInfo.type==="int" || fieldInfo.type==="float") {
             var binInfo = numMetaToBinInfo(fieldInfo);
             legend.rows = makeLegendRowsNumeric(binInfo);
             legend.rowType = "range";
-            legendSetPalette(legend, "default", metaIndex);
+            legendSetPalette(legend, "default");
             return legend;
         }
 
@@ -2498,7 +2552,7 @@ var cellbrowser = function() {
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
         legend.rowType = "category";
-        legendSetPalette(legend, "default", metaIndex);
+        legendSetPalette(legend, "default");
         return legend;
     }
 
@@ -2555,6 +2609,20 @@ var cellbrowser = function() {
         htmls.push("</div>");
     }
 
+    function binInfoToValCounts(binInfo) {
+        /* given an array of (start, end, count), return an array of (label, count) */
+        var valCounts = [];
+
+        for (var binIdx = 0; binIdx < binInfo.length; binIdx++) {
+            var binMin = binInfo[binIdx][0];
+            var binMax = binInfo[binIdx][1];
+            var count  = binInfo[binIdx][2];
+            var label = labelForBinMinMax(binMin, binMax);
+            valCounts.push( [label, count] );
+        }
+        return valCounts;
+    }
+
     function onMetaMouseOver (event) {
     /* called when user hovers over meta element: shows the histogram of selected values */
         var metaHist = db.metaHist;
@@ -2571,7 +2639,10 @@ var cellbrowser = function() {
 
         var fieldIdx = parseInt(targetId.split("_")[1]);
 
-        var valCounts = db.getMetaFields()[fieldIdx].valCounts;
+        var metaInfo = db.getMetaFields()[fieldIdx];
+        var valCounts = metaInfo.valCounts;
+        if (valCounts===undefined)  // for client-side discretized fields, we only get the binning info
+            valCounts = binInfoToValCounts(metaInfo.binInfo);
 
         var valHist = metaHist[fieldIdx];
         var htmls = [];
@@ -2602,7 +2673,15 @@ var cellbrowser = function() {
         }
 
         $('#tpMetaTip').html(htmls.join(""));
-        $('#tpMetaTip').css({top: event.target.offsetTop+"px", left: metaBarWidth+"px", width:metaTipWidth+"px"});
+
+        // make sure that tooltip doesn't go outside of screen
+        var tipTop = event.target.offsetTop;
+        var tipHeight = $('#tpMetaTip').height();
+        var screenHeight = $(window).height();
+        if (tipTop+tipHeight > screenHeight)
+            tipTop = screenHeight - tipHeight - 8;
+
+        $('#tpMetaTip').css({top: tipTop+"px", left: metaBarWidth+"px", width:metaTipWidth+"px"});
         $('#tpMetaTip').show();
     }
 
@@ -2620,8 +2699,21 @@ var cellbrowser = function() {
     }
 
     function loadCoordSet(coordIdx) {
+        var newRadius = db.conf.coords[coordIdx].radius;
+        var colorOnMetaField = db.conf.coords[coordIdx].colorOnMeta;
+        
         db.loadCoords(coordIdx,
-                function(a,b,c) { gotCoords(a,b,c); renderer.drawDots();},
+                function(coords, info, clusterMids) { 
+                    gotCoords(coords,info,clusterMids, newRadius); 
+                    if (colorOnMetaField!==undefined)
+                        colorByMetaField(colorOnMetaField);
+                    else
+                        renderer.drawDots();
+                    //if (newRadius) {
+                        //renderer.port.initRadius = newRadius;
+                        //renderer.port.radius = newRadius;
+                    //}
+                },
                 onProgress);
     }
 
@@ -3122,9 +3214,13 @@ var cellbrowser = function() {
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);
         else {
-            pal = palette(palName, n);
-            if (palName==="tol-sq")
-                pal[0]='f4f7ff';
+            if (n==2)
+                pal = ["FF0000","0000FF"];
+            else {
+                pal = palette(palName, n);
+                if (palName==="tol-sq")
+                    pal[0]='f4f7ff';
+            }
         }
 
         return pal;
@@ -3513,6 +3609,9 @@ var cellbrowser = function() {
             var count = row[3];
             var freq  = 100*count/sum;
 
+            if (count===0) // never output categories with 0 count. 
+                continue;
+
             var labelClass = "tpLegendLabel";
             label = label.replace(/_/g, " ").replace(/'/g, "&#39;").trim();
 
@@ -3524,7 +3623,7 @@ var cellbrowser = function() {
                 label = "(empty)";
             }
 
-            colors.push(colorHex); // save for later
+            colors.push([i, colorHex]); // save for later
 
             var labelDesc = label;
             var labelDesc = acronyms[label] || null;
@@ -3588,16 +3687,20 @@ var cellbrowser = function() {
 
         // activate the color pickers
         for (var i = 0; i < colors.length; i++) {
+            var colInfo = colors[i];
+            var rowIdx = colInfo[0];
+            var hexCode = colInfo[1];
+
             var opt = {
                 hideAfterPaletteSelect : true,
-                color : colors[i],
+                color : hexCode,
                 showPalette: true,
                 //allowEmpty : true,
                 showInput: true,
                 preferredFormat: "hex",
                 change: onColorPickerChange
                 }
-            $("#tpLegendColorPicker_"+i).spectrum(opt);
+            $("#tpLegendColorPicker_"+rowIdx).spectrum(opt);
         }
 
         buildViolinPlot();
@@ -3711,6 +3814,10 @@ var cellbrowser = function() {
         for (var metaIdx = 1; metaIdx < metaFieldInfos.length; metaIdx++) {
             var fieldInfo = metaFieldInfos[metaIdx];
             var metaVec = db.allMeta[fieldInfo.name];
+            if (metaVec===undefined) {
+                $('#tpMeta_'+metaIdx).html("(unique identifier field)");
+                continue;
+            }
             var metaCounts = {};
             // make an object of value -> count in the cells
             for (var i = 0; i < cellCount; i++) {

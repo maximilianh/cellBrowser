@@ -7,13 +7,13 @@ click clusters to show cluster-specific marker genes, which in turn are
 clickable again.
 
 The main live of the cell browser with various CIRM and HCA datasets is
-http://cells.ucsc.edu. This documentation described how you can setup one for
+http://cells.ucsc.edu. This documentation describes how you can setup one for
 your own data and put the resulting files onto your own webserver.
 
 The UCSC cell browser is funded by grants from the California Institute of Regenerative Medicine
 and the `Chan-Zuckerberg Initiative <https://www.chanzuckerberg.com/>`_.
 
-Report problems and see the code, see `GitHub <https://github.com/maximilianh/cellBrowser>`_.
+To report problems and look at the source code, see `GitHub <https://github.com/maximilianh/cellBrowser>`_.
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
@@ -30,4 +30,5 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
    cellranger
    advanced
    combine
+   cellbrowser_conf.rst
    requirements

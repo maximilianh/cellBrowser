@@ -4,13 +4,16 @@ import logging, sys, optparse, re, unicodedata, string, csv
 from collections import defaultdict, namedtuple
 from os.path import join, basename, dirname, isfile
 
+from .cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOnce, iterItems, lineFileNextRow, setDebug
+
 dataDir = "geneAnnot"
 
+# no spaces/special chars in filenames - otherwise the URL will be rejected as invalid by urllib2
 HPRD = join(dataDir, "HPRD_molecular_class_081914.txt")
 HGNC = join(dataDir, "hgnc_complete_set_05Dec17.txt")
 SFARI = join(dataDir, "SFARI-Gene_genes_export06-12-2017.csv")
 OMIM = join(dataDir, "mim2gene.txt")
-COSMIC = join(dataDir, "Census_allWed Dec  6 18_35_54 2017.tsv")
+COSMIC = join(dataDir, "Census_allWed_Dec__6_18_35_54_2017.tsv")
 HPO = join(dataDir, "hpo_frequent_7Dec17.txt")
 BRAINSPANLMD = join(dataDir, "brainspan_genes.csv")
 BRAINSPANMOUSEDEV = join(dataDir, "brainspanMouse_9Dec17.txt")
@@ -18,7 +21,6 @@ MGIORTHO = join(dataDir, "mgi_HGNC_homologene_8Dec17.txt")
 EUREXPRESS = join(dataDir, "eurexpress_7Dec17.txt")
 DDD = join(dataDir, "DDG2P_18_10_2018.csv.gz")
 
-from cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOne
 
 # ==== functions =====
     
@@ -50,64 +52,13 @@ def parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options.debug)
     return args, options
-
-def lineFileNextRow(inFile):
-    """
-    parses tab-sep file with headers in first line
-    yields collection.namedtuples
-    strips "#"-prefix from header line
-    """
-
-    if isinstance(inFile, str):
-        fh = openFile(inFile)
-    else:
-        fh = inFile
-
-    line1 = fh.readline()
-    line1 = line1.strip("\n").lstrip("#")
-    headers = line1.split("\t")
-    headers = [re.sub("[^a-zA-Z0-9_]","_", h) for h in headers]
-    headers = [re.sub("^_","", h) for h in headers] # remove _ prefix
-    headers = [x if x!="" else "noName" for x in headers]
-
-    filtHeads = []
-    for h in headers:
-        if h[0].isdigit():
-            filtHeads.append("x"+h)
-        else:
-            filtHeads.append(h)
-    headers = filtHeads
-
-
-    Record = namedtuple('tsvRec', headers)
-    for line in fh:
-        if line.startswith("#"):
-            continue
-        line = line.decode("latin1")
-        # skip special chars in meta data and keep only ASCII
-        line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        line = line.rstrip("\n").rstrip("\r")
-        fields = splitOnce(line, "\t", len(headers)-1)
-        try:
-            rec = Record(*fields)
-        except Exception as e:
-            logging.error("Exception occured while parsing line, %s" % e)
-            logging.error("Filename %s" % fh.name)
-            logging.error("Line was: %s" % line)
-            logging.error("Does number of fields match headers?")
-            logging.error("Headers are: %s" % headers)
-            raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
-        yield rec
 
 # ----------- main --------------
 def parseBrainspanLmd(inFname):
     " return entrez -> brainspanGeneId with all entrez IDs that are in the brainspan LMD set "
-    with openStaticFile(inFname, 'rb') as csvfile:
+    with openStaticFile(inFname, 'r') as csvfile:
         ret = {}
         cr = csv.reader(csvfile)
         headers = None
@@ -135,7 +86,7 @@ def parseSfari(inFname):
     # ['status', 'gene-symbol', 'gene-name', 'chromosome', 'genetic-category', 'gene-score', 'syndromic', 'number-of-reports']
     headers = None
     ret = {}
-    with openStaticFile(inFname, 'rb') as csvfile:
+    with openStaticFile(inFname, 'r') as csvfile:
         spamreader = csv.reader(csvfile)
         for row in spamreader:
             if headers == None:
@@ -207,7 +158,7 @@ def parseHpo(inFname):
         geneToNames[entrez].add(hpoName)
 
     ret = {}
-    for entrez, names in geneToNames.iteritems():
+    for entrez, names in iterItems(geneToNames):
         names = list(names)
         names.sort()
         ret[entrez] = ", ".join(names)
@@ -249,7 +200,7 @@ def parseEurexpress(mouseEntrezToHumanEntrez, inFname):
     logging.info("Eurexpress mouse entrez IDs: %d mappable, %d not-mappable to human " % (len(entrezToEuroexpress),len(skippedMouseIds)))
     logging.debug("Eurexpress mouse: mouse entrez IDs not mappable to human: %s" % ",".join(skippedMouseIds))
     ret = {}
-    for entrezId, terms in entrezToTerms.iteritems():
+    for entrezId, terms in iterItems(entrezToTerms):
         eurexpId = entrezToEuroexpress[entrezId]
         ret[entrezId] = (eurexpId, ", ".join(sorted(list(terms))))
 
@@ -258,8 +209,8 @@ def parseEurexpress(mouseEntrezToHumanEntrez, inFname):
 def parseDDD(fname):
     " parse DDD phenotype file "
     ret = {}
-    for row in staticFileNextRow(inFname):
-        print row
+    #for row in staticFileNextRow(inFname):
+        #print row
     return ret
     
 def parseSimpleMap(inFname):
@@ -280,7 +231,7 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
             headers.append("_expr")
             headers.append("_geneLists")
             yield headers
-        sym = row.gene
+        sym = row[1]
         hprdClass = ""
         entrezId = symToEntrez.get(sym)
         omimId = entrezToOmim.get(entrezId, "")
@@ -359,10 +310,14 @@ def cbMarkerAnnotateCli():
     filename = args[0]
     outFname = args[1]
 
+    rowCount = 0
     ofh = open(outFname, "w")
     for row in tabGeneAnnotate(filename, symToEntrez, symToSfari, entrezToClass, entrezToOmim, entrezToCosmic, entrezToHpo, entrezToLmd, entrezToEuroexpress, humanToMouseEntrezList, entrezToBrainspanMouseDev):
         ofh.write("\t".join(row))
         ofh.write("\n")
+        rowCount +=1
     ofh.close()
+
+    logging.info("Annotated %d marker gene rows, output written to %s" % (rowCount, outFname))
 
 
