@@ -539,6 +539,13 @@ var cellbrowser = function() {
         renderer.drawDots();
     }
 
+    function onSelectInvertClick() {
+    /* Edit - Invert selection */
+        clearSelectionState();
+        renderer.selectInvert();
+        renderer.drawDots();
+    }
+
     function buildOneComboboxRow(htmls, comboWidth, rowIdx, queryExpr) {
         /* create one row of combobox elements in the select dialog */
         htmls.push('<div class="tpSelectRow" id="tpSelectRow_'+rowIdx+'">');
@@ -584,6 +591,7 @@ var cellbrowser = function() {
         var valCounts = db.getMetaFields()[fieldIdx].valCounts;
         if (valCounts===undefined) {
             // this is a numeric field
+            $('#tpSelectValue_'+rowIdx).val("");
             $('#tpSelectValue_'+rowIdx).show();
             $('#tpSelectMetaValueEnum_'+rowIdx).hide();
         } else {
@@ -696,12 +704,13 @@ var cellbrowser = function() {
                 query["m"] = metaName;
 
                 var val = null;
+                var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
                 if (metaInfo.type==="enum") {
-                    var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
                     var valIdx = parseInt(selVal);
-                    val = metaInfo.valCounts[valIdx][0];
-                } else
-                    val = parseFloat($('#tpSelectValue_'+rowIdx).val());
+                    val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
+                } else {
+                    val = parseFloat(selVal);
+                }
 
                 query[op] = val;
             }
@@ -870,13 +879,10 @@ var cellbrowser = function() {
         var queries = [];
         var queryStr = getVar("select");
 
-        if (queryStr===undefined)
-            queryStr = localStorage.getItem("select");
-
-        if (queryStr!==undefined && queryStr!==null)
-            queries = JSURL.parse(queryStr);
-        else {
+        if (queryStr===undefined || queryStr===null)
             queries = [makeSampleQuery()];
+        else {
+            queries = JSURL.parse(queryStr);
         }
 
         var comboWidth = 150;
@@ -1048,6 +1054,7 @@ var cellbrowser = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
+         htmls.push('<li><a id="tpSelectInvert" href="#"><span class="dropmenu-item-label">Invert selection</span><span class="dropmenu-item-content"></span></a></li>');
          htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f c</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
@@ -1133,6 +1140,7 @@ var cellbrowser = function() {
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
+       $('#tpSelectInvert').click( onSelectInvertClick );
        $('#tpSelectComplex').click( onSelectComplexClick );
        $('#tpDownloadMenu li a').click( onDownloadClick );
 
