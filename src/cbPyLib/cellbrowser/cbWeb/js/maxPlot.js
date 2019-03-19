@@ -36,6 +36,8 @@ function MaxPlot(div, top, left, width, height, args) {
     // top, left: position in pixels, integers
     // width and height: integers, in pixels, includes the status line
     
+    const HIDCOORD = 12345; // magic value for missing coordinates
+    
     var self = this; // 'this' has two conflicting meanings in javascript. 
     // I use 'self' to refer to object variables, so I can use 'this' to refer to the caller context
     
@@ -121,7 +123,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     function isHidden(x, y) {
         /* special coords are used for circles that are off-screen or otherwise not visible */
-       return ((x===12345 && y===12345)) // not shown (e.g. no coordinate or off-screen)
+       return ((x===HIDCOORD && y===HIDCOORD)) // not shown (e.g. no coordinate or off-screen)
     }
     
     this.initPort = function(args) {
@@ -521,8 +523,8 @@ function MaxPlot(div, top, left, width, height, args) {
             var y = coords[i*2+1];
             // set everything outside of current zoom range as hidden
             if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
-                pixelCoords[2*i] = 12345; // see isHidden()
-                pixelCoords[2*i+1] = 12345;
+                pixelCoords[2*i] = HIDCOORD; // see isHidden()
+                pixelCoords[2*i+1] = HIDCOORD;
             }
             else {
                 var xPx = Math.round((x-minX)*xMult)+borderSize;
@@ -1386,6 +1388,29 @@ function MaxPlot(div, top, left, width, height, args) {
     this.getSelection = function() {
         /* return selected cells as a list of ints */
         return self.selCells;
+    };
+    
+    this.selectInvert = function() {
+        /* invert selection */
+        var selCells = self.getSelection();
+        var selCellsObj = new Set();
+        for (var i = 0; i < selCells.length; i++) { // IE11 doesn't have array init constructor
+                selCellsObj.add(selCells[i]);
+        }
+
+        var newSel = [];
+        var cellCount = self.getCount();
+        for (var i = 0; i < cellCount; i++) {
+            if (! selCellsObj.has(i))
+                newSel.push(i);
+        }
+        self.selCells = newSel;
+        self._selUpdate();
+    };
+    
+    this.getCount = function() {
+        /* return maximum number of cells in dataset, may include hidden cells, see isHidden() */
+        return self.coords.orig.length;
     };
     
     // END SELECTION METHODS (could be an object?)

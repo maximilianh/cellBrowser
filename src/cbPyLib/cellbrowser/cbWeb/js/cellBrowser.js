@@ -539,6 +539,13 @@ var cellbrowser = function() {
         renderer.drawDots();
     }
 
+    function onSelectInvertClick() {
+    /* Edit - Invert selection */
+        clearSelectionState();
+        renderer.selectInvert();
+        renderer.drawDots();
+    }
+
     function buildOneComboboxRow(htmls, comboWidth, rowIdx, queryExpr) {
         /* create one row of combobox elements in the select dialog */
         htmls.push('<div class="tpSelectRow" id="tpSelectRow_'+rowIdx+'">');
@@ -875,10 +882,10 @@ var cellbrowser = function() {
         if (queryStr===undefined)
             queryStr = localStorage.getItem("select");
 
-        if (queryStr!==undefined)
-            queries = JSURL.parse(queryStr);
-        else {
+        if (queryStr===undefined || queryStr===null)
             queries = [makeSampleQuery()];
+        else {
+            queries = JSURL.parse(queryStr);
         }
 
         var comboWidth = 150;
@@ -1050,6 +1057,7 @@ var cellbrowser = function() {
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a id="tpSelectAll" href="#"><span class="dropmenu-item-label">Select all visible</span><span class="dropmenu-item-content">a</span></a></li>');
          htmls.push('<li><a id="tpSelectNone" href="#"><span class="dropmenu-item-label">Select none</span><span class="dropmenu-item-content">n</span></a></li>');
+         htmls.push('<li><a id="tpSelectInvert" href="#"><span class="dropmenu-item-label">Invert selection</span><span class="dropmenu-item-content"></span></a></li>');
          htmls.push('<li><a id="tpSelectComplex" href="#"><span class="dropmenu-item-label">Find cells...</span><span class="dropmenu-item-content">f c</span></a></li>');
          //htmls.push('<li><a id="tpMark" href="#"><span class="dropmenu-item-label">Mark selected</span><span class="dropmenu-item-content">h m</span></a></li>');
          //htmls.push('<li><a id="tpMarkClear" href="#"><span class="dropmenu-item-label">Clear marks</span><span class="dropmenu-item-content">c m</span></a></li>');
@@ -1135,6 +1143,7 @@ var cellbrowser = function() {
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
+       $('#tpSelectInvert').click( onSelectInvertClick );
        $('#tpSelectComplex').click( onSelectComplexClick );
        $('#tpDownloadMenu li a').click( onDownloadClick );
 
