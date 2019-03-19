@@ -873,7 +873,7 @@ var cellbrowser = function() {
         if (queryStr===undefined)
             queryStr = localStorage.getItem("select");
 
-        if (queryStr!==undefined)
+        if (queryStr!==undefined && queryStr!==null)
             queries = JSURL.parse(queryStr);
         else {
             queries = [makeSampleQuery()];
