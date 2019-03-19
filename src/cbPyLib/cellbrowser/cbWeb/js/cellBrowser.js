@@ -584,6 +584,7 @@ var cellbrowser = function() {
         var valCounts = db.getMetaFields()[fieldIdx].valCounts;
         if (valCounts===undefined) {
             // this is a numeric field
+            $('#tpSelectValue_'+rowIdx).val("");
             $('#tpSelectValue_'+rowIdx).show();
             $('#tpSelectMetaValueEnum_'+rowIdx).hide();
         } else {
@@ -691,12 +692,19 @@ var cellbrowser = function() {
             else {
                 var metaValTag = $('#tpSelectMetaCombo_'+rowIdx).val();
                 var metaIdx = parseInt(metaValTag.split("_")[1]);
-                var metaName = db.conf.metaFields[metaIdx].name;
+                var metaInfo = db.conf.metaFields[metaIdx];
+                var metaName = metaInfo.name;
                 query["m"] = metaName;
 
+                var val = null;
                 var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
-                var valIdx = parseInt(selVal);
-                var val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
+                if (metaInfo.type==="enum") {
+                    var valIdx = parseInt(selVal);
+                    val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
+                } else {
+                    val = parseFloat(selVal);
+                }
+
                 query[op] = val;
             }
             queries.push(query);
