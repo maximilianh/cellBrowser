@@ -327,7 +327,10 @@ def getConfig(tag, defValue=None):
         confPath = expanduser("~/.cellbrowser.conf")
         cbConf = maybeLoadConfig(confPath)
 
-    return cbConf.get(tag, defValue)
+    ret = cbConf.get(tag, defValue)
+    #if isDir:
+        #ret = expanduser(ret)
+    return ret
 
 def main_parseArgs():
     " arg parser for __main__, only used internally "
@@ -395,7 +398,11 @@ def cbMake_parseArgs():
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT, current value: %default", default=defOutDir)
+    parser.add_option("-o", "--outDir", dest="outDir", action="store",
+        help="output directory, default can be set through the env. variable CBOUT, current value: %default",
+        default=defOutDir)
+    parser.add_option("", "--dev", dest="devMode", action="store_true",
+        help="only for developers: do not add version to js/css links")
 
     (options, args) = parser.parse_args()
 
@@ -2126,10 +2133,10 @@ def splitMarkerTable(filename, geneToSym, outDir):
     #return conf
 
 def copyDatasetHtmls(inDir, outConf, datasetDir):
-    " copy dataset description html files to output directory "
+    " copy dataset description html files to output directory. Add md5s to outConf. "
     filesToCopy = []
 
-    outConf["desc"] = {}
+    outConf["descMd5s"] = {}
 
     for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png", "protocol.pdf"]:
         inFname = makeAbs(inDir, fileBase)
@@ -2140,9 +2147,7 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             outPath = join(datasetDir, fileBase)
             logging.debug("Copying %s -> %s" % (inFname, outPath))
             shutil.copy(inFname, outPath)
-
-            fileDesc = fileBase.split(".")[0]
-            outConf["desc"][fileDesc] = fileBase
+            outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
 def makeAbs(inDir, fname):
     " return absolute path of fname under inDir "
@@ -2505,7 +2510,6 @@ def getFileVersion(fname):
     data = {}
     data["fname"] = fname
     addMd5(data, fname)
-    #data["md5"] = hexHash
     data["size"] = getsize(fname)
     data["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
     return data
@@ -2627,8 +2631,16 @@ def getMd5Using(md5Cmd, fname):
     assert(err==0)
     return md5
 
+def md5ForList(l):
+    " given a list of strings, return their md5 "
+    hash_md5 = hashlib.md5()
+    for s in l:
+        hash_md5.update(s)
+    md5 = hash_md5.hexdigest()
+    return md5
+
 def md5WithPython(fname):
-    " get md5 using python lib "
+    " get md5 using python lib. OK for small files, very slow for big files. "
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -2709,15 +2721,21 @@ def convertDataset(inConf, outConf, datasetDir):
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
     it won't be converted again.
     """
-    copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
-
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField", "visibility"]:
+        "clusterField", "hubUrl", "showLabels", "ucscDb", "unit", "violinField", "visibility", "collections"]:
         copyConf(inConf, outConf, tag)
+        if tag in ["collections"]:
+            if tag in inConf and not type(inConf[tag])==type([]):
+                errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
+        if tag=="visibility":
+            if tag in inConf and inConf[tag] not in ["hide"]:
+                errAbort("Error in cellbrowser.conf: '%s' can only have value: 'hide'" % (tag))
 
     if " " in inConf["name"]:
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
+
+    copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered & trimmed tsv version of the meta table
@@ -3071,10 +3089,10 @@ def startHttpServer(outDir, port):
     httpd.serve_forever()
 
 def cbBuild(confFnames, outDir, port=None):
-    " stay compatible "
+    " stay compatible with old name "
     build(confFnames, outDir, port)
 
-def build(confFnames, outDir, port=None, doDebug=False):
+def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
     " build browser from config files confFnames into directory outDir and serve on port "
     if outDir=="" or outDir==None:
         outDir = defOutDir
@@ -3085,11 +3103,16 @@ def build(confFnames, outDir, port=None, doDebug=False):
         confFnames = [confFnames]
 
     outDir = expanduser(outDir)
+    datasets = []
     for inConfFname in confFnames:
         if isdir(inConfFname):
             inConfFname = join(inConfFname, "cellbrowser.conf")
         inConf = loadConfig(inConfFname)
-        datasetDir = join(outDir, inConf["name"])
+
+        dsName = inConf["name"]
+        datasets.append(dsName)
+
+        datasetDir = join(outDir, dsName)
         makeDir(datasetDir)
 
         outConfFname = join(outDir, "dataset.conf")
@@ -3100,9 +3123,10 @@ def build(confFnames, outDir, port=None, doDebug=False):
 
         convertDataset(inConf, outConf, datasetDir)
 
+        outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
         writeConfig(inConf, outConf, datasetDir)
 
-    cbMake(outDir)
+    cbMake(outDir, datasets)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
@@ -3225,7 +3249,7 @@ def cbBuildCli():
     #onlyMeta = options.onlyMeta
     port = options.port
 
-    cbBuild(confFnames, outDir, port)
+    build(confFnames, outDir, port, options.devMode)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
@@ -3258,6 +3282,81 @@ def addMd5(d, fname, keyName="md5", isSmall=False):
     logging.debug("Getting md5 of %s" % fname)
     d[keyName] = md5ForFile(fname, isSmall=isSmall)[:MD5LEN]
 
+def addCollections(inDir, datasets):
+    " find all collection.conf files under inDir, append to 'datasets', remove hidden datasets and return datasets "
+    if inDir is None:
+        logging.debug("collDir not defined in ~/.cellbrowser.conf, not using collections")
+        return datasets
+
+    # make map from dataset name to dataset info dict
+    nameToDs = {}
+    for ds in datasets:
+        assert(ds["name"] not in nameToDs)
+        nameToDs[ds["name"]] = ds
+
+    # make a map from collName -> dataset info dicts
+    # and dict with collection name -> list of dataset md5s
+    collDatasets = defaultdict(list)
+    dsMd5s = defaultdict(list)
+    for ds in datasets:
+        for collName in ds.get("collections", []):
+            collDatasets[collName].append(nameToDs[ds["name"]])
+            dsMd5s[collName].append(ds["md5"])
+
+    # make one md5 per collection based on the md5s of all its datasets
+    #collMd5s = {}
+    #for collName, md5s in iterItems(dsMd5s):
+        #collMd5s[collName] = md5ForList(md5s)[:MD5LEN]
+
+    logging.debug("Scanning %s for collections" % inDir)
+    inDir = expanduser(inDir)
+    collLabels = {}
+    for collName in os.listdir(inDir):
+        subPath = join(inDir, collName)
+        if not isdir(subPath):
+            logging.debug("%s is not a directory" % subPath)
+            continue
+        fname = join(subPath, "collection.conf")
+        if not isfile(fname):
+            logging.debug("Cannot find %s" % fname)
+            continue
+        conf = loadConfig(fname, requireTags=["shortLabel"])
+
+        conf["name"] = collName
+        conf["isCollection"] = True
+        conf["datasetCount"] = len(collDatasets[collName])
+        collLabels[collName] = conf["shortLabel"]
+        #conf["md5"] = collMd5s[collName]
+
+        datasets.append(conf)
+
+    # make map from collName -> list of only primary datasets (not others)
+    primCollDatasets = defaultdict(list)
+    for ds in datasets:
+        if "collections" in ds:
+            primCollName = ds["collections"][0]
+            primCollDatasets[primCollName].append(ds)
+
+    # add info about siblings to all datasets with the same primary collection
+    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
+    #dsSiblingLabels = defaultdict(list)
+    #for collName, dsList in iterItems(primCollDatasets):
+            #sibInfo = []
+            #for ds in dsList:
+                #sibInfo.append({"name":ds["name"], "shortLabel":ds["shortLabel"]})
+            #for ds in dsList:
+                #ds["sameCollection"] = sibInfo
+
+    # remove hidden datasets
+    newDsList = []
+    for ds in datasets:
+        if ds.get("visibility")=="hide":
+            logging.debug("Dataset %s is set to hide, skipping" % ds["name"])
+            continue
+        newDsList.append(ds)
+
+    return newDsList, primCollDatasets
+
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
     contents as a list A dataset description is a list with three members: A
@@ -3276,12 +3375,23 @@ def findDatasets(outDir):
             continue
 
         datasetDesc = json.load(open(fname))
-        addMd5(datasetDesc, fname, isSmall=True)
-        assert("name" in datasetDesc) # every dataset has to have a name
 
-        if datasetDesc.get("visibility")=="hide":
-            logging.debug("Dataset %s is set to hide, skipping" % datasetDesc["name"])
-            continue
+        # make a combined md5 for the dataset, based on the config file, meta, expression and the three html files
+        md5s = []
+        if "fileVersions" in datasetDesc:
+            fileVers = datasetDesc["fileVersions"]
+            md5s.append ( fileVers["outMeta"]["md5"] )
+            md5s.append ( fileVers["outMatrix"]["md5"] )
+            if "config" in fileVers:
+                md5s.append ( fileVers["config"]["md5"] )
+        if "descMd5s" in datasetDesc:
+            descs = datasetDesc["descMd5s"]
+            md5s.append (descs.get("summary", ""))
+            md5s.append (descs.get("methods", ""))
+            md5s.append (descs.get("downloads", ""))
+        datasetDesc["md5"] = md5ForList(md5s)[:MD5LEN]
+
+        assert("name" in datasetDesc) # every dataset has to have a name
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -3318,6 +3428,55 @@ def copyAllFiles(fromDir, subDir, toDir):
         #ofh.write(s)
         #ofh.close()
 
+def cpCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
+    " copy over all the summary.html files for all collections in datasets and generate md5s for collections. "
+    if len(collToDatasets.keys())==0:
+        logging.debug("No collections used")
+        return
+
+    if collDir is None:
+        logging.warn("Collections are mentioned in at least one cellbrowser.conf file but 'collDir' is not defined in ~/.cellbrowser.conf. Not adding collections.")
+        logging.warn("Collections found: %s" % collToDatasets)
+        return
+
+    collDir = expanduser(collDir)
+
+    if not isdir(collDir):
+        logging.info("directory %s not found. To use collections, please read the documentation on how to set them up." % inDir)
+        return
+
+    # make map from dataset name to dataset info dict
+    nameToDs = {}
+    for ds in datasets:
+        assert(ds["name"] not in nameToDs)
+        nameToDs[ds["name"]] = ds
+
+    for collName, datasets in iterItems(collToDatasets):
+        inDir = join(collDir, collName)
+
+        collOutDir = join(outDir, collName)
+        if not isdir(collOutDir):
+            makeDir(collOutDir)
+
+        summFname = join(inDir, "summary.html")
+        logging.debug("Copying %s to %s" % (summFname, collOutDir))
+        shutil.copy(summFname, collOutDir)
+
+        # make md5 for a collection, which is based on all datasets and the summary.html file
+        collMd5s = [ md5ForFile(summFname) ]
+        for ds in datasets:
+            collMd5s.append( ds["md5"] )
+        collMd5 = md5ForList(collMd5s)[:MD5LEN]
+        nameToDs[collName]["md5"] = collMd5
+
+        summDsList = summarizeDatasets(datasets)
+        collInfo = {}
+        collInfo["datasets"] = summDsList
+        collInfo["collection"] = nameToDs[collName]
+
+        jsonFname = join(collOutDir, "collection.json")
+        writeJson(collInfo, jsonFname)
+
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
     logging.info("Copying js, css and img files to %s" % outDir)
@@ -3329,7 +3488,7 @@ def copyStatic(baseDir, outDir):
     copyAllFiles(baseDir, "js", outDir)
     copyAllFiles(baseDir, "css", outDir)
 
-def writeVersionedLink(ofh, mask, webDir, relFname):
+def writeVersionedLink(ofh, mask, webDir, relFname, addVersion=True):
     " write sprintf-formatted mask to ofh, but add ?md5 to jsFname first. Goal is to force cache reload in browser. "
     # hack for jquery - avoid jquery button overriding any other button function
     if relFname.endswith("jquery-ui.min.js"):
@@ -3341,7 +3500,10 @@ def writeVersionedLink(ofh, mask, webDir, relFname):
 
     filePath = join(webDir, relFname)
     md5 = md5WithPython(filePath)
-    verFname = relFname+"?"+md5[:MD5LEN]
+    if addVersion:
+        verFname = relFname+"?"+md5[:MD5LEN]
+    else:
+        verFname = relFname
     outLine = mask % verFname
     ofh.write(outLine+"\n")
 
@@ -3361,27 +3523,34 @@ def writeGaScript(ofh, gaTag):
 
 """ % (gaTag, gaTag))
 
-def makeIndexHtml(baseDir, datasets, outDir):
+def summarizeDatasets(datasets):
+    " keep only the most important fields of a list of datasets and return them as a list of dicts "
     dsList = []
     for ds in datasets:
         summDs = {
                 "shortLabel" : ds["shortLabel"],
-                "sampleCount" : ds["sampleCount"],
                 "name" : ds["name"],
-                "md5" : ds["md5"]
+                "md5" : ds["md5"],
                 }
 
-        if "tags" in ds:
-            assert(type(ds["tags"])==type([])) # "tags" have to be a list, not a string or dict
-            summDs["tags"] = ds["tags"]
+        if "sampleCount" in ds:
+            summDs["sampleCount"] = ds["sampleCount"]
+        else:
+            summDs["isCollection"] = True
+            summDs["datasetCount"] = ds["datasetCount"]
+
+        for optTag in ["tags", "collections"]:
+            if optTag in ds:
+                assert(type(ds[optTag])==type([])) # has to be a list
+                summDs[optTag] = ds[optTag]
 
         dsList.append(summDs)
+    return dsList
 
+def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
+    dsList = summarizeDatasets(datasets)
     indexFname = join(baseDir, "html", "index.html")
-    #indexStr = open(indexFname).read()
-    datasetListJs = "var datasetList = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
-    #newIndexStr = indexStr.replace(old, new)
-    #assert(newIndexStr!=indexStr)
+    datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
 
     newFname = join(outDir, "index.html")
     ofh = open(newFname, "w")
@@ -3401,8 +3570,10 @@ def makeIndexHtml(baseDir, datasets, outDir):
         "ext/OverlayScrollbars.min.css", # 1.6.2, from https://cdnjs.com/libraries/overlayscrollbars
         "css/cellBrowser.css"]
 
+    addVersion = not devMode
+
     for cssFname in cssFnames:
-        writeVersionedLink(ofh, '<link rel="stylesheet" href="%s">', baseDir, cssFname)
+        writeVersionedLink(ofh, '<link rel="stylesheet" href="%s">', baseDir, cssFname, addVersion=addVersion)
 
     jsFnames = ["ext/FileSaver.1.1.20151003.min.js", "ext/jquery.3.1.1.min.js",
         "ext/palette.js", "ext/spectrum.min.js", "ext/jsurl2.js",
@@ -3417,11 +3588,11 @@ def makeIndexHtml(baseDir, datasets, outDir):
         "ext/jquery.overlayScrollbars.min.js", # 1.6.2 from https://cdnjs.com/libraries/overlayscrollbars
         "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js"]
 
-    # at UCSC, for grant reports, we need to get some idea how many IPs are using the cell browser
+    # at UCSC, for grant reports, we need to get some idea how many people are using the cell browser
     ofh.write('<script src="https://genome.ucsc.edu/js/cbTrackUsage.js"></script>\n')
 
     for jsFname in jsFnames:
-        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname)
+        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname, addVersion=addVersion)
 
     if getConfig("gaTag") is not None:
         gaTag = getConfig("gaTag")
@@ -3431,8 +3602,9 @@ def makeIndexHtml(baseDir, datasets, outDir):
     ofh.write('<body>\n')
     ofh.write('<script>\n')
     ofh.write(datasetListJs)
+    #ofh.write(colListJs)
     ofh.write('\n')
-    ofh.write('cellbrowser.loadData(datasetList);\n')
+    ofh.write('cellbrowser.loadData(datasets);\n')
     ofh.write('</script>\n');
     ofh.write('</body>\n')
     ofh.write('</html>\n')
@@ -3442,13 +3614,20 @@ def makeIndexHtml(baseDir, datasets, outDir):
     datasetLabels = [x["name"] for x in dsList]
     logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
 
-def cbMake(outDir):
+def cbMake(outDir, onlyDatasets=None, devMode=False):
     " create index.html in outDir and copy over all other static files "
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
     copyStatic(webDir, outDir)
     datasets = findDatasets(outDir)
-    makeIndexHtml(webDir, datasets, outDir)
+
+    collDir = getConfig("collDir")
+    datasets, primCollDatasets = addCollections(collDir, datasets)
+
+    cpCollectionFiles(collDir, datasets, primCollDatasets, onlyDatasets, outDir)
+
+    makeIndexHtml(webDir, datasets, outDir, devMode=devMode)
+
 
 def cbMake_cli():
     " command line interface for copying over the html and js files "
@@ -3458,7 +3637,7 @@ def cbMake_cli():
     if outDir is None:
         errAbort("You have to specify at least the output directory or set the environment variable CBOUT.")
 
-    cbMake(outDir)
+    cbMake(outDir, devMode=options.devMode)
 
 def parseGeneLocs(geneType):
     """
