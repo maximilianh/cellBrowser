@@ -408,18 +408,20 @@ def cbMake_parseArgs():
 
 def cbScanpy_parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] -e matrixFile -o outDir - run scanpy and output .tsv files
-
-    If exceptions occur, will automatically start the debugger.
+    parser = optparse.OptionParser("""usage: %prog [options] -e matrixFile -o outDir -n datasetName - run scanpy and output .tsv files
     """)
 
     parser.add_option("-e", "--exprMatrix", dest="exprMatrix", action="store",
             help="gene-cell expression matrix file, possible formats: .csv, .h5, .mtx, .txt, .tab, .loom, .h5ad. Existing meta data from .loom and .h5ad will be kept and exported.")
-    parser.add_option("", "--init", dest="init", action="store_true",
-            help="copy sample scanpy.conf to current directory")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
             help="output directory")
+
+    parser.add_option("-n", "--name", dest="name", action="store",
+            help="internal name of dataset in cell browser. No spaces or special characters.")
+
+    parser.add_option("", "--init", dest="init", action="store_true",
+            help="copy sample scanpy.conf to current directory")
 
     parser.add_option("-c", "--confFname", dest="confFname", action="store", default="scanpy.conf",
             help="config file from which settings are read, default is %default")
@@ -429,9 +431,6 @@ def cbScanpy_parseArgs():
 
     parser.add_option("-g", "--genome", dest="genome", action="store",
             help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
-
-    parser.add_option("-n", "--name", dest="name", action="store",
-            help="internal name of dataset in cell browser. No spaces or special characters.")
 
     #parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
             #help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
