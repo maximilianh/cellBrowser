@@ -29,7 +29,7 @@ Convert a Scanpy object
 From Jupyter or Python3, create a data directory with the tab-sep files and a basic cellbrowser.conf::
 
     import cellbrowser.cellbrowser as cb
-    cb.scanpyToTsv(adata, "scanpyOut", "myScanpyDataset")
+    cb.scanpyToCellbrowser(adata, "scanpyOut", "myScanpyDataset")
 
 Then, build the cell browser into a html directory::
 

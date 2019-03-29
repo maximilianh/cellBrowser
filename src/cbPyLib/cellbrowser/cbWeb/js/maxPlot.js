@@ -4,7 +4,6 @@
 /*jshint -W069 */
 
 // TODO:
-// remove onNoHover
 // fix mouseout into body -> marquee stays
 
 function getAttr(obj, attrName, def) {
@@ -159,7 +158,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         self.col = {};
         self.col.pal = null;        // list of six-digit hex codes 
-        self.col.arr = null;        // length is pxCoords/2, one byte per cell = index into self.col.pal
+        self.col.arr = null;        // length is coords.px/2, one byte per cell = index into self.col.pal
 
         self.selCells   = [];  // IDs of cells that are selected (drawn in black)
 
@@ -1591,11 +1590,13 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.onNoMouseMove = function() {
         /* called after some time has elapsed and the mouse has not been moved */
+        if (self.coords.px===null)
+            return;
         var x = self.lastMouseX - self.left; // need canvas, not screen coordinates
         var y = self.lastMouseY - self.top;
         var cellIds = self.cellsAt(x, y);
         // only call onNoCellHover if callback exists and there is nothing selected
-        if (cellIds===null && self.onNoCellHover!==null && self.selCells===null )
+        if (cellIds===null && self.onNoCellHover!==null && self.selCells===null)
                 self.onNoCellHover();
         else if (self.onCellHover!==null)
                 self.onCellHover(cellIds);

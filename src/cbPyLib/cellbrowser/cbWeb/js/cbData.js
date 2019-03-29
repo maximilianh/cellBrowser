@@ -319,7 +319,7 @@ function CbDbFile(url) {
     };
 
     this.fieldNameToIndex = function(fieldName) {
-        /* given a meta field name, return its meta table index */
+        /* given a meta field name, return its meta table index or null */
         return cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
     };
 
