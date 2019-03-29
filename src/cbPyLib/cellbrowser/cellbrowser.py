@@ -3562,13 +3562,16 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
     ofh.write('<title>UCSC Cell Browser</title>\n')
 
     cssFnames = ["ext/jquery-ui-1.12.1.css", "ext/spectrum-1.8.0.css", "ext/jquery.contextMenu.css",
+        "ext/slick.grid.css", "ext/slick.examples.css",
+        #"ext/jquery-ui-1.11.3.custom.css",
         "ext/jquery.tipsy.1.0.3.min.css", "ext/bootstrap.min.css",
         "ext/introjs.2.4.0.min.css", "ext/bootstrap-submenu.min.css",
         "ext/bootstrap-dropmenu.min.css", "ext/font-awesome.css",
         "ext/googleMaterialIcons.css", "ext/chosen.1.8.2.min.css",
         "ext/select2.4.0.4.min.css", "ext/selectize.0.12.4.min.css",
         "ext/OverlayScrollbars.min.css", # 1.6.2, from https://cdnjs.com/libraries/overlayscrollbars
-        "css/cellBrowser.css"]
+        "css/cellBrowser.css"
+        ]
 
     addVersion = not devMode
 
@@ -3584,12 +3587,20 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
         "ext/FastBitSet.js", "ext/hamster.js", "ext/split.js", "ext/normalizeWheel.js",
         "ext/tablesort.js", "ext/tablesort.number.min.js", "ext/Chart.bundle.min.js",
         "ext/chartjs-chart-box-and-violin-plot.js", "ext/jquery-ui.min.js",
-        "ext/select2.min.js", "ext/selectize.min.js", "ext/jquery.sparkline.min.js",
+        "ext/select2.min.js",
+        "ext/selectize.js", # 0.12.16
+        "ext/jquery.sparkline.min.js",
         "ext/jquery.overlayScrollbars.min.js", # 1.6.2 from https://cdnjs.com/libraries/overlayscrollbars
-        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js"]
+        "ext/jquery.event.drag-2.3.0.js", # for slickgrid 2.4.5
+        "ext/lz-string.js",  # 1.4.4, https://raw.githubusercontent.com/pieroxy/lz-string/master/libs/lz-string.js
+        "ext/slick.core.js",
+        "ext/slick.cellrangedecorator.js", "ext/slick.cellrangeselector.js", "ext/slick.cellselectionmodel.js",
+        "ext/slick.editors.js", "ext/slick.formatters.js", "ext/slick.grid.js",
+        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js",
+        ]
 
     # at UCSC, for grant reports, we need to get some idea how many people are using the cell browser
-    ofh.write('<script src="https://genome.ucsc.edu/js/cbTrackUsage.js"></script>\n')
+    ofh.write('<script async defer src="https://cells.ucsc.edu/js/cbTrackUsage.js"></script>\n')
 
     for jsFname in jsFnames:
         writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname, addVersion=addVersion)

@@ -148,11 +148,11 @@ function MaxPlot(div, top, left, width, height, args) {
         self.mode = 1;   // drawing mode
 
 
-        // everything related to coordinates
+        // everything related to circle coordinates
         self.coords = {};
         self.coords.orig = null;   // coordinates of cells in original coordinates
         self.coords.px   = null;   // coordinates of cells as screen pixels or 0,0 if not shown
-        self.coords.labels    = null;   // cluster labels in pixels, array of [x,y,text] 
+        self.coords.labels    = null;   // cluster label positions in pixels, array of [x,y,text] 
         self.coords.labelBbox = null;   // cluster label bounding boxes, array of [x1,x2,x2,y2]
 
 
@@ -943,13 +943,13 @@ function MaxPlot(div, top, left, width, height, args) {
     function clearCanvas(ctx, width, height) {
     /* clear with a white background */
         // jsperf says this is fastest on Chrome, and still OK-ish in FF
-        console.time("clear");
+        //console.time("clear");
         ctx.save();
         ctx.globalAlpha = 1.0;
         ctx.fillStyle = "rgb(255,255,255)";
         ctx.fillRect(0, 0, width, height);
         ctx.restore();
-        console.timeEnd("clear");
+        //console.timeEnd("clear");
     }
 
     // -- object methods (=access the self object)
@@ -1439,7 +1439,7 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.labelAt = function(x, y) {
-        /* return the text of the label at position x,y or null if nothing there */
+        /* return the index and the text of the label at position x,y or null if nothing there */
         //console.time("labelCheck");
         var clusterLabels = self.coords.labels;
         if (clusterLabels===null || clusterLabels===undefined)
@@ -1454,14 +1454,14 @@ function MaxPlot(div, top, left, width, height, args) {
             var box = boxes[i];
             if (box===null) // = outside of the screen
                 continue;
-            var labelText = clusterLabels[i][2];
             var x1 = box[0];
             var y1 = box[1];
             var x2 = box[2];
             var y2 = box[3];
             if ((x >= x1) && (x <= x2) && (y >= y1) && (y <= y2)) {
                 //console.timeEnd("labelCheck");
-                return labelText;
+                var labelText = clusterLabels[i][2];
+                return [labelText, i];
             }
         }
         //console.timeEnd("labelCheck");
@@ -1470,7 +1470,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.cellsAt = function(x, y) {
         /* check which cell's bounding boxes contain (x, y), return a list of the cell IDs, sorted by distance */
-        console.time("cellSearch");
+        //console.time("cellSearch");
         var pxCoords = self.coords.px;
         if (pxCoords===null)
             return null;
@@ -1491,7 +1491,7 @@ function MaxPlot(div, top, left, width, height, args) {
             }
         }
 
-        console.timeEnd("cellSearch");
+        //console.timeEnd("cellSearch");
         if (possIds.length===0)
             return null;
         else {
@@ -1559,8 +1559,8 @@ function MaxPlot(div, top, left, width, height, args) {
         var xCanvas = clientX - canvasLeft;
         var yCanvas = clientY - canvasTop;
 
-        // when the cursor is over a label, change it to a hand
-        if (self.coords.labelBbox!==null) {
+        // when the cursor is over a label, change it to a hand, but only when there is no marquee
+        if (self.coords.labelBbox!==null && self.mouseDownX === null) {
             var labelInfo = self.labelAt(xCanvas, yCanvas);
             if (labelInfo===null) {
                 self.canvas.style.cursor = self.canvasCursor;
@@ -1568,17 +1568,19 @@ function MaxPlot(div, top, left, width, height, args) {
             } else {
                 self.canvas.style.cursor = 'pointer'; // not 'hand' anymore ! and not 'grab' yet!
                 if (self.onLabelHover!==null)
-                    self.onLabelHover(labelInfo, ev);
+                    self.onLabelHover(labelInfo[0], labelInfo[1], ev);
                 }
         }
 
         if (self.mouseDownX!==null) {
+            // we're panning
             if ((ev.altKey || self.dragMode==="move") && self.panCopy!==null) {
                 var xDiff = self.mouseDownX - clientX;
                 var yDiff = self.mouseDownY - clientY;
                 self.panBy(xDiff, yDiff);
             }
             else  {
+               // zooming or selecting
                var forceAspect = false;
                var anyKey = (ev.metaKey || ev.altKey || ev.shiftKey);
                if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey )
@@ -1682,9 +1684,9 @@ function MaxPlot(div, top, left, width, height, args) {
             }
             self.lastClick = [x2, y2];
 
-            var clickedLabel = self.labelAt(x2, y2);
-            if (clickedLabel!==null && self.port.doDrawLabels)
-                self.onLabelClick(clickedLabel, ev);
+            var labelInfo = self.labelAt(x2, y2);
+            if (labelInfo!==null && self.port.doDrawLabels)
+                self.onLabelClick(labelInfo[0], labelInfo[1], ev);
             else {
                 var clickedCellIds = self.cellsAt(x2, y2);
                 // click on a cell -> update selection and redraw
@@ -1776,6 +1778,20 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.setShowLabels = function(doShow) {
         self.port.doDrawLabels = doShow;
+    };
+
+    this.setLabels = function(newLabels) {
+        /* set new label text */
+        if (newLabels.length!==self.coords.labels.length) {
+            console.log("maxPlot:setLabels error: new labels have wrong length.");
+            return;
+        }
+
+        for (var i = 0; i<newLabels.length; i++)
+            self.coords.labels[i][2] = newLabels[i];
+
+       self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, self.port.radius, 
+                                           self.canvas.width, self.canvas.height);
     };
 
     this.activateMode = function(modeName) {
