@@ -64,7 +64,7 @@ canvas { user-select: none }
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
 .tpSidebarHeader { font-weight: bold; padding-left: 4px; font-size: 16px; padding-top: 4px; height: 25px; background-color: white; text-align: center}
-#tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
+#tpLeftSidebar { overflow-x: hidden, overflow-y:auto; border-right: 1px solid #D7D7D7; height: 100%}
 #tpSideMeta { padding-left: 2px}
 #tpMetaPanel { background-color: white}
 #tpLeftTabs { border: 0}
@@ -147,9 +147,10 @@ button { line-height: 12px }
 .selectize-input {
         border-radius: 0;
         background: linear-gradient(#fff 20%,#f6f6f6 50%,#eee 52%,#f4f4f4 100%);
-        padding: 2px;
+        padding: 3px 3px;
         padding-left: 5px;
         overflow: visible; /* grrr!! otherwise baseline is ignored in tpToolBarItem */
+        min-height: 0px;
 }
 #tpToolBar > div.selectize-control.tpCombo.single {
         border-color: #aaaaaa;

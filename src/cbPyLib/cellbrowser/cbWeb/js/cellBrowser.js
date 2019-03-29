@@ -16,6 +16,10 @@ var cellbrowser = function() {
 
     // object with all information needed to map to the legend colors
     var gLegend = null;
+
+    // optional second legend, for split screen mode
+    var gOtherLegend = null;
+
     // all info about the current legend. gLegend.rows is:
     // [ colorHexStr, defaultColorHexStr, label, count, internalKey, uniqueKey ]
     // internalKey can be int or str, depending on current coloring mode.
@@ -24,8 +28,6 @@ var cellbrowser = function() {
     // uniqueKey is used to save manually defined colors to localStorage
 
     var renderer = null;
-    var renderer2 = null; // for split screen mode
-    var gWinInfo = null; // .width and .height of the PIXI canvas
 
     // last 10 genes
     var gRecentGenes = [];
@@ -1434,7 +1436,7 @@ var cellbrowser = function() {
          htmls.push('<li><a href="#" id="tpZoomPlus"><span class="dropmenu-item-label">Zoom in</span><span class="dropmenu-item-content">+</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoomMinus"><span class="dropmenu-item-label">Zoom out</span><span class="dropmenu-item-content">-</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoom100Menu"><span class="dropmenu-item-label">Zoom 100%</span><span class="dropmenu-item-content">space</span></a></li>');
-         htmls.push('<li><a href="#" id="tpSplitMenu"><span class="dropmenu-item-label">Split screen</span><span class="dropmenu-item-content">t</span></a></li>');
+         htmls.push('<li><a href="#" id="tpSplitMenu"><span id="tpSplitMenuEntry" class="dropmenu-item-label">Split screen</span><span class="dropmenu-item-content">t</span></a></li>');
 
          htmls.push('<li><hr class="half-rule"></li>');
 
@@ -1661,7 +1663,7 @@ var cellbrowser = function() {
        db.loadMetaVec(
            fieldIdx, 
            function(metaArr, newMetaInfo) {
-               buildLegendForMetaIdx(fieldIdx);
+               gLegend = buildLegendForMetaIdx(fieldIdx);
                var renderColors = legendGetColors(gLegend.rows);
                renderer.setColors(renderColors); 
                renderer.setColorArr(metaArr); 
@@ -2453,6 +2455,7 @@ var cellbrowser = function() {
         var legendRows = makeLegendRowsNumeric(binInfo);
         var colors = legendGetColors(legendRows);
 
+        gLegend = {};
         gLegend.type = "expr";
         gLegend.rows = legendRows;
         gLegend.title = "Gene: "+geneSym;
@@ -2984,7 +2987,7 @@ var cellbrowser = function() {
     }
 
     function buildLegendForMetaIdx(fieldId) {
-    /* build the legend for a meta field */
+    /* build the gLegend for a meta field */
         var legend = makeLegendMeta(fieldId);
         if (legend==null)
             return;
@@ -2994,10 +2997,10 @@ var cellbrowser = function() {
         $('#tpMetaBox_'+fieldId).addClass('tpMetaSelect');
         $('#tpMeta_'+fieldId).addClass('tpMetaValueSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
-
-        gLegend = legend;
-        buildLegendBar();
         $('#tpLegendTitle').text(legend.fieldName.replace(/_/g, " "));
+
+        buildLegendBar();
+        return legend;
     }
 
     function onMetaClick (event) {
@@ -4493,16 +4496,34 @@ var cellbrowser = function() {
     }
 
     function onActRendChange(otherRend) {
+        /* called after the user has activated a view with a click */
+        renderer.legend = gLegend;
         renderer = otherRend;
+        gLegend = otherRend.legend;
+        buildLegendBar();
     }
 
     function onSplitClick() {
         /* user clicked on View > Split Screen */
-        renderer.onActiveChange = onActRendChange;
-        renderer.split();
-
-        //var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
-        //var canvLeft   = renderer.left;
+        if (!renderer.childPlot && !renderer.parentPlot) {
+            // nothing is split yet -> start the split
+            renderer.onActiveChange = onActRendChange;
+            renderer.split();
+            renderer.legend = gLegend;
+            renderer.childPlot.legend = gLegend;
+            renderer.isMain = true;
+            $("#tpSplitMenuEntry").text("Unsplit Screen");
+            $("#mpCloseButton").click(onSplitClick);
+        } else {
+            // make sure the left renderer is the active one
+            if (!renderer.isMain) {
+                renderer.childPlot.activatePlot();
+            }
+            // remove the split
+            renderer.unsplit();
+            $("#tpSplitMenuEntry").text("Split Screen");
+            renderer.drawDots();
+        }
     }
 
     function onClusterNameClick(clusterName, nameIdx) {

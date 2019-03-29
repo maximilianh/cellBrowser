@@ -61,6 +61,11 @@ function MaxPlot(div, top, left, width, height, args) {
         self.canvas = addCanvasToDiv(div, top, left, width, height-gStatusHeight );
 
         self.interact = false;
+
+        if (args && args.showClose===true) {
+            var button = addCloseButton(top+10, left+width-60);
+        }
+
         if (args===undefined || (args["interact"]!==false)) {
             self.interact = true;
 
@@ -321,13 +326,6 @@ function MaxPlot(div, top, left, width, height, args) {
     }
     
     function addTitleDiv(top, left) {
-        //var ctx = self.ctx;
-        //ctx.save();
-        //ctx.font = "bold "+gTextSize+"px Sans-serif"
-        //ctx.fillStyle = "rgba(220, 220, 220)";
-        //ctx.textBaseline = "top";
-        //ctx.fillText(self.title,5,self.height - gTextSize - 3); 
-        //ctx.restore();
         var div = document.createElement('div');
         div.style.cursor = "default";
         div.style.left = left+"px";
@@ -336,10 +334,29 @@ function MaxPlot(div, top, left, width, height, args) {
         div.style.position = "absolute";
         div.style.fontSize = gTitleSize;
         div.id = 'mpTitle';
-        //div.innerHTML = title;
         div.style['color'] = "#B0B0B0";
         self.div.appendChild(div);
         self.titleDiv = div;
+    }
+
+    function addCloseButton(top, left) {
+        var div = document.createElement('div');
+        div.style.cursor = "default";
+        div.style.left = left+"px";
+        div.style.top = top+"px";
+        div.style.display = "block";
+        div.style.position = "absolute";
+        div.style.fontSize = gTitleSize;
+        div.style.padding = "3px";
+        div.style.borderRadius = "3px";
+        div.style.border = "1px solid #c5c5c5";
+        div.style.backgroundColor = "#f6f6f6";
+        div.style.color = "#454545";
+        div.id = 'mpCloseButton';
+        div.textContent = "Close";
+        self.div.appendChild(div);
+        self.closeButtonDiv = div;
+        return div;
     }
 
     function appendButton(parentDiv, id, title, imgName) {
@@ -969,28 +986,35 @@ function MaxPlot(div, top, left, width, height, args) {
        if (self.coords.labels!==undefined && self.coords.labels!==null)
            self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
 
-       //if (self.childPlot) {
-            //self.childPlot.px = self.coords;
-        //}
+       if (self.childPlot) {
+            self.childPlot.coords = self.coords;
+        }
+    }
+
+    this.setTopLeft = function(top, left) {
+        /* set top and left position in pixels of the canvas */
+        self.top = top;
+        self.left = left;
+        self.canvas.style.top = top+"px";
+        self.canvas.style.left = left+"px";
+
+        self.setSize(self.width, self.height, false); // resize the various buttons
     }
 
     this.setSize = function(width, height, doRedraw) {
        /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
        
        // css and canvas sizes: these must be identical, otherwise canvas gets super slow
-       var canvWidth = width;
-       var canvHeight = height-gStatusHeight;
-       self.canvas.style.width = canvWidth+"px";
-       self.canvas.style.height = canvHeight+"px";
-       self.canvas.width = canvWidth;
-       self.canvas.height = canvHeight;
-
+       self.canvas.style.width = width+"px";
+       self.canvas.width = width;
        self.width = width;
+
+       self.canvas.style.height = height+"px";
+       self.canvas.height = height;
        self.height = height;
 
-       var zoomDiv = gebi('mpCtrls');
-       zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
-       zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
+       self.zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
+       self.zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
 
        var statusDiv = self.statusLine;
        statusDiv.style.top = (self.top+height-gStatusHeight)+"px";
@@ -1391,19 +1415,19 @@ function MaxPlot(div, top, left, width, height, args) {
     
     this.selectInvert = function() {
         /* invert selection */
-        var selCells = self.getSelection();
+        var selCells = self.selCells;
         var selCellsObj = new Set();
         for (var i = 0; i < selCells.length; i++) { // IE11 doesn't have array init constructor
                 selCellsObj.add(selCells[i]);
         }
 
-        var newSel = [];
+        selCells.length = 0; // keep the same object
         var cellCount = self.getCount();
         for (var i = 0; i < cellCount; i++) {
             if (! selCellsObj.has(i))
-                newSel.push(i);
+                selCells.push(i);
         }
-        self.selCells = newSel;
+        self.selCells = selCells;
         self._selUpdate();
     };
     
@@ -1847,11 +1871,21 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.unsplit = function() {
-        /* remove the second renderer */
+        /* remove the connected non-active renderer */
         //var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
-        renderer.setSize(self.width*2, rendererHeight);
-        self.childPlot.div.remove();
-        self.childPlot = null;
+        self.setSize(self.width*2, self.height);
+        var otherRend = self.childPlot;
+        self.childPlot = undefined;
+        if (!otherRend) {
+            otherRend = self.parentPlot;
+            self.parentPlot = undefined;
+        }
+
+        //var left = Math.min(self.left, otherRend.left);
+        //self.setTopLeft(self.top, left);
+
+        otherRend.div.remove();
+        self.canvas.style["border"] = "none";
         return;
     }
 
@@ -1868,8 +1902,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
         var newDiv = document.createElement('div');
         newDiv.id = "mpPlot2";
-        self.div.appendChild(newDiv);
-        var plot2 = new MaxPlot(newDiv, newTop, newLeft, newWidth, newHeight);
+        document.body.appendChild(newDiv);
+        var plot2 = new MaxPlot(newDiv, newTop, newLeft, newWidth, newHeight, {"showClose" : true});
         //plot2.canvas.style.borderLeft = "1px solid grey";
 
         plot2.port = self.port;
@@ -1889,6 +1923,9 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.onLabelHover = self.onLabelHover;
         plot2.onNoLabelHover = self.onNoLabelHover;
         plot2.onActiveChange = self.onActiveChange;
+
+        //var closeButton = gebi('mpCloseButton');
+        //closeButton.addEventListener('click', self.unsplit);
 
         plot2.drawDots();
 

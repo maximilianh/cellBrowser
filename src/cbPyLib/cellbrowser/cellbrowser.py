@@ -3567,7 +3567,9 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
         "ext/introjs.2.4.0.min.css", "ext/bootstrap-submenu.min.css",
         "ext/bootstrap-dropmenu.min.css", "ext/font-awesome.css",
         "ext/googleMaterialIcons.css", "ext/chosen.1.8.2.min.css",
-        "ext/select2.4.0.4.min.css", "ext/selectize.0.12.4.min.css",
+        "ext/select2.4.0.4.min.css",
+        "ext/selectize.bootstrap3.css",
+        #"ext/selectize.0.12.4.min.css",
         "ext/OverlayScrollbars.min.css", # 1.6.2, from https://cdnjs.com/libraries/overlayscrollbars
         "css/cellBrowser.css"
         ]
