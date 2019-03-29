@@ -2,10 +2,12 @@ With Seurat
 -----------
 
 If you are an RStudio user and have a Seurat object, you can convert
-it to html directly without going to the Unix command line. Users of large
-servers may prefer to import a Seurat ``rds`` file.  If you have an expression
-matrix and no knowledge of Seurat, you can still use our minimal Seurat
-pipeline to do some quick inspection of your data with the Cell Browser.
+it to html directly without going to the Unix command line with the 
+``ExportToCellbrowser()`` R function. Users of large servers may prefer to
+import a Seurat ``rds`` file with the Unix command line tool ``cbImportSeurat``.
+If you have an expression matrix and no
+knowledge of Seurat, you can use our default Seurat
+pipeline ``cbSeurat`` to create a Cell Browser.
 
 Convert a Seurat2 .rds file
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
