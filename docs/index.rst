@@ -29,6 +29,7 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
    scanpy
    cellranger
    advanced
+   markers
    combine
    cellbrowser_conf.rst
    requirements

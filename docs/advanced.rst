@@ -1,6 +1,8 @@
 Advanced Topics
 ---------------
 
+For a reference of all cellbrowser.conf statements, see the example file https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+
 To update only the javascript files and re-create the index.html, you can use the command line tool cbUpgrade.
 
 To add Google Analytics tracking to your cell browser, create a file ``.cellbrowser.conf`` in your home directory

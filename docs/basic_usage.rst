@@ -46,8 +46,9 @@ the whole expression matrix again, if there is one under
 The ``-p PORT`` is option. If you only want to build html files and serve them with your own
 webserver, do not specify this option and the cbBuild will only build html files.
 
-The file ``mini/cellbrowser.conf`` explains all the various settings that are available
-in this config file. E.g. you can change the colors, explain acronyms used in your cluster names,
+Our example `cellbrowser.conf <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf>`
+explains all the various settings that are available in this config file. E.g.
+you can change the colors, explain acronyms used in your cluster names,
 add file names, add alternative dimensionality reductions, add more marker gene tables, etc. 
 
 The most important setting in cellbrowser.conf is the name of the dataset. The
