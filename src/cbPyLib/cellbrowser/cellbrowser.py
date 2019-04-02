@@ -2793,7 +2793,7 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     fa2_coord.to_csv(fname,sep='\t')
     desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
-def writeCellbrowserConf(name, coordsList, fname, args={}):
+def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     for c in name:
         assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
 
@@ -2814,11 +2814,13 @@ geneIdType='symbols'
 clusterField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
-markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]
 coords=%(coordStr)s
 #alpha=0.3
 #radius=2
 """ % locals()
+
+    if addMarkers:
+        conf += 'markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]\n'
 
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
@@ -2969,6 +2971,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         logging.warn('Couldnt find list of cluster marker genes in the h5ad file. Your cell browser '+
         "will not include marker genes. From Python, try running sc.tl.rank_genes_groups(adata) to "+
         "create the cluster annotation.")
+        addMarkers = False
     else:
         top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
         top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
@@ -2989,6 +2992,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         fname = join(path, "markers.tsv")
         logging.info("Writing %s" % fname)
         pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+        addMarkers = True
 
     ##Save metadata
     if metaFields is None:
@@ -3029,7 +3033,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     if isfile(confName):
         logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
     else:
-        writeCellbrowserConf(datasetName, coordDescs, confName, args=argDict)
+        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=addMarkers, args=argDict)
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
