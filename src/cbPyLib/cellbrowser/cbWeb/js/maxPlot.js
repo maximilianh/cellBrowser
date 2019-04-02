@@ -48,6 +48,7 @@ function MaxPlot(div, top, left, width, height, args) {
     const gZoomFromBottom = 120;  // position of zoom buttons from bottom
     const gButtonBackground = "rgb(230, 230, 230, 0.6)" // grey level of buttons
     const gButtonBackgroundClicked = "rgb(180, 180, 180, 0.6)"; // grey of buttons when clicked
+    const gCloseButtonFromRight = 60; // distance of "close" button from right edge
 
     // the rest of the initialization is done at the end of this file,
     // because the init involves many functions that are not defined yet here
@@ -63,7 +64,7 @@ function MaxPlot(div, top, left, width, height, args) {
         self.interact = false;
 
         if (args && args.showClose===true) {
-            var button = addCloseButton(top+10, left+width-60);
+            self.closeButton = addChildControls(top+10, left+width-gCloseButtonFromRight);
         }
 
         if (args===undefined || (args["interact"]!==false)) {
@@ -95,8 +96,9 @@ function MaxPlot(div, top, left, width, height, args) {
             self.selectBox = selectDiv; // we need this later
             self.setupMouse();
 
-            self.childPlot = null;    // is used: plot that is sync'ed from here
-            self.parentPlot = null;   // is used: plot that sync's to us
+            // connected plots
+            self.childPlot = null;    // plot that is syncing from us, see split()
+            self.parentPlot = null;   // plot that syncs to us, see split()
         }
 
         addProgressBars(top+Math.round(height*0.3), left+30);
@@ -135,7 +137,6 @@ function MaxPlot(div, top, left, width, height, args) {
         self.port = {}; 
         self.port.zoomRange = {}; // object with keys minX, , maxX, minY, maxY
         self.port.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
-        self.port.doDrawLabels = true;  // should cluster labels be drawn?
 
         // we keep a copy of the 'initial' arguments at 100% zoom
         self.port.initZoom   = {};
@@ -156,8 +157,9 @@ function MaxPlot(div, top, left, width, height, args) {
         // everything related to circle coordinates
         self.coords = {};
         self.coords.orig = null;   // coordinates of cells in original coordinates
-        self.coords.px   = null;   // coordinates of cells as screen pixels or 0,0 if not shown
         self.coords.labels    = null;   // cluster label positions in pixels, array of [x,y,text] 
+
+        self.coords.px   = null;   // coordinates of cells and labels as screen pixels or (HIDCOORD,HIDCOORD) if not shown
         self.coords.labelBbox = null;   // cluster label bounding boxes, array of [x1,x2,x2,y2]
 
 
@@ -167,6 +169,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         self.selCells   = [];  // IDs of cells that are selected (drawn in black)
 
+        self.doDrawLabels = true;  // should cluster labels be drawn?
         self.initPort(args);
 
         // mouse drag is modal: can be "select", "move" or "zoom"
@@ -340,6 +343,7 @@ function MaxPlot(div, top, left, width, height, args) {
     }
 
     function addCloseButton(top, left) {
+        /* add close button and sync checkbox */
         var div = document.createElement('div');
         div.style.cursor = "default";
         div.style.left = left+"px";
@@ -355,7 +359,22 @@ function MaxPlot(div, top, left, width, height, args) {
         div.id = 'mpCloseButton';
         div.textContent = "Close";
         self.div.appendChild(div);
-        self.closeButtonDiv = div;
+
+        var div = document.createElement('div');
+        div.style.cursor = "default";
+        div.style.left = left+"px";
+        div.style.top = top+"px";
+        div.style.display = "block";
+        div.style.position = "absolute";
+        div.style.fontSize = gTitleSize;
+        div.style.padding = "3px";
+        div.style.borderRadius = "3px";
+        div.style.border = "1px solid #c5c5c5";
+        div.style.backgroundColor = "#f6f6f6";
+        div.style.color = "#454545";
+        div.id = 'mpCloseButton';
+        div.textContent = "Close";
+        self.div.appendChild(div);
         return div;
     }
 
@@ -982,13 +1001,8 @@ function MaxPlot(div, top, left, width, height, args) {
        self.calcRadius();
 
        self.coords.px = scaleCoords(self.coords.orig, borderMargin, self.port.zoomRange, self.canvas.width, self.canvas.height);
-       //self.coords.labels = null;
        if (self.coords.labels!==undefined && self.coords.labels!==null)
            self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
-
-       if (self.childPlot) {
-            self.childPlot.coords = self.coords;
-        }
     }
 
     this.setTopLeft = function(top, left) {
@@ -1003,8 +1017,19 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.setSize = function(width, height, doRedraw) {
        /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
-       
-       // css and canvas sizes: these must be identical, otherwise canvas gets super slow
+       if (self.childPlot) {
+           width = width /2;
+           self.childPlot.left = self.left+width;
+           self.childPlot.canvas.style.left = self.childPlot.left+"px";
+           self.childPlot.setSize(width, height, true);
+       }
+
+       if (self.closeButton) {
+           self.closeButton.style.left = self.left + width - gCloseButtonFromRight;
+       }
+
+           
+       // css and actual canvas sizes: these must be identical, otherwise canvas gets super slow
        self.canvas.style.width = width+"px";
        self.canvas.width = width;
        self.width = width;
@@ -1034,12 +1059,24 @@ function MaxPlot(div, top, left, width, height, args) {
        /* clusterLabels is optional: array of [x, y, labelString]*/
        /* minX, maxX, etc are optional 
         * opts are optional arguments like radius, alpha etc, see initPlot/args */
-       var coordOpts = cloneObj(self.globalOpts);
-       copyObj(opts, coordOpts);
-       self.initPort(coordOpts);
-
        if (coords.length === 0)
            alert("cbDraw-setCoords called with no coordinates");
+
+       var coordOpts = cloneObj(self.globalOpts);
+       copyObj(opts, coordOpts);
+       // XX
+       var oldRadius = self.port.initRadius;
+       var oldAlpha = self.port.initAlpha;
+       var oldLabels = self.coords.pxLabels;
+       self.port = {};
+       self.initPort(coordOpts);
+       if (oldRadius)
+           self.port.initRadius = oldRadius;
+       if (oldAlpha)
+           self.port.initAlpha = oldAlpha;
+       self.coords = {};
+       // XX
+
 
        var newZr = {};
        if (minX===undefined || maxX===undefined || minY===undefined || maxY===undefined)
@@ -1047,9 +1084,8 @@ function MaxPlot(div, top, left, width, height, args) {
        else {
            newZr = {minX:minX, maxX:maxX, minY:minY, maxY:maxY};
        }
-
        copyObj(newZr, self.port.initZoom);
-       copyObj(self.port.initZoom, self.port.zoomRange);
+       copyObj(newZr, self.port.zoomRange);
 
        self.coords.orig = coords;
        self.coords.labels = clusterLabels;
@@ -1151,7 +1187,7 @@ function MaxPlot(div, top, left, width, height, args) {
         
         console.timeEnd("draw");
 
-        if (self.port.doDrawLabels===true && self.coords.labels!==null) {
+        if (self.doDrawLabels===true && self.coords.labels!==null) {
             self.coords.labelBbox = drawLabels(self.ctx, self.coords.pxLabels, self.canvas.width, self.canvas.height, zoomFact);
         }
 
@@ -1275,7 +1311,14 @@ function MaxPlot(div, top, left, width, height, args) {
         console.log("y min max "+zr.minY+" "+zr.maxY);
        
         self.port.zoomRange = newRange;
+        
         self.scaleData();
+
+        // a special case for connected plots that are not sharing our pixel coordinates
+        if (self.childPlot && self.coords!==self.childPlot.coords) {
+            self.childPlot.zoomBy(zoomFact, xPx, yPx);
+        }
+
         return newRange;
     };
 
@@ -1460,6 +1503,11 @@ function MaxPlot(div, top, left, width, height, args) {
         zr.maxY = zr.maxY + yDiffData;
 
         self.scaleData();
+
+        // a special case for connected plots that are not sharing our pixel coordinates
+        if (self.childPlot && self.coords!==self.childPlot.coords) {
+            self.childPlot.moveBy(xDiff, yDiff);
+        }
     };
 
     this.labelAt = function(x, y) {
@@ -1709,7 +1757,7 @@ function MaxPlot(div, top, left, width, height, args) {
             self.lastClick = [x2, y2];
 
             var labelInfo = self.labelAt(x2, y2);
-            if (labelInfo!==null && self.port.doDrawLabels)
+            if (labelInfo!==null && self.doDrawLabels)
                 self.onLabelClick(labelInfo[0], labelInfo[1], ev);
             else {
                 var clickedCellIds = self.cellsAt(x2, y2);
@@ -1801,8 +1849,17 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.setShowLabels = function(doShow) {
-        self.port.doDrawLabels = doShow;
+        self.doDrawLabels = doShow;
     };
+
+    this.getLabels = function() {
+        /* get current labels */
+        var ret = [];
+        var labels = self.coords.labels;
+        for (var i = 0; i<labels.length; i++)
+            ret.push(labels[i][2]);
+        return ret;
+    }
 
     this.setLabels = function(newLabels) {
         /* set new label text */
@@ -1816,6 +1873,11 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, self.port.radius, 
                                            self.canvas.width, self.canvas.height);
+       
+        // a special case for connected plots that are not sharing our pixel coordinates
+        if (self.childPlot && self.coords!==self.childPlot.coords) {
+            self.childPlot.setLabels(newLabels);
+        }
     };
 
     this.activateMode = function(modeName) {
@@ -1870,27 +1932,10 @@ function MaxPlot(div, top, left, width, height, args) {
         return self;
     };
 
-    this.unsplit = function() {
-        /* remove the connected non-active renderer */
-        //var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
-        self.setSize(self.width*2, self.height);
-        var otherRend = self.childPlot;
-        self.childPlot = undefined;
-        if (!otherRend) {
-            otherRend = self.parentPlot;
-            self.parentPlot = undefined;
-        }
-
-        //var left = Math.min(self.left, otherRend.left);
-        //self.setTopLeft(self.top, left);
-
-        otherRend.div.remove();
-        self.canvas.style["border"] = "none";
-        return;
-    }
-
     this.split = function() {
-        /* reduce width of renderer, create new renderer and place both side-by-side */
+        /* reduce width of renderer, create new renderer and place both side-by-side.
+         * They initially share the .coords but setCoords() can break that relationship. 
+         * */
         var canvHeight  = self.height;
         var canvLeft    = self.left;
         var newWidth = self.width/2;
@@ -1898,22 +1943,29 @@ function MaxPlot(div, top, left, width, height, args) {
         var newLeft  = self.left+newWidth;
         var newHeight = canvHeight+gStatusHeight;
 
-        self.setSize(newWidth, newHeight);
-
         var newDiv = document.createElement('div');
         newDiv.id = "mpPlot2";
         document.body.appendChild(newDiv);
+
+        var opts = cloneObj(self.globalOpts);
+        opts.showClose = true;
+
         var plot2 = new MaxPlot(newDiv, newTop, newLeft, newWidth, newHeight, {"showClose" : true});
         //plot2.canvas.style.borderLeft = "1px solid grey";
+
+        plot2.statusLine.style.display = "none";
 
         plot2.port = self.port;
         plot2.selCells = self.selCells;
 
-        plot2.coords = Object.assign({}, self.coords); // = shallow copy
+        //plot2.coords = Object.assign({}, self.coords); // = shallow copy
+        plot2.coords = self.coords;
 
         plot2.col = {};
         plot2.col.pal = self.col.pal;
         plot2.col.arr = self.col.arr;
+
+        self.setSize(newWidth, newHeight, false); // will call scaleData(), but not redraw.
 
         plot2.onLabelClick = self.onLabelClick;
         plot2.onCellClick = self.onCellClick;
@@ -1939,6 +1991,22 @@ function MaxPlot(div, top, left, width, height, args) {
 
         return plot2;
     };
+
+    this.unsplit = function() {
+        /* remove the connected non-active renderer */
+        //var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
+        self.setSize(self.width*2, self.height, false);
+        var otherRend = self.childPlot;
+        self.childPlot = undefined;
+        if (!otherRend) {
+            otherRend = self.parentPlot;
+            self.parentPlot = undefined;
+        }
+
+        otherRend.div.remove();
+        self.canvas.style["border"] = "none";
+        return;
+    }
 
     // object constructor code
     self.initCanvas(div, top, left, width, height);

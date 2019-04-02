@@ -1557,7 +1557,7 @@ var cellbrowser = function() {
        $("#tpLegendBar").css("height", window.innerHeight - menuBarHeight);
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
-       renderer.setSize(rendererWidth, rendererHeight, false);
+       renderer.setSize(rendererWidth, rendererHeight, true);
     }
 
     var progressUrls = {}
@@ -1664,6 +1664,7 @@ var cellbrowser = function() {
            fieldIdx, 
            function(metaArr, newMetaInfo) {
                gLegend = buildLegendForMetaIdx(fieldIdx);
+               buildLegendBar();
                var renderColors = legendGetColors(gLegend.rows);
                renderer.setColors(renderColors); 
                renderer.setColorArr(metaArr); 
@@ -1952,12 +1953,22 @@ var cellbrowser = function() {
        var opts = {};
        if (newRadius)
            opts["radius"] = newRadius;
-       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
 
-       // labels can be overriden from the cart
+       // labels can be overriden by the user cart
        var labelField = db.conf.labelField;
-       var labelInfo = findMetaInfo(labelField);
-       renderer.setLabels(labelInfo.ui.shortLabels);
+       var metaInfo = findMetaInfo(labelField);
+       var oldToNew = makeLabelRenames(metaInfo);
+       var origLabels = [];
+       for (var i = 0; i < clusterMids.length; i++) {
+           var labelInfo = clusterMids[i];
+           var oldName = labelInfo[2];
+           origLabels.push(oldName);
+           var newName = oldToNew[oldName];
+           labelInfo[2] = newName;
+       }
+       renderer.origLabels = origLabels;
+
+       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
    }
 
     function renderData() {
@@ -2308,7 +2319,7 @@ var cellbrowser = function() {
     }
 
     function legendUpdateLabels(fieldName) {
-        /* copy the labels into the legend rows */
+        /* re-copy the labels into the legend rows */
         // format of rows is: defColor, currColor, label, count, valueIndex, uniqueKey
         var shortLabels = findMetaInfo(fieldName).ui.shortLabels;
         var rows = gLegend.rows;
@@ -2999,7 +3010,6 @@ var cellbrowser = function() {
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
         $('#tpLegendTitle').text(legend.fieldName.replace(/_/g, " "));
 
-        buildLegendBar();
         return legend;
     }
 
@@ -3127,10 +3137,6 @@ var cellbrowser = function() {
                         colorByMetaField(colorOnMetaField);
                     else
                         renderer.drawDots();
-                    //if (newRadius) {
-                        //renderer.port.initRadius = newRadius;
-                        //renderer.port.radius = newRadius;
-                    //}
                 },
                 onProgress);
     }
@@ -3140,6 +3146,7 @@ var cellbrowser = function() {
         var coordIdx = parseInt(params.selected);
         loadCoordSet(coordIdx);
         changeUrl({"layout":coordIdx, "zoom":null});
+        renderer.coordIdx = coordIdx;
         // remove the focus from the combo box
         removeFocus();
     }
@@ -3911,6 +3918,42 @@ var cellbrowser = function() {
         return newCoords;
     }
 
+    function makeLabelRenames(metaInfo) {
+        /* return an obj with old cluster name -> new cluster name */
+        var valCounts = metaInfo.valCounts;
+        var newLabels = metaInfo.ui.shortLabels;
+
+        var oldToNew = {};
+        for (var i = 0; i < valCounts.length; i++) {
+            var oldLabel = valCounts[i][0];
+            var newLabel = newLabels[i];
+            oldToNew[oldLabel] = newLabel;
+        }
+        return oldToNew;
+    }
+
+    function rendererUpdateLabels(metaInfo) {
+        /* update the labels in the renderer from the metaInfo data. */
+        var oldToNew = makeLabelRenames(metaInfo);
+
+        var oldRendLabels = null;
+        if (renderer.origLabels) {
+            oldRendLabels = renderer.origLabels;
+        }
+        else {
+            oldRendLabels = renderer.getLabels();
+            renderer.origLabels = oldRendLabels;
+        }
+
+        var newRendLabels = [];
+        for (var i = 0; i < oldRendLabels.length; i++) {
+            var oldLabel = oldRendLabels[i];
+            var newLabel = oldToNew[oldLabel];
+            newRendLabels.push(newLabel);
+        }
+        renderer.setLabels(newRendLabels);
+    }
+
     function onLegendLabelClick(ev) {
     /* called when user clicks on legend entry. */
 
@@ -3922,7 +3965,7 @@ var cellbrowser = function() {
             var metaInfo = gLegend.metaInfo;
             cartFieldArrayUpdate(db, metaInfo, "shortLabels", legendId, newLabel);
             legendUpdateLabels(gLegend.metaInfo.name);
-            renderer.setLabels(gLegend.metaInfo.ui.shortLabels);
+            rendererUpdateLabels(metaInfo);
             buildLegendBar();
             renderer.drawDots();
         }
@@ -3952,6 +3995,7 @@ var cellbrowser = function() {
             }
         }
         else {
+            // clear the old selection
             if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey) {
                 renderer.selectClear();
                 $('.tpLegend').removeClass('tpLegendSelect');
@@ -4086,6 +4130,7 @@ var cellbrowser = function() {
             var label = row[2];
 
             var count = row[3];
+            var valueIndex = row[4];
             var freq  = 100*count/sum;
 
             if (count===0) // never output categories with 0 count. 
@@ -4115,7 +4160,7 @@ var cellbrowser = function() {
             }
 
             var classStr = "tpLegend";
-            var line = "<div id='tpLegend_" +i+ "' class='" +classStr+ "'>";
+            var line = "<div id='tpLegend_" +valueIndex+ "' class='" +classStr+ "'>";
             htmls.push(line);
             htmls.push("<input class='tpColorPicker' id='tpLegendColorPicker_"+i+"' />");
 
@@ -4500,6 +4545,7 @@ var cellbrowser = function() {
         renderer.legend = gLegend;
         renderer = otherRend;
         gLegend = otherRend.legend;
+        $("#tpLayoutCombo").val( otherRend.coordIdx ).trigger('chosen:updated');
         buildLegendBar();
     }
 
@@ -4508,22 +4554,29 @@ var cellbrowser = function() {
         if (!renderer.childPlot && !renderer.parentPlot) {
             // nothing is split yet -> start the split
             renderer.onActiveChange = onActRendChange;
-            renderer.split();
+
+            var currCoordIdx = $("#tpLayoutCombo").val();
             renderer.legend = gLegend;
-            renderer.childPlot.legend = gLegend;
+            renderer.coordIdx = currCoordIdx; // keep for onActRendChange
             renderer.isMain = true;
+
+            renderer.split();
+
+            renderer.childPlot.legend = gLegend;
+            renderer.childPlot.coordIdx = currCoordIdx; // keep for onActRendChange
+
             $("#tpSplitMenuEntry").text("Unsplit Screen");
             $("#mpCloseButton").click(onSplitClick);
         } else {
-            // make sure the left renderer is the active one
+            // stop the split
             if (!renderer.isMain) {
+                // make sure the left renderer is the active one
                 renderer.childPlot.activatePlot();
             }
-            // remove the split
             renderer.unsplit();
             $("#tpSplitMenuEntry").text("Split Screen");
-            renderer.drawDots();
         }
+        renderer.drawDots();
     }
 
     function onClusterNameClick(clusterName, nameIdx) {
