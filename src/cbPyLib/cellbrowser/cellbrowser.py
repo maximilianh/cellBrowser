@@ -940,6 +940,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         valArr = list(valCounts.keys())
 
         valCounts = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True)) # = (label, count)
+        #valCounts = valCounts.items()
         if colors!=None:
             colArr = []
             foundColors = 0
@@ -955,7 +956,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
             if foundColors > 0:
                 fieldMeta["colors"] = colArr
                 if len(notFound)!=0:
-                    logging.warn("No default color found for field values %s" % notFound)
+                    logging.warn("No default color found for field values %s. Set these to grey." % notFound)
 
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
@@ -2194,6 +2195,7 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     calculate the positions (centers) for the cluster labels
     given a coord list and a vector of the same size with the label indices, return a list of [x, y, coordLabel]
     """
+    logging.debug("Making cluster labels for %s" % labelVals)
     assert(len(xVals)==len(labelVec)==len(yVals))
 
     # prep the arrays
@@ -2218,6 +2220,7 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
         if len(xList)==0:
+            midInfo.append([HIDDENCOORD, HIDDENCOORD, clusterName])
             continue
 
         clusterName = labelVals[clustIdx]
@@ -2634,7 +2637,7 @@ def md5ForList(l):
     " given a list of strings, return their md5 "
     hash_md5 = hashlib.md5()
     for s in l:
-        hash_md5.update(s)
+        hash_md5.update(s.encode("utf8"))
     md5 = hash_md5.hexdigest()
     return md5
 
@@ -2790,7 +2793,7 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     fa2_coord.to_csv(fname,sep='\t')
     desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
-def writeCellbrowserConf(name, coordsList, fname, args={}):
+def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     for c in name:
         assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
 
@@ -2811,11 +2814,13 @@ geneIdType='symbols'
 clusterField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
-markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]
 coords=%(coordStr)s
 #alpha=0.3
 #radius=2
 """ % locals()
+
+    if addMarkers:
+        conf += 'markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]\n'
 
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
@@ -2962,7 +2967,12 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
 
     ##Check for cluster markers
-    if 'rank_genes_groups' in adata.uns:
+    if 'rank_genes_groups' not in adata.uns:
+        logging.warn('Couldnt find list of cluster marker genes in the h5ad file. Your cell browser '+
+        "will not include marker genes. From Python, try running sc.tl.rank_genes_groups(adata) to "+
+        "create the cluster annotation.")
+        addMarkers = False
+    else:
         top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
         top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
         marker_df= pd.DataFrame()
@@ -2982,9 +2992,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         fname = join(path, "markers.tsv")
         logging.info("Writing %s" % fname)
         pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
-
-    else:
-        errAbort ('Couldnt find cluster markers list')
+        addMarkers = True
 
     ##Save metadata
     if metaFields is None:
@@ -3025,7 +3033,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     if isfile(confName):
         logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
     else:
-        writeCellbrowserConf(datasetName, coordDescs, confName, args=argDict)
+        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=addMarkers, args=argDict)
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -3248,7 +3256,7 @@ def cbBuildCli():
     #onlyMeta = options.onlyMeta
     port = options.port
 
-    build(confFnames, outDir, port, options.devMode)
+    build(confFnames, outDir, port)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
@@ -3285,7 +3293,7 @@ def addCollections(inDir, datasets):
     " find all collection.conf files under inDir, append to 'datasets', remove hidden datasets and return datasets "
     if inDir is None:
         logging.debug("collDir not defined in ~/.cellbrowser.conf, not using collections")
-        return datasets
+        return datasets, {}
 
     # make map from dataset name to dataset info dict
     nameToDs = {}
