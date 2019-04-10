@@ -190,7 +190,7 @@ var cellbrowser = function() {
         var metaFieldInfo = db.conf.metaFields;
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var metaInfo = metaFieldInfo[i];
-            if (metaInfo.name===findName) {
+            if (metaInfo.name===findName || metaInfo.shortLabel===findName) {
                 metaInfo.index = i;
                 return metaInfo;
             }
@@ -4606,7 +4606,7 @@ var cellbrowser = function() {
             htmls.push(colName)    
         showTooltip(ev.clientX+15, ev.clientY, htmls.join(" "));
     }
-    
+
     function plotHeatmap(clusterMetaInfo, exprVecs, geneSyms) {
         /* Create the heatmap from exprVecs. 
         geneVecs is an array of binned gene expression vectors, one per gene. 
