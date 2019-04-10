@@ -899,7 +899,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
 
     if intCount+unknownCount==len(valList) and not forceEnum:
         # field is an integer
-        newVals = floatToIntList(newVals)
+        #newVals = floatToIntList(newVals)
         #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
         #assert(min(newVals) > -2**32) # please contact us if you need very big numbers
         #assert(max(newVals) < 2**32)  # please contact us if you need very big numbers
