@@ -3,6 +3,10 @@
 // and expression data (string -> float, one mapping per circle)
 
 /* jshint -W097 */
+/* jshint -W117 */  // don't complain about unknown classes, like Set()
+/* jshint -W104 */  // allow 'const' 
+/* jshint -W069 */  // object access with ["xx"]
+ 
 "use strict";
 
 var cellbrowser = function() {
@@ -34,7 +38,7 @@ var cellbrowser = function() {
 
     // -- CONSTANTS
     var gTitle = "UCSC Cell Browser";
-    const COL_PREFIX = "col_";
+    var COL_PREFIX = "col_";
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a
     // "sample" or a "cell". This will adapt help menus, menus, etc.
@@ -106,6 +110,23 @@ var cellbrowser = function() {
         console.log(JSON.stringify(o));
     }
 
+    function formatString (str) {
+        /* Stackoverflow code https://stackoverflow.com/a/18234317/233871 */
+        /* "a{0}bcd{1}ef".formatUnicorn("foo", "bar"); // yields "aFOObcdBARef" */
+            if (arguments.length) {
+                var t = typeof arguments[0];
+                var key;
+                var args = ("string" === t || "number" === t) ?
+                    Array.prototype.slice.call(arguments)
+                    : arguments[0];
+    
+                for (key in args) {
+                    str = str.replace(new RegExp("\\{" + key + "\\}", "gi"), args[key]);
+                }
+            }
+            return str;
+        }
+
     function debug(msg, args) {
         if (DEBUG) {
             console.log(formatString(msg, args));
@@ -125,6 +146,14 @@ var cellbrowser = function() {
     function cloneArray(a) {
     /* returns a copy of an array */
         return a.slice();
+    }
+
+    function isEmpty(obj) {
+        for(var key in obj) {
+            if(obj.hasOwnProperty(key))
+                return false;
+        }
+        return true;
     }
 
     function allEmpty(arr) {
@@ -200,22 +229,7 @@ var cellbrowser = function() {
         return val;
     }
 
-    function formatString (str) {
-    /* Stackoverflow code https://stackoverflow.com/a/18234317/233871 */
-    /* "a{0}bcd{1}ef".formatUnicorn("foo", "bar"); // yields "aFOObcdBARef" */
-        if (arguments.length) {
-            var t = typeof arguments[0];
-            var key;
-            var args = ("string" === t || "number" === t) ?
-                Array.prototype.slice.call(arguments)
-                : arguments[0];
 
-            for (key in args) {
-                str = str.replace(new RegExp("\\{" + key + "\\}", "gi"), args[key]);
-            }
-        }
-        return str;
-    }
 
     function copyToClipboard(element) {
     /* https://stackoverflow.com/questions/22581345/click-button-copy-to-clipboard-using-jquery */
@@ -255,21 +269,6 @@ var cellbrowser = function() {
          $(idStr).parent().removeClass("disabled").css("pointer-events", '');
     }
 
-    function updateToolbar() {
-    /* update the toolbar with the current dataset info */
-        var geneList = [];
-
-        for(var key in gCurrentDataset.matrixOffsets) {
-            geneList.push({id:key, text:key});
-        }
-
-        //$('#tpGeneCombo').select2({
-            //placeholder : "Gene Symbol",
-            //ajax : {},
-            //dataAdapter : RefAdapter,
-        //});
-    }
-
     function updateMenu() {
     /* deactivate menu options based on current variables */
      // the "hide selected" etc menu options are only shown if some cells are selected
@@ -302,20 +301,22 @@ var cellbrowser = function() {
 
     function prettyNumber(/*int*/ count) /*str*/ {
         /* convert a number to a shorter string, e.g. 1200 -> 1.2k, 1200000 -> 1.2M, etc */
+        var f = count;
+
         if (count>1000000) {
-            var f = (count / 1000000);
+            f = (count / 1000000);
             return f.toFixed(1)+"M";
         }
         if (count>10000) {
-            var f = (count / 1000);
+            f = (count / 1000);
             return f.toFixed(0)+"k";
         }
         if (count>1000) {
-            var f = (count / 1000);
+            f = (count / 1000);
             return f.toFixed(1)+"k";
         }
 
-        return count;
+        return f;
     }
 
     function addMd5(url, md5s, key) {
@@ -368,19 +369,20 @@ var cellbrowser = function() {
         });
     }
 
-    function openDatasetDialog(collInfo) {
-    /* build dataset open dialog, collInfo is optional, if present shows a collection chooser  */
+    function openDatasetDialog(openDsName, collInfo) {
+    /* build dataset open dialog, collInfo is optional, if present shows only the collection  */
 
         var title = null;
         var note = "";
         var noteSpace = "2px";
         var datasetList = [];
+        var openDsInfo;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (collInfo!==undefined && collInfo["collection"]!==undefined) {
+        if (collInfo!==undefined && collInfo.collection!==undefined) {
             // select from a collection
             title = "Select one Dataset from the collection "+collInfo.collection.shortLabel;
-            datasetList = collInfo["datasets"];
+            datasetList = collInfo.datasets;
             note = "The collection '"+collInfo.collection.shortLabel+"' contains "+collInfo.datasets.length+" datasets. " +
                 "Please choose the one you want to display. To move between datasets later in the cell browser, use the 'Collection' dropdown. ";
             noteSpace = "2em";
@@ -391,6 +393,8 @@ var cellbrowser = function() {
             datasetList = gDatasetList;
             title = "Choose Cell Browser Dataset";
         }
+
+        openDsInfo = datasetList[0];
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
@@ -405,6 +409,10 @@ var cellbrowser = function() {
         htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+buttonWidth+"px'>");
         for (var i = 0; i < datasetList.length; i++) {
             var dataset = datasetList[i];
+
+            if (dataset.name===openDsName)
+                openDsInfo = dataset;
+
             var clickClass = "tpDatasetButton";
             if (dataset.isCollection)
                 clickClass = "tpCollectionButton";
@@ -466,7 +474,7 @@ var cellbrowser = function() {
 
         var buttons = {};
         if (db!==null) {
-            buttons["Cancel"] = function() { 
+            buttons.Cancel = function() { 
                 $( this ).dialog( "close" ); 
                 if (dataset.isCollection)
                     openDatasetDialog(); // show top-level dialog
@@ -479,7 +487,7 @@ var cellbrowser = function() {
 
         function openCollOrDataset(selDatasetIdx) {
             /* click handler, opens either a collection or a dataset */
-            var dsInfo = datasetList[selDatasetIdx]
+            var dsInfo = datasetList[selDatasetIdx];
             var datasetName = dsInfo.name;
             if (dsInfo.isCollection)
                 showCollectionDialog(datasetName);
@@ -491,7 +499,7 @@ var cellbrowser = function() {
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
             // load the current dataset when the user presses Return
-            if (e.which == '13') {
+            if (e.which === '13') {
                 openCollOrDataset(selDatasetIdx);
             }
         });
@@ -539,24 +547,9 @@ var cellbrowser = function() {
 
         // finally, activate the default pane and load its html
         $("button.list-group-item").eq(activeIdx).trigger("focus");
-        openDatasetLoadPane(dataset);
+        openDatasetLoadPane(openDsInfo);
     }
 
-    function drawLayoutMenu() {
-       /* Add the View / Layout menu to the DOM */
-      var htmls = [];
-      var coordFiles = gCurrentDataset.coordFiles;
-      for (var i=0; i<coordFiles.length; i++) {
-           var label = coordFiles[i].shortLabel;
-           if (label===undefined) {
-               label = "Dataset "+i;
-               console.log("Dataset "+i+" has no 'shortLabel' attribute");
-           }
-           htmls.push('<li><a href="#" class="tpDataset" id="'+i+'">'+label+'</a></li>');
-      }
-      $("#tpLayoutMenu").empty();
-      $("#tpLayoutMenu").append(htmls.join(""));
-    }
 
     function onSelChange(cellIds) {
     /* called each time when the selection has been changed */
@@ -580,24 +573,6 @@ var cellbrowser = function() {
     /* File - Save Image as ... */
         var canvas = $("canvas")[0];
         canvas.toBlob(function(blob) { saveAs( blob , "cellBrowser.png"); } , "image/png");
-    }
-
-    function onDownloadClick() {
-    /* user clicks one of the "download data" submenu links: matrix, meta or coords  */
-        var name = event.target.id.split("_")[1]; // the name of the dataset
-        var baseUrl = gCurrentDataset.baseUrl;
-        var url = null;
-        if (name==="matrix") {
-            url = joinPaths([baseUrl,"geneMatrix.tsv"]);
-            // hack for aparna, to send the original matrix
-            if (baseUrl==="aparna/" || baseUrl==="aparna")
-                url = joinPaths([baseUrl,"matrix.tsv.gz"]);
-            document.location.href = url;
-        }
-        if (name==="meta") {
-            url = joinPaths([baseUrl,"meta.tsv"]);
-            document.location.href = url;
-        }
     }
 
     function onSelectAllClick() {
@@ -729,7 +704,7 @@ var cellbrowser = function() {
         var rowType = "gene";
         var metaName = query["m"];
         var op = getQueryOp(query);
-        if (metaName==undefined) {
+        if (metaName===undefined) {
             // this is a gene query
             findCellsUpdateRowType(rowIdx, rowType);
             selectizeSetValue("#tpSelectGeneCombo_"+rowIdx, query["g"]);
@@ -770,7 +745,7 @@ var cellbrowser = function() {
             var op = $('#tpSelectOperator_'+rowIdx).val();
 
             var queryType = $('#tpSelectType_'+rowIdx).val();
-            if (queryType=="expr") {
+            if (queryType==="expr") {
                 var gene = $('#tpSelectGeneCombo_'+rowIdx).val();
                 var val = $('#tpSelectValue_'+rowIdx).val();
                 query["g"] = gene;
@@ -783,17 +758,18 @@ var cellbrowser = function() {
                 var metaName = metaInfo.name;
                 query["m"] = metaName;
 
-                var val = null;
+                var opVal = null;
+                var selOp = null;
                 if (metaInfo.type==="enum") {
-                    var selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
+                    let selVal = $('#tpSelectMetaValueEnum_'+rowIdx).val();
                     var valIdx = parseInt(selVal);
-                    val = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
+                    opVal = db.conf.metaFields[metaIdx].valCounts[valIdx][0];
                 } else {
-                    var selVal = $('#tpSelectValue_'+rowIdx).val();
-                    val = parseFloat(selVal);
+                    let selVal = $('#tpSelectValue_'+rowIdx).val();
+                    opVal = parseFloat(selVal);
                 }
 
-                query[op] = val;
+                query[op] = opVal;
             }
             queries.push(query);
         }
@@ -870,18 +846,18 @@ var cellbrowser = function() {
             var selCells = searchArrayForFuncAndVal(exprArr, funcVal);
             queryResults.push(selCells);
             doneQueries++;
-            if (doneQueries==queries.length)
+            if (doneQueries===queries.length)
                 allQueriesDone();
         }
 
         function gotMetaArr(metaArr, metaInfo, funcVal) {
             /* filter meta data array with funcVal = function + value  */
             if (metaInfo.origVals)
-                metaArr = metaInfo.origVals; // numerical attributes have the original numbers stored away
+                metaArr = metaInfo.origVals; // numerical meta fields have the original numbers stored 
             var selCells = searchArrayForFuncAndVal(metaArr, funcVal);
             queryResults.push(selCells);
             doneQueries++;
-            if (doneQueries==queries.length)
+            if (doneQueries===queries.length)
                 allQueriesDone();
         }
 
@@ -971,8 +947,9 @@ var cellbrowser = function() {
 
         var comboWidth = 250;
 
+        var query;
         for (var i=0; i < queries.length; i++) {
-            var query = queries[i];
+            query = queries[i];
             buildOneComboboxRow(htmls, comboWidth, i, query);
         }
 
@@ -980,8 +957,9 @@ var cellbrowser = function() {
 
         showDialogBox(htmls, "Find cells based on annotation or gene expression", {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
 
+
         for (i=0; i < queries.length; i++) {
-            var query = queries[i];
+            query = queries[i];
             connectOneComboboxRow(comboWidth, i, query);
         }
 
@@ -1038,6 +1016,8 @@ var cellbrowser = function() {
         var uriStr = LZString.compressToEncodedURIComponent(jsonStr);
         localStorage.setItem(fullKey, comprStr);
         var urlData = {};
+        if (isEmpty(data))
+            uriStr = null;
         urlData[key] = uriStr;
         changeUrl(urlData);
         console.log("Saving state: ", data);
@@ -1048,7 +1028,7 @@ var cellbrowser = function() {
          * apply changes like labels/color/etc stored the userMeta object to db.conf.metaFields.
          * Potentially clean up the changes and recreate the cart object.
          * This function changes db.metaFields[fieldName], 
-         * it adds: .ui.shortLabels, .ui.longLabels, ui.pal and .ui.colors;
+         * it adds: .ui.shortLabels, .ui.longLabels, ui.palette and .ui.colors;
          * */
 
         if (db.cart===undefined)
@@ -1074,7 +1054,7 @@ var cellbrowser = function() {
                 longLabels = cloneArray(metaInfo.longLabels);
             else
                 longLabels = cloneArray(shortLabels);
-            var newLabels = fieldChanges.longLabels;
+            newLabels = fieldChanges.longLabels;
             longLabels = copyNonEmpty(newLabels, longLabels);
             
             // create the colors
@@ -1162,8 +1142,9 @@ var cellbrowser = function() {
         var cart = {};
         var key = "cart";
         var uriStr = getVar(key, null);
+        var jsonStr;
         if (uriStr!==null) {
-            var jsonStr = LZString.decompressFromEncodedURIComponent(uriStr);
+            jsonStr = LZString.decompressFromEncodedURIComponent(uriStr);
             cart = JSON.parse(jsonStr);
             console.log("Loading cart from URL: ", cart);
         }
@@ -1171,13 +1152,14 @@ var cellbrowser = function() {
             var fullKey = datasetName+"###"+key;
             var comprStr = localStorage.getItem(fullKey);
             if (comprStr) {
-                var jsonStr = LZString.decompress(comprStr);
+                jsonStr = LZString.decompress(comprStr);
                 cart = JSON.parse(jsonStr);
                 console.log("Loading cart from local storage: ", cart);
             }
         }
         db.cart = cart;
         createMetaUiFields(db);
+
     }
 
     function onRenameClustersClick() {
@@ -1209,9 +1191,9 @@ var cellbrowser = function() {
                     if (row["newName"]===row["origName"])
                         shortLabels.push("");
                     else
-                        shortLabels.push(row["newName"])
+                        shortLabels.push(row["newName"]);
 
-                    longLabels.push(row["mouseOver"])
+                    longLabels.push(row["mouseOver"]);
                     colors.push(row["color"]);
                 }
 
@@ -1248,7 +1230,7 @@ var cellbrowser = function() {
                 }
                 grid.invalidate();
             }
-        }
+        };
 
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
 
@@ -1289,7 +1271,7 @@ var cellbrowser = function() {
             if (colors)
                 color = colors[i];
 
-            var valCount = metaInfo.valCounts[i]
+            var valCount = metaInfo.valCounts[i];
             var valRow = {
                 "origName":valCount[0], 
                 "newName": shortLabel,
@@ -1341,7 +1323,7 @@ var cellbrowser = function() {
                 var hasWildcards = $("#tpHasWildcard")[0].checked;
                 db.loadFindCellIds(idList, onSearchDone, onProgressConsole, hasWildcards);
                 }
-        }
+        };
 
         htmls.push("<textarea id='tpIdList' style='height:320px;width:400px;display:block'>");
         htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
@@ -1437,6 +1419,7 @@ var cellbrowser = function() {
          htmls.push('<li><a href="#" id="tpZoomMinus"><span class="dropmenu-item-label">Zoom out</span><span class="dropmenu-item-content">-</span></a></li>');
          htmls.push('<li><a href="#" id="tpZoom100Menu"><span class="dropmenu-item-label">Zoom 100%</span><span class="dropmenu-item-content">space</span></a></li>');
          htmls.push('<li><a href="#" id="tpSplitMenu"><span id="tpSplitMenuEntry" class="dropmenu-item-label">Split screen</span><span class="dropmenu-item-content">t</span></a></li>');
+         htmls.push('<li><a href="#" id="tpHeatMenu"><span id="tpHeatMenuEntry" class="dropmenu-item-label">Heatmap</span><span class="dropmenu-item-content">h</span></a></li>');
 
          htmls.push('<li><hr class="half-rule"></li>');
 
@@ -1501,6 +1484,7 @@ var cellbrowser = function() {
        //$('#tpOnlySelectedButton').click( onShowOnlySelectedClick );
        $('#tpZoom100Menu').click( onZoom100Click );
        $('#tpSplitMenu').click( onSplitClick );
+       $('#tpHeatMenu').click( onHeatClick );
        $('#tpZoomPlus').click( onZoomInClick );
        $('#tpZoomMinus').click( onZoomOutClick );
        //$('#tpShowAllButton').click( onShowAllClick );
@@ -1516,7 +1500,7 @@ var cellbrowser = function() {
        $('#tpSelectNone').click( onSelectNoneClick );
        $('#tpSelectInvert').click( onSelectInvertClick );
        $('#tpSelectComplex').click( onFindCellsClick );
-       $('#tpDownloadMenu li a').click( onDownloadClick );
+
 
        $('#tpRenameClusters').click( onRenameClustersClick );
 
@@ -1536,7 +1520,7 @@ var cellbrowser = function() {
        $(document).click ( function() { doHover= false; });
 
        // when user releases the mouse outside the canvas, remove the zooming marquee
-       $(document).mouseup ( function(ev) { if (ev.target.nodeName!=="canvas") { renderer.resetMarquee() }} );
+       $(document).mouseup ( function(ev) { if (ev.target.nodeName!=="canvas") { renderer.resetMarquee(); }} );
 
        $('[data-submenu]').submenupicker();
 
@@ -1546,9 +1530,20 @@ var cellbrowser = function() {
        /* resize all divs and the renderer to current window size */
        var rendererLeft = metaBarWidth+metaBarMargin;
        var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
-
+       
        var rendererWidth = window.innerWidth - legendBarWidth - rendererLeft;
        var legendBarLeft = rendererWidth+metaBarMargin+metaBarWidth;
+
+       var heatWidth, heatHeight;
+       if (db.heatmap) {
+            heatWidth = rendererWidth;
+            heatHeight = db.heatmap.height;
+            rendererHeight = rendererHeight - heatHeight;
+            db.heatmap.setSize(heatWidth, heatHeight);
+            let heatTop = window.innerHeight - heatHeight;
+            db.heatmap.div.style.top = heatTop+"px";
+            db.heatmap.draw();
+       }
 
        $("#tpToolBar").css("width", rendererWidth);
 
@@ -1558,9 +1553,10 @@ var cellbrowser = function() {
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
        renderer.setSize(rendererWidth, rendererHeight, true);
+       
     }
 
-    var progressUrls = {}
+    var progressUrls = {};
 
     function onProgressConsole(ev) {
         //console.log(ev);
@@ -1668,6 +1664,7 @@ var cellbrowser = function() {
                var renderColors = legendGetColors(gLegend.rows);
                renderer.setColors(renderColors); 
                renderer.setColorArr(metaArr); 
+               fieldInfo.arr = metaArr;
                doneLoad(); 
            }, 
            exprBinCount,
@@ -1716,7 +1713,7 @@ var cellbrowser = function() {
             // the version if no cells are selected
             for (var cellIdx = 0; cellIdx < exprVec.length; cellIdx++) {
                 var val = exprVec[cellIdx];
-                if (splitArr[cellIdx]==0)
+                if (splitArr[cellIdx]===0)
                     arr1.push(val);
                 else
                     arr2.push(val);
@@ -1724,9 +1721,9 @@ var cellbrowser = function() {
         else
             // the version with a cell selection
             for (var i = 0; i < selCells.length; i++) {
-                var cellIdx = selCells[i];
-                var val = exprVec[cellIdx];
-                if (splitArr[cellIdx]==0)
+                let cellIdx = selCells[i];
+                let val = exprVec[cellIdx];
+                if (splitArr[cellIdx]===0)
                     arr1.push(val);
                 else
                     arr2.push(val);
@@ -1814,7 +1811,7 @@ var cellbrowser = function() {
 
         var yLabel = null;
         if (db.conf.unit===undefined && db.conf.matrixArrType==="Uint32")
-            yLabel = "read/UMI count"
+            yLabel = "read/UMI count";
         if (db.conf.unit!==undefined)
             yLabel = db.conf.unit;
 
@@ -1865,7 +1862,7 @@ var cellbrowser = function() {
         var selCells = renderer.getSelection();
         // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
         // restrict the plot to the selected cells, if any
-        if (db.conf.violinField!=undefined) {
+        if (db.conf.violinField!==undefined) {
             buildViolinFromMeta(exprVec, db.conf.violinField, selCells);
         } else {
             // there is no violin field
@@ -1909,7 +1906,7 @@ var cellbrowser = function() {
             onDone = function() { renderer.drawDots(); };
 
         function gotGeneVec(exprArr, decArr, geneSym, geneDesc, binInfo) {
-            /* called when the expression vector has been loaded */
+            /* called when the expression vector has been loaded and binning is done */
             if (decArr===null)
                 return;
             console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
@@ -1993,6 +1990,9 @@ var cellbrowser = function() {
                    renderer.setColors(legendGetColors(gLegend.rows));
 
                renderer.setTitle("Dataset: "+db.conf.shortLabel);
+
+
+               
                if (selList)
                    findCellsMatchingQueryList(selList, function (cellIds) {
                         renderer.selectSet(cellIds);
@@ -2089,7 +2089,11 @@ var cellbrowser = function() {
        }
 
        if (db.conf.quickGenes)
-           db.preloadGenes(db.conf.quickGenes, function() { updateGeneTableColors(null); }, onProgressConsole, exprBinCount);
+           db.preloadGenes(db.conf.quickGenes, function() { 
+               updateGeneTableColors(null); 
+               if (getVar("heat")==="1")
+                   onHeatClick();
+            }, onProgressConsole, exprBinCount);
        db.preloadAllMeta(exprBinCount);
     }
 
@@ -2346,18 +2350,20 @@ var cellbrowser = function() {
         }
     }
 
+    function legendSetColors(legend, colors) {
+        var rows = legend.rows;
+        for (let i = 0; i < rows.length; i++) {
+            rows[i][1] = colors[i];
+        }
+    }
+
     function legendSetPalette(legend, origPalName) {
     /* update the defColor [1] attribute of all legend rows. pal is an array of hex colors.
      * Will use the predefined colors that are
      * in the legend.metaInfo.colors configuration, if present.
      * */
         var palName = origPalName;
-
-        //palName = getVar("pal", palName);
-
         if (origPalName==="default") {
-            legendResetColors();
-            //changeUrl({"pal":null});
             if (legend.rowType==="category")
                 palName = cDefQualPalette;
             else
@@ -2380,9 +2386,7 @@ var cellbrowser = function() {
             return false;
         }
 
-        for (var i = 0; i < rows.length; i++) {
-            rows[i][1] = pal[i];
-        }
+        legendSetColors(legend, pal);
         legend.palName = palName;
 
         // update the dropdown menu
@@ -2438,14 +2442,18 @@ var cellbrowser = function() {
             var legLabel = labelForBinMinMax(binMin, binMax);
 
             var uniqueKey = legLabel;
-            var legColor = null;
-
+         
             // override any color with the color specified in the current URL
             var savKey = COL_PREFIX+legLabel;
             var legColor = getVar(savKey, null);
 
             if (binMin===0 && binMax===0) {
-                legLabel = "No Value";
+                legLabel = "0";
+                uniqueKey = "noExpr";
+                legColor = cNullColor;
+            }
+            else if (binMin==="Unknown" && binMax==="Unknown") {
+                legLabel = "Unknown or no alue";
                 uniqueKey = "noExpr";
                 legColor = cNullColor;
             }
@@ -2509,9 +2517,9 @@ var cellbrowser = function() {
         var geneSym = null;
         var quickGenes = db.conf.quickGenes;
         if (quickGenes)
-            geneSym = alphaNumSearch(quickGenes, saneSym)
+            geneSym = alphaNumSearch(quickGenes, saneSym);
         if (geneSym===null)
-            geneSym = alphaNumSearch(gRecentGenes, saneSym)
+            geneSym = alphaNumSearch(gRecentGenes, saneSym);
 
         loadGeneAndColor(geneSym);
         event.stopPropagation();
@@ -2543,7 +2551,7 @@ var cellbrowser = function() {
 
         if (options.showOk!==undefined)
             dialogOpts["buttons"].OK = function() { $( this ).dialog( "close" ); };
-        if (options.showClose!=undefined)
+        if (options.showClose!==undefined)
             dialogOpts["buttons"].Cancel = function() { $( this ).dialog( "close" ); };
         //dialogOpts["position"] = "center";
         //dialogOpts["height"] = "auto";
@@ -2591,7 +2599,7 @@ var cellbrowser = function() {
         var geneCount = gLoad_geneList.length;
         var cellIdCount = cellIds.length;
         for (var i = 0; i < cellIdCount; i++) {
-            cellId = cellIds[i];
+            let cellId = cellIds[i];
             newExprData[cellId] = new Float32Array(gLoad_geneList); // XX or a = [] + a.length = x ?
         }
 
@@ -2609,7 +2617,7 @@ var cellbrowser = function() {
             newDeciles[geneSym] = deciles;
 
             for (var cellI = 0; cellI < cellIdCount; cellI++) {
-                cellId = cellIds[cellI];
+                let cellId = cellIds[cellI];
                 newExprData[cellId][geneI] = geneVec[cellI];
             }
         }
@@ -2748,7 +2756,7 @@ var cellbrowser = function() {
         var htmls = [];
         htmls.push("<div id='tpGeneProgress'><div class='tpProgressLabel' id='tpProgressLabel'>Loading...</div></div>");
 
-        if (notFoundGenes.length!=0) {
+        if (notFoundGenes.length!==0) {
             htmls.push("<div id='tpNotFoundGenes'>Could not find the following gene symbols: ");
             htmls.push(notFoundGenes.join(", "));
             htmls.push("</div>");
@@ -2760,7 +2768,7 @@ var cellbrowser = function() {
             //showDialogBox(htmls, "Warning", 400);
         }
 
-        var showOk = (notFoundGenes.length!=0);
+        var showOk = (notFoundGenes.length!==0);
         showDialogBox(htmls, "Downloading expression data", {width:350, showOk:true});
 
         var progressLabel = $( "#tpProgressLabel" );
@@ -2810,14 +2818,14 @@ var cellbrowser = function() {
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         var colsPerRow = Math.round(tableWidth / cellWidth);
-        var cellWidth = Math.round(tableWidth/colsPerRow);
+        cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
         for (var i = 0; i < geneInfos.length; i++) {
             var geneInfo = geneInfos[i];
             var geneId   = geneInfo[0];
             var geneDesc = geneInfo[1];
-            if (((i % colsPerRow) == 0) && (i!=0)) {
+            if (((i % colsPerRow) === 0) && (i!==0)) {
                 htmls.push("</tr><tr>");
             }
             htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
@@ -2844,40 +2852,40 @@ var cellbrowser = function() {
         var binMethod = fieldInfo.binMethod;
         if (binMethod==="uniform") {
             // old method, not used anymore
-            var binMin = fieldInfo.minVal;
+            let binMin = fieldInfo.minVal;
             var stepSize = fieldInfo.stepSize;
-            var binCounts = fieldInfo.binCounts;
-            var binCount = fieldInfo.binCounts.length;
+            let binCounts = fieldInfo.binCounts;
+            let binCount = fieldInfo.binCounts.length;
             for (var i=0; i<binCount; i++) {
                 binInfo.push( [binMin, binMin+stepSize, binCounts[i]] );
                 binMin+=stepSize;
             }
         } else if (binMethod==="quantiles") {
             // newer method for pre-quantified fields
-            var binMin = fieldInfo.minVal;
-            var breaks = fieldInfo.breaks;
-            var binCounts = fieldInfo.binCounts;
-            var binCountsLen = fieldInfo.binCounts.length;
-            var binIdx = 0;
-            if (breaks[0]=="Unknown") {
+            let binMin = fieldInfo.minVal;
+            let breaks = fieldInfo.breaks;
+            let binCounts = fieldInfo.binCounts;
+            let binCountsLen = fieldInfo.binCounts.length;
+            let binIdx = 0;
+            if (breaks[0]==="Unknown") {
                 binInfo.push( ["Unknown", "Unknown", binCounts[0]] );
                 binIdx = 1;
             }
 
             for (; binIdx<binCountsLen; binIdx++) {
-                var binMin = breaks[binIdx];
-                var binMax = breaks[binIdx+1];
-                var binCount = binCounts[binIdx];
+                let binMin = breaks[binIdx];
+                let binMax = breaks[binIdx+1];
+                let binCount = binCounts[binIdx];
                 binInfo.push( [binMin, binMax, binCount] );
             }
         }
         else if (binMethod==="raw") {
             // no binning was done at all, this happens when there are not enough distinct values
-            var values = fieldInfo.values;
-            var binCounts = fieldInfo.binCounts;
-            for (var i=0; i<values.length; i++) {
-                var value = values[i];
-                var valCount = binCounts[i];
+            let values = fieldInfo.values;
+            let binCounts = fieldInfo.binCounts;
+            for (let i=0; i<values.length; i++) {
+                let value = values[i];
+                let valCount = binCounts[i];
                 binInfo.push( [value, value, valCount] );
             }
         }
@@ -2888,6 +2896,32 @@ var cellbrowser = function() {
             binInfo = fieldInfo.binInfo;
 
         return binInfo;
+    }
+
+    function getFieldColors(metaInfo) {
+        /* return a list with the color codes for a field, taking into account field type and cart settings */
+        
+        let palName = metaInfo.ui.palette;
+        let colCount;
+        if (!palName)
+            if (metaInfo.type==="int" || metaInfo.type==="float") {
+                palName = cDefGradPalette;
+                colCount = exprBinCount+1; // +1 because <unknown> is a special bin
+            }
+            else {
+                palName = cDefQualPalette;
+                colCount = metaInfo.valCounts.length;
+            }
+
+        var colors = makeColorPalette(palName, colCount);
+
+        let colOverrides = metaInfo.ui.colors;
+        if (colOverrides)
+            for (let i=0; i<colOverrides.length; i++)
+                if (colOverrides[i])
+                    colors[i] = colOverrides[i];
+    
+        return colors;
     }
 
     function makeLegendMeta(metaIndex, sortBy) {
@@ -2956,19 +2990,14 @@ var cellbrowser = function() {
         for (var legRowIdx = 0; legRowIdx < countListSorted.length; legRowIdx++) {
             var legRowInfo = countListSorted[legRowIdx];
             //var label = legRowInfo[0];
-            var valIdx = legRowInfo[2]; // index of the original field in fieldInfo
+            let valIdx = legRowInfo[2]; // index of the original field in fieldInfo
 
             var label = shortLabels[valIdx];
             var count = legRowInfo[1];
             var uniqueKey = label;
 
-            //var defColor = defaultColors[legRowIdx];
             if (likeEmptyString(label))
                 color = cNullColor;
-            //else {
-                //defColor = defaultColors[defColIdx];
-                //defColIdx++;
-            //    }
             // override any color with the color specified in the current URL
             var savKey = COL_PREFIX+label;
             var color = getFromUrl(savKey, null);
@@ -2983,24 +3012,10 @@ var cellbrowser = function() {
         return legend;
     }
 
-    function findCellIdsForLegendIds (cellIdToLegendId, legendIds, cellIds) {
-    /* given a legendId, return an object with cellIds that are associated to a given class */
-        if (cellIds==undefined)
-            cellIds = {};
-        for (var i = 0; i < legendIds.length; i++) {
-            var legendId = legendIds[i];
-            for (var cellId in cellIdToLegendId) {
-                if (gClasses[cellId] == legendId)
-                    cellIds[cellId] = true;
-                }
-        }
-        return cellIds;
-    }
-
     function buildLegendForMetaIdx(fieldId) {
     /* build the gLegend for a meta field */
         var legend = makeLegendMeta(fieldId);
-        if (legend==null)
+        if (legend===null)
             return;
 
         $('.tpMetaBox').removeClass('tpMetaSelect');
@@ -3120,7 +3135,7 @@ var cellbrowser = function() {
             var isSelStr = "";
             var entry = entries[i];
             if ((selIdx!==undefined && i===selIdx))
-                isSelStr = " selected"
+                isSelStr = " selected";
             htmls.push('<option value="'+entry[0]+'"'+isSelStr+'>'+entry[1]+'</option>');
         }
         htmls.push('</select>');
@@ -3174,7 +3189,7 @@ var cellbrowser = function() {
 
     function showCollectionDialog(collName) {
         /* load collection with given name and open dialog box for it */
-        loadCollectionInfo(collName, function(collData) { openDatasetDialog(collData)});
+        loadCollectionInfo(collName, function(collData) { openDatasetDialog(null, collData)});
     }
 
     function loadDataset(datasetName, resetVars) {
@@ -3187,7 +3202,7 @@ var cellbrowser = function() {
 
         db = new CbDbFile(datasetName);
 
-        var vars = undefined;
+        var vars;
         if (resetVars)
             vars = {};
 
@@ -3200,18 +3215,19 @@ var cellbrowser = function() {
 
         // start the tutorial after a while
         var introShownBefore = localStorage.getItem("introShown");
-        if (introShownBefore==undefined)
+        if (introShownBefore===undefined)
            setTimeout(function(){ showIntro(true); }, 3000); // shown after 5 secs
     }
 
     function loadCollectionInfo(collName, onDone) {
         /* load collection info and run onDone */
-        var jsonUrl = cbUtil.joinPaths([collName, "collection.json"])
+        var jsonUrl = cbUtil.joinPaths([collName, "collection.json"]);
         cbUtil.loadJson(jsonUrl, onDone);
     }
 
     function onDatasetChange(ev, params) {
         /* user changed the dataset in the collection dropdown box */
+        /* jshint validthis: true */
         $(this).blur();
         removeFocus();
 
@@ -3229,7 +3245,7 @@ var cellbrowser = function() {
             var coordFiles = files[i];
             var label = coordFiles.shortLabel;
             if (label===undefined)
-                warn("Layout coordinate file "+i+" has no .shortLabel attribute")
+                warn("Layout coordinate file "+i+" has no .shortLabel attribute");
             entries.push([i, label]);
         }
         buildComboBox(htmls, id, entries, 0, "Select a layout algorithm...", width);
@@ -3334,7 +3350,7 @@ var cellbrowser = function() {
     function makeHubUrl(geneSym) {
         /* return URL of the hub.txt file, possibly jumping to a given gene  */
             var hubUrl = db.conf.hubUrl;
-            if (hubUrl==undefined)
+            if (hubUrl===undefined)
                 return null;
             var ucscDb = db.conf.ucscDb;
             if (ucscDb===undefined) {
@@ -3382,7 +3398,7 @@ var cellbrowser = function() {
         activateTooltip('#tpOpenUcsc');
         activateTooltip('#tpOpenDatasetButton');
 
-        $('#tpButtonInfo').click( openDatasetDialog );
+        $('#tpButtonInfo').click( function() {openDatasetDialog(db.datasetIdx)} );
 
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
@@ -3620,7 +3636,7 @@ var cellbrowser = function() {
     function hslToRgb(h, s, l) {
       var r, g, b;
 
-      if (s == 0) {
+      if (s === 0) {
 	r = g = b = l; // achromatic
       } else {
 	var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
@@ -3666,7 +3682,7 @@ var cellbrowser = function() {
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);
         else {
-            if (n==2)
+            if (n===2)
                 pal = ["FF0000","0000FF"];
             else {
                 pal = palette(palName, n);
@@ -3749,6 +3765,7 @@ var cellbrowser = function() {
         Mousetrap.bind('f c', onFindCellsClick );
         Mousetrap.bind('f i', function() { onSelectByIdClick(); return false; } );
         Mousetrap.bind('t', onSplitClick );
+        Mousetrap.bind('h', onHeatClick );
 
         Mousetrap.bind('up', function() { renderer.movePerc(0, 0.1); renderer.drawDots(); } );
         Mousetrap.bind('left', function() { renderer.movePerc(-0.1, 0); renderer.drawDots(); } );
@@ -3770,7 +3787,7 @@ var cellbrowser = function() {
 
     // https://stackoverflow.com/a/33861088/233871
     function isInt(x) {
-        return (typeof x==='number') && x % 1 == 0;
+        return (typeof x==='number') && x % 1 === 0;
     }
 
     function naturalSort (a, b) {
@@ -3813,7 +3830,7 @@ var cellbrowser = function() {
         if (oFxNcL > oFyNcL) { return 1; }
     }
     return 0;
-};
+}
 
     function sortPairsBy(countList, sortBy) {
     /* sort an array in the format [name, count] by either name (using naturalSort) or count */
@@ -3878,22 +3895,6 @@ var cellbrowser = function() {
         }
     }
 
-    function findDotsWithMeta(metaIdx, hlValue) {
-    /* return array of cellIds with a given meta value */
-        var metaData = gCurrentDataset.metaData;
-        ret = [];
-        for (var i = 0; i < pixelCoords.length; i++) {
-            var cellId = pixelCoords[i][0];
-            var x = pixelCoords[i][1];
-            var y = pixelCoords[i][2];
-            var metaRow = metaData[cellId];
-            var metaVal = metaRow[metaIdx];
-            if (metaVal === hlValue) {
-                ret.push(cellId);
-            }
-        }
-    }
-
     function removeCellIds(coords, cellIds) {
     /* remove all coords that are in an object of cellIds */
         var newCoords = [];
@@ -3930,6 +3931,12 @@ var cellbrowser = function() {
             oldToNew[oldLabel] = newLabel;
         }
         return oldToNew;
+    }
+
+    function getClusterFieldInfo() {
+        var clusterField = db.conf.labelField;
+        var clusterMetaInfo = findMetaInfo(clusterField);
+        return clusterMetaInfo;
     }
 
     function rendererUpdateLabels(metaInfo) {
@@ -3971,7 +3978,7 @@ var cellbrowser = function() {
         }
 
         var legendId = parseInt(ev.target.id.split("_")[1]);
-        if (("lastClicked" in gLegend) && gLegend.lastClicked==legendId) {
+        if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
             // user clicked the same entry as before: 
             gLegend.lastClicked = null;
             if (gLegend.type!=="meta") {
@@ -4051,7 +4058,7 @@ var cellbrowser = function() {
             //renderer.render(stage);
             //updateMenu();
         //}
-        if (key==0) {
+        if (key===0) {
             copyToClipboard("#tpMeta_"+metaIdx);
             //$("textarea").select();
             //document.execCommand('copy');
@@ -4095,7 +4102,7 @@ var cellbrowser = function() {
     /* draws current legend as specified by gLegend.rows
      * sortBy can be "name" or "count" or "undefined" (=auto-detect)
      * */
-        if (gLegend.rows==undefined)
+        if (gLegend.rows===undefined)
             return;
 
         $('#tpLegendContent').empty();
@@ -4113,7 +4120,7 @@ var cellbrowser = function() {
         // get the sum of all, to calculate frequency
         var sum = 0;
         for (var i = 0; i < rows.length; i++) {
-            var count = rows[i][3];
+            let count = rows[i][3];
             sum += count;
         }
 
@@ -4121,7 +4128,7 @@ var cellbrowser = function() {
         if (acronyms===undefined)
             acronyms = {};
 
-        for (var i = 0; i < rows.length; i++) {
+        for (i = 0; i < rows.length; i++) {
             var row = rows[i];
             var colorHex = row[0]; // manual color
             if (colorHex===null)
@@ -4129,7 +4136,7 @@ var cellbrowser = function() {
 
             var label = row[2];
 
-            var count = row[3];
+            let count = row[3];
             var valueIndex = row[4];
             var freq  = 100*count/sum;
 
@@ -4149,7 +4156,6 @@ var cellbrowser = function() {
 
             colors.push([i, colorHex]); // save for later
 
-            var labelDesc = label;
             var labelDesc = acronyms[label] || null;
             if (labelDesc===null) {
                 // only show the full value on mouse over if the label is long, "" suppresses mouse over
@@ -4210,7 +4216,7 @@ var cellbrowser = function() {
         //$.contextMenu( menuOpt );
 
         // activate the color pickers
-        for (var i = 0; i < colors.length; i++) {
+        for (let i = 0; i < colors.length; i++) {
             var colInfo = colors[i];
             var rowIdx = colInfo[0];
             var hexCode = colInfo[1];
@@ -4231,8 +4237,10 @@ var cellbrowser = function() {
 
     }
 
-    function onColorPickerChange(color) {
+    function onColorPickerChange(color, ev) {
         /* called when user manually selects a color in the legend with the color picker */
+        console.log(ev);
+        /* jshint validthis: true */
         var valueIdx = parseInt(this.id.split("_")[1]);
         var rows = gLegend.rows;
         var clickedRow = rows[valueIdx];
@@ -4240,6 +4248,7 @@ var cellbrowser = function() {
         var defColorHex = clickedRow[1];
         var valueKey = clickedRow[5];
 
+        /* jshint validthis: true */
         var newCol = $(this).spectrum('get');
 
         var newColHex = "";
@@ -4282,12 +4291,11 @@ var cellbrowser = function() {
             var sum = 0;
 
             var avg = 0;
-            if (cellIds!==null && cellIds.length!=0) {
+            if (cellIds!==null && cellIds.length!==0) {
                 for (var ci=0; ci<cellIds.length; ci++) {
                     sum += vec[cellIds[ci]];
                 }
                 avg = Math.round(sum / cellIds.length);
-                //console.log("sum "+sum+" avg "+avg);
             }
             var color = pal[avg];
 	    var fontColor = "#333333";
@@ -4297,26 +4305,6 @@ var cellbrowser = function() {
 	    //$("#tpGeneBarCell_"+i).css("color", fontColor);
         }
         console.timeEnd("avgCalc");
-    }
-
-    function countValues(arr) {
-        /* count values in array, return an array of [value, count], sorted by count */
-        // first make a list of all possible meta values and their counts
-        var metaData = gCurrentDataset.metaData;
-        var metaCounts = {};
-        for (var i = 0; i < pixelCoords.length; i++) {
-            var cellId = pixelCoords[i][0];
-            var metaRow = metaData[cellId];
-            var metaVal = metaRow[metaIndex];
-            metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
-        }
-
-        var counts = {};
-        for (var i = 0; i < arr.length; i++) {
-            var val = arr[i];
-            counts[val] = (counts[num] || 0) + 1;
-            var metaVal = metaRow[metaIndex];
-        }
     }
 
     function updateMetaBarManyCells(cellIds) {
@@ -4352,8 +4340,8 @@ var cellbrowser = function() {
             // convert the object to an array (count, percent, value) and sort it by count
             var histoList = [];
             for (var key in metaCounts) {
-                var count = metaCounts[key];
-                var frac  = (count / cellCount);
+                let count = metaCounts[key];
+                let frac  = (count / cellCount);
                 histoList.push( [count, frac, key] );
             }
             histoList = histoList.sort(function(a, b){ return b[0] - a[0]; }); // reverse-sort by count
@@ -4362,8 +4350,8 @@ var cellbrowser = function() {
             // make a quick list of the top values for the sparklines, ignore the rest
             var countList = [];
             var otherCount = 0;
-            for (var i=0; i < histoList.length; i++) {
-                var count = histoList[i][0];
+            for (let i=0; i < histoList.length; i++) {
+                let count = histoList[i][0];
                 if (i<SPARKHISTOCOUNT)
                     countList.push(count);
                 else
@@ -4438,20 +4426,6 @@ var cellbrowser = function() {
         }
     }
 
-    function onDotMouseOver (mouseData) {
-        /* user hovers over a circle with the mouse */
-        if (mouseDownX!=null) // user is currently zooming
-            return;
-        if (! (gSelCellIds===null || jQuery.isEmptyObject(gSelCellIds))) // some cells are selected
-            return;
-        var cellId = mouseData.target.cellId;
-        this.alpha = 1.0;
-        //renderer.render(stage);
-
-        //db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci);} onProgress);
-        updateGeneTableColors([cellId]);
-    }
-
     function clearSelectionState() {
         /* clear URL variable with select state, called when user clicks cells or unselects them */
         delState("select");
@@ -4486,7 +4460,8 @@ var cellbrowser = function() {
         updateGeneTableColors(cellIds);
 
         if (ev!==undefined) {
-            // it was a click
+            // it was a click -> we have at least one cell ID
+            let cellId = cellIds[0];
             if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey)
                 renderer.selectClear();
             clearSelectionState();
@@ -4496,7 +4471,15 @@ var cellbrowser = function() {
         }
     }
 
-    function onClusterNameHover(clusterName, nameIndex, ev) {
+    function showTooltip(x, y, labelStr) {
+    $("#tpTooltip").css({
+        "display":"block",
+        "left" : x,
+        "top" : y,
+       }).html(labelStr);
+    }
+
+    function onClusterNameHover(clusterName, nameIdx, ev) {
        /* user hovers over cluster label */
        //var htmls = [];
        //htmls.push("<div class='tpHover'>"+clusterName+"</div>");
@@ -4512,16 +4495,20 @@ var cellbrowser = function() {
        var labelField = db.conf.labelField;
        var metaInfo = findMetaInfo(labelField);
        var longLabels = metaInfo.ui.longLabels;
-       if (longLabels && longLabels[nameIndex]!="")
-            labelStr = longLabels[nameIndex];
+       if (longLabels) {
+            for (let i=0; i<longLabels.length; i++) {
+                let shortLabel = metaInfo.ui.shortLabels[i];
+                if (clusterName===shortLabel) {
+                    labelStr = longLabels[i];
+                    break;
+                }
+            }
+       }
 
        if (db.conf.markers!==undefined)
             labelStr += "<br>Click to show marker gene list.";
-       $("#tpTooltip").css({
-        "display":"block",
-        "left" : ev.clientX+15,
-        "top" : ev.clientY,
-       }).html(labelStr);
+        showTooltip(ev.clientX+15, ev.clientY, labelStr);
+
     }
 
     function onNoClusterNameHover(ev) {
@@ -4579,6 +4566,128 @@ var cellbrowser = function() {
         renderer.drawDots();
     }
 
+    function groupAverages(geneArrs, arrGroups, groupCount) {
+        /* given an array of gene expression vectors (ints), and a 2nd array that assigns these to groups, 
+        return an array of the arrays with the averages for the groups (as integers)
+        */ 
+        let geneAvgs = [];
+
+        for (let geneIdx=0; geneIdx < geneArrs.length; geneIdx++) {
+            let geneArr = geneArrs[geneIdx];
+
+            let groupSums = new Uint32Array(groupCount);
+            let groupCounts = new Uint32Array(groupCount);
+            //for (var groupIdx=0; groupIdx < groupCount; groupIdx++) {
+            //    groupSums.push(0);
+            //    groupCounts.push(0);
+            //}
+ 
+            for (let i=0; i<geneArr.length; i++) {
+                let group = arrGroups[i];
+                groupSums[group] += geneArr[i];
+                groupCounts[group]++;
+            }
+
+            let groupAvgs = [];
+            for (var groupIdx=0; groupIdx < groupCount; groupIdx++)
+                groupAvgs.push(Math.round(groupSums[groupIdx]/groupCounts[groupIdx]));
+            geneAvgs.push(groupAvgs);
+            
+        }
+        return geneAvgs;
+    }
+
+    function onHeatCellHover(rowIdx, colIdx, rowName, colName, ev) {
+        /* user hovers over a cell on the heatmap */
+        let htmls = [];
+        if (rowName)
+            htmls.push(rowName);
+        if (colName)
+            htmls.push(colName)    
+        showTooltip(ev.clientX+15, ev.clientY, htmls.join(" "));
+    }
+    
+    function plotHeatmap(clusterMetaInfo, exprVecs, geneSyms) {
+        /* Create the heatmap from exprVecs. 
+        geneVecs is an array of binned gene expression vectors, one per gene. 
+        */
+        var clusterCount = clusterMetaInfo.valCounts.length;
+        
+        var clusterNames = [];
+        for (let valInfo of clusterMetaInfo.valCounts) {
+            clusterNames.push(valInfo[0]); // 0=name, 1=count
+        }
+
+        var clusterArr = clusterMetaInfo.arr;
+        var geneAvgs = groupAverages(exprVecs, clusterArr, clusterCount);
+        
+        var div = document.createElement("div");
+        let heatHeight = Math.min(150, 16*exprVecs.length);
+        div.id = "tpHeat";
+        div.style.height = heatHeight+"px";
+
+        renderer.setSize(renderer.width, renderer.height-heatHeight, true);
+        
+        var canvLeft = metaBarWidth+metaBarMargin;
+        var heatWidth = window.innerWidth - canvLeft - legendBarWidth;
+        div.style.width = heatWidth+"px";
+        div.style.left = metaBarWidth+"px";
+        div.style.top = (menuBarHeight+toolBarHeight+renderer.height)+"px";
+        div.style.position = "absolute";
+        document.body.appendChild(div);
+
+        var heatmap = new MaxHeat(div); 
+        var colors = getFieldColors(clusterMetaInfo)
+        heatmap.loadData(geneSyms, clusterNames, geneAvgs, colors);
+        heatmap.draw();
+        heatmap.onCellHover = onHeatCellHover;
+        db.heatmap = heatmap;
+    }
+
+ 
+
+    function onHeatClick() {
+
+        // TODO: rewrite this one day with promises
+        let resultCount = 0;
+        let exprVecs = [];
+        let geneSyms = [];
+
+        function onClusterMetaDone(metaArr, metaInfo) {
+            metaInfo.arr = metaArr;
+            resultCount++;
+            if (resultCount===2)
+                plotHeatmap(metaInfo, exprVecs, geneSyms);
+        }
+
+        function onGenesDone(geneVecs) {
+            /* */
+            for (var geneInfo of geneVecs) {
+                geneSyms.push(geneInfo[0]); // gene symbol
+                exprVecs.push(geneInfo[1]); // binned expression vector
+            }
+            resultCount++;
+            if (resultCount===2)
+                plotHeatmap(metaInfo, exprVecs, geneSyms);
+        }
+
+        /* user clicked on View > Heatmap */
+        if (db.heatmap) {
+            // remove the heatmap
+            let heatHeight = db.heatmap.height;
+            document.getElementById("tpHeat").remove();
+            delete db.heatmap;
+            renderer.setSize(renderer.width, renderer.height+heatHeight, true);
+            changeUrl({'heat':null});
+        }
+        else {
+            db.loadGeneSetExpr(onGenesDone);
+            let clusterIdx = getClusterFieldInfo().index;
+            db.loadMetaVec(clusterIdx, onClusterMetaDone, onProgress);
+            changeUrl({"heat":"1"});
+        }
+    }
+
     function onClusterNameClick(clusterName, nameIdx) {
         /* build and open the dialog with the marker genes table for a given cluster */
         var tabInfo = db.conf.markers; // list with (label, subdirectory)
@@ -4623,7 +4732,7 @@ var cellbrowser = function() {
             htmls.push("</ul>");
         }
 
-        for (var tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
+        for (let tabIdx = 0; tabIdx < tabInfo.length; tabIdx++) {
             var divName = "tabs-"+tabIdx;
             var tabDir = tabInfo[tabIdx].name;
             var sanName = sanitizeName(clusterName);
@@ -4716,7 +4825,7 @@ var cellbrowser = function() {
                 colLabel = "Gene Lists";
                 geneListCol = i;
             }
-            else if (colLabel==="P_value" || colLabel==="p_val" || colLabel=="pVal") {
+            else if (colLabel==="P_value" || colLabel==="p_val" || colLabel==="pVal") {
                 colLabel = "P-value";
                 pValCol = i;
             }
@@ -4746,7 +4855,7 @@ var cellbrowser = function() {
         var hubUrl = makeHubUrl();
 
         htmls.push("<tbody>");
-        for (var i = 1; i < rows.length; i++) {
+        for (let i = 1; i < rows.length; i++) {
             var row = rows[i];
             if ((row.length===1) && row[0]==="") // papaparse sometimes adds empty lines to files
                 continue;
@@ -4831,8 +4940,8 @@ var cellbrowser = function() {
             var pair = pairs[i].split('=');
 
             // if we find foo=1+1=2
-            if(pair.length != 2) {
-                pair = [pair[0], pair.slice(1).join("=")]
+            if(pair.length !== 2) {
+                pair = [pair[0], pair.slice(1).join("=")];
             }
 
             var key = decodeURIComponent(pair[0].replace(plus, " ")),
@@ -4843,13 +4952,13 @@ var cellbrowser = function() {
                 var part = parts[j];
                 if (!current[part] ) {
                     // if what we are pointing to looks like an array
-                    current[part] = digitTest.test(parts[j+1]) || parts[j+1] == "[]" ? [] : {}
+                    current[part] = digitTest.test(parts[j+1]) || parts[j+1] === "[]" ? [] : {};
                 }
                 current = current[part];
             }
             var lastPart = parts[parts.length - 1];
-            if(lastPart == "[]"){
-                current.push(value)
+            if(lastPart === "[]"){
+                current.push(value);
             }else{
                 current[lastPart] = value;
             }
@@ -4865,11 +4974,12 @@ var cellbrowser = function() {
        var urlParts = myUrl.split("?");
        var baseUrl = urlParts[0];
 
+       let urlVars;
        if (oldVars===undefined) {
            var queryStr = urlParts[1];
-           var urlVars = deparam(queryStr); // parse key=val&... string to object
+           urlVars = deparam(queryStr); // parse key=val&... string to object
        } else {
-           urlVars = oldVars
+           urlVars = oldVars;
        }
 
        // overwrite everthing that we got
@@ -4936,7 +5046,7 @@ var cellbrowser = function() {
         if (zoomStr===null)
             return null;
         var zs = zoomStr.split("_");
-        if (zs.length!=4)
+        if (zs.length!==4)
             return null;
         var zoomRange = {};
         zoomRange.minX = parseFloat(zs[0]);
@@ -4994,7 +5104,7 @@ var cellbrowser = function() {
             return;
         gDatasetList = datasetList;
 
-        if (globalOpts!=undefined) {
+        if (globalOpts!==undefined) {
             if ("sampleType" in globalOpts)
                 gSampleDesc = globalOpts["sampleType"];
             if ("title" in globalOpts)
@@ -5022,7 +5132,7 @@ var cellbrowser = function() {
            document.body.appendChild(div);
 
            self.tooltipDiv = makeTooltipCont();
-           div.appendChild(self.tooltipDiv);
+           document.body.appendChild(self.tooltipDiv);
 
            //var htmls = [];
            //htmls.push("<div id='tpGeneProgress0'><div class='tpProgressLabel' id='tpProgressLabel0'>Loading...</div></div>");

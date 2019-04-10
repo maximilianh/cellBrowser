@@ -3555,6 +3555,9 @@ def summarizeDatasets(datasets):
     return dsList
 
 def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
+    " make the index.html, copy over all .js and related files and add their md5s "
+    logging.debug("Development mode is: %s" % repr(devMode))
+
     dsList = summarizeDatasets(datasets)
     indexFname = join(baseDir, "html", "index.html")
     datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"

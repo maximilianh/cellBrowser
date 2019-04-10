@@ -1,20 +1,27 @@
-"use strict";
+"use strict"
 // maxHeat: a simple scatter plot class using canvas. Data has to be binned beforehand.
+
+/* jshint -W097 */ // allow file-wide use strict
+/* jshint -W104 */  // allow some es6 parts 
 
 function MaxHeat(div, args) {
     // a class to draw a heatmap with canvas
     // div is a div DOM element under which the canvas will be created
     // width and height: integers, in pixels
     // old-style class as otherwise not sure where to put constants labelFontSize;
-
+    // TODO: convert to a new-style class?
     var self = this;
-    var labelFontSize = 16; // height of row labels, will decrease with increasing row count
-    const gRowLabelSize = 50; // width of left text bar
-    const gColLabelSize = 30; // empty space above the heatmap
-    const drawMode = 2; // 1 = stupid simple, 2 = 2x faster
+ 
+    if (!args)
+        args = {};
 
-    // the rest of the initialization is done at the end of this file,
-    // because the init involves many functions that are not defined yet here
+    let labelFontSize = args.fontSize | 16; // height of row labels, will decrease with increasing row count
+    let rowLabelSize = args.rowLabelSize | 60; // space for row labels on the left 
+    let colLabelSize = args.colLabelSize | 3; // empty space above the heatmap
+    let drawMode = 2; // 1 = stupid simple, 2 = 2x faster
+
+    // the rest of the constructor is done at the end of this file,
+    // the init involves many functions that are not defined yet
 
     function clearCanvas(ctx, width, height) {
     /* clear with a white background */
@@ -37,16 +44,16 @@ function MaxHeat(div, args) {
         canv.width = rect.width;
         canv.height = rect.height;
 
-        // need to keep these as ints, need them all the time
+        // keep these as ints, need them all the time
         self.width = rect.width;
         self.height = rect.height;
-        div.appendChild(canv); // adds the canvas to the div element
         self.canvas = canv;
         // alpha:false recommended by https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas
         self.ctx = self.canvas.getContext("2d", { alpha: false });
         // by default, the canvas background is transparent+black
         // we use alpha=false, so we need to initialize the canvas with white pixels
-        clearCanvas(self.ctx, self.width, self.height);
+        self.clear(); // make sure that we clear the canvas before it's added to the DOM, as it's black by default
+        div.appendChild(canv); // adds the canvas to the div element
     }
 
     function onMouseMove(ev) {
@@ -55,19 +62,28 @@ function MaxHeat(div, args) {
         var x = ev.clientX - rect.left; //x position within the element.
         var y = ev.clientY - rect.top;  //y position within the element.
         
-        var rowIdx = parseInt((y-gColLabelSize)/self.rowHeight);
-        var colIdx = parseInt((x-gRowLabelSize)/self.colWidth);
-        if (x<gColLabelSize)
+        var rowIdx = parseInt((y-colLabelSize)/self.rowHeight);
+        var colIdx = parseInt((x-rowLabelSize)/self.colWidth);
+        
+        let colName;
+        if (x<colLabelSize)
             colIdx = null;
-        if (y<gRowLabelSize)
+        else
+            colName = self.colLabels[colIdx];
+
+        let rowName;
+        if (y<rowLabelSize)
             rowIdx = null;
+        else
+            rowName = self.rowLabels[rowIdx];
         console.log("mouse over coords:", x, y, rowIdx, colIdx);
 
+
         if (self.onCellHover)
-            self.onCellHover(rowIdx, colIdx, ev);
+            self.onCellHover(rowIdx, colIdx, rowName, colName, ev);
     }
 
-    this.initDrawing = function (div) {
+    this.initDrawing = function (div, opts) {
         /* initialize a new plot */
         self.div = div;
         addCanvasToDom(self, div, "mhCanvas");
@@ -82,15 +98,26 @@ function MaxHeat(div, args) {
 
     this.setPalette = function(palette) {
         self.palette = palette;
+        if (self.palette.length!==this.maxVal)
+            alert("internal error heat map: palette has incorrect length");
     };
 
-    this.loadData = function(rowLabels, colLabels, rows, maxVal) {
+    this.setSize = function(width, height) {
+        self.width = width;
+        self.height = height;
+        self.canvas.style.width = width+"px";
+        self.canvas.style.height = height+"px";
+        self.draw();
+    };
+
+    this.loadData = function(rowLabels, colLabels, rows, palette) {
         /* load data into object */
         self.rowLabels = rowLabels;
         self.colLabels = colLabels;
-        self.maxVal = maxVal; // maximum value that ever appears in 'rows', we assume that the minimum is 0.
+        self.maxVal = palette.length; // maximum value that ever appears in 'rows'. The minimum is 0.
         self.rows = rows;
         self.checkData();
+        self.setPalette(palette);
     };
 
     function makeIntRanges(max, count) {
@@ -112,16 +139,18 @@ function MaxHeat(div, args) {
         /* a completely naive implementation of the rectangle drawing */
         var rowCount = rowStartsSizes.length/2;
         var colCount = colStartsSizes.length/2;
+        //let colLabelSize = self.colLabelSize;
+        //let rowLabelSize = rowLabelSize;
         for (var rowIdx=0; rowIdx<rowCount; rowIdx++) {
             var rowStart = rowStartsSizes[rowIdx*2];
             var rowSize  = rowStartsSizes[rowIdx*2+1];
             var row = rows[rowIdx];
 
             for (var colIdx=0; colIdx < colCount; colIdx++) {
-                ctx.fillStyle = pal[row[colIdx]];
+                ctx.fillStyle = "#"+pal[row[colIdx]];
                 var colStart = colStartsSizes[colIdx*2];
                 var colSize = colStartsSizes[colIdx*2+1];
-                ctx.fillRect(gRowLabelSize+colStart, gColLabelSize+rowStart, colSize, rowSize);           
+                ctx.fillRect(rowLabelSize+colStart, colLabelSize+rowStart, colSize, rowSize);           
             }
         }    
     }
@@ -132,6 +161,8 @@ function MaxHeat(div, args) {
         // x,y positions are located at (i,i+1)
         var rowCount = rowStartsSizes.length/2;
         var colCount = colStartsSizes.length/2;
+        //let colLabelSize = self.colLabelSize;
+        //let rowLabelSize = self.rowLabelSize;
         
         var valToCoords = [];
         for (var i=0; i<maxVal; i++)
@@ -150,7 +181,7 @@ function MaxHeat(div, args) {
 
         // plot the arrays, one color at a time
         for (var valI=0; valI < maxVal; valI++) {
-            ctx.fillStyle = pal[valI];
+            ctx.fillStyle = "#"+pal[valI];
             var coords = valToCoords[valI];
             for (i=0; i<coords.length/2; i++) {
                 var startIdx = 2*i;
@@ -160,7 +191,7 @@ function MaxHeat(div, args) {
                 var rowSize  = rowStartsSizes[rowIdx*2+1];
                 var colStart = colStartsSizes[colIdx*2];
                 var colSize = colStartsSizes[colIdx*2+1];
-                ctx.fillRect(gRowLabelSize+colStart, gColLabelSize+rowStart, colSize, rowSize); 
+                ctx.fillRect(rowLabelSize+colStart, colLabelSize+rowStart, colSize, rowSize); 
             }
         }
     }
@@ -173,9 +204,11 @@ function MaxHeat(div, args) {
         var rows = self.rows;
         var rowCount = self.rowLabels.length;
         var colCount = self.colLabels.length;
-        var rowHeight = (self.height - gColLabelSize) / rowCount;
-        var colWidth  = (self.width - gRowLabelSize) / colCount;
-
+        //var colLabelSize = self.colLabelSize;
+        //var rowLabelsize = self.rowLabelSize;
+        var rowHeight = (self.height - colLabelSize) / rowCount;
+        var colWidth  = (self.width - rowLabelSize) / colCount;
+        
         var ctx = self.ctx;
         ctx.save();
         
@@ -188,7 +221,7 @@ function MaxHeat(div, args) {
             console.time("draw labels");
             var rowLabels = self.rowLabels;
             for (var labelI=0; labelI<rowCount; labelI++) {
-                var textY = parseInt(gColLabelSize+(labelI*rowHeight) + rowEndToTextBase + labelFontSize);
+                var textY = parseInt(colLabelSize+(labelI*rowHeight) + rowEndToTextBase + labelFontSize);
                 ctx.fillText(rowLabels[labelI], 4, textY);
             }
             console.timeEnd("draw labels");
@@ -198,7 +231,7 @@ function MaxHeat(div, args) {
 
         console.time("draw rects");
         var rowStartsSizes = makeIntRanges(self.height, rowCount);
-        var colStartsSizes = makeIntRanges(self.width-gRowLabelSize, colCount);
+        var colStartsSizes = makeIntRanges(self.width-rowLabelSize, colCount);
 
         switch (drawMode) {
         case 1:
@@ -241,20 +274,22 @@ function MaxHeat(div, args) {
     };
 
     this.checkData = function() {
-        if (self.colLabels.length > self.width - gRowLabelSize)
+        if (self.colLabels.length > self.width - rowLabelSize)
             alert("You are trying to show more columns on the heatmap than the window has pixels. "+
                 "The heatmap will not be very useful until you reduce the number of columns that are shown.");
-        if (self.rowLabels.length > self.height - gColLabelSize)
+        if (self.rowLabels.length > self.height - colLabelSize)
             alert("You are trying to show more rows on the heatmap than the window has pixels. "+
                 "The heatmap will not be very useful until you reduce the number of rows that are shown.");
 
     };
+
+ 
 
     this.clear = function() {
         clearCanvas(self.ctx, self.width, self.height);
     };
 
     // constructor
-    self.initDrawing(div);
+    self.initDrawing(div, args);
     self.initPlot(args);
 }

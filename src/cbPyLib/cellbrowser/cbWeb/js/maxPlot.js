@@ -2,6 +2,7 @@
 // maxPlot: a fast scatter plot class
 /*jshint globalstrict: true*/
 /*jshint -W069 */
+/*jshint -W104 */
 
 // TODO:
 // fix mouseout into body -> marquee stays
@@ -191,7 +192,7 @@ function MaxPlot(div, top, left, width, height, args) {
     //self.newObject(div, top, left, width, height, args);
     
     this.clear = function() {
-        clearCanvas(self.ctx, self.width, self.height);
+        clearCanvas(self.ctx, self.canvas.width, self.canvas.height);
     };
 
     this.setPos = function(left, top) {
@@ -265,10 +266,10 @@ function MaxPlot(div, top, left, width, height, args) {
             div.title = title;
         if (text!==null)
             div.textContent = text;
-        if (imgFname!==null && imgFname!=undefined) {
+        if (imgFname!==null && imgFname!==undefined) {
             var img = document.createElement('img');
             img.src = imgFname;
-            if (paddingTop!==null && paddingTop!=undefined)
+            if (paddingTop!==null && paddingTop!==undefined)
                 img.style.paddingTop = paddingTop+"px";
             div.appendChild(img);
         }
@@ -360,7 +361,7 @@ function MaxPlot(div, top, left, width, height, args) {
         div.textContent = "Close";
         self.div.appendChild(div);
 
-        var div = document.createElement('div');
+        div = document.createElement('div');
         div.style.cursor = "default";
         div.style.left = left+"px";
         div.style.top = top+"px";
@@ -376,6 +377,10 @@ function MaxPlot(div, top, left, width, height, args) {
         div.textContent = "Close";
         self.div.appendChild(div);
         return div;
+    }
+
+    function addChildControls(top, left) {
+        addCloseButton(top, left);
     }
 
     function appendButton(parentDiv, id, title, imgName) {
@@ -597,8 +602,8 @@ function MaxPlot(div, top, left, width, height, args) {
        ctx.fillStyle="black";
        for (i = 0; i < selCells.length; i++) {
            var cellId = selCells[i];
-           var pxX = pxCoords[2*cellId];
-           var pxY = pxCoords[2*cellId+1];
+           let pxX = pxCoords[2*cellId];
+           let pxY = pxCoords[2*cellId+1];
            ctx.fillRect(pxX-radius, pxY-radius, dblSize, dblSize);
            count += 1;
        }
@@ -726,27 +731,27 @@ function MaxPlot(div, top, left, width, height, args) {
         return bboxArr;
     }
 
-    function drawLabels_dom(ctx, labelCoords, isFull) {
-        /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
-        for (var i=0; i < labelCoords.length; i++) {
-            var coord = labelCoords[i];
-            var x = coord[0];
-            var y = coord[1];
-            var text = coord[2];
+    // function drawLabels_dom(ctx, labelCoords, isFull) {
+    //     /* given an array of [x, y, text], draw the text. returns bounding boxes as array of [x1, y1, x2, y2]  */
+    //     for (var i=0; i < labelCoords.length; i++) {
+    //         var coord = labelCoords[i];
+    //         var x = coord[0];
+    //         var y = coord[1];
+    //         var text = coord[2];
 
-            var div = document.createElement('div');
-            div.id = id;
-            //div.style.border = "1px solid #DDDDDD";
-            div.style.backgroundColor = "rgb(230, 230, 230, 0.6)";
-            div.style.width = width+"px";
-            div.style.height = height+"px";
-            div.style["text-align"]="center";
-            div.style["vertical-align"]="middle";
-            div.style["line-height"]=height+"px";
-        }
-        ctx.restore();
-        return bboxArr;
-    }
+    //         var div = document.createElement('div');
+    //         div.id = id;
+    //         //div.style.border = "1px solid #DDDDDD";
+    //         div.style.backgroundColor = "rgb(230, 230, 230, 0.6)";
+    //         div.style.width = width+"px";
+    //         div.style.height = height+"px";
+    //         div.style["text-align"]="center";
+    //         div.style["vertical-align"]="middle";
+    //         div.style["line-height"]=height+"px";
+    //     }
+    //     ctx.restore();
+    //     return bboxArr;
+    // }
 
     // https://stackoverflow.com/questions/5560248/programmatically-lighten-or-darken-a-hex-color-or-rgb-and-blend-colors
     function shadeColor(color, percent) {   
@@ -808,7 +813,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
        // blit the circles onto the main canvas
        var count = 0;
-       for (var i = 0; i < pxCoords.length/2; i++) {
+       for (let i = 0; i < pxCoords.length/2; i++) {
            var pxX = pxCoords[2*i];
            var pxY = pxCoords[2*i+1];
            if (isHidden(pxX, pxY))
@@ -823,12 +828,12 @@ function MaxPlot(div, top, left, width, height, args) {
        ctx.globalAlpha = 0.7;
        for (i = 0; i < selCells.length; i++) {
            var cellId = selCells[i];
-           var pxX = pxCoords[2*cellId];
-           var pxY = pxCoords[2*cellId+1];
+           let pxX = pxCoords[2*cellId];
+           let pxY = pxCoords[2*cellId+1];
            if (isHidden(pxX, pxY))
                continue;
            // make sure that old leftover overlapping black circles don't shine through
-           var col = coordColors[cellId];
+           let col = coordColors[cellId];
            ctx.drawImage(off, col * tileWidth, 0, tileWidth, tileHeight, pxX - radius -1, pxY - radius-1, tileWidth, tileHeight);
 
            ctx.drawImage(off, selImgId * tileWidth, 0, tileWidth, tileHeight, pxX - radius -1, pxY - radius-1, tileWidth, tileHeight);
@@ -936,11 +941,11 @@ function MaxPlot(div, top, left, width, height, args) {
        // overdraw the selection as black pixels
        for (i = 0; i < selCells.length; i++) {
            var cellId = selCells[i];
-           var pxX = pxCoords[2*cellId];
-           var pxY = pxCoords[2*cellId+1];
+           let pxX = pxCoords[2*cellId];
+           let pxY = pxCoords[2*cellId+1];
            if (isHidden(pxX, pxY))
                continue;
-           var p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
+           let p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
            cData[p] = 0; 
            cData[p+1] = 0;
            cData[p+2] = 0;
@@ -1034,9 +1039,12 @@ function MaxPlot(div, top, left, width, height, args) {
        self.canvas.width = width;
        self.width = width;
 
-       self.canvas.style.height = height+"px";
-       self.canvas.height = height;
        self.height = height;
+
+       let canvHeight = height - gStatusHeight;
+       self.canvas.style.height = canvHeight+"px";
+       self.canvas.height = canvHeight;
+       
 
        self.zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
        self.zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
@@ -1254,8 +1262,8 @@ function MaxPlot(div, top, left, width, height, args) {
        var spanY = zoomRange.maxY - zoomRange.minY;
 
        // multiplier to convert from pixels to data coordinates
-       var xMult = spanX / self.width; // multiplier dataRange/pixel
-       var yMult = spanY / self.height;
+       var xMult = spanX / self.canvas.width; // multiplier dataRange/pixel
+       var yMult = spanY / self.canvas.height;
 
        var oldMinX = zoomRange.minX;
        var oldMinY = zoomRange.minY;
@@ -1289,7 +1297,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var minWeightY = 0.5;
         if (xPx!==undefined) {
             minWeightX = (xPx/self.width);
-            minWeightY = (yPx/self.height);
+            minWeightY = (yPx/self.canvas.height);
         }
         var scale = (1.0-zoomFact);
 
@@ -1466,7 +1474,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         selCells.length = 0; // keep the same object
         var cellCount = self.getCount();
-        for (var i = 0; i < cellCount; i++) {
+        for (let i = 0; i < cellCount; i++) {
             if (! selCellsObj.has(i))
                 selCells.push(i);
         }
@@ -1571,7 +1579,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
             // strip the distance information
             var ret = [];
-            for (var i=0; i < possIds.length; i++) {
+            for (let i=0; i < possIds.length; i++) {
                 ret.push(possIds[i][1]);
             }
             return ret;
@@ -1597,7 +1605,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var selectWidth = Math.abs(x1 - x2);
         var selectHeight = 0;
         if (forceAspect) {
-            var aspectRatio = self.width / self.height;
+            var aspectRatio = self.width / self.canvas.height;
             selectHeight = selectWidth/aspectRatio;
         } else
             selectHeight = Math.abs(y1 - y2);
@@ -1616,7 +1624,7 @@ function MaxPlot(div, top, left, width, height, args) {
         /* called when the mouse is moved over the Canvas */
 
         // set a timer so we can get "hover" functionality without too much CPU
-        if (self.timer!=null)
+        if (self.timer!==null)
             clearTimeout(self.timer);
         self.timer = setTimeout(self.onNoMouseMove, 170);
         // save mouse pos for onNoMouseMove timer handler
@@ -1791,14 +1799,14 @@ function MaxPlot(div, top, left, width, height, args) {
 
        // zooming
        if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey ) {
-           // get current coords of the marquee
+            // get current coords of the marquee in canvas pixels
             var div = self.selectBox;
-            var zoomX1 = parseInt(div.style.left.replace("px","")) - canvasLeft;
-            var zoomY1 = parseInt(div.style.top.replace("px","")) - canvasTop;
-            var zoomX2 = zoomX1+parseInt(div.style.width.replace("px",""));
-            var zoomY2 = zoomY1+parseInt(div.style.height.replace("px",""));
-            var zoomY1 = self.height - zoomY1;
-            var zoomY2 = self.height - zoomY2;
+            let zoomX1 = parseInt(div.style.left.replace("px","")) - canvasLeft;
+            let zoomY1 = parseInt(div.style.top.replace("px","")) - canvasTop;
+            let zoomX2 = zoomX1+parseInt(div.style.width.replace("px",""));
+            let zoomY2 = zoomY1+parseInt(div.style.height.replace("px",""));
+            zoomY1 = self.canvas.height - zoomY1;
+            zoomY2 = self.canvas.height - zoomY2;
             self.zoomTo(zoomX1, zoomY1, zoomX2, zoomY2);
        }
        // marquee select 
@@ -1936,7 +1944,7 @@ function MaxPlot(div, top, left, width, height, args) {
         /* reduce width of renderer, create new renderer and place both side-by-side.
          * They initially share the .coords but setCoords() can break that relationship. 
          * */
-        var canvHeight  = self.height;
+        var canvHeight  = self.canvas.height;
         var canvLeft    = self.left;
         var newWidth = self.width/2;
         var newTop   = self.top;
@@ -1976,8 +1984,8 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.onNoLabelHover = self.onNoLabelHover;
         plot2.onActiveChange = self.onActiveChange;
 
-        //var closeButton = gebi('mpCloseButton');
-        //closeButton.addEventListener('click', self.unsplit);
+        var closeButton = gebi('mpCloseButton');
+        closeButton.addEventListener('click', self.unsplit);
 
         plot2.drawDots();
 
@@ -1995,13 +2003,14 @@ function MaxPlot(div, top, left, width, height, args) {
     this.unsplit = function() {
         /* remove the connected non-active renderer */
         //var canvWidth = window.innerWidth - canvLeft - legendBarWidth;
-        self.setSize(self.width*2, self.height, false);
         var otherRend = self.childPlot;
         self.childPlot = undefined;
         if (!otherRend) {
             otherRend = self.parentPlot;
             self.parentPlot = undefined;
         }
+        self.setSize(self.width*2, self.height, false);
+
 
         otherRend.div.remove();
         self.canvas.style["border"] = "none";
