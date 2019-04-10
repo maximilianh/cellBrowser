@@ -2453,7 +2453,7 @@ var cellbrowser = function() {
                 legColor = cNullColor;
             }
             else if (binMin==="Unknown" && binMax==="Unknown") {
-                legLabel = "Unknown or no alue";
+                legLabel = "Unknown";
                 uniqueKey = "noExpr";
                 legColor = cNullColor;
             }
