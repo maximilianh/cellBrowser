@@ -2219,11 +2219,11 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 
     midInfo = []
     for clustIdx, xList in enumerate(clusterXVals):
+        clusterName = labelVals[clustIdx]
         if len(xList)==0:
             midInfo.append([HIDDENCOORD, HIDDENCOORD, clusterName])
             continue
 
-        clusterName = labelVals[clustIdx]
         yList = clusterYVals[clustIdx]
         # get the midpoint of this cluster
         midX = sum(xList) / float(len(xList))
