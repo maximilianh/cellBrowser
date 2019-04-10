@@ -1,6 +1,8 @@
 // scDb: a class accessing single cell data from a URL
 'use strict';
 /*jshint globalstrict: true*/
+/* jshint -W104 */  // allow some es6 parts (const) 
+/* jshint -W117 */  // ignore undefined classes
 
 /* a module with some helper functions */
 var cbUtil = (function () {
@@ -25,9 +27,9 @@ var cbUtil = (function () {
         if (isInt)
             for(var k in o) allKeys.push(parseInt(k));
         else
-            for(var k in o) allKeys.push(k);
+            for(var j in o) allKeys.push(j);
         return allKeys;
-    }
+    };
 
     my.loadJson = function(url, onSuccess, silent) {
     /* load json file from url and run onSuccess when done. Alert if it doesn't work. */
@@ -158,7 +160,7 @@ var cbUtil = (function () {
         if (this._arrType) {
             if (this._arrType==="comprText") {
                 var arr = pako.ungzip(binData);
-                var binData = String.fromCharCode.apply(null, arr); // weird in JS: convert array to string
+                binData = String.fromCharCode.apply(null, arr); // weird in JS: convert array to string
                 // binData is not binary anymore, it's just a string now
             }
             else if (this._arrType!=="string")
@@ -171,15 +173,15 @@ var cbUtil = (function () {
     my.makeType = function(typeStr) {
         /* given a string, return the correct type array for it */
         typeStr = typeStr.toLowerCase();
-        if ((typeStr==="double" || typeStr=="float64"))
+        if ((typeStr==="double" || typeStr==="float64"))
             return Float64Array;
-        if ((typeStr==="float" || typeStr=="float32"))
+        if ((typeStr==="float" || typeStr==="float32"))
             return Float32Array;
         else if (typeStr==="int32")
             return Int32Array;
-        else if (typeStr==="uint32" || typeStr=="dword")
+        else if (typeStr==="uint32" || typeStr==="dword")
             return Uint32Array;
-        else if (typeStr==="uint16" || typeStr=="word")
+        else if (typeStr==="uint16" || typeStr==="word")
             return Uint16Array;
         else if (typeStr==="uint8" || typeStr==="byte")
             return Uint8Array;
@@ -242,6 +244,7 @@ function CbDbFile(url) {
     self.name = url;
     self.url = url;
     self.geneOffsets = null;
+    const gExprBinCount = 10;
 
     self.exprCache = {}; // cached compressed expression arrays
     self.metaCache = {}; // cached compressed meta arrays
@@ -282,7 +285,7 @@ function CbDbFile(url) {
         var i = 0;
         var binData = null;
         var meta = null;
-        var labelMids = undefined; // null means: no json file found
+        var labelMids; // null means: no json file found
 
         function binDone(data, other) {
             binData = data;
@@ -335,7 +338,7 @@ function CbDbFile(url) {
                 onProgress, metaInfo);
     }
 
-    this.loadMetaVec = function(fieldIdx, onDone, binCount, onProgress, otherInfo) {
+    this.loadMetaVec = function(fieldIdx, onDone, onProgress, otherInfo) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
      * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
      * Keep all compressed arrays in metaCache;
@@ -345,13 +348,13 @@ function CbDbFile(url) {
 
         function onMetaDone(comprBytes, metaInfo) {
             self.metaCache[fieldIdx] = comprBytes; 
-            var arrType = cbUtil.makeType(metaInfo.arrType);
+            var ArrType = cbUtil.makeType(metaInfo.arrType);
             var bytes = pako.ungzip(comprBytes);
             var buffer = bytes.buffer;
-            var arr = new arrType(buffer);
+            var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
                 // numeric arrays have to be binned on the client. They are always floats.
-                var discRes = discretizeArray(arr, binCount, FLOATNAN);
+                var discRes = discretizeArray(arr, gExprBinCount, FLOATNAN);
                 metaInfo.origVals = arr; // keep original values, so we can later query for them
                 arr = discRes.dArr;
                 metaInfo.binInfo = discRes.binInfo;
@@ -431,40 +434,19 @@ function CbDbFile(url) {
 
         // apply the mapping
         var dArr = new Uint8Array(arr.length);
-        for (var i=0; i<arr.length; i++) {
+        for (let i=0; i<arr.length; i++) {
             dArr[i] = valToBin[arr[i]];
         }
 
         var binInfo = [];
-        for (var i=0; i < counts.length; i++) {
-            var val = parseFloat(counts[i][0]);
+        for (let i=0; i < counts.length; i++) {
+            let val = parseFloat(counts[i][0]);
             var count = counts[i][1];
             binInfo.push([val, val, count]);
         }
 
         var ret = {"dArr":dArr, "binInfo":binInfo};
         return ret;
-    }
-
-    // XX is this really faster than a simple iteration?
-    function smoolakBS_left(arr, find) {
-	// binary search, returns index left of insert point
-	// based on https://jsperf.com/binary-search-in-javascript/7
-        // insert_left based on https://rosettacode.org/wiki/Binary_search
-	var lo = 0;
-	var hi = arr.length - 1;
-	var i;
-	while(lo <= hi) {
-	    i = ((lo + hi) >> 1);
-	    if(arr[i] >= find) 
-		hi = i - 1;
-            else
-	    //if (arr[i] < find) 
-		lo = i + 1;
-	    //else 
-		//{ return lo; }
-	}
-	return lo;
     }
 
     function findBins(numVals, bin0Val, breakVals) {
@@ -557,7 +539,7 @@ function CbDbFile(url) {
         // for each percentage, get the index
         var countLen = counts.length;
         var breakIndices = [];
-        for (var i=0; i < breakPercs.length; i++) {
+        for (let i=0; i < breakPercs.length; i++) {
             var bp = breakPercs[i];
             breakIndices.push( Math.round(bp*countLen) );
         }
@@ -568,7 +550,7 @@ function CbDbFile(url) {
 
         // make array with values at the break indices except the first one, as comparison is <=
         var breakValues = [];
-        for (var i=1; i < breakIndices.length; i++) {
+        for (let i=1; i < breakIndices.length; i++) {
             var breakIdx = breakIndices[i];
             var breakVal = counts[breakIdx][0];
             breakValues.push( breakVal );
@@ -592,7 +574,7 @@ function CbDbFile(url) {
 
         binInfo.push( [bin0MinMax, bin0MinMax, binCounts[0]] );
 
-        for (var i=0; i<breakValues.length; i++) { // starts at 1, as bin0 is special case
+        for (let i=0; i<breakValues.length; i++) { // starts at 1, as bin0 is special case
             var binMin = minVal;
             if (i!==0)
                 binMin = parseFloat(breakValues[i-1]);
@@ -604,7 +586,7 @@ function CbDbFile(url) {
         return {"dArr": dArr, "binInfo": binInfo};
     }
 
-    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress, binCount) {
+    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress) {
     /* given a geneSym (string), retrieve array of array put into binCount bins
      * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
      * binInfo) */
@@ -786,8 +768,8 @@ function CbDbFile(url) {
                 idArr.sort();
             }
             else {
-                for (var i=0; i<findIds.length; i++) {
-                    var searchId = findIds[i];  
+                for (let i=0; i<findIds.length; i++) {
+                    let searchId = findIds[i];  
                     var foundIdx = cellIds.indexOf(searchId);
                     if (foundIdx===-1)
                         notFoundIds.push(searchId);
@@ -841,13 +823,6 @@ function CbDbFile(url) {
             undefined, null, start, end);
     };
 
-    function sortArrOfArr(arr, j) {
-        /* sort an array of arrays by the j-th element */
-        arr.sort(function(a, b) { 
-            return a[j] > b[j] ? 1 : -1;
-            });
-    }
-
     function countAndSort(arr) {
         /* count values in array, return an array of [value, count]. */
         //var counts = {};
@@ -862,34 +837,7 @@ function CbDbFile(url) {
         return entries;
     }
 
-    function arrToEnum(arr, counts) {
-        /* replace values in array with their enum-index */
-        // make a mapping value -> bin
-        var valToBin = {};
-        sortArrOfArr(counts, 0); // sort by value
-        for (var i=0; i<counts.length; i++) {
-            var val = counts[i][0];
-            valToBin[val] = i;
-        }
-
-        // apply the mapping
-        var dArr = new Uint8Array(arr.length);
-        for (var i=0; i<arr.length; i++) {
-            dArr[i] = valToBin[arr[i]];
-        }
-
-        var binInfo = [];
-        for (var i=0; i < counts.length; i++) {
-            var val = parseFloat(counts[i][0]);
-            var count = counts[i][1];
-            binInfo.push([val, val, count]);
-        }
-
-        var ret = {"dArr":dArr, "binInfo":binInfo};
-        return ret;
-    }
-
-    // XX is this really faster than a simple iteration?
+    // Todo: check one day if this really faster than a simple iteration
     function smoolakBS_left(arr, find) {
 	// binary search, returns index left of insert point
 	// based on https://jsperf.com/binary-search-in-javascript/7
@@ -910,14 +858,14 @@ function CbDbFile(url) {
 	return lo;
     }
 
-    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress, binCount) {
+    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress) {
     /* given a geneSym (string), retrieve array of array put into binCount bins
      * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
      * binInfo) */
 
         function onLoadedVec(exprArr, geneSym, geneDesc) {
             console.time("discretize");
-            var da = discretizeArray(exprArr, binCount, 0);
+            var da = discretizeArray(exprArr, gExprBinCount, 0);
             console.timeEnd("discretize");
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
@@ -1033,9 +981,8 @@ function CbDbFile(url) {
         return idx;
     };
 
-    this.preloadAllMeta = function(binCount) {
-        /* start loading all meta value vectors and add them to db.allMeta. binCount
-         * is used for client-discretized numerical meta fields. */
+    this.preloadAllMeta = function() {
+        /* start loading all meta value vectors and add them to db.allMeta. */
         self.allMeta = {};
 
         function doneMetaVec(arr, metaInfo, otherInfo) {
@@ -1047,12 +994,12 @@ function CbDbFile(url) {
         for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
            var fieldInfo = metaFieldInfo[fieldIdx];
            if (fieldInfo.type==="uniqueString")
-               continue
-           self.loadMetaVec(fieldIdx, doneMetaVec, binCount);
+               continue;
+           self.loadMetaVec(fieldIdx, doneMetaVec, gExprBinCount);
         }
     }
 
-    this.preloadGenes = function(geneSyms, onDone, onProgress, exprBinCount) {
+    this.preloadGenes = function(geneSyms, onDone, onProgress) {
        /* start loading the gene expression vectors in the background. call onDone when done. */
        var validGenes = self.getGenes();
        var loadCounter = 0;
@@ -1072,9 +1019,21 @@ function CbDbFile(url) {
                        loadCounter++; 
                        if (loadCounter===geneSyms.length) onDone(); 
                    },
-                   onProgress, exprBinCount);
+                   onProgress);
            }
        }
+    };
+
+    this.loadGeneSetExpr = function(onDone) {
+        /* return array of [geneSym, discExprVec, geneDesc, binInfo] */
+        var setInfo = [];
+
+        for (var geneSym of self.conf.quickGenes) {
+            var exprInfo = self.quickExpr[geneSym]; // contains: [discExprVec, geneDesc, binInfo]
+            var newInfo = [geneSym, exprInfo[0], exprInfo[1], exprInfo[2]];
+            setInfo.push(newInfo);
+        }
+        onDone(setInfo);
     };
 
 }

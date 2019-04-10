@@ -3555,6 +3555,9 @@ def summarizeDatasets(datasets):
     return dsList
 
 def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
+    " make the index.html, copy over all .js and related files and add their md5s "
+    logging.debug("Development mode is: %s" % repr(devMode))
+
     dsList = summarizeDatasets(datasets)
     indexFname = join(baseDir, "html", "index.html")
     datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
@@ -3605,7 +3608,7 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
         "ext/slick.core.js",
         "ext/slick.cellrangedecorator.js", "ext/slick.cellrangeselector.js", "ext/slick.cellselectionmodel.js",
         "ext/slick.editors.js", "ext/slick.formatters.js", "ext/slick.grid.js",
-        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js",
+        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js", "js/maxHeat.js"
         ]
 
     # at UCSC, for grant reports, we need to get some idea how many people are using the cell browser
