@@ -3659,6 +3659,8 @@ def cbMake_cli():
 
     if outDir is None:
         errAbort("You have to specify at least the output directory or set the environment variable CBOUT.")
+    if len(args)!=0:
+        errAbort("This command does not accept arguments without options. Did you mean: -o <outDir> ? ")
 
     cbMake(outDir, devMode=options.devMode)
 

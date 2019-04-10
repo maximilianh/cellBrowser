@@ -190,7 +190,7 @@ var cellbrowser = function() {
         var metaFieldInfo = db.conf.metaFields;
         for (var i = 0; i < metaFieldInfo.length; i++) {
             var metaInfo = metaFieldInfo[i];
-            if (metaInfo.name===findName || metaInfo.shortLabel===findName) {
+            if (metaInfo.name===findName || metaInfo.label===findName) {
                 metaInfo.index = i;
                 return metaInfo;
             }
