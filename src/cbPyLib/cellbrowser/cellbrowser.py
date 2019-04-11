@@ -2921,7 +2921,8 @@ def makeDictDefaults(inVar, defaults):
     return d
 
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField="louvain",
-        nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False):
+        nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
+        markerField='rank_genes_groups'):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -2967,10 +2968,11 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
 
     ##Check for cluster markers
-    if 'rank_genes_groups' not in adata.uns:
-        logging.warn('Couldnt find list of cluster marker genes in the h5ad file. Your cell browser '+
-        "will not include marker genes. From Python, try running sc.tl.rank_genes_groups(adata) to "+
-        "create the cluster annotation.")
+    if markerField not in adata.uns:
+        logging.warn("Couldnt find list of cluster marker genes in the h5ad file in adata.uns with the key '%s'. "
+        "As a result, your cell browser will not include marker genes. "
+        "From Python, try running sc.tl.rank_genes_groups(adata) to "
+        "create the cluster annotation." % markerField)
         addMarkers = False
     else:
         top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]

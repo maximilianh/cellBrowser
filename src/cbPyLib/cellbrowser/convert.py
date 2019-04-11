@@ -479,6 +479,9 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser.add_option("-p", "--port", dest="port", action="store", type="int",
             help="only with --htmlDir: start webserver on port to serve htmlDir")
 
+    parser.add_option("", "--markerField", dest="markerField", action="store",
+            help="name of the marker genes field, default: %default", default="rank_genes_groups")
+
     parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same directory")
@@ -509,9 +512,12 @@ def cbImportScanpyCli():
     if datasetName is None:
         datasetName = basename(outDir.rstrip("/"))
 
+    markerField = options.markerField
+
     import anndata
     ad = anndata.read_h5ad(inFname)
-    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc))
+    scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
+            markerField=markerField)
     generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:
