@@ -2975,8 +2975,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         "create the cluster annotation." % markerField)
         addMarkers = False
     else:
-        top_score=pd.DataFrame(adata.uns['rank_genes_groups']['scores']).loc[:nb_marker]
-        top_gene=pd.DataFrame(adata.uns['rank_genes_groups']['names']).loc[:nb_marker]
+        top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
+        top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
         marker_df= pd.DataFrame()
         for i in range(len(top_score.columns)):
             concat=pd.concat([top_score[[str(i)]],top_gene[[str(i)]]],axis=1,ignore_index=True)
