@@ -3,6 +3,7 @@
 /*jshint globalstrict: true*/
 /*jshint -W069 */
 /*jshint -W104 */
+/*jshint -W117 */
 
 // TODO:
 // fix mouseout into body -> marquee stays
@@ -47,7 +48,7 @@ function MaxPlot(div, top, left, width, height, args) {
     const gZoomButtonSize = 30; // size of zoom buttons
     const gZoomFromRight = 60;  // position of zoom buttons from right
     const gZoomFromBottom = 120;  // position of zoom buttons from bottom
-    const gButtonBackground = "rgb(230, 230, 230, 0.6)" // grey level of buttons
+    const gButtonBackground = "rgb(230, 230, 230, 0.85)" // grey level of buttons
     const gButtonBackgroundClicked = "rgb(180, 180, 180, 0.6)"; // grey of buttons when clicked
     const gCloseButtonFromRight = 60; // distance of "close" button from right edge
 
@@ -113,7 +114,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         // when the user starts to select but lifts the mouse button outside
         // the canvas, the current selection must be reset
-        //self.canvas.addEventListener("mouseleave", function() {self.resetMarquee();});
+        //self.canvas.addEventListener("mouseleave", function() {self.;});
 
         //document.body.addEventListener("mouseup", function(evt) {
             //var targetId = evt.target.id;
@@ -242,12 +243,13 @@ function MaxPlot(div, top, left, width, height, args) {
             return 5;
     }
 
-    function createButton(width, height, id, title, text, imgFname, paddingTop, addSep) {
+    function createButton(width, height, id, title, text, imgFname, paddingTop, paddingBottom, addSep, addThickSep) {
         /* make a light-grey div that behaves like a button, with text and/or an image on it 
          * Images are hard to vertically center, so padding top can be specified.
          * */
         var div = document.createElement('div');
         div.id = id;
+        div.className = "mpButton";
         div.style.backgroundColor = gButtonBackground;
         div.style.width = width+"px";
         div.style.height = height+"px";
@@ -269,12 +271,18 @@ function MaxPlot(div, top, left, width, height, args) {
         if (imgFname!==null && imgFname!==undefined) {
             var img = document.createElement('img');
             img.src = imgFname;
-            if (paddingTop!==null && paddingTop!==undefined)
+            if (paddingTop!==null && paddingTop!==undefined) {
                 img.style.paddingTop = paddingTop+"px";
+            if (paddingBottom)
+                img.style.paddingBottom = paddingBottom+"px";
+            }
             div.appendChild(img);
         }
         if (addSep===true)
             div.style["border-bottom"] = "1px solid #D7D7D7";
+        if (addThickSep===true)
+            div.style["border-bottom"] = "2px solid #C7C7C7";
+            
 
         // make color dark grey when mouse is pressed
         div.addEventListener("mousedown", function() { 
@@ -308,13 +316,13 @@ function MaxPlot(div, top, left, width, height, args) {
         var width = gZoomButtonSize;
         var height = gZoomButtonSize;
 
-        var plusDiv = createButton(width, height, "mpCtrlZoomPlus", "Zoom in", "+", null, null, true);
+        var plusDiv = createButton(width, height, "mpCtrlZoomPlus", "Zoom in. Keyboard: +", "+", null, null, null, true);
         //plusDiv.style["border-bottom"] = "1px solid #D7D7D7";
 
-        var fullDiv = createButton(width, height, "mpCtrlZoom100", "Zoom in", "100%", null, null, true);
+        var fullDiv = createButton(width, height, "mpCtrlZoom100", "Zoom in. Keyboard: space", "100%", null, null, null, true);
         //full.style["border-bottom"] = "1px solid #D7D7D7";
 
-        var minusDiv = createButton(width, height, "mpCtrlZoomMinus", "Zoom out", "-");
+        var minusDiv = createButton(width, height, "mpCtrlZoomMinus", "Zoom out. Keyboard: -", "-");
 
         var ctrlDiv = makeCtrlContainer(top, left);
         ctrlDiv.appendChild(plusDiv);
@@ -397,13 +405,13 @@ function MaxPlot(div, top, left, width, height, args) {
 
         var bSize = gZoomButtonSize;
 
-        var selectButton = createButton(bSize, bSize, "mpIconModeSelect", "Select mode. Keyboard: shift or s", null, "img/select.png", 4, true);
+        var selectButton = createButton(bSize, bSize, "mpIconModeSelect", "Select mode. Keyboard: shift or s", null, "img/select.png", 0, 4, true, true);
         selectButton.addEventListener ('click',  function() { self.activateMode("select")}, false);
 
-        var zoomButton = createButton(bSize, bSize, "mpIconModeZoom", "Zoom-to-rectangle mode. Keyboard: Windows/Command or z", null, "img/zoom.png", 4, true);
+        var zoomButton = createButton(bSize, bSize, "mpIconModeZoom", "Zoom-to-rectangle mode. Keyboard: Windows/Command or z", null, "img/zoom.png", 4, 4, true);
         zoomButton.addEventListener ('click', function() { self.activateMode("zoom")}, false);  
 
-        var moveButton = createButton(bSize, bSize, "mpIconModeMove", "Move mode. Keyboard: Alt or m", null, "img/move.png", 4);
+        var moveButton = createButton(bSize, bSize, "mpIconModeMove", "Move mode. Keyboard: Alt or m", null, "img/move.png", 4, 4);
         moveButton.addEventListener('click', function() { self.activateMode("move");}, false);
 
         self.icons = {};
@@ -1045,7 +1053,6 @@ function MaxPlot(div, top, left, width, height, args) {
        self.canvas.style.height = canvHeight+"px";
        self.canvas.height = canvHeight;
        
-
        self.zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
        self.zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
 
@@ -1391,7 +1398,10 @@ function MaxPlot(div, top, left, width, height, args) {
     this.selectSet = function(cellIds) {
         /* set selection to an array of integer cellIds */
         self.selCells.length = 0;
-        self.selCells.push(...cellIds); // "extend" = array spread syntax, https://davidwalsh.name/spread-operator
+        //self.selCells.push(...cellIds); // "extend" = array spread syntax, https://davidwalsh.name/spread-operator
+        let selCells = self.selCells;
+        for (let i=0; i<cellIds.length; i++)
+            selCells.push(cellIds[i]);
         self._selUpdate();
     };
 
@@ -1620,13 +1630,39 @@ function MaxPlot(div, top, left, width, height, args) {
         div.style.display = "block";
     };
 
+    this.activatePlot = function() {
+        /* draw black border around plot, remove black border from all connected plots, call onActive */
+        if (self.parentPlot===null)
+            return false;
+
+        // only need to do something if we're not already the active plot
+        self.canvas.style["border"] = "2px solid black";
+        self.parentPlot.canvas.style["border"] = "2px solid white";
+
+        // flip the parent/child relationship
+        self.childPlot = self.parentPlot;
+        self.childPlot.parentPlot = self;
+        self.parentPlot = null;
+        self.childPlot.childPlot = null;
+
+        // hide/show the tool and zoom buttons
+        self.childPlot.zoomDiv.style.display = "none";
+        self.childPlot.toolDiv.style.display = "none";
+        self.zoomDiv.style.display = "block";
+        self.toolDiv.style.display = "block";
+
+        // notify the UI
+        self.onActiveChange(self);
+        return true;
+    }
+
     this.onMouseMove = function(ev) {
         /* called when the mouse is moved over the Canvas */
 
         // set a timer so we can get "hover" functionality without too much CPU
         if (self.timer!==null)
             clearTimeout(self.timer);
-        self.timer = setTimeout(self.onNoMouseMove, 170);
+        self.timer = setTimeout(self.onNoMouseMove, 130);
         // save mouse pos for onNoMouseMove timer handler
         self.lastMouseX = ev.clientX;
         self.lastMouseY = ev.clientY;
@@ -1654,7 +1690,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         if (self.mouseDownX!==null) {
             // we're panning
-            if ((ev.altKey || self.dragMode==="move") && self.panCopy!==null) {
+            if (((ev.altKey || self.dragMode==="move")) && self.panCopy!==null) {
                 var xDiff = self.mouseDownX - clientX;
                 var yDiff = self.mouseDownY - clientY;
                 self.panBy(xDiff, yDiff);
@@ -1684,32 +1720,7 @@ function MaxPlot(div, top, left, width, height, args) {
                 self.onCellHover(cellIds);
     };
 
-    this.activatePlot = function() {
-        /* draw black border around plot, remove black border from all connected plots, call onActive */
-        if (self.parentPlot===null)
-            return false;
-
-        // only need to do something if we're not already the active plot
-        self.canvas.style["border"] = "2px solid black";
-        self.parentPlot.canvas.style["border"] = "2px solid white";
-
-        // flip the parent/child relationship
-        self.childPlot = self.parentPlot;
-        self.childPlot.parentPlot = self;
-        self.parentPlot = null;
-        self.childPlot.childPlot = null;
-
-        // hide/show the tool and zoom buttons
-        self.childPlot.zoomDiv.style.display = "none";
-        self.childPlot.toolDiv.style.display = "none";
-        self.zoomDiv.style.display = "block";
-        self.toolDiv.style.display = "block";
-
-        // notify the UI
-        self.onActiveChange(self);
-        return true;
-    }
-
+    
     this.onMouseDown = function(ev) {
     /* user clicks onto canvas */
        if (self.activatePlot())
@@ -1717,7 +1728,7 @@ function MaxPlot(div, top, left, width, height, args) {
        console.log("background mouse down");
        var clientX = ev.clientX;
        var clientY = ev.clientY;
-       if (ev.altKey || self.dragMode==="move") {
+       if ((ev.altKey || self.dragMode==="move") && !ev.shiftKey && !ev.metaKey) {
            console.log("alt key or move mode: starting panning");
            self.panStart();
        } 
@@ -1739,6 +1750,9 @@ function MaxPlot(div, top, left, width, height, args) {
            self.mouseDownY = null;
            self.drawDots();
            return;
+       } else {
+           // abort panning
+           self.panCopy = null;
        }
 
        if (self.mouseDownX === null && self.lastPanX === null)  {
@@ -1808,6 +1822,13 @@ function MaxPlot(div, top, left, width, height, args) {
             zoomY1 = self.canvas.height - zoomY1;
             zoomY2 = self.canvas.height - zoomY2;
             self.zoomTo(zoomX1, zoomY1, zoomX2, zoomY2);
+            // switch back to the mode before zoom was clicked
+            if (self.prevMode) {
+                self.activateMode(self.prevMode);
+                self.prevMode = null;
+            }
+
+
        }
        // marquee select 
        else if ((self.dragMode==="select" && !anyKey) || ev.shiftKey ) {
@@ -1890,6 +1911,11 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.activateMode = function(modeName) {
     /* switch to one of the mouse drag modes: zoom, select or move */
+        if (modeName==="zoom")
+            self.prevMode = self.dragMode;
+        else
+            self.prevMode = null;
+
         self.dragMode=modeName; 
 
         var cursor = null;
@@ -1918,9 +1944,9 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.randomDots = function(n, radius, mode) {
         /* draw x random dots with x random colors*/
-	function randomArray(arrType, length, max) {
+	function randomArray(ArrType, length, max) {
             /* make Array and fill it with random numbers up to max */
-            var arr = new arrType(length);
+            var arr = new ArrType(length);
             for (var i = 0; i<length; i++) {
                 arr[i] = Math.round(Math.random() * max);
             }
@@ -2015,6 +2041,14 @@ function MaxPlot(div, top, left, width, height, args) {
         otherRend.div.remove();
         self.canvas.style["border"] = "none";
         return;
+    }
+
+    this.getWidth = function() {
+        /* return total size of renderer, including any split child renderers */
+        if (self.childPlot)
+            return self.width + self.childPlot.width;
+        else
+            return self.width;
     }
 
     // object constructor code

@@ -321,14 +321,26 @@ function CbDbFile(url) {
         return ["meta", self.conf.clusterField];
     };
 
+    this.findMetaInfo= function(findName) {
+        /* return meta info field with name, add 'metaIndex' attribute  */
+        var metaFieldInfo = self.conf.metaFields;
+        for (var i = 0; i < metaFieldInfo.length; i++) {
+            var metaInfo = metaFieldInfo[i];
+            if (metaInfo.name===findName || metaInfo.label===findName) {
+                metaInfo.index = i;
+                return metaInfo;
+            }
+        }
+        return null;
+    }
+    
     this.fieldNameToIndex = function(fieldName) {
         /* given a meta field name, return its meta table index or null */
         return cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
     };
 
-    this._startMetaLoad = function(fieldIdx, arrType, onMetaDone, onProgress, extraInfo) {
+    this._startMetaLoad = function(metaInfo, arrType, onMetaDone, onProgress, extraInfo) {
         /* start the loading of a meta data file and call onMetaDone when ready */
-        var metaInfo = self.conf.metaFields[fieldIdx];
         var fieldName = metaInfo.name;
         var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
         if (metaInfo.md5)
@@ -338,7 +350,7 @@ function CbDbFile(url) {
                 onProgress, metaInfo);
     }
 
-    this.loadMetaVec = function(fieldIdx, onDone, onProgress, otherInfo) {
+    this.loadMetaVec = function(metaInfo, onDone, onProgress, otherInfo) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
      * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
      * Keep all compressed arrays in metaCache;
@@ -347,7 +359,7 @@ function CbDbFile(url) {
      * */
 
         function onMetaDone(comprBytes, metaInfo) {
-            self.metaCache[fieldIdx] = comprBytes; 
+            self.metaCache[metaInfo.name] = comprBytes; 
             var ArrType = cbUtil.makeType(metaInfo.arrType);
             var bytes = pako.ungzip(comprBytes);
             var buffer = bytes.buffer;
@@ -363,21 +375,21 @@ function CbDbFile(url) {
             onDone(arr, metaInfo, otherInfo);
         }
 
-        var metaInfo = self.conf.metaFields[fieldIdx];
+        //var metaInfo = self.conf.metaFields[fieldIdx];
         console.log(metaInfo);
 
-        if ((self.allMeta!==undefined) && (fieldIdx in self.allMeta)) {
+        if ((self.allMeta!==undefined) && (metaInfo.name in self.allMeta)) {
             console.log("Found in uncompressed cache");
-            onDone(self.allMeta[fieldIdx], metaInfo);
+            onDone(self.allMeta[metaInfo.name], metaInfo);
         }
 
-        if ((self.metaCache!==undefined) && (fieldIdx in self.metaCache)) {
+        if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
             console.log("Found in compressed cache");
-            onMetaDone(self.metaCache[fieldIdx], metaInfo);
+            onMetaDone(self.metaCache[metaInfo.name], metaInfo);
         }
 
         else {
-            self._startMetaLoad(fieldIdx, null, onMetaDone, onProgress, metaInfo);
+            self._startMetaLoad(metaInfo, null, onMetaDone, onProgress, metaInfo);
         }
     };
 
@@ -672,6 +684,14 @@ function CbDbFile(url) {
         return self.conf.metaFields;
     };
 
+    this.addCustomMetaField = function(metaInfo) {
+        //if (!self.customMeta)
+            //self.customMeta = [];
+        //self.customMeta.push(metaInfo); 
+        metaInfo.isCustom = true;
+        self.conf.metaFields.unshift(metaInfo);
+    }
+
     this.getConf = function() {
     /* return an object with a few general settings for the viewer:
      * - alpha: default transparency
@@ -684,36 +704,15 @@ function CbDbFile(url) {
         return self.geneOffsets;
     };
 
-    this.searchGenes = function(prefix, onDone) {
-    /* call onDone with an array of gene symbols that start with prefix (case-ins.)
-     * returns an array of objects with .id and .text attributes  */
-        var geneList = [];
-        for (var geneSym in self.geneOffsets) {
-            if (geneSym.toLowerCase().startsWith(prefix))
-                geneList.push({"id":geneSym, "text":geneSym});
-        }
-        onDone(geneList);
-    };
-
-    this.getName = function() {
-    /* return name of current dataset*/
-        if (self.conf!==null)
-            return self.conf.name;
-        else
-            return self.name;
-    };
-
-    this.getDefaultClusterFieldIndex = function() {
-    /* return field index of default cluster field */
-        var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", self.conf.clusterField);
-        return idx;
-    };
-
     this.loadCellIds = function(idxArray, onDone, onProgress) {
         /* Get the cellId strings, the first meta field, for the integer IDs of cells in idxArray.
          * Calls onDone with an array of strings.
          * If idxArray is null, gets all cellIds */
+
         function mapIdxToId(idxArray) {
+            /* Internally cells are referred to by an array of cell indices.
+               Translate an array of these numbers to an array of strings */
+
             if (idxArray===null)
                 return self.cellIds;
 
@@ -731,10 +730,9 @@ function CbDbFile(url) {
             onDone(mapIdxToId(idxArray));
         }
 
-
         if (self.cellIds===undefined) 
-            // trigger the cellId load
-            self._startMetaLoad(0, "comprText", onIdsDone, onProgress, idxArray)
+            // if we haven't loaded them yet, trigger the cellId load
+            self._startMetaLoad(self.getMetaFields()[0], "comprText", onIdsDone, onProgress, idxArray)
         else
             onDone(mapIdxToId(idxArray));
     }
@@ -789,7 +787,7 @@ function CbDbFile(url) {
 
         if (self.cellIds===undefined) 
             // trigger the cellId load
-            self._startMetaLoad(0, "comprText", onIdsDone, onProgress)
+            self._startMetaLoad(self.getMetaFields()[0], "comprText", onIdsDone, onProgress)
         else
             onSearchDone(mapIdsToIdx(findIds));
     }
@@ -944,18 +942,6 @@ function CbDbFile(url) {
         return self.conf.metaFields;
     };
 
-    this.getConf = function() {
-    /* return an object with a few general settings for the viewer:
-     * - alpha: default transparency
-     * - radius: circle default radius  */
-        return self.conf;
-    };
-
-    this.getGenes = function() {
-    /* return an object with the geneSymbols */
-        return self.geneOffsets;
-    };
-
     this.searchGenes = function(prefix, onDone) {
     /* call onDone with an array of gene symbols that start with prefix (case-ins.)
      * returns an array of objects with .id and .text attributes  */
@@ -975,12 +961,6 @@ function CbDbFile(url) {
             return self.name;
     };
 
-    this.getDefaultClusterFieldIndex = function() {
-    /* return field index of default cluster field */
-        var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", self.conf.clusterField);
-        return idx;
-    };
-
     this.preloadAllMeta = function() {
         /* start loading all meta value vectors and add them to db.allMeta. */
         self.allMeta = {};
@@ -993,9 +973,9 @@ function CbDbFile(url) {
         var metaFieldInfo = self.getMetaFields();
         for (var fieldIdx = 0; fieldIdx < metaFieldInfo.length; fieldIdx++) {
            var fieldInfo = metaFieldInfo[fieldIdx];
-           if (fieldInfo.type==="uniqueString")
+           if (fieldInfo.type==="uniqueString" || fieldInfo.arr)
                continue;
-           self.loadMetaVec(fieldIdx, doneMetaVec, gExprBinCount);
+           self.loadMetaVec(fieldInfo, doneMetaVec, gExprBinCount);
         }
     }
 
@@ -1014,7 +994,6 @@ function CbDbFile(url) {
                 self.loadExprAndDiscretize(
                    sym, 
                    function(exprVec, discExprVec, geneSym, geneDesc, binInfo) { 
-                       //onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
                        self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
                        loadCounter++; 
                        if (loadCounter===geneSyms.length) onDone(); 
