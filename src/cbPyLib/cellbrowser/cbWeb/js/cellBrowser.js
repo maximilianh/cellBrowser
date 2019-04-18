@@ -956,11 +956,18 @@ var cellbrowser = function() {
         var dlgHeight = 400;
         var dlgWidth = 800;
         var buttons = {
+            "Clear all annotations" : function() {
+                db.getMetaFields().shift();
+                rebuildMetaPanel();
+                localStorage.removeItem(db.name+"|custom");
+            },
             "OK" : function() {
                 let fieldLabel = $('#tpFieldLabel').val();
                 if (fieldLabel==="")
                     fieldLabel = "My annotations";                
                 let newMetaValue = $("#tpMetaVal").val();
+                if (newMetaValue==="")
+                    return;
 
                 addNewAnnotation(fieldLabel, newMetaValue, renderer.getSelection());
                 $( this ).dialog( "close" ); 
@@ -969,7 +976,7 @@ var cellbrowser = function() {
         };
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
         $("#tpMetaVal").focus();
-        return false;
+        return true;
     }
 
     function onFindCellsClick() {
