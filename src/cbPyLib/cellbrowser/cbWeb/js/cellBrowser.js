@@ -78,6 +78,7 @@ var cellbrowser = function() {
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
 
     const exprBinCount = 10; //number of expression bins for genes
+    // has to match cbData.js.exprBinCount - TODO - share the constant between these two files
 
     var HIDELABELSNAME = "Hide labels";
     var SHOWLABELSNAME = "Show labels";
@@ -874,8 +875,15 @@ var cellbrowser = function() {
                 var metaInfo = db.getMetaFields()[fieldIdx];
                 if (metaInfo.type==="enum")
                     findVal = findMetaValIndex(metaInfo, findVal);
+                
+                let searchDesc = [funcVal[0], findVal];
 
-                db.loadMetaVec(metaInfo, gotMetaArr, exprBinCount, null, [funcVal[0], findVal]);
+                if (metaInfo.origVals)
+                    // for numeric fields, the raw data is already in memory
+                    gotMetaArr(metaInfo.origVals, metaInfo, searchDesc)
+                else
+                    // other fields may not be loaded yet
+                    db.loadMetaVec(metaInfo, gotMetaArr, null, searchDesc);
             }
         }
     }
@@ -1755,7 +1763,7 @@ var cellbrowser = function() {
         if (metaInfo.arr) // eg custom fields
             onMetaArrLoaded(metaInfo.arr, metaInfo);
         else
-            db.loadMetaVec(metaInfo, onMetaArrLoaded, exprBinCount, onProgress);
+            db.loadMetaVec(metaInfo, onMetaArrLoaded, onProgress);
     
 
        //changeUrl({"gene":null, "meta":fieldName});
@@ -1927,7 +1935,6 @@ var cellbrowser = function() {
                     var dataList = splitExprByMeta(exprVec, metaArr, selCells);
                     buildViolinFromValues(labelList, dataList);
                 },
-                exprBinCount,
                 null);
     }
 
@@ -2024,7 +2031,7 @@ var cellbrowser = function() {
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
         console.log("Loading gene expression vector for "+geneSym);
-        db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress, exprBinCount);
+        db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress);
 
         // clear the meta combo
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
@@ -2180,8 +2187,8 @@ var cellbrowser = function() {
                updateGeneTableColors(null); 
                if (getVar("heat")==="1")
                    onHeatClick();
-            }, onProgressConsole, exprBinCount);
-       db.preloadAllMeta(exprBinCount);
+            }, onProgressConsole);
+       db.preloadAllMeta();
     }
 
     function onTransClick(ev) {

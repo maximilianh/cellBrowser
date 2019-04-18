@@ -244,7 +244,7 @@ function CbDbFile(url) {
     self.name = url;
     self.url = url;
     self.geneOffsets = null;
-    const gExprBinCount = 10;
+    self.exprBinCount = 10; 
 
     self.exprCache = {}; // cached compressed expression arrays
     self.metaCache = {}; // cached compressed meta arrays
@@ -366,7 +366,7 @@ function CbDbFile(url) {
             var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
                 // numeric arrays have to be binned on the client. They are always floats.
-                var discRes = discretizeArray(arr, gExprBinCount, FLOATNAN);
+                var discRes = discretizeArray(arr, self.exprBinCount, FLOATNAN);
                 metaInfo.origVals = arr; // keep original values, so we can later query for them
                 arr = discRes.dArr;
                 metaInfo.binInfo = discRes.binInfo;
@@ -380,7 +380,7 @@ function CbDbFile(url) {
 
         if ((self.allMeta!==undefined) && (metaInfo.name in self.allMeta)) {
             console.log("Found in uncompressed cache");
-            onDone(self.allMeta[metaInfo.name], metaInfo);
+            onDone(self.allMeta[metaInfo.name], metaInfo, otherInfo);
         }
 
         if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
@@ -730,9 +730,11 @@ function CbDbFile(url) {
             onDone(mapIdxToId(idxArray));
         }
 
-        if (self.cellIds===undefined) 
+        if (self.cellIds===undefined) {
             // if we haven't loaded them yet, trigger the cellId load
-            self._startMetaLoad(self.getMetaFields()[0], "comprText", onIdsDone, onProgress, idxArray)
+            let cellIdMeta = self.getCellIdMeta();
+            self._startMetaLoad(cellIdMeta, "comprText", onIdsDone, onProgress, idxArray)
+        }
         else
             onDone(mapIdxToId(idxArray));
     }
@@ -863,7 +865,7 @@ function CbDbFile(url) {
 
         function onLoadedVec(exprArr, geneSym, geneDesc) {
             console.time("discretize");
-            var da = discretizeArray(exprArr, gExprBinCount, 0);
+            var da = discretizeArray(exprArr, self.exprBinCount, 0);
             console.timeEnd("discretize");
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
@@ -942,6 +944,13 @@ function CbDbFile(url) {
         return self.conf.metaFields;
     };
 
+    this.getCellIdMeta = function() {
+        /* return the cell ID meta field */
+        for (let metaInfo of self.conf.metaFields)
+            if (!metaInfo.isCustom)
+                return metaInfo;
+    }
+
     this.searchGenes = function(prefix, onDone) {
     /* call onDone with an array of gene symbols that start with prefix (case-ins.)
      * returns an array of objects with .id and .text attributes  */
@@ -975,7 +984,7 @@ function CbDbFile(url) {
            var fieldInfo = metaFieldInfo[fieldIdx];
            if (fieldInfo.type==="uniqueString" || fieldInfo.arr)
                continue;
-           self.loadMetaVec(fieldInfo, doneMetaVec, gExprBinCount);
+           self.loadMetaVec(fieldInfo, doneMetaVec);
         }
     }
 
