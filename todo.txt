@@ -1,13 +1,11 @@
+immediate:
 - remove forceAtlas2 for big datasets in cbScanpy
-- double click to zoom!
 - format the cluster names as links and make them clickable to show the markers
-- implement mouse overs for label: clear that they're clickable + show acronyms
-- sub-datasets
-- menu entry for data set info?
 
 - make browsers:
   - Dana Peer
   - Tara
+  - Scheuermann
 
 - when downloading the image, add the legend
 
@@ -22,6 +20,9 @@
 datasets:
 - ciona Nature PMID30069052
 
+Long-term:
+- find genes that follow a gradient (Alex P)
+
 Done:
 - make npm65 the default palette
 - add md5s of matrix and meta to dataset config
@@ -32,3 +33,7 @@ Done:
   - Samantha Morris
   - cellranger output  -> cbCellranger
   - Seurat converter as R file -> cbSeurat
+- double click to zoom!
+- implement mouse overs for label: clear that they're clickable + show acronyms
+- sub-datasets
+- menu entry for data set info?
