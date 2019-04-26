@@ -2155,6 +2155,16 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             shutil.copy(inFname, outPath)
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
+def copySummaryConf(inDir, outConf, datasetDir):
+    confFname = join(inDir, "summary.conf")
+    outPath = join(datasetDir, "summary.json")
+
+    summInfo = loadConfig(confFname, requireTags=[])
+    writeJson(summInfo, outPath)
+
+    outConf["descMd5s"]["summary.json"] = md5ForFile(confFname)[:MD5LEN]
+    logging.debug("Wrote %s" % outPath)
+
 def makeAbs(inDir, fname):
     " return absolute path of fname under inDir "
     if fname is None:
@@ -2736,6 +2746,7 @@ def convertDataset(inConf, outConf, datasetDir):
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
 
     copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
+    copySummaryConf(inConf["inDir"], outConf, datasetDir)
 
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered & trimmed tsv version of the meta table
@@ -3545,6 +3556,9 @@ def summarizeDatasets(datasets):
         else:
             summDs["isCollection"] = True
             summDs["datasetCount"] = ds["datasetCount"]
+
+        if "descMd5s" not in ds or "summary.json" not in ds["descMd5s"]:
+            summDs["htmlDesc"] = True
 
         for optTag in ["tags", "collections"]:
             if optTag in ds:

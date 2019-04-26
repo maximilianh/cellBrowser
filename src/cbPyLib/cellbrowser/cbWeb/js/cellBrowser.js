@@ -356,27 +356,67 @@ var cellbrowser = function() {
             $("#tabLink3").show();
         }
 
-        var descUrl = joinPaths([datasetName, "summary.html"]) +"?"+md5;
-        $("#pane1").load(descUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane1" ).html("File "+descUrl.split("?")[0]+" was not found");
-            }
-            $("#tabLink1").tab("show");
-        });
+        if (!datasetInfo.htmlDesc) {
+            // default case: description is not through html files but a json file
+            var jsonUrl = joinPaths([datasetName, "summary.json"]) +"?"+md5;
+            fetch(jsonUrl)
+              .then(function(response) {
+                return response.json();
+              })
+              .then(datasetDescToHtml);
+        } else {
+            // for older datasets that don't have .json descriptors yet
+            var descUrl = joinPaths([datasetName, "summary.html"]) +"?"+md5;
+            $("#pane1").load(descUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane1" ).html("File "+descUrl.split("?")[0]+" was not found");
+                }
+                $("#tabLink1").tab("show");
+            });
 
-        var methodsUrl = joinPaths([datasetName, "methods.html"]) +"?"+md5;
-        $("#pane2").load(methodsUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane2" ).html("File "+methodsUrl.split("?")[0]+" was not found");
-            }
-        });
+            var methodsUrl = joinPaths([datasetName, "methods.html"]) +"?"+md5;
+            $("#pane2").load(methodsUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane2" ).html("File "+methodsUrl.split("?")[0]+" was not found");
+                }
+            });
 
-        var downloadUrl = joinPaths([datasetName, "downloads.html"]) +"?"+md5;
-        $("#pane3").load(downloadUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane3" ).html("File "+downloadUrl.split("?")[0]+" was not found");
-            }
-        });
+            var downloadUrl = joinPaths([datasetName, "downloads.html"]) +"?"+md5;
+            $("#pane3").load(downloadUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane3" ).html("File "+downloadUrl.split("?")[0]+" was not found");
+                }
+            });
+        }
+    }
+
+    function datasetDescToHtml(desc) {
+        /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
+        let htmls = [];
+        if (desc.title) {
+            htmls.push("<h4>");
+            htmls.push(desc.title);
+            htmls.push("</h4>");
+        }
+        if (desc.abstract) {
+            htmls.push("<p>");
+            htmls.push(desc.abstract);
+            htmls.push("</p>");
+        }
+        if (desc.paperLabel) {
+            htmls.push("Paper: <a href='");
+            htmls.push(desc.paperUrl);
+            htmls.push("'>");
+            htmls.push(desc.paperLabel);
+            htmls.push("'</a><p>");
+        }
+        $( "#pane1" ).html(htmls.join(""));
+
+        htmls.length = 0;
+        if (desc.methods) {
+            htmls.push(desc.methods);
+        }
+        $( "#pane2" ).html(htmls.join(""));
     }
 
     function openDatasetDialog(openDsName, collInfo) {
