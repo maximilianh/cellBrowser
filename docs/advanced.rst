@@ -31,3 +31,17 @@ In your meta.tsv, you can have URLs to images. These will be shown on mouse over
 
 If you set the default coloring field to 'None' (without the quotes), then there is no coloring at all when the
 cell browser starts.
+
+To change the coloring/label field automatically when the user activates some coordinates (layout), use the option
+"colorOnMeta" to specify the field: 
+
+    coords=[
+        {"file":"tsne.coords.tsv", "shortLabel":"t-SNE on WGCNA"},
+        # you can force coloring of some other meta data field when a layout is changed to another one
+        {"file":"subset.coords.tsv", "shortLabel":"neural cells", colorOnMeta="neuralCluster"},
+    ]
+
+In very rare cases, it can be necessary to tell cbBuild that the numbers in the matrix are floating point numbers. 
+The setting looks like this:
+
+    matrixType = "float"

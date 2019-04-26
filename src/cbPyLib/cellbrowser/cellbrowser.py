@@ -549,7 +549,7 @@ def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
         try:
             rec = Record(*fields)
         except Exception as msg:
-            logging.error("Exception occured while parsing line, %s" % msg)
+            logging.error("Exception occurred while parsing line, %s" % msg)
             logging.error("Filename %s" % fh.name)
             logging.error("Line was: %s" % line)
             logging.error("Does number of fields match headers?")
@@ -987,6 +987,7 @@ def moveOrGzip(inFname, outFname):
         os.rename(inFname, outFname)
 
 def runGzip(fname, finalFname=None):
+    " compress fname and move to finalFname when done "
     logging.debug("Compressing %s" % fname)
     cmd = "gzip -f %s" % fname
     runCommand(cmd)
@@ -1201,7 +1202,10 @@ class MatrixTsvReader:
                 arr = np.fromstring(rest, dtype=npType, sep=sep, count=sampleCount)
             else:
                 if self.matType=="int":
-                    arr = [int(x) for x in rest.split(sep)]
+                    #try:
+                        arr = [int(x) for x in rest.split(sep)]
+                    #except ValueError as ex:
+                    #logging.warn("Cannot parse expression matrix. This may be due to the numbers incorrectly auto-detected as integers even if they are floating point numbers. Set matrixType='float' in cellbrowser.conf to fix this and re-run cbBuild. The exact error message was: %s" % ex)
                     #arr = map(int, rest.split(sep)) # this doesn't work in python3, requires list(), so slower
                 else:
                     arr = [float(x) for x in rest.split(sep)]
@@ -1223,7 +1227,7 @@ class MatrixTsvReader:
                         logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix." % (lineNo, symbol))
 
             if symbol in doneGenes:
-                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurence for symbol, kept second occurence as original geneId" % (lineNo, gene, symbol))
+                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence as original geneId" % (lineNo, gene, symbol))
                 symbol = gene
                 #skipIds += 1
                 #continue
@@ -1533,7 +1537,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
-    logging.info("converting %s to %s and writing index to %s" % (fname, binFname, jsonFname))
+    logging.info("converting %s to %s and writing index to %s, type %s" % (fname, binFname, jsonFname, matType))
     #logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
     logging.info("Compressing gene expression vectors...")
 
@@ -1908,7 +1912,7 @@ def runCommand(cmd):
         errAbort("Could not run: %s" % cmd)
     return 0
 
-def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym):
+def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matType):
     " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
     if not doFilter and not ".csv" in inFname.lower():
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
@@ -1930,7 +1934,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym):
     logging.info("Creating a clean ASCII-version of the expression matrix. Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
 
     matIter = MatrixTsvReader(geneToSym)
-    matIter.open(inFname)
+    matIter.open(inFname, matType=matType)
 
     sampleNames = matIter.getSampleNames()
 
@@ -1965,6 +1969,8 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym):
     #os.remove(tmpFname)
     #os.rename(tmpFnameGz, outFname)
     runGzip(tmpFname, outFname)
+
+    return matIter.getMatType()
 
 def convIdToSym(geneToSym, geneId, printWarning=True):
     if geneToSym is None:
@@ -2296,30 +2302,22 @@ def parseGeneInfo(geneToSym, fname):
         for gene, sym in iterItems(geneToSym):
             validSyms.add(sym)
 
+    sep = sepForFile(fname)
     geneInfo = []
     for line in openFile(fname):
         hasDesc = False
         hasPmid = False
         if line.startswith("symbol"):
             continue
-        sep = sepForFile(fname)
         row = line.rstrip("\r\n").split(sep)
-        if hasDesc == None:
-            if len(row)==2:
-                hasDesc = True
-        if hasPmid == None:
-            if len(row)==3:
-                hasPmid = True
         sym = row[0]
         if validSyms is not None and sym not in validSyms:
             logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
             continue
 
         info = [sym]
-        if hasDesc:
+        if len(row)==2:
             info.append(row[1])
-        if hasPmid:
-            info.append(row[2])
         geneInfo.append(info)
     return geneInfo
 
@@ -2375,25 +2373,25 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     """ trim a copy of the expression matrix for downloads, also create an indexed
     and compressed version
     """
+    matType = inConf.get("matrixType")
 
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
     matrixFname = getAbsPath(inConf, "exprMatrix")
     outConf["fileVersions"]["inMatrix"] = getFileVersion(matrixFname)
-    copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym)
+    try:
+        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, matType)
+    except ValueError:
+        logging.warn("Oops. Mis-guessed the matrix data type, trying again and using floating point numbers. To avoid this message in the future, you can set matrixType='float' in cellbrowser.conf.")
+        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, "float")
 
-    # step2: discretize expression matrix for the viewer, compress and index to file
-    #logging.info("quick-mode: Not compressing matrix, because %s already exists" % binMat)
+    # step2: compress matrix and index to file
     binMat = join(outDir, "exprMatrix.bin")
     binMatIndex = join(outDir, "exprMatrix.json")
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    try:
-        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex)
-    except ValueError:
-        logging.warn("Oops. Mis-guessed the matrix data type, trying again and using floating point numbers")
-        matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType="float")
+    matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType=matType)
 
     if matType=="int":
         outConf["matrixArrType"] = "Uint32"
