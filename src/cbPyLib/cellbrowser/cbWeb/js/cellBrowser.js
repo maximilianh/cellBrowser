@@ -358,7 +358,7 @@ var cellbrowser = function() {
 
         if (!datasetInfo.htmlDesc) {
             // default case: description is not through html files but a json file
-            var jsonUrl = joinPaths([datasetName, "summary.json"]) +"?"+md5;
+            var jsonUrl = joinPaths([datasetName, "datasetDesc.json"]) +"?"+md5;
             fetch(jsonUrl)
               .then(function(response) {
                 return response.json();
@@ -390,6 +390,18 @@ var cellbrowser = function() {
         }
     }
 
+    function htmlAddLink(desc, label, url, urlLabel) {
+        if (!desc[url])
+            return;
+
+        htmls.push(label);
+        htmls.push(": <a href='");
+        htmls.push(desc[url]);
+        htmls.push("'>");
+        htmls.push(desc[label]);
+        htmls.push("'</a><p>");
+    }
+
     function datasetDescToHtml(desc) {
         /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
         let htmls = [];
@@ -403,13 +415,11 @@ var cellbrowser = function() {
             htmls.push(desc.abstract);
             htmls.push("</p>");
         }
-        if (desc.paperLabel) {
-            htmls.push("Paper: <a href='");
-            htmls.push(desc.paperUrl);
-            htmls.push("'>");
-            htmls.push(desc.paperLabel);
-            htmls.push("'</a><p>");
-        }
+
+        htmlAddLink("paper", desc, "paperUrl", "paperLabel");
+        htmlAddLink("Website", desc, "otherSiteUrl", "otherSiteLabel");
+        htmlAddLink("GEO", desc, "geoUrl", "geoLabel");
+
         $( "#pane1" ).html(htmls.join(""));
 
         htmls.length = 0;

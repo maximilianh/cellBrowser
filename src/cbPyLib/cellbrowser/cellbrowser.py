@@ -2156,13 +2156,17 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
 def copySummaryConf(inDir, outConf, datasetDir):
-    confFname = join(inDir, "summary.conf")
-    outPath = join(datasetDir, "summary.json")
+    confFname = join(inDir, "datasetDesc.conf")
+
+    if not isfile(confFname):
+        return
+
+    outPath = join(datasetDir, "datasetDesc.json")
 
     summInfo = loadConfig(confFname, requireTags=[])
     writeJson(summInfo, outPath)
 
-    outConf["descMd5s"]["summary.json"] = md5ForFile(confFname)[:MD5LEN]
+    outConf["descMd5s"]["datasetDesc.json"] = md5ForFile(confFname)[:MD5LEN]
     logging.debug("Wrote %s" % outPath)
 
 def makeAbs(inDir, fname):
