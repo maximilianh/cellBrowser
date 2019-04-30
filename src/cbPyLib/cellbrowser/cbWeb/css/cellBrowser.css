@@ -65,11 +65,11 @@ canvas { user-select: none }
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
 .tpSidebarHeader { font-weight: bold; padding-left: 4px; font-size: 16px; padding-top: 4px; height: 25px; background-color: white; text-align: center}
-#tpLeftSidebar { overflow-x: hidden, overflow-y:auto; border-right: 1px solid #D7D7D7; height: 100%}
+#tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
 #tpSideMeta { padding-left: 2px}
-#tpMetaPanel { background-color: white}
+#tpMetaPanel { background-color: white;}
 #tpLeftTabs { border: 0}
-#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px }
+#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px;}
 
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
 .tpMetaLabel { font-weight: bold; padding-left: 2px}

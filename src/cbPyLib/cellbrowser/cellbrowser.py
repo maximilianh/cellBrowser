@@ -1561,9 +1561,17 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
     sampleNames = matReader.getSampleNames()
 
+    symCounts = defaultdict(int)
     geneCount = 0
     for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
+
+        symCounts[sym]+=1
+        if symCounts[sym] > 100:
+            errAbort("The gene symbol %s appears more than 100 times in the expression matrix. "
+                    "Are you sure that the matrix is in the right format? Each gene should be on a row. "
+                    "The gene ID must be in the first column and "
+                    "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % sym)
 
         #if maxVal(exprArr) > 200:
             #highCount += 1
