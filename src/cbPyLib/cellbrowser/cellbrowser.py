@@ -369,7 +369,7 @@ def cbBuild_parseArgs(showHelp=False):
     """)
 
     parser.add_option("", "--init", dest="init", action="store_true",
-        help="copy sample cellbrowser.conf to current directory")
+        help="copy sample cellbrowser.conf and dataDesc.conf to current directory")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
@@ -2155,19 +2155,32 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             shutil.copy(inFname, outPath)
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
-def copySummaryConf(inDir, outConf, datasetDir):
+def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles):
+    " write a json file that describes the dataset abstract/methods/downloads, easier than summary/methods/downloads.html "
     confFname = join(inDir, "datasetDesc.conf")
 
     if not isfile(confFname):
-        return
+        logging.debug("Could not find %s" % confFname)
+        return False
 
     outPath = join(datasetDir, "datasetDesc.json")
 
     summInfo = loadConfig(confFname, requireTags=[])
+    summInfo["coordFiles"] = coordFiles
+
+    if "image" in summInfo:
+        inFname = join(inDir, summInfo["image"])
+        logging.debug("Copying %s to %s" % (inFname, datasetDir))
+        shutil.copy(inFname, datasetDir)
+
     writeJson(summInfo, outPath)
 
-    outConf["descMd5s"]["datasetDesc.json"] = md5ForFile(confFname)[:MD5LEN]
+    if "descMd5s" not in outConf:
+        outConf["descMd5s"] = {}
+
+    outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
     logging.debug("Wrote %s" % outPath)
+    return True
 
 def makeAbs(inDir, fname):
     " return absolute path of fname under inDir "
@@ -2435,6 +2448,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         labelVec, labelVals = parseTsvColumn(outMeta, clusterLabelField)
         outConf["labelField"] = clusterLabelField
 
+    outFnames = []
     newCoords = []
     for coordIdx, inCoordInfo in enumerate(coordFnames):
         coordFname = inCoordInfo["file"]
@@ -2456,7 +2470,9 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             coordInfo["colorOnMeta"] = inCoordInfo["colorOnMeta"]
 
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
-        textOutName = join(outDir, cleanName+".coords.tsv.gz")
+        textOutBase = cleanName+".coords.tsv.gz"
+        textOutName = join(outDir, textOutBase)
+        outFnames.append(textOutBase)
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
         if hasLabels:
@@ -2474,6 +2490,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     outConf["coords"] = newCoords
     copyConf(inConf, outConf, "labelField")
     copyConf(inConf, outConf, "useTwoBytes")
+    return outFnames
 
 def readAcronyms(inConf, outConf):
     " read the acronyms and save them into the config "
@@ -2749,9 +2766,6 @@ def convertDataset(inConf, outConf, datasetDir):
     if " " in inConf["name"]:
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
 
-    copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
-    copySummaryConf(inConf["inDir"], outConf, datasetDir)
-
     # convertMeta also compares the sample IDs between meta and matrix
     # outMeta is a reordered & trimmed tsv version of the meta table
     sampleNames, needFilterMatrix, outMeta = convertMeta(inConf, outConf, datasetDir)
@@ -2771,7 +2785,11 @@ def convertDataset(inConf, outConf, datasetDir):
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
 
-    convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
+    coordFiles = convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
+
+    foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
+    if not foundConf:
+        copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 
     if geneToSym==-1:
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
@@ -3257,6 +3275,7 @@ def cbBuildCli():
 
     if options.init:
         copyPkgFile("sampleConfig/cellbrowser.conf")
+        copyPkgFile("sampleConfig/datasetDesc.conf")
         sys.exit(1)
 
     for fname in confFnames:
@@ -3561,8 +3580,8 @@ def summarizeDatasets(datasets):
             summDs["isCollection"] = True
             summDs["datasetCount"] = ds["datasetCount"]
 
-        if "descMd5s" not in ds or "summary.json" not in ds["descMd5s"]:
-            summDs["htmlDesc"] = True
+        if ("descMd5s" in ds) and ("datasetDesc" in ds["descMd5s"]):
+            summDs["hasFiles"] = ["datasetDesc"]
 
         for optTag in ["tags", "collections"]:
             if optTag in ds:

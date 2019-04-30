@@ -356,14 +356,16 @@ var cellbrowser = function() {
             $("#tabLink3").show();
         }
 
-        if (!datasetInfo.htmlDesc) {
-            // default case: description is not through html files but a json file
+        if (datasetInfo.hasFiles && datasetInfo.hasFiles.indexOf("datasetDesc")!=-1) {
+            // description is not through html files but a json file
             var jsonUrl = joinPaths([datasetName, "datasetDesc.json"]) +"?"+md5;
             fetch(jsonUrl)
               .then(function(response) {
                 return response.json();
               })
-              .then(datasetDescToHtml);
+              .then(function(desc) { 
+                  datasetDescToHtml(datasetInfo, desc); 
+              });
         } else {
             // for older datasets that don't have .json descriptors yet
             var descUrl = joinPaths([datasetName, "summary.html"]) +"?"+md5;
@@ -390,19 +392,48 @@ var cellbrowser = function() {
         }
     }
 
-    function htmlAddLink(desc, label, url, urlLabel) {
-        if (!desc[url])
-            return;
+    let descLabels = {
+        "paperLink":"Publication",
+        "otherSite" : "Website",
+        "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
+        "sra" : "NCBI SRA",
+        "dbgap" : "NCBI DbGaP",
+        "biorxiv" : "BioRxiv preprint"
+    };
 
-        htmls.push(label);
-        htmls.push(": <a href='");
-        htmls.push(desc[url]);
-        htmls.push("'>");
-        htmls.push(desc[label]);
-        htmls.push("'</a><p>");
+    let descUrls = {
+        "geo_series" : "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=",
+        "pmid" : "https://www.ncbi.nlm.nih.gov/pubmed/",
+        "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
     }
 
-    function datasetDescToHtml(desc) {
+    function htmlAddLink(htmls, desc, key) {
+        /* add a link to html on a new line. if desc[key] includes a space, the part after it is the link name. */
+        if (!desc[key])
+            return;
+
+        let label = descLabels[key];
+        htmls.push(label);
+        htmls.push(": <a href='");
+
+        let url = desc[key]
+        let urlLabel = url;
+        let spcPos = url.indexOf(" ");
+        if (spcPos!==-1) {
+            url = s.slice(0,spcPos);
+            urlLabel = s.slice(spcPos+1);
+        }
+            
+        if (!url.startsWith("http"))
+            url = descUrls[key]+url;
+
+        htmls.push(url);
+        htmls.push("'>");
+        htmls.push(urlLabel);
+        htmls.push("</a><p>");
+    }
+
+    function datasetDescToHtml(datasetInfo, desc) {
         /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
         let htmls = [];
         if (desc.title) {
@@ -410,15 +441,23 @@ var cellbrowser = function() {
             htmls.push(desc.title);
             htmls.push("</h4>");
         }
+        if (desc.image) {
+            htmls.push("<img src='");
+            htmls.push(datasetInfo.name+"/"+desc.image+"'>");
+        }
+
         if (desc.abstract) {
             htmls.push("<p>");
             htmls.push(desc.abstract);
             htmls.push("</p>");
         }
 
-        htmlAddLink("paper", desc, "paperUrl", "paperLabel");
-        htmlAddLink("Website", desc, "otherSiteUrl", "otherSiteLabel");
-        htmlAddLink("GEO", desc, "geoUrl", "geoLabel");
+        htmlAddLink(htmls, desc, "biorxiv_url");
+        htmlAddLink(htmls, desc, "paper_url");
+        htmlAddLink(htmls, desc, "other_url");
+        htmlAddLink(htmls, desc, "geo_series");
+        htmlAddLink(htmls, desc, "pmid");
+        htmlAddLink(htmls, desc, "dbgap");
 
         $( "#pane1" ).html(htmls.join(""));
 
@@ -427,6 +466,24 @@ var cellbrowser = function() {
             htmls.push(desc.methods);
         }
         $( "#pane2" ).html(htmls.join(""));
+
+        // downloads pane
+        htmls.length = 0;
+        htmls.push("<p><b>Expression Matrix:</b> <a href='"+datasetInfo.name);
+        htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+        if (desc.unitDesc)
+            htmls.push("<br>Values are: "+desc.unitDesc);
+        htmls.push("</p>");
+
+        htmls.push("<p><b>Cell meta annotations:</b> <a href='"+datasetInfo.name);
+        htmls.push("/meta.tsv'>meta.tsv</a></p>");
+
+        htmls.push("<p><b>Dimens. reduction coordinates:</b> ");
+        for (let fname of desc.coordFiles)
+            htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a> ");
+        htmls.push("</p>");
+
+        $( "#pane3" ).html(htmls.join(""));
     }
 
     function openDatasetDialog(openDsName, collInfo) {
