@@ -37,8 +37,9 @@ The following tags contain accession IDs and will be translated to links:
 - ``geo_series``: NCBI GEO series ID (CIRM TagsV5)
 - ``dbgap``: NCBI dbGaP accession, starts with phs
 
-The following tags contain text:
+The following tags contain just text:
+
 - ``submitter``: name and/or email of submitter
 - ``lab``: lab and University of submitter
 - ``submission_date``: ideally in format year-month-day
-- ``version``: version of dataset, a number that is increased over time
+- ``version``: version of dataset, a simple number (1,2,3,...) that should be increased each time a major change (usually meta data) was received from the lab
