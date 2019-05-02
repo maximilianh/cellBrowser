@@ -29,7 +29,7 @@ setuptools.setup(
         'cbScanpy = cellbrowser.cellbrowser:cbScanpyCli',
         'cbSeurat = cellbrowser.seurat:cbSeuratCli',
         'cbTool = cellbrowser.convert:cbToolCli',
-        'cbUpgrade = cellbrowser.cellbrowser:cbMake_cli',
+        'cbUpgrade = cellbrowser.cellbrowser:cbUpgradeCli',
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
         'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli',
         'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',

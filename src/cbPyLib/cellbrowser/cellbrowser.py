@@ -392,7 +392,7 @@ def cbBuild_parseArgs(showHelp=False):
 
     return args, options
 
-def cbMake_parseArgs():
+def cbUpgrade_parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("usage: %prog [options] outDir - copy all relevant js/css files into outDir, look for datasets in it and create index.html")
 
@@ -2029,7 +2029,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
     sep = sepForFile(filename)
     if headerLine == seuratLine or headerLine == seuratLine2 or headerLine == seuratLine3:
-        logging.info("Cluster marker file was recognized to be in Seurat format")
+        logging.debug("Cluster marker file was recognized to be in Seurat format")
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
         geneIdx = 7
@@ -2808,6 +2808,10 @@ def convertDataset(inConf, outConf, datasetDir):
 
     readQuickGenes(inConf, geneToSym, outConf)
 
+    # need to able to see quickly how a dataset is described
+    if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
+        outConf["hasFiles"] = ["datasetDesc"]
+
 def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     " write embedding coordinates from anndata object to outDir, the new filename is <prefix>_coords.tsv "
     import pandas as pd
@@ -3174,7 +3178,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
         outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
         writeConfig(inConf, outConf, datasetDir)
 
-    cbMake(outDir, datasets)
+    cbUpgrade(outDir, datasets)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
@@ -3396,15 +3400,7 @@ def addCollections(inDir, datasets):
             #for ds in dsList:
                 #ds["sameCollection"] = sibInfo
 
-    # remove hidden datasets
-    newDsList = []
-    for ds in datasets:
-        if ds.get("visibility")=="hide":
-            logging.debug("Dataset %s is set to hide, skipping" % ds["name"])
-            continue
-        newDsList.append(ds)
-
-    return newDsList, primCollDatasets
+    return datasets, primCollDatasets
 
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
@@ -3588,13 +3584,14 @@ def summarizeDatasets(datasets):
             summDs["isCollection"] = True
             summDs["datasetCount"] = ds["datasetCount"]
 
-        if ("descMd5s" in ds) and ("datasetDesc" in ds["descMd5s"]):
-            summDs["hasFiles"] = ["datasetDesc"]
+        for optListTag in ["tags", "collections", "hasFiles"]:
+            if optListTag in ds:
+                assert(type(ds[optListTag])==type([])) # has to be a list
+                summDs[optListTag] = ds[optListTag]
 
-        for optTag in ["tags", "collections"]:
-            if optTag in ds:
-                assert(type(ds[optTag])==type([])) # has to be a list
-                summDs[optTag] = ds[optTag]
+        #for optTag in ["visibility"]:
+            #if optTag in ds:
+                #summDs[optTag] = ds[optTag]
 
         dsList.append(summDs)
     return dsList
@@ -3608,7 +3605,8 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
     datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
 
     newFname = join(outDir, "index.html")
-    ofh = open(newFname, "w")
+    tmpFname = newFname+".tmp"
+    ofh = open(tmpFname, "w")
 
     ofh.write("<!doctype html>\n")
     ofh.write('<html>\n')
@@ -3678,11 +3676,25 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
     ofh.write('</html>\n')
 
     ofh.close()
+    os.rename(tmpFname, newFname)
 
     datasetLabels = [x["name"] for x in dsList]
     logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
 
+def removeHiddenDatasets(datasets):
+    """ visibility="hidden" removes datasets from the list, e.g. during paper review """
+    newDsList = []
+    for ds in datasets:
+        if ds.get("visibility")=="hide":
+            logging.debug("Dataset %s is set to hide, skipping" % ds["name"])
+            continue
+        newDsList.append(ds)
+    return newDsList
+
 def cbMake(outDir, onlyDatasets=None, devMode=False):
+    cbUpgrade(outDir, onlyDatasets, devMode)
+
+def cbUpgrade(outDir, onlyDatasets=None, devMode=False):
     " create index.html in outDir and copy over all other static files "
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
@@ -3691,15 +3703,16 @@ def cbMake(outDir, onlyDatasets=None, devMode=False):
 
     collDir = getConfig("collDir")
     datasets, primCollDatasets = addCollections(collDir, datasets)
+    datasets = removeHiddenDatasets(datasets)
 
     cpCollectionFiles(collDir, datasets, primCollDatasets, onlyDatasets, outDir)
 
     makeIndexHtml(webDir, datasets, outDir, devMode=devMode)
 
 
-def cbMake_cli():
-    " command line interface for copying over the html and js files "
-    args, options = cbMake_parseArgs()
+def cbUpgradeCli():
+    " command line interface for copying over the html and js files and recreate index.html "
+    args, options = cbUpgrade_parseArgs()
     outDir = options.outDir
 
     if outDir is None:
@@ -3707,7 +3720,7 @@ def cbMake_cli():
     if len(args)!=0:
         errAbort("This command does not accept arguments without options. Did you mean: -o <outDir> ? ")
 
-    cbMake(outDir, devMode=options.devMode)
+    cbUpgrade(outDir, devMode=options.devMode)
 
 def parseGeneLocs(geneType):
     """

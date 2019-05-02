@@ -36,3 +36,9 @@ The following tags contain accession IDs and will be translated to links:
 - ``pmid``: Pubmed ID of the publication (CIRM TagsV5)
 - ``geo_series``: NCBI GEO series ID (CIRM TagsV5)
 - ``dbgap``: NCBI dbGaP accession, starts with phs
+
+The following tags contain text:
+- ``submitter``: name and/or email of submitter
+- ``lab``: lab and University of submitter
+- ``submission_date``: ideally in format year-month-day
+- ``version``: version of dataset, a number that is increased over time
