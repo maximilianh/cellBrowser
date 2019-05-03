@@ -951,12 +951,12 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
                     foundColors +=1
                 else:
                     notFound.add(val)
-                    colArr.append("DDDDDD") # wonder if I should not stop here instead of using grey
+                    colArr.append(None) # maybe I should fail hard here?
 
             if foundColors > 0:
                 fieldMeta["colors"] = colArr
                 if len(notFound)!=0:
-                    logging.warn("No default color found for field values %s. Set these to grey." % notFound)
+                    logging.warn("No default color found for field values %s. Set these to defaults." % notFound)
 
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
@@ -2204,12 +2204,12 @@ def copyImage(inDir, summInfo, datasetDir):
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles):
     " write a json file that describes the dataset abstract/methods/downloads, easier than summary/methods/downloads.html "
     confFname = join(inDir, "datasetDesc.conf")
-    outConf["fileVersions"]["datasetDesc"] = getFileVersion(confFname)
 
     if not isfile(confFname):
         logging.debug("Could not find %s" % confFname)
         return False
 
+    outConf["fileVersions"]["datasetDesc"] = getFileVersion(confFname)
     outPath = join(datasetDir, "datasetDesc.json")
 
     summInfo = loadConfig(confFname, requireTags=[])
