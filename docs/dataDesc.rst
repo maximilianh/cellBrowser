@@ -14,7 +14,7 @@ A sample file can be created with the command ``cbBuild --init``.
 
 The following lists all tags that are currently supported.
 
-These tags contain longer text:
+These tags contain longer text that can include HTML markup:
 
 - ``title``: title of the dataset, often the paper title
 - ``abstract``: a big picture summary of the dataset
@@ -25,7 +25,8 @@ This tag contains a file name:
 
 - ``image``: picture, usually a 400px-wide thumbnail of the dimensionality reduction
 
-The following tags can contain URLs and optionally, separated with a space, a label for the link:
+The following tags can contain URLs and optionally, separated with a space, a label for the link. If you do 
+not specify the label, a default label will be used (e.g. 'Biorxiv Preprint'):
 
 - ``biorxiv_url``: URL of the pre-print
 - ``paper_url``: URL to any website with the fulltext

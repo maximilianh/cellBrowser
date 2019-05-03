@@ -1099,6 +1099,7 @@ class MatrixTsvReader:
 
     def open(self, fname, matType=None, usePyGzip=False):
         " open file and guess field sep and format of numbers (float or int) "
+
         if which("gunzip")==None:
             logging.warn("Gunzip not in PATH, falling back to Python's built-in")
             usePyGzip = True
@@ -1130,6 +1131,7 @@ class MatrixTsvReader:
         assert(len(self.sampleNames)!=0)
         logging.debug("Read %d sampleNames, e.g. %s" % (len(self.sampleNames), self.sampleNames[0]))
 
+        self.oldRows = []
         if matType is None:
             self.matType = self.autoDetectMatType(10)
             logging.info("Auto-detect: Numbers in matrix are of type '%s'", self.matType)
@@ -1156,6 +1158,7 @@ class MatrixTsvReader:
 
         matType = "int"
         for geneId, sym, a in self.iterRows():
+            self.oldRows.append( (geneId, sym, a) )
             geneCount+=1
             if numpyLoaded:
                 a_int = a.astype(int)
@@ -1185,6 +1188,17 @@ class MatrixTsvReader:
             npType = "float32"
         else:
             npType = "int32"
+
+        # during auto-detection, we've already read a few lines
+        logging.debug("spooling back %d saved rows" % len(self.oldRows))
+        for (geneId, sym, arr) in self.oldRows:
+            # for the integer case though we have to fix up the type now
+            if self.matType=="int":
+                if numpyLoaded:
+                    arr = arr.astype(int)
+                else:
+                    arr = [int(x) for x in arr]
+            yield (geneId, sym, arr)
 
         skipIds = 0
         doneGenes = set()
@@ -1217,7 +1231,11 @@ class MatrixTsvReader:
                 if geneToSym is None:
                     symbol = gene
                 else:
-                    symbol = geneToSym.get(gene)
+                    symbol = geneToSym.get(gene.split(".")[0])
+                    logging.debug("%s -> %s" % (gene, symbol))
+                    #if symbol is None:
+                        #symbol = geneToSym.get(gene)
+
                     if symbol is None:
                         skipIds += 1
                         logging.warn("line %d: %s is not a valid gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
@@ -1227,19 +1245,18 @@ class MatrixTsvReader:
                         logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix." % (lineNo, symbol))
 
             if symbol in doneGenes:
-                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence as original geneId" % (lineNo, gene, symbol))
+                logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence with original geneId" % (lineNo, gene, symbol))
                 symbol = gene
-                #skipIds += 1
-                #continue
 
             doneGenes.add(gene)
 
             lineNo += 1
 
+            logging.debug("Yielding gene %s, sym %s, %d fields" % (gene, symbol, len(arr)))
             yield gene, symbol, arr
 
         if skipIds!=0:
-            logging.warn("Kept %d genes as original IDs, of duplication or unknown ID" % skipIds)
+            logging.warn("Kept %d genes as original IDs, due to duplication or unknown ID" % skipIds)
 
     def iterRowsWithOffsets(self):
         " like iterRows, but also return offset and line length "
@@ -1594,7 +1611,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
     if len(exprIndex)==0:
         errAbort("No genes from the expression matrix could be mapped to symbols."
-            "Are you sure these are Ensembl IDs? Adapt geneIdType in cellbrowser.conf. Example ID: %s" % geneId)
+            "Are you sure these are Ensembl IDs? Adapt geneIdType in cellbrowser.conf.")
 
     jsonOfh = open(jsonFname, "w")
     json.dump(exprIndex, jsonOfh)
@@ -1785,13 +1802,13 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     stop = False
     mustFilterMatrix = False
     if len(matrixNotMeta)!=0:
-        logging.warn("%d samples names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
+        logging.warn("%d sample names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
         logging.warn("These samples will be removed from the meta data")
         matrixSampleNames = [x for x in matrixSampleNames if x in meta]
         mustFilterMatrix = True
 
     if len(metaNotMatrix)!=0:
-        logging.warn("%d samples names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
+        logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
         logging.warn("These samples will be removed from the expression matrix")
 
     # filter the meta data file
@@ -1939,7 +1956,8 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
 
     sep = "\t"
 
-    logging.info("Creating a clean ASCII-version of the expression matrix. Copying+reordering+trimming %s to %s, keeping only the %d columns with a sample name in the meta data" % (inFname, outFname, len(filtSampleNames)))
+    logging.info("Copying+reordering+trimming %s to %s, keeping %d columns with sample ID in meta" % (inFname, outFname, len(filtSampleNames)))
+    logging.debug("matrix type: %s" % matType)
 
     matIter = MatrixTsvReader(geneToSym)
     matIter.open(inFname, matType=matType)
@@ -1951,6 +1969,9 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     for i, name in enumerate(sampleNames):
         if name in keepFields:
             keepIdx.append(i)
+
+    assert(len(keepIdx)!=0)
+    logging.debug("Keeping %d fields" % len(keepIdx))
 
     tmpFname = outFname+".tmp"
 
@@ -2163,9 +2184,25 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             shutil.copy(inFname, outPath)
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
+def copyImage(inDir, summInfo, datasetDir):
+    """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
+    inFname = join(inDir, summInfo["image"])
+    logging.debug("Copying %s to %s" % (inFname, datasetDir))
+    shutil.copy(inFname, datasetDir)
+
+    cmd = ["file", inFname]
+    proc, stdout = popen(cmd)
+    imgLine = stdout.readline()
+    # thumb.png: PNG image data, 400 x 267, 8-bit/color RGBA, non-interlaced
+    sizeStr = imgLine.split(":")[1].split(", ")[1]
+    width, height = sizeStr.split(" x ")
+    summInfo["image"] = (summInfo["image"], width, height)
+    return summInfo
+
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles):
     " write a json file that describes the dataset abstract/methods/downloads, easier than summary/methods/downloads.html "
     confFname = join(inDir, "datasetDesc.conf")
+    outConf["fileVersions"]["datasetDesc"] = getFileVersion(confFname)
 
     if not isfile(confFname):
         logging.debug("Could not find %s" % confFname)
@@ -2177,9 +2214,8 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles):
     summInfo["coordFiles"] = coordFiles
 
     if "image" in summInfo:
-        inFname = join(inDir, summInfo["image"])
-        logging.debug("Copying %s to %s" % (inFname, datasetDir))
-        shutil.copy(inFname, datasetDir)
+        summInfo = copyImage(inDir, summInfo, datasetDir)
+
 
     writeJson(summInfo, outPath)
 
@@ -3176,6 +3212,8 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
         convertDataset(inConf, outConf, datasetDir)
 
         outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
+        outConf["md5"] = calcMd5ForDataset(outConf)
+
         writeConfig(inConf, outConf, datasetDir)
 
     cbUpgrade(outDir, datasets)
@@ -3402,6 +3440,26 @@ def addCollections(inDir, datasets):
 
     return datasets, primCollDatasets
 
+def calcMd5ForDataset(datasetDesc):
+    " make a combined md5 for the dataset, based on the config file, meta, expression and the html or dataset descs "
+    md5s = []
+    if "fileVersions" in datasetDesc:
+        fileVers = datasetDesc["fileVersions"]
+        md5s.append ( fileVers["outMeta"]["md5"] )
+        md5s.append ( fileVers["outMatrix"]["md5"] )
+        if "config" in fileVers:
+            md5s.append ( fileVers["config"]["md5"] )
+        if "datasetDesc" in fileVers:
+            md5s.append ( fileVers["datasetDesc"]["md5"] )
+
+    if "descMd5s" in datasetDesc:
+        descs = datasetDesc["descMd5s"]
+        md5s.append (descs.get("summary", ""))
+        md5s.append (descs.get("methods", ""))
+        md5s.append (descs.get("downloads", ""))
+
+    return md5ForList(md5s)[:MD5LEN]
+
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
     contents as a list A dataset description is a list with three members: A
@@ -3421,20 +3479,8 @@ def findDatasets(outDir):
 
         datasetDesc = json.load(open(fname))
 
-        # make a combined md5 for the dataset, based on the config file, meta, expression and the three html files
-        md5s = []
-        if "fileVersions" in datasetDesc:
-            fileVers = datasetDesc["fileVersions"]
-            md5s.append ( fileVers["outMeta"]["md5"] )
-            md5s.append ( fileVers["outMatrix"]["md5"] )
-            if "config" in fileVers:
-                md5s.append ( fileVers["config"]["md5"] )
-        if "descMd5s" in datasetDesc:
-            descs = datasetDesc["descMd5s"]
-            md5s.append (descs.get("summary", ""))
-            md5s.append (descs.get("methods", ""))
-            md5s.append (descs.get("downloads", ""))
-        datasetDesc["md5"] = md5ForList(md5s)[:MD5LEN]
+        if not "md5" in datasetDesc:
+            datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
 
         assert("name" in datasetDesc) # every dataset has to have a name
 

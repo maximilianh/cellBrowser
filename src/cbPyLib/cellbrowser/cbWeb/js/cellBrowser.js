@@ -336,11 +336,19 @@ var cellbrowser = function() {
         return url;
     }        
 
+    function preloadImage(url) {
+        let img= new Image();
+        img.src = url;
+    }
+
     function openDatasetLoadPane(datasetInfo) {
         /* open dataset dialog: load html into the three panes  */
         //var datasetName = datasetInfo.name;
         //var md5 = datasetInfo.md5;
         // the UCSC apache serves latin1, so we force it back to utf8
+        var thumbUrl = joinPaths([datasetInfo.name, "thumb.png"]);
+        preloadImage(thumbUrl); // many datasets have thumb.png, so preload it now
+
         $.ajaxSetup({
             'beforeSend' : function(xhr) {
                 if (xhr && xhr.overrideMimeType)
@@ -424,8 +432,8 @@ var cellbrowser = function() {
         let urlLabel = url;
         let spcPos = url.indexOf(" ");
         if (spcPos!==-1) {
-            url = s.slice(0,spcPos);
-            urlLabel = s.slice(spcPos+1);
+            urlLabel = url.slice(spcPos+1);
+            url = url.slice(0,spcPos);
         }
             
         if (!url.startsWith("http"))
@@ -446,8 +454,9 @@ var cellbrowser = function() {
             htmls.push("</h4>");
         }
         if (desc.image) {
-            htmls.push("<img src='");
-            htmls.push(datasetInfo.name+"/"+desc.image+"'>");
+            htmls.push("<img style='float:right; padding-left:5px' src='");
+            htmls.push(datasetInfo.name+"/"+desc.image[0]+"'");
+            htmls.push(" width='"+desc.image[1]+"' height='"+desc.image[2]+"'>");
         }
 
         if (desc.abstract) {
