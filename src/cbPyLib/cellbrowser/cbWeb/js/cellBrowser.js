@@ -149,6 +149,18 @@ var cellbrowser = function() {
         return a.slice();
     }
 
+    function copyNonNull(srcArr, trgArr) {
+    /* copy non-null values to trgArr */
+        if (srcArr.length!==trgArr.length)
+            alert("warning - copyNonNull - target and source array have different sizes.");
+
+        for (var i = 0; i < srcArr.length; i++) {
+            if (srcArr[i]!==null)
+                trgArr[i] = srcArr[i];
+        }
+        return trgArr;
+    }
+
     function isEmpty(obj) {
         for(var key in obj) {
             if(obj.hasOwnProperty(key))
@@ -1300,11 +1312,11 @@ var cellbrowser = function() {
                 longLabels = cloneArray(shortLabels);
             longLabels = copyNonEmpty(fieldChanges.longLabels, longLabels);
             
-            // create the colors
-            var colors = [];
+            // create the colors: configured colors override default colors and cart overrides those
+            var colors = makeColorPalette(cDefQualPalette, metaInfo.valCounts.length);
             if ("colors" in metaInfo)
-                colors = cloneArray(metaInfo.colors);
-            var newColors = fieldChanges.longLabels;
+                copyNonNull(metaInfo.colors, colors);
+            var newColors = fieldChanges.colors;
             colors = copyNonEmpty(newColors, colors);
 
             var ui = {};
@@ -2626,9 +2638,11 @@ var cellbrowser = function() {
         var n = rows.length;
         var pal = null;
         var usePredefined = false;
+
+        pal = makeColorPalette(palName, n);
         // if this is a field for which colors were defined manually, use them
         if (legend.metaInfo!==undefined && legend.metaInfo.colors!==undefined && origPalName==="default") {
-            pal = legend.metaInfo.colors;
+            copyNonNull(legend.metaInfo.colors, pal);
             usePredefined = true;
         } else
             pal = makeColorPalette(palName, n);
