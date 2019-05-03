@@ -1938,7 +1938,9 @@ def runCommand(cmd):
     return 0
 
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matType):
-    " copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames"
+    """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
+    Returns the format of the matrix, "float" or "int", or None if not known
+    """
     if not doFilter and not ".csv" in inFname.lower():
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
 
@@ -1952,7 +1954,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
         if ret!=0 and isfile(outFname):
             os.remove(outFname)
             sys.exit(1)
-        return
+        return None
 
     sep = "\t"
 
@@ -2453,7 +2455,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     try:
         matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, matType)
     except ValueError:
-        logging.warn("Oops. Mis-guessed the matrix data type, trying again and using floating point numbers. To avoid this message in the future, you can set matrixType='float' in cellbrowser.conf.")
+        logging.warn("This is rare: mis-guessed the matrix data type, trying again and using floating point numbers. To avoid this message in the future, you can set matrixType='float' in cellbrowser.conf.")
         matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, "float")
 
     # step2: compress matrix and index to file
@@ -2462,7 +2464,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType=matType)
+    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType=matType)
 
     if matType=="int":
         outConf["matrixArrType"] = "Uint32"
