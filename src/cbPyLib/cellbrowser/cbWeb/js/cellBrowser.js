@@ -499,6 +499,11 @@ var cellbrowser = function() {
             htmls.push("<b>Lab: </b> "+desc.lab);
             htmls.push("<br>");
         }
+        if (desc.institution) {
+            htmls.push("<b>Institution: </b> "+desc.institution);
+            htmls.push("<br>");
+        }
+
 
         htmlAddLink(htmls, desc, "biorxiv_url");
         htmlAddLink(htmls, desc, "paper_url");
@@ -548,7 +553,7 @@ var cellbrowser = function() {
      * remove the dataset list on the left side and show only the information part of the dialog */
 
         if (!openDsInfo)
-            openDsInfo = db.conf;
+            openDsInfo = gDatasetList[0];
 
         var title = null;
         var note = "";

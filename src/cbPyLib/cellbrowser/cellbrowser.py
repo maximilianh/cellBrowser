@@ -1005,6 +1005,9 @@ def runGzip(fname, finalFname=None):
 def addLongLabels(acronyms, fieldMeta):
     """ add a 'longLabel' meta info entry, a list of longer strings for enum fields, if any shortLabels have a longLabel 
     in the acronyms dict of shortLabel = longLabel """
+    if acronyms is None:
+        return fieldMeta
+
     foundCount = 0
     for shortLabel, count in fieldMeta["valCounts"]:
         if shortLabel in acronyms:
