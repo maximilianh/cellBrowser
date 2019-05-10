@@ -2282,6 +2282,10 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
 
+    # need the collection info, too
+    if "collections" in outConf and not "collections" in summInfo:
+        summInfo["collections"] = outConf["unit"]
+
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
 
@@ -3453,20 +3457,21 @@ def addCollections(collDir, datasets):
 
     # make a map from collName -> dataset info dicts
     # and dict with collection name -> list of dataset md5s
-    collDatasets = defaultdict(list)
+    collToDatasets = defaultdict(list)
     dsMd5s = defaultdict(list)
     for ds in datasets:
         for collName in ds.get("collections", []):
-            collDatasets[collName].append(nameToDs[ds["name"]])
+            collToDatasets[collName].append(nameToDs[ds["name"]])
             dsMd5s[collName].append(ds["md5"])
             # a dataset that is part of a collection is hidden from the main list by default
             if not "visibility" in ds:
+                logging.debug("Setting dataset %s to hide as it's part of collection %s" % (ds["name"], collName))
                 ds["visibility"] = "hide"
 
     if collDir is None:
-        if len(collDatasets)>0:
+        if len(collToDatasets)>0:
             dsAssignment = {}
-            for collName, dsList in iterItems(collDatasets):
+            for collName, dsList in iterItems(collToDatasets):
                 dsAssignment[collName] = []
                 for ds in dsList:
                     dsAssignment[collName].append(ds["name"])
@@ -3480,8 +3485,8 @@ def addCollections(collDir, datasets):
     logging.debug("Scanning %s for collections" % collDir)
     collDir = expanduser(collDir)
     collLabels = {}
-    for collName, datasets in iterItems(collDatasets):
-        datasetNames = [ds["name"] for ds in datasets]
+    for collName, collDatasets in iterItems(collToDatasets):
+        datasetNames = [ds["name"] for ds in collDatasets]
         subPath = join(collDir, collName)
         if not isdir(subPath):
             errAbort("%s is not a directory but datasets %s refer to a collection of this name" % (subPath, datasetNames))
@@ -3494,7 +3499,7 @@ def addCollections(collDir, datasets):
 
         conf["name"] = collName
         conf["isCollection"] = True
-        conf["datasetCount"] = len(collDatasets[collName])
+        conf["datasetCount"] = len(collToDatasets[collName])
 
         fileVersions = {}
         fileVersions["config"] = getFileVersion(fname)
@@ -3601,7 +3606,7 @@ def copyAllFiles(fromDir, subDir, toDir):
         #ofh.close()
 
 def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
-    " copy over the datasetDesc.conf files for all collections and generate md5s for them. "
+    " copy over the desc.conf files for all collections and generate md5s for them. "
     if len(collToDatasets.keys())==0:
         logging.debug("No collections used")
         return
@@ -3620,8 +3625,8 @@ def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir
     # make map from dataset name to dataset info dict
     nameToDs = {}
     for ds in datasets:
-        if (ds["name"] in nameToDs):
-            errAbort("dataset name %s already used by %s" % (ds["name"], nameToDs[ds["name"]]))
+        #if (ds["name"] in nameToDs):
+            #errAbort("dataset name %s already used by %s" % (ds["name"], nameToDs[ds["name"]]))
         nameToDs[ds["name"]] = ds
 
     for collName, datasets in iterItems(collToDatasets):

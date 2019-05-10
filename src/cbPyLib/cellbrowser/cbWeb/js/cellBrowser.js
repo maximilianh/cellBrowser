@@ -368,13 +368,13 @@ var cellbrowser = function() {
             },
         });
 
-        if (datasetInfo.datasetCount!==undefined) {
-            $("#tabLink2").hide();
-            $("#tabLink3").hide();
-        } else {
-            $("#tabLink2").show();
-            $("#tabLink3").show();
-        }
+        //if (datasetInfo.datasetCount!==undefined) {
+            //$("#tabLink2").hide();
+            //$("#tabLink3").hide();
+        //} else {
+            //$("#tabLink2").show();
+            //$("#tabLink3").show();
+        //}
 
         let datasetName = datasetInfo.name;
         let md5 = datasetInfo.md5;
@@ -482,7 +482,10 @@ var cellbrowser = function() {
             htmls.push("</p>");
         }
 
-        htmls.push("<b>Direct link to this dataset for manuscripts: </b> http://"+datasetInfo.name+".cells.ucsc.edu");
+        if (datasetInfo.collections===undefined)
+            htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
+        else
+            htmls.push("<b>Direct link to collection for manuscripts: </b> https://"+datasetInfo.collections[0]+".cells.ucsc.edu");
         htmls.push("<br>");
 
         if (desc.submitter) {
@@ -526,25 +529,30 @@ var cellbrowser = function() {
 
         // downloads pane
         htmls.length = 0;
-        htmls.push("<p><b>Expression Matrix:</b> <a href='"+datasetInfo.name);
-        htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
-        if (desc.unitDesc)
-            htmls.push("<br>Values are: "+desc.unitDesc);
-        htmls.push("</p>");
+        if (desc.coordFiles===undefined) {
+            htmls.push("Please select and open one of the datasets on the left and click the 'Info' button ");
+            htmls.push("then to show more information about how each data set was processed and how to download it.");
+        } else {
+            htmls.push("<p><b>Expression Matrix:</b> <a href='"+datasetInfo.name);
+            htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+            if (desc.unitDesc)
+                htmls.push("<br>Values are: "+desc.unitDesc);
+            htmls.push("</p>");
 
-        htmls.push("<p><b>Cell meta annotations:</b> <a href='"+datasetInfo.name);
-        htmls.push("/meta.tsv'>meta.tsv</a></p>");
+            htmls.push("<p><b>Cell meta annotations:</b> <a href='"+datasetInfo.name);
+            htmls.push("/meta.tsv'>meta.tsv</a></p>");
 
-        htmls.push("<p><b>Dimens. reduction coordinates:</b><br>");
-        for (let fname of desc.coordFiles)
-            htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
-        htmls.push("</p>");
+            htmls.push("<p><b>Dimens. reduction coordinates:</b><br>");
+            for (let fname of desc.coordFiles)
+                htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
+            htmls.push("</p>");
 
-        htmls.push("<p><b>Cell Browser configuration</b> (colors, long labels, etc): ");
-        htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
+            htmls.push("<p><b>Cell Browser configuration</b> (colors, long labels, etc): ");
+            htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
 
-        htmls.push("<p><b>Dataset description</b> (this dialog box): ");
-        htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
+            htmls.push("<p><b>Dataset description</b> (this dialog box): ");
+            htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
+        }
 
         $( "#pane3" ).html(htmls.join(""));
     }
@@ -560,6 +568,7 @@ var cellbrowser = function() {
         var note = "";
         var noteSpace = "2px";
         var datasetList = [];
+        var activeIdx = 0;
         //var openDsInfo;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
@@ -571,6 +580,7 @@ var cellbrowser = function() {
                 "Please choose the one you want to display. To move between datasets later in the cell browser, use the 'Collection' dropdown. ";
             noteSpace = "2em";
             changeUrl({"ds":openDsInfo.name});
+            activeIdx = null;
         }
         else {
             // select from the top-level list
@@ -593,7 +603,6 @@ var cellbrowser = function() {
             buttonWidth = 0;
         }
         else {
-            var activeIdx = 0;
             htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+buttonWidth+"px'>");
             for (var i = 0; i < datasetList.length; i++) {
                 var dataset = datasetList[i];
@@ -679,7 +688,7 @@ var cellbrowser = function() {
             /* click handler, opens either a collection or a dataset */
             var dsInfo = datasetList[selDatasetIdx];
             var datasetName = dsInfo.name;
-            if (dsInfo.metaFields===undefined)
+            if (dsInfo.isCollection)
                 showCollectionDialog(datasetName);
             else
                 loadDataset(datasetName, true, dsInfo.md5);
@@ -3700,7 +3709,7 @@ var cellbrowser = function() {
         nextLeft += 215;
 
         if (dataset.collections) {
-            buildCollectionCombo(htmls, dataset, "tpCollectionCombo", 300, nextLeft, 0);
+            buildCollectionCombo(htmls, dataset, "tpCollectionCombo", 330, nextLeft, 0);
         }
 
         htmls.push("</div>");
