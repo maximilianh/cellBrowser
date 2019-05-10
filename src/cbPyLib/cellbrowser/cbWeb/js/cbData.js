@@ -257,26 +257,28 @@ function CbDbFile(url) {
 
     this.conf = null;
 
-    this.loadConfig = function(onDone) {
+    this.loadConfig = function(onDone, md5) {
     /* load config and gene offsets from URL and call func when done */
 
         var doneCount = 0;
         function gotOneFile() {
             doneCount++;
             if (doneCount===2)
-                onDone();
+                onDone(self.name);
         }
 
         // load config and call onDone
         var dsUrl = cbUtil.joinPaths([this.url, "dataset.json"]);
-        // should I deactivate the cache here?
-        // this is a file that users typicaly change often
-        dsUrl = dsUrl+"?"+Math.floor(Math.random()*100000000);
+        // deactivate the cache - this is a small file that users typically change often
+        if (!md5)
+           dsUrl = dsUrl+"?"+Math.floor(Math.random()*100000000);
+        else
+           dsUrl = dsUrl+"?"+md5;
         cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile();});
 
-        // start loading gene offsets, this takes a while
+        // start loading gene offsets in background, this takes a while
         var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
-        cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; gotOneFile();});
+        cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; gotOneFile();}, true);
     };
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {

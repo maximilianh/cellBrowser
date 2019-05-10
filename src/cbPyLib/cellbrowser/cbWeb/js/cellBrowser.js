@@ -378,9 +378,9 @@ var cellbrowser = function() {
 
         let datasetName = datasetInfo.name;
         let md5 = datasetInfo.md5;
-        if (datasetInfo.hasFiles && datasetInfo.hasFiles.indexOf("datasetDesc")!=-1) {
+        if (datasetInfo.fileVersions && datasetInfo.fileVersions.desc) {
             // description is not through html files but a json file
-            var jsonUrl = joinPaths([datasetName, "datasetDesc.json"]) +"?"+md5;
+            var jsonUrl = joinPaths([datasetName, "desc.json"]) +"?"+md5;
             fetch(jsonUrl)
               .then(function(response) {
                 return response.json();
@@ -419,14 +419,18 @@ var cellbrowser = function() {
         "other_url" : "Website",
         "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
         "sra" : "NCBI SRA",
+        "sra_study" : "NCBI SRA Study",
         "dbgap" : "NCBI DbGaP",
-        "biorxiv_url" : "BioRxiv preprint"
+        "biorxiv_url" : "BioRxiv preprint",
+        "doi" : "Publication DOI"
     };
 
     let descUrls = {
         "geo_series" : "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=",
+        "sra_study" : "https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=",
         "pmid" : "https://www.ncbi.nlm.nih.gov/pubmed/",
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
+        "doi" : "http://dx.doi.org/",
     }
 
     function htmlAddLink(htmls, desc, key) {
@@ -438,7 +442,7 @@ var cellbrowser = function() {
         htmls.push("<b>");
         htmls.push(label);
         htmls.push(": </b>");
-        htmls.push("<a href='");
+        htmls.push("<a target=_blank href='");
 
         let url = desc[key]
         let urlLabel = url;
@@ -477,7 +481,7 @@ var cellbrowser = function() {
             htmls.push("</p>");
         }
 
-        htmls.push("<b>Direct link to dataset: </b> http://"+datasetInfo.name+".cells.ucsc.edu");
+        htmls.push("<b>Direct link to this dataset for manuscripts: </b> http://"+datasetInfo.name+".cells.ucsc.edu");
         htmls.push("<br>");
 
         if (desc.submitter) {
@@ -502,6 +506,9 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "geo_series");
         htmlAddLink(htmls, desc, "pmid");
         htmlAddLink(htmls, desc, "dbgap");
+        htmlAddLink(htmls, desc, "sra_study");
+        htmlAddLink(htmls, desc, "sra");
+        htmlAddLink(htmls, desc, "doi");
 
         $( "#pane1" ).html(htmls.join(""));
 
@@ -522,18 +529,25 @@ var cellbrowser = function() {
         htmls.push("<p><b>Cell meta annotations:</b> <a href='"+datasetInfo.name);
         htmls.push("/meta.tsv'>meta.tsv</a></p>");
 
-        htmls.push("<p><b>Dimens. reduction coordinates:</b> ");
+        htmls.push("<p><b>Dimens. reduction coordinates:</b><br>");
         for (let fname of desc.coordFiles)
-            htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a> ");
+            htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
         htmls.push("</p>");
+
+        htmls.push("<p><b>Cell Browser configuration</b> (colors, long labels, etc): ");
+        htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
+
+        htmls.push("<p><b>Dataset description</b> (this dialog box): ");
+        htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
 
         $( "#pane3" ).html(htmls.join(""));
     }
 
-    function openDatasetDialog(openDsInfo, collInfo, onlyInfo) {
-    /* build dataset open dialog, collInfo is optional, if present shows only the collection  */
+    function openDatasetDialog(openDsInfo, onlyInfo) {
+    /* build dataset open dialog, openDsInfo is possibly a collection object. if 'onlyInfo' is set, 
+     * remove the dataset list on the left side and show only the information part of the dialog */
 
-        if (openDsInfo)
+        if (!openDsInfo)
             openDsInfo = db.conf;
 
         var title = null;
@@ -543,14 +557,14 @@ var cellbrowser = function() {
         //var openDsInfo;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (collInfo!==undefined && collInfo.collection!==undefined) {
+        if (openDsInfo.isCollection) {
             // select from a collection
-            title = "Select one Dataset from the collection "+collInfo.collection.shortLabel;
-            datasetList = collInfo.datasets;
-            note = "The collection '"+collInfo.collection.shortLabel+"' contains "+collInfo.datasets.length+" datasets. " +
+            title = "Select one Dataset from the collection "+openDsInfo.shortLabel;
+            datasetList = openDsInfo.datasets;
+            note = "The collection '"+openDsInfo.shortLabel+"' contains "+datasetList.length+" datasets. " +
                 "Please choose the one you want to display. To move between datasets later in the cell browser, use the 'Collection' dropdown. ";
             noteSpace = "2em";
-            changeUrl({"coll":collInfo.collection.name});
+            changeUrl({"ds":openDsInfo.name});
         }
         else {
             // select from the top-level list
@@ -559,8 +573,6 @@ var cellbrowser = function() {
         }
         if (onlyInfo)
             title = "Dataset Information";
-
-        //openDsInfo = datasetList[0];
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
@@ -661,10 +673,10 @@ var cellbrowser = function() {
             /* click handler, opens either a collection or a dataset */
             var dsInfo = datasetList[selDatasetIdx];
             var datasetName = dsInfo.name;
-            if (dsInfo.isCollection)
+            if (dsInfo.metaFields===undefined)
                 showCollectionDialog(datasetName);
             else
-                loadDataset(datasetName, true);
+                loadDataset(datasetName, true, dsInfo.md5);
             $(".ui-dialog-content").dialog("close");
         }
         // inline function end
@@ -3467,25 +3479,16 @@ var cellbrowser = function() {
 
     function showCollectionDialog(collName) {
         /* load collection with given name and open dialog box for it */
-        loadCollectionInfo(collName, function(collData) { openDatasetDialog(null, collData)});
+        loadCollectionInfo(collName, function(collData) { openDatasetDialog(collData)});
     }
 
-    function loadDataset(datasetName, resetVars) {
-        /* load a dataset and optionally reset all the URL variables.
-         * When a dataset is opened through the UI, the variables have to
-         * be reset, as their values (gene or meta data) may not exist
-         * there. If it's opened via a URL, the variables must stay. */
+    function onConfigLoaded(datasetName) { 
+            // this is a collection if it does not have any field information
+            if (!db.conf.metaFields) {
+                showCollectionDialog(datasetName);
+                return;
+            }
 
-        // collections are not real datasets, so ask user which one they want
-
-        db = new CbDbFile(datasetName);
-
-        var vars;
-        if (resetVars)
-            vars = {};
-
-        changeUrl({"ds":datasetName}, vars);
-        db.loadConfig(function() { 
             let binData = localStorage.getItem(db.name+"|custom");
             if (binData) {
                 let jsonStr = LZString.decompress(binData);
@@ -3496,17 +3499,35 @@ var cellbrowser = function() {
             cartLoad(db);
             renderData();
             cartSave(db); // = refresh the URL from local storage
-        });
 
-        // start the tutorial after a while
-        var introShownBefore = localStorage.getItem("introShown");
-        if (introShownBefore===undefined)
-           setTimeout(function(){ showIntro(true); }, 3000); // shown after 5 secs
+            // start the tutorial after a while
+            var introShownBefore = localStorage.getItem("introShown");
+            if (introShownBefore===undefined)
+               setTimeout(function(){ showIntro(true); }, 3000); // shown after 5 secs
+    }
+
+    function loadDataset(datasetName, resetVars, md5) {
+        /* load a dataset and optionally reset all the URL variables.
+         * When a dataset is opened through the UI, the variables have to
+         * be reset, as their values (gene or meta data) may not exist
+         * there. If it's opened via a URL, the variables must stay. */
+
+        // collections are not real datasets, so ask user which one they want
+
+        db = new CbDbFile(datasetName);
+
+
+        var vars;
+        if (resetVars)
+            vars = {};
+
+        changeUrl({"ds":datasetName}, vars);
+        db.loadConfig(onConfigLoaded, md5);
     }
 
     function loadCollectionInfo(collName, onDone) {
         /* load collection info and run onDone */
-        var jsonUrl = cbUtil.joinPaths([collName, "collection.json"]);
+        var jsonUrl = cbUtil.joinPaths([collName, "dataset.json"]);
         cbUtil.loadJson(jsonUrl, onDone);
     }
 
@@ -3519,7 +3540,8 @@ var cellbrowser = function() {
         //var datasetIdx = parseInt(params.selected);
         //var datasetInfo = gDatasetList[datasetIdx];
         var datasetName = params.selected;
-        loadDataset(datasetName, true);
+        var md5 = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName).md5;
+        loadDataset(datasetName, true, md5);
     }
 
     function buildLayoutCombo(htmls, files, id, width, left, top) {
@@ -3683,7 +3705,7 @@ var cellbrowser = function() {
         activateTooltip('#tpOpenUcsc');
         activateTooltip('#tpOpenDatasetButton');
 
-        $('#tpButtonInfo').click( function() {openDatasetDialog(db.conf, undefined, true)} );
+        $('#tpButtonInfo').click( function() {openDatasetDialog(db.conf, true)} );
 
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
@@ -4828,10 +4850,6 @@ var cellbrowser = function() {
        //console.log(ev);
        var labelStr = clusterName;
        
-       var acronyms = db.conf.acronyms;
-       if (acronyms!==undefined && clusterName in acronyms)
-           labelStr = acronyms[clusterName];
-
        var labelField = db.conf.labelField;
        var metaInfo = db.findMetaInfo(labelField);
        var longLabels = metaInfo.ui.longLabels;
@@ -4845,14 +4863,20 @@ var cellbrowser = function() {
             }
        }
 
+       //var acronyms = db.conf.acronyms;
+       //if (acronyms!==undefined && clusterName in acronyms)
+           //labelStr = acronyms[clusterName];
+
        if (db.conf.markers!==undefined)
             labelStr += "<br>Click to show marker gene list.";
         showTooltip(ev.clientX+15, ev.clientY, labelStr);
+        renderer.canvas.style.cursor = "pointer";
 
     }
 
     function onNoClusterNameHover(ev) {
         hideTooltip();
+        renderer.canvas.style.cursor = "default";
     }
 
     function sanitizeName(name) {
@@ -5088,9 +5112,17 @@ var cellbrowser = function() {
         var winWidth = window.innerWidth - 0.10*window.innerWidth;
         var winHeight = window.innerHeight - 0.10*window.innerHeight;
         var title = "Cluster markers for &quot;"+clusterName+"&quot;";
-        var acronyms = db.conf.acronyms;
-        if (acronyms!==undefined && clusterName in acronyms)
-            title += " - "+acronyms[clusterName];
+        
+        var metaInfo = getClusterFieldInfo();
+        if (metaInfo.longLabels) {
+            var nameIdx = cbUtil.findIdxWhereEq(metaInfo.valCounts, 0, clusterName);
+            //var acronyms = db.conf.acronyms;
+            //title += " - "+acronyms[clusterName];
+            title += " - "+metaInfo.longLabels[nameIdx];
+        }
+
+        //if (acronyms!==undefined && clusterName in acronyms)
+            //title += " - "+acronyms[clusterName];
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
         $(".ui-widget-content").css("padding", "0");
         $("#tabs").tabs();
@@ -5147,6 +5179,7 @@ var cellbrowser = function() {
         var geneListCol = null;
         var exprCol = null;
         var pValCol = null
+        //var doDescSort = false;
         for (var i = 1; i < headerRow.length; i++) {
             var colLabel = headerRow[i];
             var isNumber = false;
@@ -5167,7 +5200,10 @@ var cellbrowser = function() {
             else if (colLabel==="P_value" || colLabel==="p_val" || colLabel==="pVal") {
                 colLabel = "P-value";
                 pValCol = i;
+                //if (i===2)
+                    //doDescSort = true;
             }
+            
             else if (colLabel==="_expr") {
                 colLabel = "Expression";
                 exprCol = i;
@@ -5186,6 +5222,7 @@ var cellbrowser = function() {
                 htmls.push("<th"+addStr+">");
             else
                 htmls.push("<th style='width:"+width+"'"+addStr+">");
+            colLabel = colLabel.replace(/_/g, " ");
             htmls.push(colLabel);
             htmls.push("</th>");
         }
@@ -5233,6 +5270,7 @@ var cellbrowser = function() {
         htmls.push("</tbody>");
         htmls.push("</table>");
 
+        // sub function ----
         function onMarkerGeneClick(ev) {
             /* user clicks onto a gene in the table of the marker gene dialog window */
             var geneSym = ev.target.getAttribute("data-gene");
@@ -5247,8 +5285,12 @@ var cellbrowser = function() {
             }
             loadGeneAndColor(geneSym);
         }
+        // ----
 
         $("#"+divId).html(htmls.join(""));
+        var sortOpt = {};
+        //if (doDescSort)
+            //sortOpt.descending=true;
         new Tablesort(document.getElementById('tpMarkerTable'));
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
@@ -5454,6 +5496,10 @@ var cellbrowser = function() {
         buildMenuBar();
 
         var datasetName = extractDatasetFromUrl(datasetList)
+        var dsInfo = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName);
+        var md5 = null;
+        if (dsInfo)
+            md5 = dsInfo.md5; // stay backwards-compatible, tolerate datasets without a global md5
 
         //menuBarHide("#tpShowAllButton");
 
@@ -5497,11 +5543,11 @@ var cellbrowser = function() {
         renderer.onSelChange = onSelChange;
         renderer.canvas.addEventListener("mouseleave", hideTooltip);
 
-        var collName = getVar("coll");
-        if (collName)
-            showCollectionDialog(collName);
-        else if (datasetName)
-            loadDataset(datasetName, false);
+        //var collName = getVar("coll");
+        //if (collName)
+            //showCollectionDialog(collName);
+        if (datasetName)
+            loadDataset(datasetName, false, md5);
         else
             openDatasetDialog();
     }
