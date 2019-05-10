@@ -419,6 +419,7 @@ var cellbrowser = function() {
         "other_url" : "Website",
         "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
         "sra" : "NCBI SRA",
+        "pmid" : "PubMed Abstract",
         "sra_study" : "NCBI SRA Study",
         "dbgap" : "NCBI DbGaP",
         "biorxiv_url" : "BioRxiv preprint",
@@ -444,7 +445,7 @@ var cellbrowser = function() {
         htmls.push(": </b>");
         htmls.push("<a target=_blank href='");
 
-        let url = desc[key]
+        let url = desc[key].toString();
         let urlLabel = url;
         let spcPos = url.indexOf(" ");
         if (spcPos!==-1) {
