@@ -7,7 +7,8 @@ click clusters to show cluster-specific marker genes, which in turn are
 clickable again.
 
 The main live of the cell browser with various CIRM and HCA datasets is
-http://cells.ucsc.edu. This documentation describes how you can setup one for
+http://cells.ucsc.edu. We can add your dataset to it, contact us at cells@ucsc.edu. 
+This documentation describes how you can setup one for
 your own data and put the resulting files onto your own webserver.
 
 The UCSC cell browser is funded by grants from the California Institute of Regenerative Medicine
