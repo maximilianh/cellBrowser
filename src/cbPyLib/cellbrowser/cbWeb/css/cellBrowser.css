@@ -4,7 +4,10 @@
 body { font-family: Arial,Helvetica,sans-serif; overflow:hidden; line-height:1.0}
 canvas { user-select: none }
 
+section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
+
 #tpLegendBar { cursor:default; overflow-y: scroll; padding-left: 2px; border-left: 1px solid #D7D7D7; height:100%}
+.tpDatasetPane { line-height: 120% }
 
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
@@ -65,11 +68,11 @@ canvas { user-select: none }
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
 .tpSidebarHeader { font-weight: bold; padding-left: 4px; font-size: 16px; padding-top: 4px; height: 25px; background-color: white; text-align: center}
-#tpLeftSidebar { overflow-x: hidden, overflow-y:auto; border-right: 1px solid #D7D7D7; height: 100%}
+#tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
 #tpSideMeta { padding-left: 2px}
-#tpMetaPanel { background-color: white}
+#tpMetaPanel { background-color: white;}
 #tpLeftTabs { border: 0}
-#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px }
+#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px;}
 
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
 .tpMetaLabel { font-weight: bold; padding-left: 2px}
@@ -111,6 +114,8 @@ button { line-height: 12px }
 .navbar-xs { min-height:28px; height: 28px; }
 .navbar-xs .navbar-brand{ padding: 0px 12px;font-size: 16px;line-height: 28px; }
 .navbar-xs .navbar-nav > li > a {  padding-top: 0px; padding-bottom: 0px; line-height: 28px; }
+/* bootstraps badges are too dark */
+.list-group-item.active>.badge { background-color: darkgrey; color:white }
 /* bootstrap's small buttons have a lot of padding, for the toolbar, that's too much */
 .noPad {padding:0 2 0 2}
 

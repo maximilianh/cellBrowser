@@ -149,6 +149,18 @@ var cellbrowser = function() {
         return a.slice();
     }
 
+    function copyNonNull(srcArr, trgArr) {
+    /* copy non-null values to trgArr */
+        if (srcArr.length!==trgArr.length)
+            alert("warning - copyNonNull - target and source array have different sizes.");
+
+        for (var i = 0; i < srcArr.length; i++) {
+            if (srcArr[i]!==null)
+                trgArr[i] = srcArr[i];
+        }
+        return trgArr;
+    }
+
     function isEmpty(obj) {
         for(var key in obj) {
             if(obj.hasOwnProperty(key))
@@ -336,11 +348,19 @@ var cellbrowser = function() {
         return url;
     }        
 
+    function preloadImage(url) {
+        let img= new Image();
+        img.src = url;
+    }
+
     function openDatasetLoadPane(datasetInfo) {
         /* open dataset dialog: load html into the three panes  */
-        var datasetName = datasetInfo.name;
-        var md5 = datasetInfo.md5;
+        //var datasetName = datasetInfo.name;
+        //var md5 = datasetInfo.md5;
         // the UCSC apache serves latin1, so we force it back to utf8
+        var thumbUrl = joinPaths([datasetInfo.name, "thumb.png"]);
+        preloadImage(thumbUrl); // many datasets have thumb.png, so preload it now
+
         $.ajaxSetup({
             'beforeSend' : function(xhr) {
                 if (xhr && xhr.overrideMimeType)
@@ -348,63 +368,227 @@ var cellbrowser = function() {
             },
         });
 
-        if (datasetInfo.datasetCount!==undefined) {
-            $("#tabLink2").hide();
-            $("#tabLink3").hide();
+        //if (datasetInfo.datasetCount!==undefined) {
+            //$("#tabLink2").hide();
+            //$("#tabLink3").hide();
+        //} else {
+            //$("#tabLink2").show();
+            //$("#tabLink3").show();
+        //}
+
+        let datasetName = datasetInfo.name;
+        let md5 = datasetInfo.md5;
+        if (datasetInfo.fileVersions && datasetInfo.fileVersions.desc) {
+            // description is not through html files but a json file
+            var jsonUrl = joinPaths([datasetName, "desc.json"]) +"?"+md5;
+            fetch(jsonUrl)
+              .then(function(response) {
+                return response.json();
+              })
+              .then(function(desc) { 
+                  datasetDescToHtml(datasetInfo, desc); 
+              });
         } else {
-            $("#tabLink2").show();
-            $("#tabLink3").show();
+            // for older datasets that don't have .json descriptors yet
+            var descUrl = joinPaths([datasetName, "summary.html"]) +"?"+md5;
+            $("#pane1").load(descUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane1" ).html("File "+descUrl.split("?")[0]+" was not found");
+                }
+                $("#tabLink1").tab("show");
+            });
+
+            var methodsUrl = joinPaths([datasetName, "methods.html"]) +"?"+md5;
+            $("#pane2").load(methodsUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane2" ).html("File "+methodsUrl.split("?")[0]+" was not found");
+                }
+            });
+
+            var downloadUrl = joinPaths([datasetName, "downloads.html"]) +"?"+md5;
+            $("#pane3").load(downloadUrl, function( response, status, xhr ) {
+                if ( status === "error" ) {
+                    $( "#pane3" ).html("File "+downloadUrl.split("?")[0]+" was not found");
+                }
+            });
         }
-
-        var descUrl = joinPaths([datasetName, "summary.html"]) +"?"+md5;
-        $("#pane1").load(descUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane1" ).html("File "+descUrl.split("?")[0]+" was not found");
-            }
-            $("#tabLink1").tab("show");
-        });
-
-        var methodsUrl = joinPaths([datasetName, "methods.html"]) +"?"+md5;
-        $("#pane2").load(methodsUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane2" ).html("File "+methodsUrl.split("?")[0]+" was not found");
-            }
-        });
-
-        var downloadUrl = joinPaths([datasetName, "downloads.html"]) +"?"+md5;
-        $("#pane3").load(downloadUrl, function( response, status, xhr ) {
-            if ( status === "error" ) {
-                $( "#pane3" ).html("File "+downloadUrl.split("?")[0]+" was not found");
-            }
-        });
     }
 
-    function openDatasetDialog(openDsName, collInfo) {
-    /* build dataset open dialog, collInfo is optional, if present shows only the collection  */
+    let descLabels = {
+        "paper_url":"Publication",
+        "other_url" : "Website",
+        "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
+        "sra" : "NCBI SRA",
+        "pmid" : "PubMed Abstract",
+        "sra_study" : "NCBI SRA Study",
+        "dbgap" : "NCBI DbGaP",
+        "biorxiv_url" : "BioRxiv preprint",
+        "doi" : "Publication DOI"
+    };
+
+    let descUrls = {
+        "geo_series" : "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=",
+        "sra_study" : "https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=",
+        "pmid" : "https://www.ncbi.nlm.nih.gov/pubmed/",
+        "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
+        "doi" : "http://dx.doi.org/",
+    }
+
+    function htmlAddLink(htmls, desc, key) {
+        /* add a link to html on a new line. if desc[key] includes a space, the part after it is the link name. */
+        if (!desc[key])
+            return;
+
+        let label = descLabels[key];
+        htmls.push("<b>");
+        htmls.push(label);
+        htmls.push(": </b>");
+        htmls.push("<a target=_blank href='");
+
+        let url = desc[key].toString();
+        let urlLabel = url;
+        let spcPos = url.indexOf(" ");
+        if (spcPos!==-1) {
+            urlLabel = url.slice(spcPos+1);
+            url = url.slice(0,spcPos);
+        }
+            
+        if (!url.startsWith("http"))
+            url = descUrls[key]+url;
+
+        htmls.push(url);
+        htmls.push("'>");
+        htmls.push(urlLabel);
+        htmls.push("</a><p>");
+    }
+
+    function datasetDescToHtml(datasetInfo, desc) {
+        /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
+        let htmls = [];
+        if (desc.title) {
+            htmls.push("<h4>");
+            htmls.push(desc.title);
+            htmls.push("</h4>");
+        }
+        if (desc.image) {
+            htmls.push("<img style='float:right; padding-left:5px' src='");
+            htmls.push(datasetInfo.name+"/"+desc.image[0]+"'");
+            htmls.push(" width='"+desc.image[1]+"' height='"+desc.image[2]+"'>");
+        }
+
+        if (desc.abstract) {
+            htmls.push("<p>");
+            htmls.push(desc.abstract);
+            htmls.push("</p>");
+        }
+
+        if (datasetInfo.collections===undefined)
+            htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
+        else
+            htmls.push("<b>Direct link to collection for manuscripts: </b> https://"+datasetInfo.collections[0]+".cells.ucsc.edu");
+        htmls.push("<br>");
+
+        if (desc.submitter) {
+            htmls.push("<b>Submitted by: </b> "+desc.submitter);
+            if (desc.submission_date) {
+                htmls.push(" ("+desc.submission_date);
+                if (desc.version)
+                    htmls.push(", Version "+desc.version);
+                htmls.push(")");
+            }
+            htmls.push("<br>");
+        }
+
+        if (desc.lab) {
+            htmls.push("<b>Lab: </b> "+desc.lab);
+            htmls.push("<br>");
+        }
+        if (desc.institution) {
+            htmls.push("<b>Institution: </b> "+desc.institution);
+            htmls.push("<br>");
+        }
+
+
+        htmlAddLink(htmls, desc, "biorxiv_url");
+        htmlAddLink(htmls, desc, "paper_url");
+        htmlAddLink(htmls, desc, "other_url");
+        htmlAddLink(htmls, desc, "geo_series");
+        htmlAddLink(htmls, desc, "pmid");
+        htmlAddLink(htmls, desc, "dbgap");
+        htmlAddLink(htmls, desc, "sra_study");
+        htmlAddLink(htmls, desc, "sra");
+        htmlAddLink(htmls, desc, "doi");
+
+        $( "#pane1" ).html(htmls.join(""));
+
+        htmls.length = 0;
+        if (desc.methods) {
+            htmls.push(desc.methods);
+        }
+        $( "#pane2" ).html(htmls.join(""));
+
+        // downloads pane
+        htmls.length = 0;
+        if (desc.coordFiles===undefined) {
+            htmls.push("Please select and open one of the datasets on the left and click the 'Info' button ");
+            htmls.push("then to show more information about how each data set was processed and how to download it.");
+        } else {
+            htmls.push("<p><b>Expression Matrix:</b> <a href='"+datasetInfo.name);
+            htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+            if (desc.unitDesc)
+                htmls.push("<br>Values are: "+desc.unitDesc);
+            htmls.push("</p>");
+
+            htmls.push("<p><b>Cell meta annotations:</b> <a href='"+datasetInfo.name);
+            htmls.push("/meta.tsv'>meta.tsv</a></p>");
+
+            htmls.push("<p><b>Dimens. reduction coordinates:</b><br>");
+            for (let fname of desc.coordFiles)
+                htmls.push("<a href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
+            htmls.push("</p>");
+
+            htmls.push("<p><b>Cell Browser configuration</b> (colors, long labels, etc): ");
+            htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
+
+            htmls.push("<p><b>Dataset description</b> (this dialog box): ");
+            htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
+        }
+
+        $( "#pane3" ).html(htmls.join(""));
+    }
+
+    function openDatasetDialog(openDsInfo, onlyInfo) {
+    /* build dataset open dialog, openDsInfo is possibly a collection object. if 'onlyInfo' is set, 
+     * remove the dataset list on the left side and show only the information part of the dialog */
+
+        if (!openDsInfo)
+            openDsInfo = gDatasetList[0];
 
         var title = null;
         var note = "";
         var noteSpace = "2px";
         var datasetList = [];
-        var openDsInfo;
+        var activeIdx = 0;
+        //var openDsInfo;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (collInfo!==undefined && collInfo.collection!==undefined) {
+        if (openDsInfo.isCollection) {
             // select from a collection
-            title = "Select one Dataset from the collection "+collInfo.collection.shortLabel;
-            datasetList = collInfo.datasets;
-            note = "The collection '"+collInfo.collection.shortLabel+"' contains "+collInfo.datasets.length+" datasets. " +
+            title = "Select one Dataset from the collection "+openDsInfo.shortLabel;
+            datasetList = openDsInfo.datasets;
+            note = "The collection '"+openDsInfo.shortLabel+"' contains "+datasetList.length+" datasets. " +
                 "Please choose the one you want to display. To move between datasets later in the cell browser, use the 'Collection' dropdown. ";
             noteSpace = "2em";
-            changeUrl({"coll":collInfo.collection.name});
+            changeUrl({"ds":openDsInfo.name});
+            activeIdx = null;
         }
         else {
             // select from the top-level list
             datasetList = gDatasetList;
             title = "Choose Cell Browser Dataset";
         }
-
-        openDsInfo = datasetList[0];
+        if (onlyInfo)
+            title = "Dataset Information";
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
@@ -415,42 +599,46 @@ var cellbrowser = function() {
         var htmls = [];
         htmls.push(note);
 
-        var activeIdx = 0;
-        htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+buttonWidth+"px'>");
-        for (var i = 0; i < datasetList.length; i++) {
-            var dataset = datasetList[i];
-
-            if (dataset.name===openDsName)
-                openDsInfo = dataset;
-
-            var clickClass = "tpDatasetButton";
-            if (dataset.isCollection)
-                clickClass = "tpCollectionButton";
-
-            var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
-            htmls.push(line);
-            htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset" data-placement="bottom">Open</button>');
-
-            if (dataset.sampleCount!==undefined) {
-                var countDesc = prettyNumber(dataset.sampleCount);
-                htmls.push("<span class='badge' style='background-color: #888'>"+countDesc+"</span>");
-            }
-
-            if (dataset.datasetCount!==undefined) {
-                htmls.push("<span class='badge' style='background-color: #28a745'>"+dataset.datasetCount+" datasets</span>");
-            }
-
-            if (dataset.tags!==undefined) {
-                for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
-                var tag = dataset.tags[tagI];
-                htmls.push("<span class='badge'>"+tag+"</span>");
-                }
-            }
-            htmls.push(dataset.shortLabel+"</a>");
-            if (db!==null && db.name===dataset.name)
-                activeIdx = i;
+        if (onlyInfo) {
+            buttonWidth = 0;
         }
-        htmls.push("</div>"); // list-group
+        else {
+            htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+buttonWidth+"px'>");
+            for (var i = 0; i < datasetList.length; i++) {
+                var dataset = datasetList[i];
+
+                //if (dataset.name===openDsName)
+                    //openDsInfo = dataset;
+
+                var clickClass = "tpDatasetButton";
+                if (dataset.isCollection)
+                    clickClass = "tpCollectionButton";
+
+                var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+                htmls.push(line);
+                htmls.push('<button type="button" class="btn btn-primary btn-xs load-dataset" data-placement="bottom">Open</button>');
+
+                if (dataset.sampleCount!==undefined) {
+                    var countDesc = prettyNumber(dataset.sampleCount);
+                    htmls.push("<span class='badge' style='background-color: #888'>"+countDesc+"</span>");
+                }
+
+                if (dataset.datasetCount!==undefined) {
+                    htmls.push("<span class='badge' style='background-color: #28a745'>"+dataset.datasetCount+" datasets</span>");
+                }
+
+                if (dataset.tags!==undefined) {
+                    for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
+                    var tag = dataset.tags[tagI];
+                    htmls.push("<span class='badge'>"+tag+"</span>");
+                    }
+                }
+                htmls.push(dataset.shortLabel+"</a>");
+                //if (db!==null && db.name===dataset.name)
+                    //activeIdx = i;
+            }
+            htmls.push("</div>"); // list-group
+        }
 
         htmls.push("<div id='tpOpenDialogLabel' style='width:"+tabsWidth+"px; position:absolute; left: " + (buttonWidth + 40) + "px; top: "+noteSpace+";'>");
         htmls.push("<div id='tpOpenDialogTabs'>");
@@ -486,7 +674,7 @@ var cellbrowser = function() {
         if (db!==null) {
             buttons.Cancel = function() { 
                 $( this ).dialog( "close" ); 
-                if (dataset.isCollection)
+                if (openDsInfo.isCollection)
                     openDatasetDialog(); // show top-level dialog
             };
         }
@@ -495,6 +683,7 @@ var cellbrowser = function() {
 
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
 
+        // little inline function
         function openCollOrDataset(selDatasetIdx) {
             /* click handler, opens either a collection or a dataset */
             var dsInfo = datasetList[selDatasetIdx];
@@ -502,9 +691,10 @@ var cellbrowser = function() {
             if (dsInfo.isCollection)
                 showCollectionDialog(datasetName);
             else
-                loadDataset(datasetName, true);
+                loadDataset(datasetName, true, dsInfo.md5);
             $(".ui-dialog-content").dialog("close");
         }
+        // inline function end
 
         $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
         $("button.list-group-item").keypress(function(e) {
@@ -545,7 +735,7 @@ var cellbrowser = function() {
             $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
         });
 
-        if (activeIdx!==null) {
+        if (activeIdx!==null && !onlyInfo) {
             $('#tpDatasetButton_'+activeIdx).bsButton("toggle"); // had to rename .button() in .html to bsButton
             //scroller.scroll($("#tpDatasetButton_"+activeIdx)); // scroll left pane to current button
             $('#tpDatasetList').overlayScrollbars().scroll($("#tpDatasetButton_"+activeIdx));
@@ -1149,11 +1339,11 @@ var cellbrowser = function() {
                 longLabels = cloneArray(shortLabels);
             longLabels = copyNonEmpty(fieldChanges.longLabels, longLabels);
             
-            // create the colors
-            var colors = [];
+            // create the colors: configured colors override default colors and cart overrides those
+            var colors = makeColorPalette(cDefQualPalette, metaInfo.valCounts.length);
             if ("colors" in metaInfo)
-                colors = cloneArray(metaInfo.colors);
-            var newColors = fieldChanges.longLabels;
+                copyNonNull(metaInfo.colors, colors);
+            var newColors = fieldChanges.colors;
             colors = copyNonEmpty(newColors, colors);
 
             var ui = {};
@@ -1616,7 +1806,7 @@ var cellbrowser = function() {
        $('#tpMark').click( onMarkClick );
        $('#tpMarkClear').click( onMarkClearClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
-       $('#tpOpenDatasetLink').click( openDatasetDialog );
+       $('#tpOpenDatasetLink').click( function() { openDatasetDialog(db.conf); } );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
@@ -2498,9 +2688,11 @@ var cellbrowser = function() {
         var n = rows.length;
         var pal = null;
         var usePredefined = false;
+
+        pal = makeColorPalette(palName, n);
         // if this is a field for which colors were defined manually, use them
         if (legend.metaInfo!==undefined && legend.metaInfo.colors!==undefined && origPalName==="default") {
-            pal = legend.metaInfo.colors;
+            copyNonNull(legend.metaInfo.colors, pal);
             usePredefined = true;
         } else
             pal = makeColorPalette(palName, n);
@@ -3325,25 +3517,16 @@ var cellbrowser = function() {
 
     function showCollectionDialog(collName) {
         /* load collection with given name and open dialog box for it */
-        loadCollectionInfo(collName, function(collData) { openDatasetDialog(null, collData)});
+        loadCollectionInfo(collName, function(collData) { openDatasetDialog(collData)});
     }
 
-    function loadDataset(datasetName, resetVars) {
-        /* load a dataset and optionally reset all the URL variables.
-         * When a dataset is opened through the UI, the variables have to
-         * be reset, as their values (gene or meta data) may not exist
-         * there. If it's opened via a URL, the variables must stay. */
+    function onConfigLoaded(datasetName) { 
+            // this is a collection if it does not have any field information
+            if (!db.conf.metaFields) {
+                showCollectionDialog(datasetName);
+                return;
+            }
 
-        // collections are not real datasets, so ask user which one they want
-
-        db = new CbDbFile(datasetName);
-
-        var vars;
-        if (resetVars)
-            vars = {};
-
-        changeUrl({"ds":datasetName}, vars);
-        db.loadConfig(function() { 
             let binData = localStorage.getItem(db.name+"|custom");
             if (binData) {
                 let jsonStr = LZString.decompress(binData);
@@ -3354,17 +3537,35 @@ var cellbrowser = function() {
             cartLoad(db);
             renderData();
             cartSave(db); // = refresh the URL from local storage
-        });
 
-        // start the tutorial after a while
-        var introShownBefore = localStorage.getItem("introShown");
-        if (introShownBefore===undefined)
-           setTimeout(function(){ showIntro(true); }, 3000); // shown after 5 secs
+            // start the tutorial after a while
+            var introShownBefore = localStorage.getItem("introShown");
+            if (introShownBefore===undefined)
+               setTimeout(function(){ showIntro(true); }, 3000); // shown after 5 secs
+    }
+
+    function loadDataset(datasetName, resetVars, md5) {
+        /* load a dataset and optionally reset all the URL variables.
+         * When a dataset is opened through the UI, the variables have to
+         * be reset, as their values (gene or meta data) may not exist
+         * there. If it's opened via a URL, the variables must stay. */
+
+        // collections are not real datasets, so ask user which one they want
+
+        db = new CbDbFile(datasetName);
+
+
+        var vars;
+        if (resetVars)
+            vars = {};
+
+        changeUrl({"ds":datasetName}, vars);
+        db.loadConfig(onConfigLoaded, md5);
     }
 
     function loadCollectionInfo(collName, onDone) {
         /* load collection info and run onDone */
-        var jsonUrl = cbUtil.joinPaths([collName, "collection.json"]);
+        var jsonUrl = cbUtil.joinPaths([collName, "dataset.json"]);
         cbUtil.loadJson(jsonUrl, onDone);
     }
 
@@ -3377,7 +3578,8 @@ var cellbrowser = function() {
         //var datasetIdx = parseInt(params.selected);
         //var datasetInfo = gDatasetList[datasetIdx];
         var datasetName = params.selected;
-        loadDataset(datasetName, true);
+        var md5 = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName).md5;
+        loadDataset(datasetName, true, md5);
     }
 
     function buildLayoutCombo(htmls, files, id, width, left, top) {
@@ -3530,7 +3732,7 @@ var cellbrowser = function() {
         nextLeft += 215;
 
         if (dataset.collections) {
-            buildCollectionCombo(htmls, dataset, "tpCollectionCombo", 300, nextLeft, 0);
+            buildCollectionCombo(htmls, dataset, "tpCollectionCombo", 330, nextLeft, 0);
         }
 
         htmls.push("</div>");
@@ -3541,7 +3743,7 @@ var cellbrowser = function() {
         activateTooltip('#tpOpenUcsc');
         activateTooltip('#tpOpenDatasetButton');
 
-        $('#tpButtonInfo').click( function() {openDatasetDialog(db.datasetIdx)} );
+        $('#tpButtonInfo').click( function() {openDatasetDialog(db.conf, true)} );
 
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
@@ -3566,7 +3768,7 @@ var cellbrowser = function() {
         //var datasetIdx = cbUtil.findIdxWhereEq(gDatasetList, "name", dataset.name);
         //$("#tpDatasetCombo").val(datasetIdx).trigger("chosen:updated");
         $('#tpLayoutCombo').change(onLayoutChange);
-        $('#tpOpenDatasetButton').click(openDatasetDialog);
+        $('#tpOpenDatasetButton').click(function() { openDatasetDialog(db.conf);});
     }
 
     function metaFieldToLabel(fieldName) {
@@ -4686,10 +4888,6 @@ var cellbrowser = function() {
        //console.log(ev);
        var labelStr = clusterName;
        
-       var acronyms = db.conf.acronyms;
-       if (acronyms!==undefined && clusterName in acronyms)
-           labelStr = acronyms[clusterName];
-
        var labelField = db.conf.labelField;
        var metaInfo = db.findMetaInfo(labelField);
        var longLabels = metaInfo.ui.longLabels;
@@ -4703,14 +4901,20 @@ var cellbrowser = function() {
             }
        }
 
+       //var acronyms = db.conf.acronyms;
+       //if (acronyms!==undefined && clusterName in acronyms)
+           //labelStr = acronyms[clusterName];
+
        if (db.conf.markers!==undefined)
             labelStr += "<br>Click to show marker gene list.";
         showTooltip(ev.clientX+15, ev.clientY, labelStr);
+        renderer.canvas.style.cursor = "pointer";
 
     }
 
     function onNoClusterNameHover(ev) {
         hideTooltip();
+        renderer.canvas.style.cursor = "default";
     }
 
     function sanitizeName(name) {
@@ -4946,9 +5150,17 @@ var cellbrowser = function() {
         var winWidth = window.innerWidth - 0.10*window.innerWidth;
         var winHeight = window.innerHeight - 0.10*window.innerHeight;
         var title = "Cluster markers for &quot;"+clusterName+"&quot;";
-        var acronyms = db.conf.acronyms;
-        if (acronyms!==undefined && clusterName in acronyms)
-            title += " - "+acronyms[clusterName];
+        
+        var metaInfo = getClusterFieldInfo();
+        if (metaInfo.longLabels) {
+            var nameIdx = cbUtil.findIdxWhereEq(metaInfo.valCounts, 0, clusterName);
+            //var acronyms = db.conf.acronyms;
+            //title += " - "+acronyms[clusterName];
+            title += " - "+metaInfo.longLabels[nameIdx];
+        }
+
+        //if (acronyms!==undefined && clusterName in acronyms)
+            //title += " - "+acronyms[clusterName];
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, "buttons":buttons});
         $(".ui-widget-content").css("padding", "0");
         $("#tabs").tabs();
@@ -5005,6 +5217,7 @@ var cellbrowser = function() {
         var geneListCol = null;
         var exprCol = null;
         var pValCol = null
+        //var doDescSort = false;
         for (var i = 1; i < headerRow.length; i++) {
             var colLabel = headerRow[i];
             var isNumber = false;
@@ -5025,7 +5238,10 @@ var cellbrowser = function() {
             else if (colLabel==="P_value" || colLabel==="p_val" || colLabel==="pVal") {
                 colLabel = "P-value";
                 pValCol = i;
+                //if (i===2)
+                    //doDescSort = true;
             }
+            
             else if (colLabel==="_expr") {
                 colLabel = "Expression";
                 exprCol = i;
@@ -5044,6 +5260,7 @@ var cellbrowser = function() {
                 htmls.push("<th"+addStr+">");
             else
                 htmls.push("<th style='width:"+width+"'"+addStr+">");
+            colLabel = colLabel.replace(/_/g, " ");
             htmls.push(colLabel);
             htmls.push("</th>");
         }
@@ -5091,6 +5308,7 @@ var cellbrowser = function() {
         htmls.push("</tbody>");
         htmls.push("</table>");
 
+        // sub function ----
         function onMarkerGeneClick(ev) {
             /* user clicks onto a gene in the table of the marker gene dialog window */
             var geneSym = ev.target.getAttribute("data-gene");
@@ -5105,8 +5323,12 @@ var cellbrowser = function() {
             }
             loadGeneAndColor(geneSym);
         }
+        // ----
 
         $("#"+divId).html(htmls.join(""));
+        var sortOpt = {};
+        //if (doDescSort)
+            //sortOpt.descending=true;
         new Tablesort(document.getElementById('tpMarkerTable'));
         $(".tpLoadGeneLink").on("click", onMarkerGeneClick);
         activateTooltip(".link");
@@ -5312,6 +5534,10 @@ var cellbrowser = function() {
         buildMenuBar();
 
         var datasetName = extractDatasetFromUrl(datasetList)
+        var dsInfo = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName);
+        var md5 = null;
+        if (dsInfo)
+            md5 = dsInfo.md5; // stay backwards-compatible, tolerate datasets without a global md5
 
         //menuBarHide("#tpShowAllButton");
 
@@ -5355,11 +5581,11 @@ var cellbrowser = function() {
         renderer.onSelChange = onSelChange;
         renderer.canvas.addEventListener("mouseleave", hideTooltip);
 
-        var collName = getVar("coll");
-        if (collName)
-            showCollectionDialog(collName);
-        else if (datasetName)
-            loadDataset(datasetName, false);
+        //var collName = getVar("coll");
+        //if (collName)
+            //showCollectionDialog(collName);
+        if (datasetName)
+            loadDataset(datasetName, false, md5);
         else
             openDatasetDialog();
     }

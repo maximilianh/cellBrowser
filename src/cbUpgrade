@@ -8,4 +8,4 @@ from os.path import join, dirname
 import sys
 sys.path.append( join(dirname(__file__), "cbPyLib") )
 from cellbrowser import cellbrowser
-cellbrowser.cbMake_cli()
+cellbrowser.cbUpgradeCli()

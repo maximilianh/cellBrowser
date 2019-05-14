@@ -32,4 +32,5 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
    markers
    combine
    cellbrowser_conf.rst
+   dataDesc.rst
    requirements

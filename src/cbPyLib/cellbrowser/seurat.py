@@ -375,6 +375,7 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
 
     cmds.append("message('Reading %s')" % rdsPath)
     cmds.append("sobj <- readRDS(file='%s')" % rdsPath)
+    cmds.append("if (class(sobj)!='seurat') { stop('The input .rds file does not seem to contain a Seurat object') }")
     skipStr = str(skipMatrix).upper()
     skipMarkerStr = str(skipMarkers).upper()
     if isDebugMode():
