@@ -1,23 +1,30 @@
 UCSC Cell Browser
 -----------------
 
-The UCSC Cell Browser is a viewer for single cell data. You can click on and
-hover over cells to get meta information, search for genes to color on and
-click clusters to show cluster-specific marker genes, which in turn are
-clickable again.
+The UCSC Cell Browser is a fast, lightweight viewer for single-cell data.
+Cells are presented along withmetadata and gene expression, with the ability
+to color cells by both of these attributes. Additional information, such as
+cluster marker genes and selected dataset-relevant genes, can also be displayed
+using the Cell Browser.
 
-The main live of the cell browser with various CIRM and HCA datasets is
-http://cells.ucsc.edu. We are happy to add your favorite dataset to it, just send us a link or the files to cells@ucsc.edu. 
-This documentation describes how you can setup one for
-your own data and put the resulting files onto your own webserver.
+There is a UCSC Cell Browser website available at http://cells.ucsc.edu, which includes
+a handful of datasets from repositories like HCA, CIRM, and GEO as well as user
+contributed ones. We are happy to add your favorite dataset to this, you will just need
+to send us the files or a link to where we can download them to cells@ucsc.edu. 
 
-The UCSC cell browser is funded by grants from the California Institute of Regenerative Medicine
-and the `Chan-Zuckerberg Initiative <https://www.chanzuckerberg.com/>`_.
+The documentation on this website describes how you can create a Cell Browser for
+your own data and make it available through your own web server.
 
-To report problems or look at the source code, see `GitHub <https://github.com/maximilianh/cellBrowser>`_.
+The UCSC cell browser is funded by grants from the `California Institute of Regenerative
+Medicine <https://www.cirm.ca.gov/>` and the
+`Chan-Zuckerberg Initiative <https://www.chanzuckerberg.com/>`_.
 
-This is early research software. You are likely to find bugs. Please open a Github
-ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
+To report issues or view the source code, see `GitHub <https://github.com/maximilianh/cellBrowser>`_.
+
+This is early research software. You are likely to run into bugs.
+If you do run into any trouble, please open a
+`Github issue <https://github.com/maximilianh/cellBrowser/issues/new>`
+or email us at cells@ucsc.edu, we can usually fix them quickly.
 
 .. toctree::
    :maxdepth: 1
