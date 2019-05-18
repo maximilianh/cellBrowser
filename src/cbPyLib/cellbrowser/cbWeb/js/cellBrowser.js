@@ -1457,6 +1457,27 @@ var cellbrowser = function() {
 
     }
 
+    function onRunClusteringClick() {
+        /* not used yet */
+        var myArray = new ArrayBuffer(512);
+        var longInt8View = new Uint8Array(myArray);
+
+        // generate some data
+        for (var i=0; i< longInt8View.length; i++) {
+        longInt8View[i] = i % 256;
+        }
+
+        //let url = "http://localhost:5050/upload";
+        let url = "http://localhost:5050/bin";
+        var xhr = new XMLHttpRequest();
+        //xhr.open("POST", url, false);
+        xhr.open("GET", url, true);
+        xhr.responseType = "arraybuffer";
+        xhr.onload = function() { var buf = xhr.response; console.log(buf)};
+        xhr.send(null);
+        //xhr.send(myArray);
+    }
+
     function onRenameClustersClick() {
     /* Tools - Rename Clusters */
         var htmls = [];
@@ -1761,6 +1782,7 @@ var cellbrowser = function() {
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">Tools</a>');
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a href="#" id="tpRenameClusters">Rename clusters...<span class="dropmenu-item-content"></span></a></li>');
+         //htmls.push('<li><a href="#" id="tpCluster">Run clustering...<span class="dropmenu-item-content"></span></a></li>');
          htmls.push('</ul>'); // Tools dropdown-menu
          htmls.push('</li>'); // Tools dropdown container
 
@@ -1807,6 +1829,7 @@ var cellbrowser = function() {
 
 
        $('#tpRenameClusters').click( onRenameClustersClick );
+       //$('#tpCluster').click( onRunClusteringClick );
 
        // This version is more like OSX/Windows:
        // - menus only open when you click on them

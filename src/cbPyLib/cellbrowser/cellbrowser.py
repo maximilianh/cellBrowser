@@ -1684,20 +1684,6 @@ def indexMeta(fname, outFname):
         ofh.write(struct.pack("<H", lineLen))
     ofh.close()
 
-def testMetaIndex(outDir):
-    # test meta index
-    fh = open(join(outDir, "meta.index"))
-    #fh.seek(10*6)
-    o = fh.read(4)
-    s = fh.read(2)
-    offset = struct.unpack("<L", o) # little endian
-    l = struct.unpack("<H", s)
-    #print "offset, linelen:", offset, l
-
-    #fh = open(join(outDir, "meta/meta.tsv"))
-    #fh.seek(offset[0])
-    #print fh.read(l[0])
-
 # ----------- main --------------
 
 def parseColors(fname):
@@ -2658,7 +2644,7 @@ def readQuickGenes(inConf, geneToSym, outConf):
 def getFileVersion(fname):
     data = {}
     data["fname"] = fname
-    addMd5(data, fname)
+    addMd5(data, fname, shortMd5=False)
     data["size"] = getsize(fname)
     data["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
     return data
@@ -3450,10 +3436,13 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
 
     return adata
 
-def addMd5(d, fname, keyName="md5", isSmall=False):
+def addMd5(d, fname, keyName="md5", isSmall=False, shortMd5=True):
     " add a key 'md5' to dict d with first MD5LEN letters of fname "
     logging.debug("Getting md5 of %s" % fname)
-    d[keyName] = md5ForFile(fname, isSmall=isSmall)[:MD5LEN]
+    md5 = md5ForFile(fname, isSmall=isSmall)[:MD5LEN]
+    if shortMd5:
+        md5 = md5[:MD5LEN]
+    d[keyName] = md5
 
 def addCollections(collDir, datasets):
     """ get all names of collections, find all their cellbrowser.conf files under collDir,
