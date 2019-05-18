@@ -1018,7 +1018,8 @@ function CbDbFile(url) {
         /* return array of [geneSym, discExprVec, geneDesc, binInfo] */
         var setInfo = [];
 
-        for (var geneSym of self.conf.quickGenes) {
+        for (var geneInfo of self.conf.quickGenes) {
+            var geneSym = geneInfo[0];
             var exprInfo = self.quickExpr[geneSym]; // contains: [discExprVec, geneDesc, binInfo]
             var newInfo = [geneSym, exprInfo[0], exprInfo[1], exprInfo[2]];
             setInfo.push(newInfo);
