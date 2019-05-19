@@ -367,7 +367,7 @@ def cbBuild_parseArgs(showHelp=False):
     """)
 
     parser.add_option("", "--init", dest="init", action="store_true",
-        help="copy sample cellbrowser.conf and dataDesc.conf to current directory")
+        help="copy sample cellbrowser.conf and desc.conf to current directory")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
@@ -3383,7 +3383,7 @@ def cbBuildCli():
 
     if options.init:
         copyPkgFile("sampleConfig/cellbrowser.conf")
-        copyPkgFile("sampleConfig/datasetDesc.conf")
+        copyPkgFile("sampleConfig/desc.conf")
         sys.exit(1)
 
     for fname in confFnames:
