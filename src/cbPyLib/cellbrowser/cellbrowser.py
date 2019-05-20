@@ -2213,15 +2213,8 @@ def copyImage(inDir, summInfo, datasetDir):
     summInfo["image"] = (summInfo["image"], width, height)
     return summInfo
 
-def readFile(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
-    " return file with encoding as string "
-    fname = join(inDir, fname)
-    if not isfile(fname):
-        if mustExist:
-            errAbort("%s does not exist" % fname)
-        else:
-            return
-
+def readFile(fname, encoding="utf8"):
+    " read entire file with encoding "
     if isPy3:
         fh = open(fname, "r", encoding=encoding)
         text = fh.read()
@@ -2229,7 +2222,18 @@ def readFile(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
         fh = open(fname, "r")
         text = fh.read().decode(encoding)
     fh.close()
+    return text
 
+def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
+    " return file with encoding as string into dictionary "
+    fname = join(inDir, fname)
+    if not isfile(fname):
+        if mustExist:
+            errAbort("%s does not exist" % fname)
+        else:
+            return
+
+    text = readFile(fname)
     summInfo[key] = text
 
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
@@ -2254,14 +2258,14 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         summInfo["coordFiles"] = coordFiles
 
     # try various ways to get the abstract and methods html text
-    readFile(summInfo, "abstract", inDir, "abstract.html")
-    readFile(summInfo, "abstract", inDir, "summary.html")
-    readFile(summInfo, "methods", inDir, "methods.html")
+    readFileIntoDict(summInfo, "abstract", inDir, "abstract.html")
+    readFileIntoDict(summInfo, "abstract", inDir, "summary.html")
+    readFileIntoDict(summInfo, "methods", inDir, "methods.html")
     if "abstractFile" in summInfo:
-        readFile(summInfo, "abstract", inDir, summInfo["abstractFile"], mustExist=True)
+        readFileIntoDict(summInfo, "abstract", inDir, summInfo["abstractFile"], mustExist=True)
         del summInfo["abstractFile"]
     if "methodsFile" in summInfo:
-        readFile(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
+        readFileIntoDict(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
         del summInfo["methodsFile"]
 
     # import the unit description from cellbrowser.conf
@@ -3563,8 +3567,7 @@ def findDatasets(outDir):
 
         #datasetDesc = json.load(open(fname))
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
-        inStr = open(fname).read()
-        inStr = inStr.decode("utf8")
+        inStr = readFile(fname)
         datasetDesc = customdecoder.decode(inStr)
 
         if not "md5" in datasetDesc:
