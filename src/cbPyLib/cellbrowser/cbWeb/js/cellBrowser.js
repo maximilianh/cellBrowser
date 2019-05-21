@@ -561,6 +561,10 @@ var cellbrowser = function() {
     /* build dataset open dialog, openDsInfo is possibly a collection object. if 'onlyInfo' is set, 
      * remove the dataset list on the left side and show only the information part of the dialog */
 
+        if (!gDatasetList || gDatasetList.length===0)
+            alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
+                " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
+
         if (!openDsInfo)
             openDsInfo = gDatasetList[0];
 
@@ -572,7 +576,7 @@ var cellbrowser = function() {
         //var openDsInfo;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (openDsInfo.isCollection) {
+        if (openDsInfo && openDsInfo.isCollection) {
             // select from a collection
             title = "Select one Dataset from the collection "+openDsInfo.shortLabel;
             datasetList = openDsInfo.datasets;
