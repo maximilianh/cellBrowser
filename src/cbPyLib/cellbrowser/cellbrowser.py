@@ -2445,8 +2445,10 @@ def parseGeneInfo(geneToSym, fname):
             continue
 
         info = [sym]
-        if len(row)==2:
+        if len(row)>1:
             info.append(row[1])
+        if len(row)>2:
+            info.append(row[2])
         geneInfo.append(info)
     return geneInfo
 

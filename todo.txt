@@ -1,3 +1,9 @@
+URGENT:
+- colors are not saved anymore!
+- mouse cursor does not change
+- intro page upon first start, make tutorial less intrusive
+- system to show notes at the top, and never show these again.
+
 immediate:
 - remove forceAtlas2 for big datasets in cbScanpy
 - format the cluster names as links and make them clickable to show the markers
