@@ -367,7 +367,7 @@ def cbBuild_parseArgs(showHelp=False):
     """)
 
     parser.add_option("", "--init", dest="init", action="store_true",
-        help="copy sample cellbrowser.conf and dataDesc.conf to current directory")
+        help="copy sample cellbrowser.conf and desc.conf to current directory")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
@@ -3385,7 +3385,7 @@ def cbBuildCli():
 
     if options.init:
         copyPkgFile("sampleConfig/cellbrowser.conf")
-        copyPkgFile("sampleConfig/datasetDesc.conf")
+        copyPkgFile("sampleConfig/desc.conf")
         sys.exit(1)
 
     for fname in confFnames:
@@ -3416,6 +3416,16 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
 
     elif matrixFname.endswith(".h5"):
+        import h5py
+        ifh = h5py.File(matrixFname,'r')
+        groups = list(ifh.keys())
+        ifh.close()
+
+        if genome not in groups:
+            errAbort("The file %s does not have expression info for the genome %s. Possible genomes are: %s. "
+                     "Choose one of these and and specify it with the option -g" %
+                     (matrixFname, genome, groups))
+
         logging.info("Loading expression matrix: 10X h5 format")
         adata = sc.read_10x_h5(matrixFname, genome=genome)
 
@@ -3553,7 +3563,11 @@ def findDatasets(outDir):
         if not isfile(fname):
             continue
 
-        datasetDesc = json.load(open(fname))
+        #datasetDesc = json.load(open(fname))
+        customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
+        inStr = open(fname).read()
+        inStr = inStr.decode("utf8")
+        datasetDesc = customdecoder.decode(inStr)
 
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
@@ -3597,7 +3611,9 @@ def copyAllFiles(fromDir, subDir, toDir):
         #ofh.close()
 
 def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
-    " copy over the desc.conf files for all collections and generate md5s for them. "
+    """ copy over the desc.conf files for all collections and generate md5s for them.
+    re-write all collection children, too.
+    """
     if len(collToDatasets.keys())==0:
         logging.debug("No collections used")
         return
@@ -3655,6 +3671,17 @@ def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir
             errAbort("collection %s is used by datasets %s, but there was no cellbrowser.conf found under %s" %
                     (collName, [ds["name"] for ds in datasets], inDir))
 
+        # copy the full list of linked datasets into every child dataset
+        # and write these JSON files again
+        linkedDsList = summarizeDatasets(summDsList, minimal=True)
+
+        for dsInfo in summDsList:
+            dsName = dsInfo["name"]
+            childInfo = nameToDs[dsName]
+            childInfo["datasets"] = linkedDsList
+            childFname = join(outDir, dsName, "dataset.json")
+            writeJson(childInfo, childFname)
+
         collInfo["md5"] = collMd5
         nameToDs[collName]["md5"] = collMd5 # update the md5 in the big list, for the main summary
 
@@ -3707,7 +3734,7 @@ def writeGaScript(ofh, gaTag):
 
 """ % (gaTag, gaTag))
 
-def summarizeDatasets(datasets):
+def summarizeDatasets(datasets, minimal=False):
     " keep only the most important fields of a list of datasets and return them as a list of dicts "
     dsList = []
     for ds in datasets:
@@ -3717,20 +3744,21 @@ def summarizeDatasets(datasets):
                 "md5" : ds["md5"],
                 }
 
-        if "sampleCount" in ds:
-            summDs["sampleCount"] = ds["sampleCount"]
-        else:
-            summDs["isCollection"] = True
-            summDs["datasetCount"] = ds["datasetCount"]
+        if not minimal:
+            if "sampleCount" in ds:
+                summDs["sampleCount"] = ds["sampleCount"]
+            else:
+                summDs["isCollection"] = True
+                summDs["datasetCount"] = ds["datasetCount"]
 
-        for optListTag in ["tags", "collections", "hasFiles"]:
-            if optListTag in ds:
-                assert(type(ds[optListTag])==type([])) # has to be a list
-                summDs[optListTag] = ds[optListTag]
+            for optListTag in ["tags", "collections", "hasFiles"]:
+                if optListTag in ds:
+                    assert(type(ds[optListTag])==type([])) # has to be a list
+                    summDs[optListTag] = ds[optListTag]
 
-        #for optTag in ["visibility"]:
-            #if optTag in ds:
-                #summDs[optTag] = ds[optTag]
+            #for optTag in ["visibility"]:
+                #if optTag in ds:
+                    #summDs[optTag] = ds[optTag]
 
         dsList.append(summDs)
     return dsList
@@ -3842,9 +3870,10 @@ def cbUpgrade(outDir, onlyDatasets=None, devMode=False):
 
     collDir = getConfig("collDir")
     datasets, primCollDatasets = addCollections(collDir, datasets)
-    datasets = removeHiddenDatasets(datasets)
 
     writeCollectionFiles(collDir, datasets, primCollDatasets, onlyDatasets, outDir)
+
+    datasets = removeHiddenDatasets(datasets)
 
     makeIndexHtml(webDir, datasets, outDir, devMode=devMode)
 

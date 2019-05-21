@@ -4,35 +4,37 @@ Installation
 Installation with pip
 ^^^^^^^^^^^^^^^^^^^^^
 
-You need Python2.5+ or Python3+ and pip. On a Mac or any Linux, simply run::
+To install the Cell Browser using pip, you will need Python2.5+ or Python3+ and pip. With these setup, on a Mac or any Linux system, simply run::
 
     sudo pip install cellbrowser
 
-On Linux, if you you're not allowed to run the sudo command, you can install into your user home directory::
+On Linux, if you are not allowed to run the sudo command, you can install the Cell Browser into your user home directory::
 
     pip install --user cellbrowser
     export PATH=$PATH:~/.local/bin
 
-You can add the second command to your ~/.profile or ~/.bashrc.
+You can add the second command to your ~/.profile or ~/.bashrc, this will allow you
+to run the Cell Browser commands without having to specify their location.
     
-On OSX, if ``sudo pip`` says *command not found*, you need to setup pip first::
+On OSX, if running ``sudo pip`` outputs *command not found*, you will need to setup pip first by running::
 
     sudo easy_install pip
 
 Installation with conda
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-Alternatively, if you prefer to install through bioconda, since 0.4.23 you can do::
+If you would prefer to install the Cell Browser through bioconda, you can run::
 
     conda install -c bioconda ucsc-cell-browser
     
-The conda version is managed by Pablo Moreno at the EBI and is often a few releases behind. Please 
-indicate in any bug reports if you used conda to install.
+There should be conda versions for release 0.4.23 onwards. The conda version is managed by
+Pablo Moreno at the EBI and is often a few releases behind. Please indicate in any bug
+reports if you used conda to install.
 
 Installation with git clone
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Pip is not required. As an alternative to pip or conda, you can also git clone the repo and
+Pip is not required to install the Cell Browser. As an alternative to pip or conda, you can also git clone the repo and
 run the command line scripts under cellbrowser/src::
 
     git clone https://github.com/maximilianh/cellBrowser.git --depth=10

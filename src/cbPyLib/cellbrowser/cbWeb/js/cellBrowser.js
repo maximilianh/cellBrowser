@@ -277,7 +277,13 @@ var cellbrowser = function() {
 
     function activateTooltip(selector) {
         // noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery
-        var ttOpt = {"html": true, "animation": false, "delay":{"show":350, "hide":100}, container:"body"};
+        var ttOpt = {
+            "html": true, 
+            "animation": false, 
+            "delay": {"show":300, "hide":100}, 
+            "trigger" : "hover",
+            container:"body"
+        };
         $(selector).bsTooltip(ttOpt);
     }
 
@@ -378,7 +384,7 @@ var cellbrowser = function() {
 
         let datasetName = datasetInfo.name;
         let md5 = datasetInfo.md5;
-        if (datasetInfo.fileVersions && datasetInfo.fileVersions.desc) {
+        if (datasetInfo.hasFiles && datasetInfo.hasFiles.indexOf("datasetDesc")!==-1) {
             // description is not through html files but a json file
             var jsonUrl = joinPaths([datasetName, "desc.json"]) +"?"+md5;
             fetch(jsonUrl)
@@ -420,6 +426,7 @@ var cellbrowser = function() {
         "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
         "sra" : "NCBI SRA",
         "pmid" : "PubMed Abstract",
+        "pmcid" : "PubMed Fulltext",
         "sra_study" : "NCBI SRA Study",
         "dbgap" : "NCBI DbGaP",
         "biorxiv_url" : "BioRxiv preprint",
@@ -430,6 +437,7 @@ var cellbrowser = function() {
         "geo_series" : "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=",
         "sra_study" : "https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=",
         "pmid" : "https://www.ncbi.nlm.nih.gov/pubmed/",
+        "pmcid" : "https://www.ncbi.nlm.nih.gov/pmc/articles/",
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
         "doi" : "http://dx.doi.org/",
     }
@@ -482,20 +490,8 @@ var cellbrowser = function() {
             htmls.push("</p>");
         }
 
-        if (datasetInfo.collections===undefined)
-            htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
-        else
-            htmls.push("<b>Direct link to collection for manuscripts: </b> https://"+datasetInfo.collections[0]+".cells.ucsc.edu");
-        htmls.push("<br>");
-
-        if (desc.submitter) {
-            htmls.push("<b>Submitted by: </b> "+desc.submitter);
-            if (desc.submission_date) {
-                htmls.push(" ("+desc.submission_date);
-                if (desc.version)
-                    htmls.push(", Version "+desc.version);
-                htmls.push(")");
-            }
+        if (desc.author) {
+            htmls.push("<b>Author: </b> "+desc.author);
             htmls.push("<br>");
         }
 
@@ -509,6 +505,17 @@ var cellbrowser = function() {
         }
 
 
+        if (desc.submitter) {
+            htmls.push("<b>Submitted by: </b> "+desc.submitter);
+            if (desc.submission_date) {
+                htmls.push(" ("+desc.submission_date);
+                if (desc.version)
+                    htmls.push(", Version "+desc.version);
+                htmls.push(")");
+            }
+            htmls.push("<br>");
+        }
+
         htmlAddLink(htmls, desc, "biorxiv_url");
         htmlAddLink(htmls, desc, "paper_url");
         htmlAddLink(htmls, desc, "other_url");
@@ -518,6 +525,12 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "sra_study");
         htmlAddLink(htmls, desc, "sra");
         htmlAddLink(htmls, desc, "doi");
+
+        if (datasetInfo.collections===undefined)
+            htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
+        else
+            htmls.push("<b>Direct link to collection for manuscripts: </b> https://"+datasetInfo.collections[0]+".cells.ucsc.edu");
+        htmls.push("<br>");
 
         $( "#pane1" ).html(htmls.join(""));
 
@@ -3582,7 +3595,7 @@ var cellbrowser = function() {
         //var datasetIdx = parseInt(params.selected);
         //var datasetInfo = gDatasetList[datasetIdx];
         var datasetName = params.selected;
-        var md5 = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName).md5;
+        var md5 = cbUtil.findIdxWhereEq(db.conf.datasets, "name", datasetName).md5;
         loadDataset(datasetName, true, md5);
     }
 
@@ -3603,11 +3616,12 @@ var cellbrowser = function() {
 
     function buildCollectionCombo(htmls, dataset, id, width, left, top) {
         /* build combobox with shortLabels of all datasets that are part of same collection */
-        htmls.push('<div class="tpToolBarItem" style="position:absolute;width:150px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Collection</label>');
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;width:'+width+'px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Collection</label>');
 
         var collName = dataset.collections[0];
         var entries = [];
-        for (var i = 0; i < gDatasetList.length; i++) {
+        var linkedDatasets = db.conf.datasets;
+        for (var i = 0; i < linkedDatasets.length; i++) {
             var dsInfo = gDatasetList[i];
             if (dsInfo.collections!==undefined && dsInfo.collections.find(collName)!==undefined)
                 entries.push( [i, dsInfo.shortLabel] );
@@ -3699,6 +3713,11 @@ var cellbrowser = function() {
     function makeHubUrl(geneSym) {
         /* return URL of the hub.txt file, possibly jumping to a given gene  */
             var hubUrl = db.conf.hubUrl;
+
+            // we accept session links in the hubUrl statement and just pass these through
+            if (hubUrl.indexOf("genome.ucsc.edu/s/")!==-1)
+                return hubUrl;
+
             if (hubUrl===undefined)
                 return null;
             var ucscDb = db.conf.ucscDb;
@@ -3772,7 +3791,10 @@ var cellbrowser = function() {
         //var datasetIdx = cbUtil.findIdxWhereEq(gDatasetList, "name", dataset.name);
         //$("#tpDatasetCombo").val(datasetIdx).trigger("chosen:updated");
         $('#tpLayoutCombo').change(onLayoutChange);
-        $('#tpOpenDatasetButton').click(function() { openDatasetDialog(db.conf);});
+        $('#tpOpenDatasetButton').click(function() { 
+            $(this).blur();  // remove focus = tooltip disappears
+            openDatasetDialog(db.conf); 
+        });
     }
 
     function metaFieldToLabel(fieldName) {
