@@ -2449,8 +2449,10 @@ def parseGeneInfo(geneToSym, fname):
             continue
 
         info = [sym]
-        if len(row)==2:
+        if len(row)>1:
             info.append(row[1])
+        if len(row)>2:
+            info.append(row[2])
         geneInfo.append(info)
     return geneInfo
 
@@ -3180,18 +3182,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
-    # Make it work for Python 2+3 and with Unicode
-    try:
-        to_unicode = unicode
-    except NameError:
-        to_unicode = str
-
     # Write JSON file
     tmpName = outFname+".tmp"
     with io.open(tmpName, 'w', encoding='utf8') as outfile:
         #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
-        str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
-        outfile.write(to_unicode(str_))
+        if isPy3:
+            str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
+        else:
+            str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
+        outfile.write(str_)
     os.rename(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
