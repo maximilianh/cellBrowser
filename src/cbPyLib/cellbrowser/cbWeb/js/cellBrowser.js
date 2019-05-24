@@ -3711,7 +3711,7 @@ var cellbrowser = function() {
             var hubUrl = db.conf.hubUrl;
 
             // we accept session links in the hubUrl statement and just pass these through
-            if (hubUrl.indexOf("genome.ucsc.edu/s/")!==-1)
+            if (hubUrl && hubUrl.indexOf("genome.ucsc.edu/s/")!==-1)
                 return hubUrl;
 
             if (hubUrl===undefined)
