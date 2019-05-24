@@ -4544,7 +4544,7 @@ var cellbrowser = function() {
 
             if (likeEmptyString(label)) {
                 labelClass += " tpGrey";
-                colorHex = cNullColor;
+                //colorHex = cNullColor;
             }
             if (label==="") {
                 label = "(empty)";

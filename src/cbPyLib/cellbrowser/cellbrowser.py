@@ -2274,7 +2274,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
 
     # need the collection info, too
     if "collections" in outConf and not "collections" in summInfo:
-        summInfo["collections"] = outConf["unit"]
+        summInfo["collections"] = outConf["collections"]
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
