@@ -3153,14 +3153,17 @@ var cellbrowser = function() {
         cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
-        for (var i = 0; i < geneInfos.length; i++) {
+        var i = 0;
+        while (i < geneInfos.length) {
             var geneInfo = geneInfos[i];
             var geneId   = geneInfo[0];
             var geneDesc = geneInfo[1];
             if (((i % colsPerRow) === 0) && (i!==0)) {
                 htmls.push("</tr><tr>");
             }
-            htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
+            if (geneId in db.geneOffsets)
+                htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
+            i++;
         }
         htmls.push("</tr></table>");
         htmls.push("</div>"); // divId
