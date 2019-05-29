@@ -29,6 +29,7 @@ statements ``abstractFile`` and ``methodsFile`` to specify other file names. In 
 you can use text like ``<section>some subtitle</section>`` to split the text into sections.
 
 These tags contains a file name:
+
 - ``image``: usually a 400px-wide thumbnail of the dimensionality reduction
 - ``rawMatrixFile``: usually the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
 
