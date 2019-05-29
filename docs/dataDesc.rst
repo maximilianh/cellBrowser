@@ -4,9 +4,10 @@ Describing datasets
 A dataset can be described with three HTML files, summary.html, methods.html
 and downloads.html.  You can put these in the same directory where
 ``cellbrowser.conf`` is stored and they will get copied 
-along to the webserver and shown in the ``File > Open Dataset...`` dialog.
+along to the webserver and shown in the ``File > Open Dataset...`` dialog or
+when you click the ``Info`` button.
 
-Howver, when you have many datasets, writing the html files gets repetitive.
+However, when you have many datasets, writing the html files gets repetitive.
 This is where desc.conf is handy, it's a key-value file with the
 description of the dataset in a standardized format.
 
