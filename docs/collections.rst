@@ -24,7 +24,7 @@ shortLabel and tags::
    echo 'tags=["10x"]' >> cellbrowser.conf
 
 Now you can describe your collection as explained previously under `Describing
-datasets`. Put the desc.conf file into the same directory as the
+datasets`_. Put the desc.conf file into the same directory as the
 cellbrowser.conf you just created.
 
 Now re-build the dataset that you just put into the collection with
