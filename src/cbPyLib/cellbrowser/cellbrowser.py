@@ -2272,6 +2272,14 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
 
+    # copy over the raw matrix file, usually this is a zip or gzip file
+    if "rawMatrixFile" in summInfo:
+        rawInPath = join(inDir, summInfo["rawMatrixFile"])
+        rawOutPath = join(datasetDir, summInfo["rawMatrixFile"])
+        if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+            logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+            shutil.copy(rawInPath, rawOutPath)
+
     # need the collection info, too
     if "collections" in outConf and not "collections" in summInfo:
         summInfo["collections"] = outConf["collections"]
@@ -2870,8 +2878,8 @@ def convertDataset(inConf, outConf, datasetDir):
             if tag in inConf and not type(inConf[tag])==type([]):
                 errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
         if tag=="visibility":
-            if tag in inConf and inConf[tag] not in ["hide"]:
-                errAbort("Error in cellbrowser.conf: '%s' can only have value: 'hide'" % (tag))
+            if tag in inConf and inConf[tag] not in ["hide", "show"]:
+                errAbort("Error in cellbrowser.conf: '%s' can only have values: 'hide' or 'show'" % (tag))
 
     if " " in inConf["name"]:
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
@@ -3502,6 +3510,11 @@ def addCollections(collDir, datasets):
         conf["name"] = collName
         conf["isCollection"] = True
         conf["datasetCount"] = len(collToDatasets[collName])
+        if isfile(join(subPath, "desc.conf")) or isfile(join(subPath, "datasetDesc.conf")):
+            conf["hasFiles"] = ["datasetDesc"]
+
+        if "collections" in conf:
+            errAbort("File %s defines a collection but is itself a collection. This is not allowed." % subPath)
 
         fileVersions = {}
         fileVersions["config"] = getFileVersion(fname)

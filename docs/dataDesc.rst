@@ -27,8 +27,9 @@ files ``abstract.html`` and ``methods.html``, they will be used instead. Or use 
 statements ``abstractFile`` and ``methodsFile`` to specify other file names. In the HTML, 
 you can use text like ``<section>some subtitle</section>`` to split the text into sections.
 
-This tag contains an image file name:
+These tags contains a file name:
 - ``image``: usually a 400px-wide thumbnail of the dimensionality reduction
+- ``rawMatrixFile``: usually the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
 
 The following tags can contain URLs and optionally, separated with a space, a label for the link. If you do 
 not specify the label, a default label will be used (e.g. 'Biorxiv Preprint'):
@@ -45,10 +46,12 @@ The following tags contain accession IDs and will be translated to links:
 - ``sra_study``: NCBI SRA SRPxxxx accession
 - ``doi``: DOI of paper fulltext
 - ``dbgap``: NCBI dbGaP accession, starts with phs
+- ``bioproject``: NCBI Bioproject accession, a 4-9 digit number, without the PRJNA prefix
 
 The following tags contain just text:
 
 - ``submitter``: name and/or email of submitter
 - ``lab``: lab and University of submitter
 - ``submission_date``: ideally in format year-month-day
+- ``rawMatrixNote``: text to describe the raw matrix, see ``rawMatrixFile``
 - ``version``: version of dataset, a simple number (1,2,3,...) that should be increased each time a major change (usually meta data) was received from the lab
