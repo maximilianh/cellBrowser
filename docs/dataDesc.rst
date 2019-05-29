@@ -31,7 +31,7 @@ you can use text like ``<section>some subtitle</section>`` to split the text int
 These tags contains a file name:
 
 - ``image``: usually a 400px-wide thumbnail of the dimensionality reduction
-- ``rawMatrixFile``: usually the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
+- ``rawMatrixFile``: the file name of the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
 
 The following tags can contain URLs and optionally, separated with a space, a label for the link. If you do 
 not specify the label, a default label will be used (e.g. 'Biorxiv Preprint'):
