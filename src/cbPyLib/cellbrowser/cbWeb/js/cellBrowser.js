@@ -653,7 +653,8 @@ var cellbrowser = function() {
             datasetList.unshift( {
                 shortLabel:"Overview", 
                 name:openDsInfo.name, 
-                hasFiles:openDsInfo.hasFiles, isSummary:true
+                hasFiles:openDsInfo.hasFiles,
+                isSummary:true
             });
         }
         else {
@@ -805,7 +806,10 @@ var cellbrowser = function() {
         } else if (cellIds.length===1) {
             var cellId = cellIds[0];
             var cellCountBelow = cellIds.length-1;
-            db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci, cellCountBelow);}, onProgress);
+            updateMetaBarCustomFields(cellId);
+            db.loadMetaForCell(cellId, function(ci) { 
+                updateMetaBarOneCell(ci, cellCountBelow);
+            }, onProgress);
         } else
             updateMetaBarManyCells(cellIds);
 
@@ -1209,7 +1213,7 @@ var cellbrowser = function() {
 
                 addNewAnnotation(fieldLabel, newMetaValue, renderer.getSelection());
                 $( this ).dialog( "close" ); 
-                colorByMetaField(fieldLabel);
+                colorByMetaField("custom");
             }
         }];
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
@@ -4865,9 +4869,17 @@ var cellbrowser = function() {
         var metaHist = {};
         for (var metaIdx = 0; metaIdx < metaFieldInfos.length; metaIdx++) {
             var metaInfo = metaFieldInfos[metaIdx];
-            var metaVec = db.allMeta[metaInfo.name];
+
+            var metaVec = [];
+            if (metaInfo.isCustom)
+                metaVec = metaInfo.arr;
+            else
+                metaVec = db.allMeta[metaInfo.name];
             if (metaVec===undefined) {
-                $('#tpMeta_'+metaIdx).html("(unique identifier field)");
+                if (metaInfo.type!=="uniqueString")
+                    alert("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
+                else 
+                    $('#tpMeta_'+metaIdx).html("(unique identifier field)");
                 continue;
             }
 
@@ -4924,12 +4936,25 @@ var cellbrowser = function() {
 
     function clearMetaAndGene() {
         /* called when user hovers over nothing - clear the meta and gene field field info, hide the tooltip */
+        $('#tpMeta_custom').html("");
+
         var fieldCount = db.getMetaFields();
         for (let metaInfo of db.getMetaFields()) {
             $('#tpMeta_'+metaInfo.name).attr('title', "").html("");
         }
         $('#tpMetaNote').hide();
         updateGeneTableColors(null);
+    }
+
+    function updateMetaBarCustomFields(cellId) {
+        /* update custom meta fields with custom data */
+        if (!db.getMetaFields()[0].isCustom)
+            return;
+
+        let metaInfo = db.getMetaFields()[0];
+        let intVal = metaInfo.arr[cellId];
+        let strVal = metaInfo.ui.shortLabels[intVal];
+        let rowDiv = $('#tpMeta_custom').html(strVal);
     }
 
     function updateMetaBarOneCell(cellInfo, otherCellCount) {
@@ -4955,6 +4980,7 @@ var cellbrowser = function() {
                 rowDiv.html(fieldValue);
             rowDiv.attr('title', cellInfo[i]);
         }
+
         if (otherCellCount===0)
             $("#tpMetaNote").hide();
         else {
@@ -4995,6 +5021,7 @@ var cellbrowser = function() {
         } else {
             var cellId = cellIds[0];
             var cellCountBelow = cellIds.length-1;
+            updateMetaBarCustomFields(cellId);
             db.loadMetaForCell(cellId, function(ci) { updateMetaBarOneCell(ci, cellCountBelow);}, onProgress);
         }
 
@@ -5053,13 +5080,13 @@ var cellbrowser = function() {
        if (db.conf.markers!==undefined)
             labelStr += "<br>Click to show marker gene list.";
         showTooltip(ev.clientX+15, ev.clientY, labelStr);
-        renderer.canvas.style.cursor = "pointer";
+        //renderer.canvas.style.cursor = "pointer";
 
     }
 
     function onNoClusterNameHover(ev) {
         hideTooltip();
-        renderer.canvas.style.cursor = "default";
+        //renderer.canvas.style.cursor = "default";
     }
 
     function sanitizeName(name) {

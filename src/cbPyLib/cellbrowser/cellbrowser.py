@@ -261,7 +261,7 @@ def copyPkgFile(relPath, outDir=None, values=None):
         logging.info("%s already exists, not overwriting" % destPath)
     else:
         if values is None:
-            shutil.copy(srcPath, destPath)
+            shutil.copyfile(srcPath, destPath)
             logging.info("Wrote %s" % destPath)
             # egg-support commented out for now
             #s = pkg_resources.resource_string(__name__, srcPath)
@@ -2195,14 +2195,15 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             #copyFiles.append( (fname, "summary.html") )
             outPath = join(datasetDir, fileBase)
             logging.debug("Copying %s -> %s" % (inFname, outPath))
-            shutil.copy(inFname, outPath)
+            shutil.copyfile(inFname, outPath)
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
 def copyImage(inDir, summInfo, datasetDir):
     """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
     inFname = join(inDir, summInfo["image"])
     logging.debug("Copying %s to %s" % (inFname, datasetDir))
-    shutil.copy(inFname, datasetDir)
+    #shutil.copy(inFname, datasetDir)
+    shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
 
     cmd = ["file", inFname]
     proc, stdout = popen(cmd)
@@ -2278,7 +2279,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         rawOutPath = join(datasetDir, summInfo["rawMatrixFile"])
         if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
             logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
-            shutil.copy(rawInPath, rawOutPath)
+            shutil.copyfile(rawInPath, rawOutPath)
 
     # need the collection info, too
     if "collections" in outConf and not "collections" in summInfo:
@@ -3582,6 +3583,10 @@ def findDatasets(outDir):
         inStr = readFile(fname)
         datasetDesc = customdecoder.decode(inStr)
 
+        if "isCollection" in datasetDesc:
+            logging.debug("Dataset %s is a collection, so not parsing now" % datasetDesc["name"])
+            continue
+
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
 
@@ -3616,7 +3621,10 @@ def copyAllFiles(fromDir, subDir, toDir):
         #fullPath = join(fromDir, subDir, filename)
         fullPath = filename
         logging.debug("Copying %s to %s" % (fullPath, outDir))
-        shutil.copy(filename, outDir)
+        # copy uses chmod() which we don't want
+        #shutil.copy(filename, outDir)
+        dstPath = join(outDir, basename(filename))
+        shutil.copyfile(fullPath, dstPath)
         #s = pkg_resources.resource_string(__name__, filename)
         #outFname = join(outDir, filename)
         #ofh = open(outFname, "wb")
@@ -3670,7 +3678,8 @@ def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir
         summFname = join(inDir, "summary.html")
         if isfile(summFname):
             logging.debug("Copying %s to %s" % (summFname, collOutDir))
-            shutil.copy(summFname, collOutDir)
+            #shutil.copy(summFname, collOutDir) # copy() uses chmod
+            shutil.copyfile(summFname, join(collOutDir, basename(summFname)))
             collMd5s.append(md5ForFile(summFname))
 
         for ds in datasets:
@@ -3882,6 +3891,8 @@ def cbUpgrade(outDir, onlyDatasets=None, devMode=False):
     datasets = findDatasets(outDir)
 
     collDir = getConfig("collDir")
+    for ds in datasets:
+        print(ds["name"])
     datasets, primCollDatasets = addCollections(collDir, datasets)
 
     writeCollectionFiles(collDir, datasets, primCollDatasets, onlyDatasets, outDir)

@@ -44,7 +44,7 @@ function MaxPlot(div, top, left, width, height, args) {
     
     const gTextSize = 16; // size of cluster labels
     const gTitleSize = 18; // size of title text
-    const gStatusHeight = 12; // height of status bar
+    const gStatusHeight = 14; // height of status bar
     const gZoomButtonSize = 30; // size of zoom buttons
     const gZoomFromRight = 60;  // position of zoom buttons from right
     const gZoomFromBottom = 120;  // position of zoom buttons from bottom
@@ -704,23 +704,23 @@ function MaxPlot(div, top, left, width, height, args) {
 
                 // also only at 100% zoom, make a minimal effort to avoid label overlaps
                 // a perfect solution would take much more time
-                for (var j=0; j < bboxArr.length; j++) {
-                    var bbox = bboxArr[j];
-                    if (bbox===null) // = outside of screen
-                        continue;
-                    var bx1 = bbox[0];
-                    var by1 = bbox[1];
-                    var bx2 = bbox[2];
-                    var by2 = bbox[3];
-                    if (intersectRect(textX1, textX2, textY1, textY2, bx1, bx2, by1, by2)) {
+                //for (var j=0; j < bboxArr.length; j++) {
+                    //var bbox = bboxArr[j];
+                    //if (bbox===null) // = outside of screen
+                        //continue;
+                    //var bx1 = bbox[0];
+                    //var by1 = bbox[1];
+                    //var bx2 = bbox[2];
+                    //var by2 = bbox[3];
+                    //if (intersectRect(textX1, textX2, textY1, textY2, bx1, bx2, by1, by2)) {
                             // push the overlapping label away a little
-                            var diff = Math.round(0.75*gTextSize);
-                            if (textY1 < by1)
-                                y -= diff;
-                            else
-                                y += diff;
-                        }
-                }
+                            //var diff = Math.round(0.75*gTextSize);
+                            //if (textY1 < by1)
+                                //y -= diff;
+                            //else
+                                //y += diff;
+                        //}
+                //}
             }
             // don't draw labels where the midpoint is off-screen
             if (x<0 || y<0 || x>winWidth || y>winWidth) {
@@ -1923,11 +1923,13 @@ function MaxPlot(div, top, left, width, height, args) {
         if (modeName==="move")
             cursor = 'all-scroll';
         else if (modeName==="zoom")
+            cursor = "zoom-in"
+        else if (modeName=="select")
             cursor = 'crosshair';
-        else 
-            cursor= 'default';
+        //else 
+            //cursor= 'default';
 
-        self.canvas.style.cursor=cursor;
+        self.canvas.style.cursor = cursor;
         self.canvasCursor = cursor;
 
         self.resetMarquee();
