@@ -3728,7 +3728,7 @@ var cellbrowser = function() {
         var entries = [];
         var linkedDatasets = db.conf.datasets;
         for (var i = 0; i < linkedDatasets.length; i++) {
-            var dsInfo = gDatasetList[i];
+            var dsInfo = linkedDatasets[i];
             if (dsInfo.collections!==undefined && dsInfo.collections.find(collName)!==undefined)
                 entries.push( [i, dsInfo.shortLabel] );
         }
