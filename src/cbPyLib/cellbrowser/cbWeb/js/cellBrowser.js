@@ -5263,7 +5263,7 @@ var cellbrowser = function() {
 
     function onClusterNameClick(clusterName, nameIdx) {
         /* build and open the dialog with the marker genes table for a given cluster */
-        var nameIdx = metaInfo.ui.shortLabels.indexOf(clusterName);
+        //var nameIdx = metaInfo.ui.shortLabels.indexOf(clusterName);
 
         var tabInfo = db.conf.markers; // list with (label, subdirectory)
 
