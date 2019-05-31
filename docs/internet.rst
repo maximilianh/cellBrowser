@@ -1,45 +1,75 @@
 Putting it onto the internet
 ----------------------------
 
-To deploy the result of ``cbBuild`` onto a webserver, simply copy all files and
-directories in the html output directory (in the examples on this site, that's
-usually *~/public_html/cells*) to an empty directory on a webserver and point
-your web browser to it. Many universities give their members
-webspace, sometimes in a directory called ~/public_html or on a special server.
-If you do not have one, contact us or use Cyverse, Amazon S3, Goole Cloud
-Storage, Microsoft Azure etc. to host your files. You cannot use online backup
-solutions like Dropbox, Box.com, iCloud OneDrive or Google Drive, they
-intentionally are not webservers. You can always send the result to cells@ucsc.edu, 
-we are happy to add it to our cell browser site at cells.ucsc.edu.
+Basics
+^^^^
 
-To add more datasets, go to the other data directories and run cbBuild
-there, with the same output directory. cbBuild will then modify the index.html
+Deploying your cell browser on the web is as simple as copying the output of ``cbBuild``,
+including all files and directories, into to an empty directory on a web 
+server. The cell browser should be able to be deployed on almost any web server, including:
+
+* One provided by your university (often through a public_html directory in your home directory)
+* A cloud provider, such as:
+
+  * Cyverse
+  * Amazon S3
+  * Google Cloud Storage
+  * Microsoft Azure
+
+If none of the above options work, you can always send the output files to cells@ucsc.edu, 
+we are happy to add it to our public `Cell Browser <cells.ucsc.edu>`_ website.
+Unfortunately, online backup solutions such as Dropbox, Box.com, iCloud, OneDrive or Google
+Drive will not work; they are intentionally designed to not be used as web servers.
+
+Adding multiple datasets to your cell browser
+^^^^^
+
+To add more datasets to the same cell browser, navigate to the other data directories and run cbBuild
+there with the same output directory. cbBuild will then modify the index.html
 in the output directory to show all datasets. Note that the directory that you
 provide via -o (or the CBOUT environment variable) is the html directory. The
 data for each individual dataset will be copied into subdirectories under this
 html directory, one directory per dataset.
 
-Instead of specifying "-o" all the time, you can also add a line like this to
+Specifying a default output directory for ``cbBuild``
+^^^^^
+
+The output directory for ``cbBuild`` can be controlled using environment or .conf variables. 
+This allows you to run ``cbBuild`` in a directory without needing to specify an output
+directory using the "-o" option.
+
+To control the output directory using an environment variable, add the following line to
 your ~/.bashrc to point to your html directory::
  
     export CBOUT=/var/www
 
-Alternatively, you can create a file ~/.cellbrowser.conf and assign a value to htmlDir::
+Replace ``/var/www`` with whatever you want the default output directory to be.
+
+Alternatively, you can create a file called ``.cellbrowser.conf`` in your home directory
+and assign a value to htmlDir::
 
     echo 'htmlDir = "/var/www"' >> ~/.cellbrowser.conf
 
-The -p 8888 is optional. A more permanent alternative to the -p option is to
-run a webserver on your machine and build directly into its web directory.
 
-On a Mac you can use the Apache that ships with OSX::
+Again, replace ``/var/www`` with your own dorectory. 
+
+Notes on setting up a permanent cell browser on a local machine
+^^^^^^
+
+The port option, e.g. ``-p 8888``, is optional. When this option is specified,
+it will start up its own web server. If you are running this on your local machine,
+a more permanent alternative to the -p option is to run a web server on your machine
+and then build directly into its web directory.
+
+On a Mac, you can use the Apache that ships with OSX::
 
     sudo /usr/sbin/apachectl start
     sudo cbBuild -o /Library/WebServer/Documents/cells/
 
-Then you should be able to access your viewer at http://localhost/cells
+You should be able to access your viewer at http://localhost/cells
 
-On Linux, you would install Apache2 (with 'sudo yum install htppd' or 'sudo apt-get install
-apache2') and use the directory /var/www/ instead::
+On Linux, you will need to install Apache2 (with ``sudo yum install httpd``
+or ``sudo apt-get install apache2``) and use the directory ``/var/www/`` instead::
 
     sudo cbBuild -o /var/www/
 
