@@ -1,31 +1,39 @@
 With Seurat
 -----------
 
-If you are an RStudio user and have a Seurat object, you can convert
-it to html directly without going to the Unix command line with the 
-``ExportToCellbrowser()`` R function. Users of large servers may prefer to
-import a Seurat ``rds`` file with the Unix command line tool ``cbImportSeurat``.
-If you have an expression matrix and no
-knowledge of Seurat, you can use our default Seurat
-pipeline ``cbSeurat`` to create a Cell Browser.
+There are a number of ways to create a cell browser using Seurat:
 
-Convert a Seurat2 .rds file
+* **Import a Seurat rds file** - create a cell browser with the Unix command line tool ``cbImportSeurat2``.
+* **Using RStudio and a Seurat object** - create a cell browser directly using the ``ExportToCellbrowser()`` R function. 
+* **Run our basic Seurat pipeline** - with just an expression matrix, you can run our ``cbSeurat`` pipeline to create a cell browser.
+
+Each of these methods are described in more detail below.
+
+Convert a Seurat2 ``rds`` file
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can use the program ``cbImportSeurat2`` to convert a ``rds`` file to a Cell
-Browser. You can create an .rds file in R as described in the Seurat tutorial::
+First, create an .rds file in R as described in the Seurat tutorial::
 
     saveRDS(pbmc, "pbmc3k_small.rds")
 
-Then, on the Unix command line, you specify the input .rds file and the output directory (the name
-in the cell browser defaults to the output directory name, but you can change this with -n)::
+Next, on the Unix command line, use the ``cbImportSeurat2`` script to convert this ``rds``
+file into a cell browser::
 
     cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport
 
-Then go into the directory *pbmc3kImport* and run cbBuild to create the Cell Browser html files::
+The ``-i`` option species the input ``rds`` file and the ``-o`` option species a name for the output
+directory. You can use the ``-n`` option to change the dataset name in the cell browser;
+if it is not specified, it will default to the output directory name.
+
+Lastly, go into the ``pbmc3kImport`` directory and run ``cbBuild`` to create the cell browser
+output files::
 
     cd pbmc3kImport
     cbBuild -o ~/public_html/cb
+    
+Alternatively, you can use the ``--htmlDir`` option for ``cbImportSeurat2`` to automatically run ``cbBuild`` for you::
+
+    cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport --htmlDir=~/public_html/cb
 
 Convert a Seurat object from R
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -43,8 +51,8 @@ You can then write a Seurat object to a directory from which you can run cbBuild
 
     ExportToCellbrowser(pbmc_small, dir="pbmcSmall", dataset.name="pbmcSmall")
 
-Or immediately convert the files to html files in the directory ``htdocs`` and
-serve the result on port 8080 via http and open a web browser from R::
+Or, you can build a cell browser from this dataset into the ``htdocs`` directory,
+serve the result on port 8080 via http, and open a web browser from within R::
 
     ExportToCellbrowser(pbmc_small, dir="pbmcSmall", cb.dir="htdocs", dataset.name="pbmcSmall", port=8080)
 
@@ -62,14 +70,13 @@ If you have never used Seurat before and just want to process an expression matr
 as quickly as possible, this section is for you.
 
 If you do not have R installed yet, we recommend that you install it via conda.
-Follow these instructions to install the miniconda installer:
-https://conda.io/projects/conda/en/latest/user-guide/install/index.html#regular-installation
+To install miniconda, follow their `installation instructions <https://conda.io/projects/conda/en/latest/user-guide/install/index.html#regular-installation>`_.
 
-When conda is installed, install R::
+After setting up conda, install R::
 
     conda install r
 
-Then, again using conda, install Seurat::
+Then, install Seurat::
 
     conda install -c bioconda r-seurat 
 
@@ -77,22 +84,25 @@ To process an example dataset now, download the 10X pbmc3k expression matrix::
 
     rsync -Lavzp genome-test.gi.ucsc.edu::cells/datasets/pbmc3k/ ./pbmc3k/ --progress
 
-Create a default file ``seurat.conf``::
-
-    cbSeurat --init
-
-You can modify seurat.conf but the default values are good for this dataset.
-Now run the expression matrix *filtered_gene_bc_matrices/hg19/matrix.mtx* through
-Seurat like this::
+Now run the expression matrix ``filtered_gene_bc_matrices/hg19/matrix.mtx`` through
+Seurat::
 
     cbSeurat -e filtered_gene_bc_matrices/hg19 --name pbmc3kSeurat -o seuratOut 
 
-This will create a script seuratOut/runSeurat.R, run it through Rscript and
-will fill the directory seuratOut/ with everything needed to create a cell
-browser. Now you can build your cell browser from the Seurat output::
+This will create a script (``seuratOut/runSeurat.R``), run it through Rscript, and
+will fill the directory ``seuratOut/`` with everything needed to create a cell
+browser. After the ``cbSeurat`` script completes, you can build your cell browser from the output::
 
     cd seuratOut
     cbBuild -o ~/public_html/cells
 
-You can modify the file seurat.conf and rerun the cbSeurat command above.
+Changing the defaults using ``seurat.conf``
+""""""""
 
+This set of steps will run a basic Seurat pipeline with the default settings. You can
+modify the settings for Seurat by creating a ``seurat.conf`` file::
+
+    cbSeurat --init
+
+You can edit the settings in ``seurat.conf`` and re-run the ``cbSeurat`` command to
+generate a new set of Seurat output using these new settings. 
