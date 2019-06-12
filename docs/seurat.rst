@@ -21,7 +21,7 @@ file into a cell browser::
 
     cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport
 
-The ``-i`` option species the input ``rds`` file and the ``-o`` option species a name for the output
+The ``-i`` option specifies the input ``rds`` file and the ``-o`` option specifies a name for the output
 directory. You can use the ``-n`` option to change the dataset name in the cell browser;
 if it is not specified, it will default to the output directory name.
 
