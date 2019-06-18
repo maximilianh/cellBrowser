@@ -1,21 +1,26 @@
 Dataset Collections
 -------------------
 
-At the moment, the Cell Browser allows you to group related datasets into a single level called 'collections'.
+The Cell Browser allows you to group related datasets into single-level collections. Collections will displayed
+in your cell browser alongside all of your other datasets; when you open a collection, it will
+show you all of the datasets within it.
 
-To group datasets into collections, you have to enable it via a statement in
-``~/.cellbrowser.conf``. Add a line that points to a directory where you keep your single cell datasets e.g.::
+First, to enable the collections feature, you must add a single line pointing to
+the directory where all of your single-cell data lives to your ``~/.cellbrowser.conf``::
 
     collDir='/celldata/'
 
-Then, to add any dataset to one or more collections, add a line like this to its cellbrowser.conf file::
+Next, for each dataset you would like to be a part of a collection,
+add a ``collections`` line to the dataset's ``cellbrowser.conf``, such as::
 
     collections = ["organoids"]
 
-This creates a collection called ``organoids``. You now only have to define the
-menu entry of this collection and describe the content of this collection. The
-menu entry is defined through a minimal cellbrowser.conf file, with just name,
-shortLabel and tags::
+This will create a single collection in your cell browser named ``organoids``. You can
+specify multiple collection names separated by a comma (e.g. ``["organoids", "human"]``).
+
+Then, describe the menu entry for the collection by placing a ``cellbrowser.conf`` for it somewhere within
+your ``collDir``. This minimal ``cellbrowser.conf`` file only needs to contains the ``name``,
+``shortLabel`` and ``tags`` settings::
 
    mkdir -p /celldata/organoids
    cd /celldata/organoids
@@ -23,13 +28,12 @@ shortLabel and tags::
    echo 'shortLabel="Brain Organoids"' >> cellbrowser.conf
    echo 'tags=["10x"]' >> cellbrowser.conf
 
-Now you can describe your collection as explained previously under `Describing
-datasets`_. Put the desc.conf file into the same directory as the
-cellbrowser.conf you just created.
+Now you can describe your collection as discussed under the **Describing
+datasets** section. Put the ``desc.conf`` file into the same directory as the
+``cellbrowser.conf`` you just created.
 
-Now re-build the dataset that you just put into the collection with
-``cbBuild``. You should see the new collection in the user interface. For every
-new dataset that you want to add to the collection, run ``cbBuild`` again and
-it should appear in the menu. You can move quickly between datasets of the same
-collection with the "Collection" dropdown menu.
+Now run ``cbBuild`` for each of the datasets that you would like to be in the collection.
+If you view your cell browser on the web, you should see this new collection present.
+Additionally, when viewing a dataset in a collection, you can move quickly between
+it and other datasets in the same collection using the "Collection" dropdown menu.
 

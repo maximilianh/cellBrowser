@@ -2035,7 +2035,8 @@ def sanitizeName(name):
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
-    logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
+    if newName!=name:
+        logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
     return newName
 
@@ -2742,12 +2743,10 @@ def convertMeta(inConf, outConf, outDir):
 
     return sampleNames, needFilterMatrix, finalMetaFname
 
-def readGeneSymbols(geneIdType, matrixFname):
+def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
     " return geneToSym, based on gene tables "
     if geneIdType==None or geneIdType=="auto":
-        #logging.warn("'geneIdType' is not set in input config. Gene IDs will not be converted to symbols. Assuming that the matrix already has symbols. ")
-        #geneIdType = "symbols"
-        geneIdType = guessGeneIdType(matrixFname)
+        geneIdType = guessGeneIdType(matrixFnameOrGeneIds)
 
     if geneIdType.startswith('symbol'):
         return None
@@ -3273,6 +3272,14 @@ def writeJson(data, outFname):
     os.rename(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
+def writePyConf(idfInfo, descFname):
+    " write python-style conf file "
+    ofh = open(descFname, "w")
+    for key, val in iterItems(idfInfo):
+        ofh.write("%s = %s\n" % (key, repr(val)))
+    ofh.close()
+    logging.info("Wrote %s" % descFname)
+
 def writeConfig(inConf, outConf, datasetDir):
     " write dataset summary info to json file. Also keep a copy of the input config. "
     # keep a copy of the original config in the output directory for debugging later
@@ -3653,6 +3660,14 @@ def findDatasets(outDir):
         if "isCollection" in datasetDesc:
             logging.debug("Dataset %s is a collection, so not parsing now" % datasetDesc["name"])
             continue
+        #datasetDesc = json.load(open(fname))
+        customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
+        inStr = open(fname).read()
+        if not isPy3:
+            inStr = inStr.decode("utf8")
+        inStr = readFile(fname)
+
+        datasetDesc = customdecoder.decode(inStr)
 
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
@@ -4353,7 +4368,7 @@ def cbScanpyCli():
 
     generateHtmls(datasetName, outDir)
 
-def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
+def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
     " convert mtx to tab-sep without scanpy. gzip if needed "
     import scipy.io
     import numpy as np
@@ -4371,6 +4386,10 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
             genes.append(geneId)
 
     barcodes = [l.strip() for l in openFile(barcodeFname) if l!="\n"]
+
+    if translateIds:
+        geneToSym = readGeneSymbols(None, genes)
+        genes = [geneToSym[geneId] for geneId in genes]
 
     logging.info("Read %d genes and %d barcodes" % (len(genes), len(barcodes)))
 
@@ -4396,8 +4415,8 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname):
     logging.info("Converting matrix to row-based layout...")
     mat = mat.tocsr()
 
-    print(mat.shape[0])
-    print(len(genes))
+    #print(mat.shape[0])
+    #print(len(genes))
     assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count
     assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
 

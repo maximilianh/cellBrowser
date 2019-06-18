@@ -8,14 +8,14 @@ along to the webserver and shown in the ``File > Open Dataset...`` dialog or
 when you click the ``Info`` button.
 
 However, when you have many datasets, writing the html files gets repetitive.
-This is where desc.conf is handy, it's a key-value file with the
+This is where ``desc.conf`` is handy, it's a key-value file, similar to ``cellbrowser.conf``, with the
 description of the dataset in a standardized format.
 
 A sample file can be created with the command ``cbBuild --init``.
 
 The following lists all tags that are currently supported.
 
-These tags contain longer text that can include HTML markup:
+These tags contain longer text and can include HTML markup:
 
 - ``title``: title of the dataset, often the paper title
 - ``abstract``: a big picture summary of the dataset, as a string

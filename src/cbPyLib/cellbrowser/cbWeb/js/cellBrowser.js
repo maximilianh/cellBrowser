@@ -593,6 +593,13 @@ var cellbrowser = function() {
             //if (dataset.name===openDsName)
                 //openDsInfo = dataset;
 
+        if (!gDatasetList || gDatasetList.length===0)
+            alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
+                " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
+
+        if (!openDsInfo)
+            openDsInfo = gDatasetList[0];
+
             var clickClass = "tpDatasetButton";
             if (dataset.isCollection)
                 clickClass = "tpCollectionButton";
@@ -642,7 +649,11 @@ var cellbrowser = function() {
             onlyInfo = true;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
+<<<<<<< HEAD
+        if (openDsInfo && openDsInfo.isCollection) {
+=======
         if (openCollection) {
+>>>>>>> 2217363e6f20d7bb7d0a2698b1518778ace04a6a
             // select from a collection
             title = "Select one dataset from the collection '"+openDsInfo.shortLabel+"'";
             //datasetList = openDsInfo.datasets;
