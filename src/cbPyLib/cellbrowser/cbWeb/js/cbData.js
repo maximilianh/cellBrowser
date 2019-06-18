@@ -160,8 +160,13 @@ var cbUtil = (function () {
         if (this._arrType) {
             if (this._arrType==="comprText") {
                 var arr = pako.ungzip(binData);
-                binData = String.fromCharCode.apply(null, arr); // weird in JS: convert array to string
-                // binData is not binary anymore, it's just a string now
+                // https://stackoverflow.com/questions/6965107/converting-between-strings-and-arraybuffers
+                // convert byte array to strin
+                // I used the apply() function originally, that's more compatible, but leads to a 
+                // stack overflow in bigger datasets
+                //binData = String.fromCharCode.apply(null, arr);
+                var dec = new TextDecoder("utf-8");
+                binData = dec.decode(arr);
             }
             else if (this._arrType!=="string")
                 binData = new this._arrType(binData);
@@ -1026,5 +1031,15 @@ function CbDbFile(url) {
         }
         onDone(setInfo);
     };
+
+    this.removeAllCustomAnnots = function() {
+        /* remove all custom annotation fields */
+        var newMetaInfo = [];
+        for (let metaField of self.conf.metaFields) {
+            if (!metaField.isCustom)
+                newMetaInfo.push(metaField);
+        }
+        self.conf.metaFields = newMetaInfo;
+    }
 
 }

@@ -4,17 +4,18 @@ Describing datasets
 A dataset can be described with three HTML files, summary.html, methods.html
 and downloads.html.  You can put these in the same directory where
 ``cellbrowser.conf`` is stored and they will get copied 
-along to the webserver and shown in the ``File > Open Dataset...`` dialog.
+along to the webserver and shown in the ``File > Open Dataset...`` dialog or
+when you click the ``Info`` button.
 
-Howver, when you have many datasets, writing the html files gets repetitive.
-This is where desc.conf is handy, it's a key-value file with the
+However, when you have many datasets, writing the html files gets repetitive.
+This is where ``desc.conf`` is handy, it's a key-value file, similar to ``cellbrowser.conf``, with the
 description of the dataset in a standardized format.
 
 A sample file can be created with the command ``cbBuild --init``.
 
 The following lists all tags that are currently supported.
 
-These tags contain longer text that can include HTML markup:
+These tags contain longer text and can include HTML markup:
 
 - ``title``: title of the dataset, often the paper title
 - ``abstract``: a big picture summary of the dataset, as a string
@@ -27,8 +28,10 @@ files ``abstract.html`` and ``methods.html``, they will be used instead. Or use 
 statements ``abstractFile`` and ``methodsFile`` to specify other file names. In the HTML, 
 you can use text like ``<section>some subtitle</section>`` to split the text into sections.
 
-This tag contains an image file name:
+These tags contains a file name:
+
 - ``image``: usually a 400px-wide thumbnail of the dimensionality reduction
+- ``rawMatrixFile``: the file name of the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
 
 The following tags can contain URLs and optionally, separated with a space, a label for the link. If you do 
 not specify the label, a default label will be used (e.g. 'Biorxiv Preprint'):
@@ -45,10 +48,12 @@ The following tags contain accession IDs and will be translated to links:
 - ``sra_study``: NCBI SRA SRPxxxx accession
 - ``doi``: DOI of paper fulltext
 - ``dbgap``: NCBI dbGaP accession, starts with phs
+- ``bioproject``: NCBI Bioproject accession, a 4-9 digit number, without the PRJNA prefix
 
 The following tags contain just text:
 
 - ``submitter``: name and/or email of submitter
 - ``lab``: lab and University of submitter
 - ``submission_date``: ideally in format year-month-day
+- ``rawMatrixNote``: text to describe the raw matrix, see ``rawMatrixFile``
 - ``version``: version of dataset, a simple number (1,2,3,...) that should be increased each time a major change (usually meta data) was received from the lab

@@ -2214,15 +2214,8 @@ def copyImage(inDir, summInfo, datasetDir):
     summInfo["image"] = (summInfo["image"], width, height)
     return summInfo
 
-def readFile(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
-    " return file with encoding as string "
-    fname = join(inDir, fname)
-    if not isfile(fname):
-        if mustExist:
-            errAbort("%s does not exist" % fname)
-        else:
-            return
-
+def readFile(fname, encoding="utf8"):
+    " read entire file with encoding "
     if isPy3:
         fh = open(fname, "r", encoding=encoding)
         text = fh.read()
@@ -2230,7 +2223,18 @@ def readFile(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
         fh = open(fname, "r")
         text = fh.read().decode(encoding)
     fh.close()
+    return text
 
+def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
+    " return file with encoding as string into dictionary "
+    fname = join(inDir, fname)
+    if not isfile(fname):
+        if mustExist:
+            errAbort("%s does not exist" % fname)
+        else:
+            return
+
+    text = readFile(fname)
     summInfo[key] = text
 
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
@@ -2255,23 +2259,31 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         summInfo["coordFiles"] = coordFiles
 
     # try various ways to get the abstract and methods html text
-    readFile(summInfo, "abstract", inDir, "abstract.html")
-    readFile(summInfo, "abstract", inDir, "summary.html")
-    readFile(summInfo, "methods", inDir, "methods.html")
+    readFileIntoDict(summInfo, "abstract", inDir, "abstract.html")
+    readFileIntoDict(summInfo, "abstract", inDir, "summary.html")
+    readFileIntoDict(summInfo, "methods", inDir, "methods.html")
     if "abstractFile" in summInfo:
-        readFile(summInfo, "abstract", inDir, summInfo["abstractFile"], mustExist=True)
+        readFileIntoDict(summInfo, "abstract", inDir, summInfo["abstractFile"], mustExist=True)
         del summInfo["abstractFile"]
     if "methodsFile" in summInfo:
-        readFile(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
+        readFileIntoDict(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
         del summInfo["methodsFile"]
 
     # import the unit description from cellbrowser.conf
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
 
+    # copy over the raw matrix file, usually this is a zip or gzip file
+    if "rawMatrixFile" in summInfo:
+        rawInPath = join(inDir, summInfo["rawMatrixFile"])
+        rawOutPath = join(datasetDir, summInfo["rawMatrixFile"])
+        if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+            logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+            shutil.copy(rawInPath, rawOutPath)
+
     # need the collection info, too
     if "collections" in outConf and not "collections" in summInfo:
-        summInfo["collections"] = outConf["unit"]
+        summInfo["collections"] = outConf["collections"]
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
@@ -2865,8 +2877,8 @@ def convertDataset(inConf, outConf, datasetDir):
             if tag in inConf and not type(inConf[tag])==type([]):
                 errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
         if tag=="visibility":
-            if tag in inConf and inConf[tag] not in ["hide"]:
-                errAbort("Error in cellbrowser.conf: '%s' can only have value: 'hide'" % (tag))
+            if tag in inConf and inConf[tag] not in ["hide", "show"]:
+                errAbort("Error in cellbrowser.conf: '%s' can only have values: 'hide' or 'show'" % (tag))
 
     if " " in inConf["name"]:
         errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
@@ -3177,18 +3189,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
 def writeJson(data, outFname):
     """ https://stackoverflow.com/a/37795053/233871 """
-    # Make it work for Python 2+3 and with Unicode
-    try:
-        to_unicode = unicode
-    except NameError:
-        to_unicode = str
-
     # Write JSON file
     tmpName = outFname+".tmp"
     with io.open(tmpName, 'w', encoding='utf8') as outfile:
         #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
-        str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
-        outfile.write(to_unicode(str_))
+        if isPy3:
+            str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
+        else:
+            str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
+        outfile.write(str_)
     os.rename(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
@@ -3508,6 +3517,11 @@ def addCollections(collDir, datasets):
         conf["name"] = collName
         conf["isCollection"] = True
         conf["datasetCount"] = len(collToDatasets[collName])
+        if isfile(join(subPath, "desc.conf")) or isfile(join(subPath, "datasetDesc.conf")):
+            conf["hasFiles"] = ["datasetDesc"]
+
+        if "collections" in conf:
+            errAbort("File %s defines a collection but is itself a collection. This is not allowed." % subPath)
 
         fileVersions = {}
         fileVersions["config"] = getFileVersion(fname)
@@ -3575,6 +3589,8 @@ def findDatasets(outDir):
         inStr = open(fname).read()
         if not isPy3:
             inStr = inStr.decode("utf8")
+        inStr = readFile(fname)
+
         datasetDesc = customdecoder.decode(inStr)
 
         if not "md5" in datasetDesc:
