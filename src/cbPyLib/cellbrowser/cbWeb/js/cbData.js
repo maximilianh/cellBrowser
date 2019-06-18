@@ -343,7 +343,10 @@ function CbDbFile(url) {
     
     this.fieldNameToIndex = function(fieldName) {
         /* given a meta field name, return its meta table index or null */
-        return cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
+        var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
+        //if (idx===undefined)
+            //idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "shortLabel", fieldName);
+        return idx;
     };
 
     this._startMetaLoad = function(metaInfo, arrType, onMetaDone, onProgress, extraInfo) {
@@ -383,7 +386,7 @@ function CbDbFile(url) {
         }
 
         //var metaInfo = self.conf.metaFields[fieldIdx];
-        console.log(metaInfo);
+        //console.log(metaInfo);
 
         if ((self.allMeta!==undefined) && (metaInfo.name in self.allMeta)) {
             console.log("Found in uncompressed cache");

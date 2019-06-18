@@ -46,8 +46,8 @@ function MaxPlot(div, top, left, width, height, args) {
     const gTitleSize = 18; // size of title text
     const gStatusHeight = 14; // height of status bar
     const gZoomButtonSize = 30; // size of zoom buttons
-    const gZoomFromRight = 60;  // position of zoom buttons from right
-    const gZoomFromBottom = 120;  // position of zoom buttons from bottom
+    const gZoomFromLeft = 10;  // position of zoom buttons from left
+    const gZoomFromBottom = 140;  // position of zoom buttons from bottom
     const gButtonBackground = "rgb(230, 230, 230, 0.85)" // grey level of buttons
     const gButtonBackgroundClicked = "rgb(180, 180, 180, 0.6)"; // grey of buttons when clicked
     const gCloseButtonFromRight = 60; // distance of "close" button from right edge
@@ -58,7 +58,12 @@ function MaxPlot(div, top, left, width, height, args) {
     this.initCanvas = function (div, top, left, width, height) {
         /* initialize a new Canvas */
 
+        div.style.top = top+"px";
+        div.style.left = left+"px";
+        div.style.position = "absolute";
+        div.style.display = "block";
         self.div = div;
+
         self.gSampleDescription = "cell"; 
         self.ctx = null; // the canvas context
         self.canvas = addCanvasToDiv(div, top, left, width, height-gStatusHeight );
@@ -66,16 +71,16 @@ function MaxPlot(div, top, left, width, height, args) {
         self.interact = false;
 
         if (args && args.showClose===true) {
-            self.closeButton = addChildControls(top+10, left+width-gCloseButtonFromRight);
+            self.closeButton = addChildControls(10, width-gCloseButtonFromRight);
         }
 
         if (args===undefined || (args["interact"]!==false)) {
             self.interact = true;
 
-            addZoomButtons(top+height-gZoomFromBottom, left+width-gZoomFromRight, self);
-            addModeButtons(top+10, left+10, self);
-            addStatusLine(top+height-gStatusHeight, left, width, gStatusHeight);
-            addTitleDiv(top+height-gTitleSize-gStatusHeight, left+5);
+            addZoomButtons(height-gZoomFromBottom, gZoomFromLeft, self);
+            addModeButtons(10, 10, self);
+            addStatusLine(height-gStatusHeight, left, width, gStatusHeight);
+            addTitleDiv(height-gTitleSize-gStatusHeight, left+5);
 
             /* add the div used for the mouse selection/zoom rectangle to the DOM */
             var selectDiv = document.createElement('div');
@@ -198,8 +203,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.setPos = function(left, top) {
        /* position the canvas on the page */
-       self.canvas.style.left = left+"px";
-       self.canvas.style.top = top+"px";
+       self.div.style.left = left+"px";
+       self.div.style.top = top+"px";
     };
 
     this.setTitle = function (text) {
@@ -340,7 +345,8 @@ function MaxPlot(div, top, left, width, height, args) {
     function addTitleDiv(top, left) {
         var div = document.createElement('div');
         div.style.cursor = "default";
-        div.style.left = left+"px";
+        div.style.left = "4px";
+        div.style.width = "max-content"; // not in MS Edge
         div.style.top = top+"px";
         div.style.display = "block";
         div.style.position = "absolute";
@@ -441,7 +447,7 @@ function MaxPlot(div, top, left, width, height, args) {
         div.style.backgroundColor = "rgb(240, 240, 240)";
         div.style.position = "absolute";
         div.style.top = top+"px";
-        div.style.left = left+"px";
+        //div.style.left = left+"px";
         div.style.width = width+"px";
         div.style.height = height+"px";
         div.style["border-left"]="1px solid #DDD";
@@ -484,8 +490,8 @@ function MaxPlot(div, top, left, width, height, args) {
         canv.style.display = "block";
         canv.style.width = width+"px";
         canv.style.height = height+"px";
-        canv.style.top = top+"px";
-        canv.style.left = left+"px";
+        //canv.style.top = top+"px";
+        //canv.style.left = left+"px";
         // No scaling = one unit on screen is one pixel. Essential for speed.
         canv.width = width;
         canv.height = height;
@@ -693,14 +699,14 @@ function MaxPlot(div, top, left, width, height, args) {
             var textX2 = Math.round(x+textWidth);
             var textY2 = y+gTextSize;
 
-            if (zoomFact===1.0) {
+            //if (zoomFact===1.0) {
                 // at 100% zoom, make some minimal effort to keep labels on screen
-                if (x < 0)
-                    x = 0;
-                if ((x + textWidth) > winWidth)
-                    x = winWidth - textWidth;
-                if (y+gTextSize > winHeight)
-                    y = winHeight-gTextSize;
+                //if (x < 0)
+                    //x = 0;
+                //if ((x + textWidth) > winWidth)
+                    //x = winWidth - textWidth;
+                //if (y+gTextSize > winHeight)
+                    //y = winHeight-gTextSize;
 
                 // also only at 100% zoom, make a minimal effort to avoid label overlaps
                 // a perfect solution would take much more time
@@ -721,7 +727,7 @@ function MaxPlot(div, top, left, width, height, args) {
                                 //y += diff;
                         //}
                 //}
-            }
+            //}
             // don't draw labels where the midpoint is off-screen
             if (x<0 || y<0 || x>winWidth || y>winWidth) {
                 bboxArr.push( null );
@@ -1022,14 +1028,17 @@ function MaxPlot(div, top, left, width, height, args) {
         /* set top and left position in pixels of the canvas */
         self.top = top;
         self.left = left;
-        self.canvas.style.top = top+"px";
-        self.canvas.style.left = left+"px";
+        self.div.style.top = top+"px";
+        self.div.style.left = left+"px";
 
         self.setSize(self.width, self.height, false); // resize the various buttons
     }
 
-    this.setSize = function(width, height, doRedraw) {
-       /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
+    this.quickResize = function(width, height) {
+       /* resize the canvas and move the status line, don't rescale or draw  */
+       self.div.style.width = width+"px";
+       self.div.style.height = height+"px";
+
        if (self.childPlot) {
            width = width /2;
            self.childPlot.left = self.left+width;
@@ -1038,30 +1047,38 @@ function MaxPlot(div, top, left, width, height, args) {
        }
 
        if (self.closeButton) {
-           self.closeButton.style.left = self.left + width - gCloseButtonFromRight;
+           self.closeButton.style.left = width - gCloseButtonFromRight;
        }
-
            
        // css and actual canvas sizes: these must be identical, otherwise canvas gets super slow
        self.canvas.style.width = width+"px";
-       self.canvas.width = width;
        self.width = width;
-
        self.height = height;
 
        let canvHeight = height - gStatusHeight;
        self.canvas.style.height = canvHeight+"px";
-       self.canvas.height = canvHeight;
-       
-       self.zoomDiv.style.top = (self.top+height-gZoomFromBottom)+"px";
-       self.zoomDiv.style.left = (self.left+width-gZoomFromRight)+"px";
+       self.zoomDiv.style.top = (height-gZoomFromBottom)+"px";
+       self.zoomDiv.style.left = (gZoomFromLeft)+"px";
 
        var statusDiv = self.statusLine;
-       statusDiv.style.top = (self.top+height-gStatusHeight)+"px";
+       statusDiv.style.top = (height-gStatusHeight)+"px";
        statusDiv.style.width = width+"px";
 
-       self.titleDiv.style.top = (self.top+height-gStatusHeight-gTitleSize)+"px";
+       self.titleDiv.style.top = (height-gStatusHeight-gTitleSize)+"px";
 
+    }
+
+    this.setSize = function(width, height, doRedraw) {
+       /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
+       if (width===null)
+           width = self.div.getBoundingClientRect().width;
+
+       self.quickResize(width, height);
+
+       let canvHeight = height - gStatusHeight;
+       self.canvas.height = canvHeight;
+       self.canvas.width = width;
+       
        self.scaleData();
        //clearCanvas(self.ctx, width, height);
        if (doRedraw===undefined || doRedraw===true)
@@ -1623,8 +1640,8 @@ function MaxPlot(div, top, left, width, height, args) {
         var minX = Math.min(x1, x2);
         var minY = Math.min(y1, y2);
         var div = self.selectBox;
-        div.style.left = minX+"px";
-        div.style.top = minY+"px";
+        div.style.left = (minX-self.left)+"px";
+        div.style.top = (minY-self.top)+"px";
         div.style.width = selectWidth+"px";
         div.style.height = selectHeight+"px";
         div.style.display = "block";
@@ -1815,8 +1832,8 @@ function MaxPlot(div, top, left, width, height, args) {
        if ((self.dragMode==="zoom" && !anyKey) || ev.metaKey ) {
             // get current coords of the marquee in canvas pixels
             var div = self.selectBox;
-            let zoomX1 = parseInt(div.style.left.replace("px","")) - canvasLeft;
-            let zoomY1 = parseInt(div.style.top.replace("px","")) - canvasTop;
+            let zoomX1 = parseInt(div.style.left.replace("px",""));
+            let zoomY1 = parseInt(div.style.top.replace("px",""));
             let zoomX2 = zoomX1+parseInt(div.style.width.replace("px",""));
             let zoomY2 = zoomY1+parseInt(div.style.height.replace("px",""));
             zoomY1 = self.canvas.height - zoomY1;

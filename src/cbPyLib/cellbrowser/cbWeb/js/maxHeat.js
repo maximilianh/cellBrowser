@@ -1,4 +1,4 @@
-"use strict"
+"use strict";
 // maxHeat: a simple scatter plot class using canvas. Data has to be binned beforehand.
 
 /* jshint -W097 */ // allow file-wide use strict
@@ -15,9 +15,9 @@ function MaxHeat(div, args) {
     if (!args)
         args = {};
 
-    let labelFontSize = args.fontSize | 16; // height of row labels, will decrease with increasing row count
-    let rowLabelSize = args.rowLabelSize | 60; // space for row labels on the left 
-    let colLabelSize = args.colLabelSize | 3; // empty space above the heatmap
+    let labelFontSize = args.fontSize || 11; // height of row labels, will decrease with increasing row count
+    let rowLabelSize = args.rowLabelSize || 60; // space for row labels on the left 
+    let colLabelSize = args.colLabelSize || 34; // empty space above the heatmap
     let drawMode = 2; // 1 = stupid simple, 2 = 2x faster
 
     // the rest of the constructor is done at the end of this file,
@@ -33,60 +33,159 @@ function MaxHeat(div, args) {
         ctx.restore();
     }
 
-    function addCanvasToDom(self, div, id) {
+    function addCanvasToDom(self, div, id, otherRenderer) {
         /* add a canvas element under div using the div's width and height */
+        //function sepMouseMove(ev)
+        //    /* called when the user moves the mouse after they have clicked onto the separator */
+        //    /* this seems overly complicated. I tried split.js but it didn't make it a lot easier.
+        //     * Isn't there a better plugin to handle resizing ? */
+        //    let rect = sep.getBoundingClientRect();
+        //    let shiftY = ev.clientY - rect.top;
+        //    console.log(shiftY);
+        //    sep.style.top = ev.pageY - shiftY + 'px';
+        //    console.log(ev);
+        //    ev.stopPropagation();
+        //    return false;
+
+        var divRect = div.getBoundingClientRect();
+        var width = divRect.width;
+        var height = divRect.height;
+
+        // the selection rectangle
+        var sel = document.createElement("div");
+        sel.id = "hmSel";
+        sel.style.position = "absolute";
+        sel.style.backgroundColor = "transparent";
+        sel.style.boxSizing = "border-box";
+        sel.style.border = "1px solid black";
+        sel.style.display = "none";
+        div.appendChild(sel);
+        self.selEl = sel;
+
+        //sep.style.cursor = "row-resize";
+        //sep.style.userSelect = "none";
+        //sep.style.zIndex = 1000;
+        
+        //var sep = document.createElement("div");
+        //sep.id = "hmSep";
+        //sep.style.position = "absolute";
+        //var parEl = div.parentElement;
+        //sep.style.top = divRect.top+"px";
+        //sep.style.left = divRect.left+"px";
+        //sep.style.width = width+"px";
+        //sep.style.height = "3px";
+        //sep.style.backgroundColor = "black";
+        //sep.style.cursor = "row-resize";
+        //sep.style.userSelect = "none";
+        //sep.style.zIndex = 1000;
+        //sep.style.backgroundColor = "#BBB";
+        //sep.ondragstart = function() { return false; } // disable built-in drag/drop handling
+        //sep.onmousedown = function() 
+            //document.body.append(sep);
+            //document.onmousemove = sepMouseMove;
+            //document.onmouseup = function() { document.onmousemove = document.onmouseup = null };
+        //document.body.appendChild(sep);
+
         var canv = document.createElement("canvas");
+        //canv.style.width = width+"px";
+        //canv.style.height = height+"px";
         canv.id = id;
-        var rect = div.getBoundingClientRect();
-        canv.style.width = rect.width+"px";
-        canv.style.height = rect.height+"px";
         // No scaling = one unit on screen is one pixel. Essential for speed.
-        canv.width = rect.width;
-        canv.height = rect.height;
+        //canv.width = divRect.width;
+        //canv.height = divRect.height;
 
         // keep these as ints, need them all the time
-        self.width = rect.width;
-        self.height = rect.height;
+        //self.width = divRect.width;
+        //self.height = divRect.height;
         self.canvas = canv;
         // alpha:false recommended by https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas
         self.ctx = self.canvas.getContext("2d", { alpha: false });
         // by default, the canvas background is transparent+black
         // we use alpha=false, so we need to initialize the canvas with white pixels
+        self.setSize(width, height);
         self.clear(); // make sure that we clear the canvas before it's added to the DOM, as it's black by default
         div.appendChild(canv); // adds the canvas to the div element
+
+        // handle resizing
+
+        $(div).resizable({
+            handles : "n",
+            start : function(ev) {
+                self.origHeight = self.height;
+                self.origOtherHeight = otherRenderer.height;
+            },
+            resize : function(ev) {
+                if (otherRenderer) {
+                    var newHeight = self.div.getBoundingClientRect().height;
+                    otherRenderer.quickResize(null, self.origOtherHeight + (self.origHeight - newHeight));
+                }
+                self.setSize(self.width, newHeight);
+                self.draw();
+            },
+            stop : function(ev) {
+                if (otherRenderer) {
+                    otherRenderer.setSize(null, self.origOtherHeight + (self.origHeight - self.height));
+                    otherRenderer.drawDots();
+                }
+            },
+        });
+
     }
 
     function onMouseMove(ev) {
-        //console.log(ev);
+        /* mouse hover functionality */
         var rect = ev.target.getBoundingClientRect();
-        var x = ev.clientX - rect.left; //x position within the element.
-        var y = ev.clientY - rect.top;  //y position within the element.
+        var x = ev.clientX - rect.left; //x position within the canvas.
+        var y = ev.clientY - rect.top;  //y position within the canvas.
         
         var rowIdx = parseInt((y-colLabelSize)/self.rowHeight);
         var colIdx = parseInt((x-rowLabelSize)/self.colWidth);
-        
+
         let colName;
-        if (x<colLabelSize)
+        if (x<rowLabelSize)
             colIdx = null;
         else
-            colName = self.colLabels[colIdx];
+            colName = self.colLabels[self.colOrder[colIdx]];
 
         let rowName;
-        if (y<rowLabelSize)
+        if (y<colLabelSize)
             rowIdx = null;
         else
-            rowName = self.rowLabels[rowIdx];
-        console.log("mouse over coords:", x, y, rowIdx, colIdx);
+            rowName = self.rowLabels[self.rowOrder[rowIdx]];
+        //console.log("mouse over coords:", x, y, rowIdx, colIdx);
+        
+        var value = null;
 
+        if (colIdx===null | rowIdx===null)
+            self.selEl.style.display="none"
+        else {
+            var rowStart = self.rowStartsSizes[rowIdx*2];
+            var rowHeight  = self.rowStartsSizes[rowIdx*2+1];
+            var colStart = self.colStartsSizes[colIdx*2];
+            var colWidth = self.colStartsSizes[colIdx*2+1];
+            var selTop = rowStart;
+            var selLeft = colStart;
+            var selEl = self.selEl;
+            selEl.style.top=(colLabelSize+selTop)+"px";
+            selEl.style.left=(rowLabelSize+selLeft)+"px";
+            selEl.style.height=rowHeight+"px";
+            selEl.style.width=colWidth+"px";
+            selEl.style.display="block"; 
+            value = self.rows[rowIdx][colIdx];
+        }
+
+        if (colName==="")
+            colName = "(empty)";
 
         if (self.onCellHover)
-            self.onCellHover(rowIdx, colIdx, rowName, colName, ev);
+            self.onCellHover(self.rowOrder[rowIdx], self.colOrder[colIdx], rowName, colName, value, ev);
     }
 
     this.initDrawing = function (div, opts) {
         /* initialize a new plot */
         self.div = div;
-        addCanvasToDom(self, div, "mhCanvas");
+        let otherRenderer = opts.mainRenderer; // otherRenderer will be resized/redrawn when needed
+        addCanvasToDom(self, div, "mhCanvas", otherRenderer);
         self.onCellHover = null; // called on cell hover, arg: rowIdx, colIdx, ev. 
         // all other object variables are added by the "initPlot(args)" function below
         self.canvas.addEventListener("mousemove", onMouseMove);
@@ -102,22 +201,59 @@ function MaxHeat(div, args) {
             alert("internal error heat map: palette has incorrect length");
     };
 
+    this.calcBoundaries= function() {
+        /* calculate the row and column sizes. They're not all the same, due to half pixels */
+        var rowCount = self.rowLabels.length;
+        var colCount = self.colLabels.length;
+        self.rowStartsSizes = makeIntRanges(self.height-colLabelSize, rowCount);
+        self.colStartsSizes = makeIntRanges(self.width-rowLabelSize, colCount);
+    }
+
     this.setSize = function(width, height) {
+        /* change size of canvas and div and ourselves */
+
         self.width = width;
         self.height = height;
+        self.canvas.width = width;
+        self.canvas.height = height;
         self.canvas.style.width = width+"px";
         self.canvas.style.height = height+"px";
-        self.draw();
+
+        if (self.rowLabels)
+            self.calcBoundaries();
+
     };
 
-    this.loadData = function(rowLabels, colLabels, rows, palette) {
-        /* load data into object */
+    this.loadData = function(rowLabels, colLabels, rows, palette, rowOrder, colOrder) {
+        /* load data into object, rowOrder and colOrder are optional */
         self.rowLabels = rowLabels;
         self.colLabels = colLabels;
         self.maxVal = palette.length; // maximum value that ever appears in 'rows'. The minimum is 0.
         self.rows = rows;
         self.checkData();
         self.setPalette(palette);
+        self.calcBoundaries();
+
+        //self.rowOrder = []; // used to convert screen to data row index, e.g. rowOrder[0] = 3
+        //self.colOrder = [];
+
+        //if (rowOrder===undefined) {
+            // default row order is simply 0...n
+            //for (let i=0; i<rowLabels.length; i++)
+                //self.rowOrder.push(rowLabels.length-i-1);
+        //} else
+            //self.rowOrder = rowOrder;
+
+
+        //if (colOrder===undefined) {
+            // default col order is simply 0...n
+            //for (let i=0; i<colLabels.length; i++)
+                //self.colOrder.push(colLabels.length-i-1);
+                ////self.colOrder.push(i);
+        //} else
+            //self.colOrder = colOrder;
+
+        self.optimalLeaf();
     };
 
     function makeIntRanges(max, count) {
@@ -139,8 +275,6 @@ function MaxHeat(div, args) {
         /* a completely naive implementation of the rectangle drawing */
         var rowCount = rowStartsSizes.length/2;
         var colCount = colStartsSizes.length/2;
-        //let colLabelSize = self.colLabelSize;
-        //let rowLabelSize = rowLabelSize;
         for (var rowIdx=0; rowIdx<rowCount; rowIdx++) {
             var rowStart = rowStartsSizes[rowIdx*2];
             var rowSize  = rowStartsSizes[rowIdx*2+1];
@@ -155,24 +289,24 @@ function MaxHeat(div, args) {
         }    
     }
 
-    function drawRectsOpt1(ctx, rowStartsSizes, colStartsSizes, rows, pal, maxVal) {
+    function drawRectsOpt1(ctx, rowStartsSizes, colStartsSizes, rows, pal, maxVal, rowOrder, colOrder) {
         /* an implementation of the rectangle drawing that reduces context switches */
         // array index -> target array of x,y coords in heatmap
         // x,y positions are located at (i,i+1)
         var rowCount = rowStartsSizes.length/2;
         var colCount = colStartsSizes.length/2;
-        //let colLabelSize = self.colLabelSize;
-        //let rowLabelSize = self.rowLabelSize;
         
         var valToCoords = [];
         for (var i=0; i<maxVal; i++)
             valToCoords.push([]);
         
-        // fill the arrays
+        // convert from rows (array of arrays) to arrays of of coords, one array per color
         for (var rowI=0; rowI<rowCount; rowI++) {
-            var row = rows[rowI];
+            var dataRowI = rowOrder[rowI];
+            var row = rows[dataRowI];
             for (var colI=0; colI < colCount; colI++) {
-                var val = row[colI];
+                var realColI = colOrder[colI];
+                var val = row[realColI];
                 var valArr = valToCoords[val];
                 valArr.push(rowI);
                 valArr.push(colI); 
@@ -204,48 +338,89 @@ function MaxHeat(div, args) {
         var rows = self.rows;
         var rowCount = self.rowLabels.length;
         var colCount = self.colLabels.length;
-        //var colLabelSize = self.colLabelSize;
-        //var rowLabelsize = self.rowLabelSize;
         var rowHeight = (self.height - colLabelSize) / rowCount;
         var colWidth  = (self.width - rowLabelSize) / colCount;
+
+        var colStartsSizes = self.colStartsSizes;
+        var rowStartsSizes = self.rowStartsSizes;
         
         var ctx = self.ctx;
         ctx.save();
         
+        var fontSize = labelFontSize;
         if (rowHeight < labelFontSize)
-            labelFontSize = rowHeight-2; 
-        var rowEndToTextBase = (rowHeight - labelFontSize)/2;
+            fontSize = rowHeight-1; 
+        var rowEndToTextBase = (rowHeight - fontSize)/2;
+        ctx.font = fontSize+"px sans-serif";
         
-        if (rowHeight>8) {
+        if (rowHeight>4) {
             // draw the row labels
-            console.time("draw labels");
+            console.time("draw column labels");
             var rowLabels = self.rowLabels;
             for (var labelI=0; labelI<rowCount; labelI++) {
-                var textY = parseInt(colLabelSize+(labelI*rowHeight) + rowEndToTextBase + labelFontSize);
-                ctx.fillText(rowLabels[labelI], 4, textY);
+                var realLabelI = self.rowOrder[labelI]; // rows can be reordered: real... is after reordering
+                var textY = parseInt(colLabelSize+(labelI*rowHeight) + rowEndToTextBase + fontSize - (0.2*rowHeight));
+                ctx.fillText(rowLabels[realLabelI], 4, textY);
+            }
+            console.timeEnd("draw labels");
+        }
+
+        if (colLabelSize>5) {
+            // draw the col labels
+            console.time("draw column labels");
+            var rot = -Math.PI / 7;
+            var colLabels = self.colLabels;
+            for (var labelI=0; labelI<colCount; labelI++) {
+                var realLabelI = self.colOrder[labelI]; // rows can be reordered: real... is after reordering
+                var startIdx = 2*labelI;
+                var textX = rowLabelSize+colStartsSizes[startIdx];
+                var rowWidth = colStartsSizes[startIdx+1];
+                ctx.save();
+                ctx.translate(textX+(0.3*rowWidth), colLabelSize);
+                ctx.rotate(rot);
+                ctx.fillText(colLabels[realLabelI], 0, 0);
+                ctx.restore();
             }
             console.timeEnd("draw labels");
         }
 
         //ctx.strokeStyle = "rgba(1, 1, 1, 0)"; // no stroke for rectangles
 
-        console.time("draw rects");
-        var rowStartsSizes = makeIntRanges(self.height, rowCount);
-        var colStartsSizes = makeIntRanges(self.width-rowLabelSize, colCount);
+        var rowStartsSizes = self.rowStartsSizes;
+        var colStartsSizes = self.colStartsSizes;
 
+        console.time("draw rects");
         switch (drawMode) {
         case 1:
-            drawRectsSimple(ctx, rowStartsSizes, colStartsSizes, rows, pal);
+            //drawRectsSimple(ctx, rowStartsSizes, colStartsSizes, rows, pal);
+            alert("simple drawing mode is not supported anymore");
             break;
         case 2:
-            drawRectsOpt1(ctx, rowStartsSizes, colStartsSizes, rows, pal, self.maxVal);
+            drawRectsOpt1(ctx, rowStartsSizes, colStartsSizes, rows, pal, self.maxVal, 
+                    self.rowOrder, self.colOrder);
+            break;
         }
         console.timeEnd("draw rects");
+
+        //var rowOrder = self.rowOrder;
+        //var rowScreenToData = [];
+        //for (var rowI=0; rowI<rowCount; rowI++)
+            //rowScreenToData
 
         ctx.restore();
 
         self.rowHeight = rowHeight;
         self.colWidth = colWidth;
+    };
+
+    this.optimalLeaf = function () {
+        /* order rows and columns with the optimalLeaf algorithm */
+        console.time("heatmap optimal leaf ordering");
+        let orderFunc = reorder.optimal_leaf_order();
+        self.rowOrder = orderFunc(self.rows);
+        let cols = reorder.transpose(self.rows);
+        self.colOrder = orderFunc(cols);
+        console.timeEnd("heatmap optimal leaf ordering");
     };
 
     this.loadRandomData = function(rowCount, colCount, maxVal) {
@@ -282,8 +457,6 @@ function MaxHeat(div, args) {
                 "The heatmap will not be very useful until you reduce the number of rows that are shown.");
 
     };
-
- 
 
     this.clear = function() {
         clearCanvas(self.ctx, self.width, self.height);

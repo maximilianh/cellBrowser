@@ -7,7 +7,7 @@ canvas { user-select: none }
 section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 
 #tpLegendBar { cursor:default; overflow-y: scroll; padding-left: 2px; border-left: 1px solid #D7D7D7; height:100%}
-.tpDatasetPane { line-height: 120% }
+.tpDatasetPane { line-height: 120%; overflow:hidden }
 
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
@@ -232,4 +232,14 @@ th[role=columnheader]:not(.no-sort):hover:after {
         visibility: visible;
         opacity: 1;
 }
+
 /* END: ----- FOR SORTTABLE.JS ------- */
+
+.ui-resizable-n {
+        cursor : row-resize;
+}
+.ui-resizable-handle:hover {
+        opacity : 0.5;
+        background-color: grey;
+
+}

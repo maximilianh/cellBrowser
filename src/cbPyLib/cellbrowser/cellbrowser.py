@@ -472,14 +472,14 @@ def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
 
     if isinstance(inFile, str):
         # input file is a string = file name
-        fh = openFile(inFile)
+        fh = openFile(inFile, mode="rtU")
         sep = sepForFile(inFile)
     else:
         fh = inFile
         sep = "\t"
 
     line1 = fh.readline()
-    line1 = line1.strip("\n").lstrip("#")
+    line1 = line1.strip("\n\r").lstrip("#")
     if utfHacks:
         line1 = line1.decode("latin1")
         # skip special chars in meta data and keep only ASCII
@@ -1832,7 +1832,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     metaToRow = {}
     sep = sepForFile(metaFname)
     fieldValues = defaultdict(set)
-    for lNo, line in enumerate(open(metaFname)):
+    for lNo, line in enumerate(open(metaFname, "rtU")):
         row = line.rstrip("\r\n").split(sep)
         if lNo==0:
             headers = row
@@ -2050,6 +2050,7 @@ def sanitizeHeader(name):
 
 def splitMarkerTable(filename, geneToSym, outDir):
     """ split .tsv on first field and create many files in outDir with columns 2-end.
+        Returns the names of the clusters.
     """
     if filename is None:
         return
@@ -2155,6 +2156,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
 
         fileCount += 1
     logging.info("Wrote %d .tsv.gz files into directory %s" % (fileCount, outDir))
+    return data.keys()
 
 #def guessConfig(options):
     #" guess reasonable config options from arguments "
@@ -2424,7 +2426,7 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 def readHeaders(fname):
     " return headers of a file "
     logging.info("Reading headers of file %s" % fname)
-    ifh = openFile(fname, "rt")
+    ifh = openFile(fname, "rtU")
     line1 = ifh.readline().rstrip("\r\n")
     sep = sepForFile(fname)
     row = line1.split(sep)
@@ -2594,20 +2596,25 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
 
         if hasLabels:
             logging.info("Calculating cluster midpoints for "+coordLabel)
-            clusterMids = makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
+            clusterMids= makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
+            clusterOrder = orderClusters(clusterMids, outConf)
 
-            midFname = join(coordDir, "clusterLabels.json")
-            midFh = open(midFname, "w")
-            json.dump(clusterMids, midFh, indent=2)
-            logging.debug("Wrote cluster labels and midpoints to %s" % midFname)
-            addMd5(coordInfo, midFname, keyName="labelMd5")
+            clusterInfo = {}
+            clusterInfo["labels"] = clusterMids
+            clusterInfo["order"] = clusterOrder
+
+            clusterLabelFname = join(coordDir, "clusterLabels.json")
+            midFh = open(clusterLabelFname, "w")
+            json.dump(clusterInfo, midFh, indent=2)
+            logging.debug("Wrote cluster labels, midpoints and order to %s" % clusterLabelFname)
+            addMd5(coordInfo, clusterLabelFname, keyName="labelMd5")
 
         newCoords.append( coordInfo )
 
     outConf["coords"] = newCoords
     copyConf(inConf, outConf, "labelField")
     copyConf(inConf, outConf, "useTwoBytes")
-    return outFnames
+    return outFnames, labelVals
 
 def readAcronyms(inConf, outConf):
     " read the acronyms and save them into the config "
@@ -2624,13 +2631,34 @@ def readAcronyms(inConf, outConf):
             #outConf["acronyms"] = acronyms
         return acronyms
 
-def convertMarkers(inConf, outConf, geneToSym, outDir):
-    " split the marker tables into one file per cluster "
+def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
+    " make sure that the cluster names from the meta.tsv match the ones from markers.tsv "
+    markerClusters = set(clusterNames)
+    labelClusters = set(clusterLabels)
+    notInLabels = markerClusters - labelClusters
+    notInMarkers = labelClusters - markerClusters
+    if len(notInMarkers)!=0:
+        msg = ("%s: the following cluster names are in the meta file but not in the marker file: %s. "+
+        "Please fix one of the files, clicks onto a label will otherwise not work.") % (markerFname, notInMarkers)
+        if doAbort:
+            errAbort(msg)
+        else:
+            logging.error(msg)
+
+    if len(notInLabels)!=0:
+        logging.warn(("%s: the following cluster names are in the marker file but not in the meta file: %s. "+
+                "Users may not notice the problem, but it may indicate an erronous meta data file.") % \
+                (markerFname, notInLabels))
+
+def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
+    " split the marker tables into one file per cluster and add filenames as 'markers' in outConf "
     markerFnames = []
     if "markers" in inConf:
         markerFnames = makeAbsDict(inConf, "markers")
 
     newMarkers = []
+    #doAbort = True # only the first marker file leads to abort, we're more tolerant for the others
+    doAbort = False # temp hack
     for markerIdx, markerInfo in enumerate(markerFnames):
         markerFname = markerInfo["file"]
         markerLabel = markerInfo["shortLabel"]
@@ -2639,7 +2667,10 @@ def convertMarkers(inConf, outConf, geneToSym, outDir):
         markerDir = join(outDir, "markers", clusterName)
         makeDir(markerDir)
 
-        splitMarkerTable(markerFname, geneToSym, markerDir)
+        clusterNames = splitMarkerTable(markerFname, geneToSym, markerDir)
+
+        checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort)
+        doAbort = False
 
         newDict = {"name" : sanitizeName(clusterName), "shortLabel" : markerLabel}
         if "selectOnClick" in markerInfo:
@@ -2866,6 +2897,44 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     logging.info("current input matrix looks identical to previously processed matrix, same file size, same sample names")
     return False
 
+def readJson(fname, keepOrder=False):
+    " read .json and return as a dict "
+    if keepOrder:
+        customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
+        inStr = readFile(fname)
+        data = customdecoder.decode(inStr)
+    else:
+        data = json.load(open(fname))
+    return data
+
+def orderClusters(labelCoords, outConf):
+    " given the cluster label coordinates, order them by similarity "
+    #labelCoords = readJson(clusterLabelFname)
+
+    # create dict with label1 -> list of (dist, label2)
+    dists = defaultdict(list)
+    for i, (x1, y1, label1) in enumerate(labelCoords):
+        for x2, y2, label2 in labelCoords[i:]:
+            dist = math.sqrt((x2-x1)**2+(y2-y1)**2)
+            dists[label1].append((dist, label2))
+            dists[label2].append((dist, label1))
+
+    labelOrder = []
+    doneLabels = set()
+
+    currLabel = labelCoords[0][2]
+    for i in range(0, len(labelCoords)):
+        otherLabels = dists[currLabel]
+        otherLabels.sort()
+        for dist, label in otherLabels:
+            if not label in doneLabels:
+                currLabel = label
+                labelOrder.append(currLabel)
+                doneLabels.add(currLabel)
+                break
+
+    return labelOrder
+
 def convertDataset(inConf, outConf, datasetDir):
     """ convert everything needed for a dataset to datasetDir, write config to outConf.
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
@@ -2904,7 +2973,7 @@ def convertDataset(inConf, outConf, datasetDir):
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
 
-    coordFiles = convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
+    coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
 
     foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
     if not foundConf:
@@ -2913,7 +2982,7 @@ def convertDataset(inConf, outConf, datasetDir):
     if geneToSym==-1:
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
 
-    convertMarkers(inConf, outConf, geneToSym, datasetDir)
+    convertMarkers(inConf, outConf, geneToSym, clusterLabels, datasetDir)
 
     readQuickGenes(inConf, geneToSym, outConf)
 
@@ -2967,6 +3036,7 @@ clusterField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
+#quickGenesFile='quickGenes.csv'
 #alpha=0.3
 #radius=2
 """ % locals()
@@ -3578,10 +3648,7 @@ def findDatasets(outDir):
         if not isfile(fname):
             continue
 
-        #datasetDesc = json.load(open(fname))
-        customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
-        inStr = readFile(fname)
-        datasetDesc = customdecoder.decode(inStr)
+        datasetDesc = readJson(fname, keepOrder=True)
 
         if "isCollection" in datasetDesc:
             logging.debug("Dataset %s is a collection, so not parsing now" % datasetDesc["name"])
@@ -3840,7 +3907,8 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
         "ext/slick.core.js",
         "ext/slick.cellrangedecorator.js", "ext/slick.cellrangeselector.js", "ext/slick.cellselectionmodel.js",
         "ext/slick.editors.js", "ext/slick.formatters.js", "ext/slick.grid.js",
-        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js", "js/maxHeat.js"
+        "ext/tiny-queue.js", "ext/science.v1.js", "ext/reorder.v1.js",  # commit d51dda9ad5cfb987b9e7f2d7bd81bb9bbea82dfe
+        "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js", "js/maxHeat.js",
         ]
 
     # at UCSC, for grant reports, we need to get some idea how many people are using the cell browser
@@ -4136,7 +4204,7 @@ def cbScanpy(matrixFname, confFname, figDir, logFname, outMatrixFname):
     sc.tl.tsne(adata, n_pcs=int(pc_nb), random_state=2, n_jobs=8)
 
     neighbors = int(conf.get("louvainNeighbors", 6))
-    res = int(conf.get("louvainRes", 1.0))
+    res = float(conf.get("louvainRes", 1.0))
     pipeLog('Performing Louvain Clustering, resolution %f, using %d PCs and %d neighbors' % (res, pc_nb, neighbors))
     sc.pp.neighbors(adata, n_pcs=int(pc_nb), n_neighbors=neighbors)
     sc.tl.louvain(adata, resolution=res)

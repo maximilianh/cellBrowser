@@ -74,7 +74,9 @@ var cellbrowser = function() {
     //const cNullColor = "DDDDDD";
     const cNullColor = "95DFFF";
 
-    const cDefGradPalette = "tol-sq";  // default legend gradient palette for numeric ranges
+    const cDefGradPalette = "tol-sq-blue";  // default legend gradient palette for gene expression
+    // this is a special palette, tol-sq with the first entry being a light blue, so 0 stands out a bit more
+    const cDefGradPaletteHeat = "tol-sq";  // default legend gradient palette for the heatmap
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
 
     const exprBinCount = 10; //number of expression bins for genes
@@ -507,6 +509,17 @@ var cellbrowser = function() {
         }
 
 
+        htmlAddLink(htmls, desc, "biorxiv_url");
+        htmlAddLink(htmls, desc, "paper_url");
+        htmlAddLink(htmls, desc, "other_url");
+        htmlAddLink(htmls, desc, "geo_series");
+        htmlAddLink(htmls, desc, "pmid");
+        htmlAddLink(htmls, desc, "dbgap");
+        htmlAddLink(htmls, desc, "sra_study");
+        htmlAddLink(htmls, desc, "bioproject");
+        htmlAddLink(htmls, desc, "sra");
+        htmlAddLink(htmls, desc, "doi");
+
         if (desc.submitter) {
             htmls.push("<b>Submitted by: </b> "+desc.submitter);
             if (desc.submission_date) {
@@ -518,16 +531,6 @@ var cellbrowser = function() {
             htmls.push("<br>");
         }
 
-        htmlAddLink(htmls, desc, "biorxiv_url");
-        htmlAddLink(htmls, desc, "paper_url");
-        htmlAddLink(htmls, desc, "other_url");
-        htmlAddLink(htmls, desc, "geo_series");
-        htmlAddLink(htmls, desc, "pmid");
-        htmlAddLink(htmls, desc, "dbgap");
-        htmlAddLink(htmls, desc, "sra_study");
-        htmlAddLink(htmls, desc, "bioproject");
-        htmlAddLink(htmls, desc, "sra");
-        htmlAddLink(htmls, desc, "doi");
 
         if (datasetInfo.collections===undefined)
             htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
@@ -725,7 +728,7 @@ var cellbrowser = function() {
 
         $('#tpBackToMainLink').click( function() {
             $(".ui-dialog-content").dialog("close");
-            openDatasetDialog(gDatasetList, db.conf);
+            openDatasetDialog(gDatasetList, gDatasetList[0]);
         } );
 
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
@@ -932,6 +935,15 @@ var cellbrowser = function() {
         /* call the jquery inits and setup the change listeners for a combobox row */
         /* Yes, a UI framework, like react or angular, would be very helpful here */
 
+        // first of all: check if the meta name actually exists in this dataset still
+        let metaInfo = null;
+        var metaName = query["m"];
+        if (metaName!==undefined) {
+            metaInfo = db.findMetaInfo(metaName);
+            if (metaInfo===null)
+                return;
+        }
+
         // auto-suggest for gene searches
         $('#tpSelectGeneCombo_'+rowIdx).selectize({
                 "labelField" : 'text',
@@ -952,7 +964,6 @@ var cellbrowser = function() {
 
 
         var rowType = "gene";
-        var metaName = query["m"];
         var op = getQueryOp(query);
         if (metaName===undefined) {
             // this is a gene query
@@ -961,7 +972,6 @@ var cellbrowser = function() {
         } else {
             // it's a meta query
             rowType = "meta";
-            var metaInfo = db.findMetaInfo(metaName);
             findCellsUpdateRowType(rowIdx, rowType);
             findCellsUpdateMetaCombo(rowIdx, metaInfo.index);
         }
@@ -1228,16 +1238,16 @@ var cellbrowser = function() {
         var dlgWidth = 800;
         var buttons = 
         [
-            {
-                text:"Cancel", 
-                click:function() {
-                    // save state even if user presses cancel  - good idea?
-                    var queryStr = JSURL.stringify(queryList);
-                    var queryList = readSelectForm();
-                    localStorage.setItem("select", queryStr);
-                    $(this).dialog("close");
-                }
-            },
+            //{
+                //text:"Cancel", 
+                //click:function() {
+                    //// save state even if user presses cancel  - good idea?
+                    //var queryStr = JSURL.stringify(queryList);
+                    //var queryList = readSelectForm();
+                    //localStorage.setItem(db.name+"|select", queryStr);
+                    //$(this).dialog("close");
+                //}
+            //},
             {
                 text:"OK", 
                 click: function() {
@@ -1251,7 +1261,7 @@ var cellbrowser = function() {
                             //changeUrl({'select':JSON.stringify(queryList)});
                             var queryStr = JSURL.stringify(queryList);
                             changeUrl({'select':queryStr});
-                            localStorage.setItem("select", queryStr);
+                            localStorage.setItem(db.name+"|select", queryStr);
                             renderer.drawDots();
                             $("#tpDialog").dialog("close");
                         }
@@ -1267,7 +1277,7 @@ var cellbrowser = function() {
         var queryStr = getVar("select");
 
         if (queryStr===undefined)
-            queryStr = localStorage.getItem("select");
+            queryStr = localStorage.getItem(db.name+"|select");
 
         if (queryStr===undefined || queryStr===null)
             queries = [makeSampleQuery()];
@@ -1768,7 +1778,7 @@ var cellbrowser = function() {
     function buildMenuBar() {
         /* draw the menubar at the top */
        var htmls = [];
-       htmls.push("<div id='tpMenuBar'>");
+       htmls.push("<div style='width:"+menuBarHeight+"px' id='tpMenuBar'>");
        htmls.push('<nav class="navbar navbar-default navbar-xs">');
 
        htmls.push('<div class="container-fluid">');
@@ -1939,7 +1949,7 @@ var cellbrowser = function() {
        var legendBarLeft = rendererWidth+metaBarMargin+metaBarWidth;
 
        var heatWidth, heatHeight;
-       if (db.heatmap) {
+       if (db && db.heatmap) {
             heatWidth = rendererWidth;
             heatHeight = db.heatmap.height;
             rendererHeight = rendererHeight - heatHeight;
@@ -1949,11 +1959,11 @@ var cellbrowser = function() {
             db.heatmap.draw();
        }
 
-       $("#tpToolBar").css("width", rendererWidth);
+       $("#tpToolBar").css("width", rendererWidth+"px");
 
-       $("#tpToolBar").css("height", toolBarHeight);
-       $("#tpLeftSidebar").css("height", window.innerHeight - menuBarHeight);
-       $("#tpLegendBar").css("height", window.innerHeight - menuBarHeight);
+       $("#tpToolBar").css("height", toolBarHeight+"px");
+       $("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       $("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
        renderer.setSize(rendererWidth, rendererHeight, true);
@@ -2350,7 +2360,7 @@ var cellbrowser = function() {
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
     }
 
-   function gotCoords(coords, info, clusterMids, newRadius) {
+   function gotCoords(coords, info, clusterInfo, newRadius) {
        /* called when the coordinates have been loaded */
        if (coords.length===0)
            alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
@@ -2363,6 +2373,11 @@ var cellbrowser = function() {
        var metaInfo = db.findMetaInfo(labelField);
        var oldToNew = makeLabelRenames(metaInfo);
        var origLabels = [];
+       var clusterMids = clusterInfo.labels;
+       // old-style files contain just coordinates, no order
+       if (clusterMids===undefined)
+           clusterMids = clusterInfo;
+
        for (var i = 0; i < clusterMids.length; i++) {
            var labelInfo = clusterMids[i];
            var oldName = labelInfo[2];
@@ -2370,6 +2385,9 @@ var cellbrowser = function() {
            var newName = oldToNew[oldName];
            labelInfo[2] = newName;
        }
+
+       db.clusterOrder = clusterInfo.order;
+
        renderer.origLabels = origLabels;
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
@@ -2397,7 +2415,13 @@ var cellbrowser = function() {
        if (colorType==="meta") {
            colorByMetaField(colorBy, onDone);
            // update the meta field combo box
-           var fieldIdx  = db.fieldNameToIndex(colorBy);
+           var fieldIdx  = db.fieldNameToIndex(onlyAlphaNum(colorBy));
+           if (fieldIdx===null) {
+               alert("Default coloring is configured to be on field "+fieldName+
+                    " but cannot find a field with this name, using field 1 instead.");
+               fieldIdx = 1;
+           }
+
            $('#tpMetaCombo').val(fieldIdx).trigger('chosen:updated');
            $('#tpMetaBox_'+db.getMetaFields()[fieldIdx].name).addClass('tpMetaSelect');
        }
@@ -2491,7 +2515,7 @@ var cellbrowser = function() {
        renderer.initPlot(rendConf);
 
        buildLeftSidebar();
-       buildToolBar(db.conf.coords, db.conf, metaBarWidth+metaBarMargin, toolBarHeight);
+       buildToolBar(db.conf.coords, db.conf, metaBarWidth+metaBarMargin, menuBarHeight);
        //activateMode("move");
 
        db.loadCoords(0, gotFirstCoords, onProgress);
@@ -2648,6 +2672,8 @@ var cellbrowser = function() {
 
     function onWindowResize(ev) {
         /* called when window is resized by user */
+        if (ev.target.id==="tpHeat") // hack: do not do anything if jquery resizable() started this.
+            return;
         resizeDivs();
     }
 
@@ -2673,7 +2699,7 @@ var cellbrowser = function() {
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s Qualitative</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Shades of Blues</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Shades of Reds</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="tol-sq" href="#">Beige to red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Beige to red</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Blue to red</a></li>');
             htmls.push('</ul>');
         htmls.push("</div>"); // btn-group
@@ -3543,7 +3569,7 @@ var cellbrowser = function() {
     function onMetaMouseOver (event) {
     /* called when user hovers over meta element: shows the histogram of selected cells */
         var metaHist = db.metaHist;
-        if (metaHist===undefined)
+        if (metaHist===undefined || metaHist===null)
             return;
 
         // mouseover over spans or divs will not find the id, so look at their parent, which is the main DIV
@@ -4184,7 +4210,9 @@ var cellbrowser = function() {
 
     function makeColorPalette(palName, n) {
     /* return an array with n color hex strings */
-    // Use Google's palette functions for now, first Paul Tol's colors, if that fails, use the usual HSV rainbow
+    /* Use Google's palette functions for now, first Paul Tol's colors, if that fails, use the usual HSV rainbow
+     * This code understands our special palette, tol-sq-blue
+    */
         var pal = [];
         if (palName==="blues")
             pal = makeHslPalette(0.6, n);
@@ -4194,8 +4222,9 @@ var cellbrowser = function() {
             if (n===2)
                 pal = ["FF0000","0000FF"];
             else {
-                pal = palette(palName, n);
-                if (palName==="tol-sq")
+                var realPalName = palName.replace("tol-sq-blue", "tol-sq");
+                pal = palette(realPalName, n);
+                if (palName==="tol-sq-blue")
                     pal[0]='f4f7ff';
             }
         }
@@ -5027,7 +5056,9 @@ var cellbrowser = function() {
 
         updateGeneTableColors(cellIds);
 
-        if (ev!==undefined) {
+        if (ev===undefined) {
+            db.metaHist = null;
+        } else {
             // it was a click -> we have at least one cell ID
             let cellId = cellIds[0];
             if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey)
@@ -5171,19 +5202,20 @@ var cellbrowser = function() {
         return geneAvgs;
     }
 
-    function onHeatCellHover(rowIdx, colIdx, rowName, colName, ev) {
+    function onHeatCellHover(rowIdx, colIdx, rowName, colName, value, ev) {
         /* user hovers over a cell on the heatmap */
         let htmls = [];
         if (rowName)
             htmls.push(rowName);
         if (colName)
             htmls.push(colName)    
+        if (value!==null)
+            htmls.push(" "+(value*10)+"-"+((value+1)*10)+"%");
         showTooltip(ev.clientX+15, ev.clientY, htmls.join(" "));
     }
 
     function plotHeatmap(clusterMetaInfo, exprVecs, geneSyms) {
         /* Create the heatmap from exprVecs. 
-        geneVecs is an array of binned gene expression vectors, one per gene. 
         */
         var clusterCount = clusterMetaInfo.valCounts.length;
         
@@ -5196,7 +5228,8 @@ var cellbrowser = function() {
         var geneAvgs = groupAverages(exprVecs, clusterArr, clusterCount);
         
         var div = document.createElement("div");
-        let heatHeight = Math.min(150, 16*exprVecs.length);
+        //let heatHeight = Math.min(150, 16*exprVecs.length);
+        let heatHeight = parseInt(renderer.height*0.5);
         div.id = "tpHeat";
         div.style.height = heatHeight+"px";
 
@@ -5204,14 +5237,17 @@ var cellbrowser = function() {
         
         var canvLeft = metaBarWidth+metaBarMargin;
         var heatWidth = window.innerWidth - canvLeft - legendBarWidth;
+        // create the div for the heat map view
         div.style.width = heatWidth+"px";
         div.style.left = metaBarWidth+"px";
         div.style.top = (menuBarHeight+toolBarHeight+renderer.height)+"px";
         div.style.position = "absolute";
         document.body.appendChild(div);
 
-        var heatmap = new MaxHeat(div); 
-        var colors = getFieldColors(clusterMetaInfo)
+        var heatmap = new MaxHeat(div, {mainRenderer:renderer}); 
+        //var colors = getFieldColors(clusterMetaInfo)
+        var colors = makeColorPalette(cDefGradPaletteHeat, 10);
+
         heatmap.loadData(geneSyms, clusterNames, geneAvgs, colors);
         heatmap.draw();
         heatmap.onCellHover = onHeatCellHover;
@@ -5225,12 +5261,17 @@ var cellbrowser = function() {
         let resultCount = 0;
         let exprVecs = [];
         let geneSyms = [];
+        let metaInfo = null;
 
-        function onClusterMetaDone(metaArr, metaInfo) {
-            metaInfo.arr = metaArr;
+        function partDone() {
             resultCount++;
             if (resultCount===2)
                 plotHeatmap(metaInfo, exprVecs, geneSyms);
+        }
+
+        function onClusterMetaDone(metaArr, metaInfo) {
+            metaInfo.arr = metaArr;
+            partDone();
         }
 
         function onGenesDone(geneVecs) {
@@ -5239,13 +5280,11 @@ var cellbrowser = function() {
                 geneSyms.push(geneInfo[0]); // gene symbol
                 exprVecs.push(geneInfo[1]); // binned expression vector
             }
-            resultCount++;
-            if (resultCount===2)
-                plotHeatmap(metaInfo, exprVecs, geneSyms);
+            partDone();
         }
 
         /* user clicked on View > Heatmap */
-        if (db.heatmap) {
+        if (db && db.heatmap) {
             // remove the heatmap
             let heatHeight = db.heatmap.height;
             document.getElementById("tpHeat").remove();
@@ -5255,7 +5294,7 @@ var cellbrowser = function() {
         }
         else {
             db.loadGeneSetExpr(onGenesDone);
-            let metaInfo = getClusterFieldInfo();
+            metaInfo = getClusterFieldInfo();
             db.loadMetaVec(metaInfo, onClusterMetaDone, onProgress);
             changeUrl({"heat":"1"});
         }
