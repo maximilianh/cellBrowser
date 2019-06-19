@@ -16,11 +16,16 @@ def cbGet_parseArgs(showHelp=False):
     The only valid repo right now is: ebi
 
     Examples:
-    - %prog ebi E-GEOD-100058 -o myEbiDataset - import E-GEOD-10058 to myEbiDataset/
+    - %prog ebi -a E-GEOD-100058 -o myEbiDataset - import E-GEOD-10058 to myEbiDataset/
+    - %prog ebi -i E-GEOD-100058-mirror/ -o myEbiDataset - convert E-GEOD-10058 FTP mirror to myEbiDataset/
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
+    parser.add_option("-a", "--accession", dest="acc", action="store",
+        help="Accession in source database")
+    parser.add_option("-i", "--inDir", dest="inDir", action="store",
+        help="Input directory")
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
         help="Output directory")
 
@@ -92,44 +97,61 @@ def parseClusters(fname):
 
     return bestK, dict(zip(sampleNames, clusters))
 
-def parseCondSdrf(fname):
+def parseCondSdrf(cellIds, fname):
     """ parse the condensed sdrf into cellId -> dict of key-val """
+    cellIds = set(cellIds)
     cellMeta = defaultdict(dict)
     for line in open(fname):
         #E-MTAB-7303             ERR2847884      characteristic  organism        Homo sapiens    http://purl.obolibrary.org/obo/NCBITaxon_9606
         #E-MTAB-4850		SAMEA50486668	characteristic	age	42 year
         row = line.rstrip("\n\r").split("\t")
         dsId, _, cellId, _, fieldName, val = row[:6]
+        if cellId not in cellIds:
+            continue
         cellMeta[cellId][fieldName] = val
     return cellMeta
 
-def parseSdrf(srdfFname):
-    """ parse EBI srdf file to list of fieldNames. Remove fields with only a single value.
-    return a dict with the fields and values where all lines contain the same value.
-    Also remove filename and URI fields.
-    """
-    logging.debug("Parsing %s" % srdfFname)
-    columns = parseIntoColumns(srdfFname)
-    #cleanList = []
-    fieldList = []
-    genInfo = {}
-    for fieldName, values in columns:
+def parseSdrfFieldNames(sdrfFname):
+    " return list of field names in sdrf file "
+    ifh = open(sdrfFname)
+
+    #Source Name	Comment[ENA_SAMPLE]	Comment[BioSD_SAMPLE]	Characteristics[organism]	Characteristics[disease]	Characteristics[disease staging]	Characteristics[age]	Unit[time unit]	Characteristics[sex]	Characteristics[organism part]	Characteristics[cell type]	Characteristics[cell line]	Characteristics[single cell well quality]	Comment[single cell quality]	Material Type	Protocol REF	Protocol REF	Extract Name	Comment[LIBRARY_LAYOUT]	Comment[LIBRARY_SELECTION]	Comment[LIBRARY_SOURCE]	Comment[LIBRARY_STRAND]	Comment[LIBRARY_STRATEGY]	Comment[NOMINAL_LENGTH]	Comment[NOMINAL_SDEV]	Comment[ORIENTATION]	Comment[single cell isolation]	Comment[library construction]	Comment[input molecule]	Comment[primer]	Comment[end bias]	Protocol REF	Performer	Assay Name	Comment[technical replicate group]	Technology Type	Comment[ENA_EXPERIMENT]	Scan Name	Comment[SUBMITTED_FILE_NAME]	Comment[ENA_RUN]	Comment[FASTQ_URI]	Comment[SPOT_LENGTH]	Comment[READ_INDEX_1_BASE_COORD]	Factor value[cell line]	Factor Value[stimulus]	Factor Value[single cell identifier]
+
+    fieldNames = ifh.readline().strip("\n\r").split("\t")
+
+    newNames = []
+    for fieldName in fieldNames:
         if "[" in fieldName:
             fieldName = fieldName.split("[")[1].rstrip("]")
-        if fieldName.endswith("_FILE_NAME") or fieldName.endswith("_URI"):
-            logging.debug("Skipping field %s" % fieldName)
-            continue
+        newNames.append(fieldName)
+    return newNames
 
-        valSet = set(values)
+#def parseSdrf(srdfFname):
+    #""" parse EBI srdf file to list of fieldNames. Remove fields with only a single value.
+    #return a dict with the fields and values where all lines contain the same value.
+    #Also remove filename and URI fields.
+    #"""
+    #logging.debug("Parsing %s" % srdfFname)
+    #columns = parseIntoColumns(srdfFname)
+    ##cleanList = []
+    #fieldList = []
+    #genInfo = {}
+    #for fieldName, values in columns:
+        #if "[" in fieldName:
+            #fieldName = fieldName.split("[")[1].rstrip("]")
 
-        if len(valSet)==1:
-            logging.debug("Field has only a single value, adding to info dict: %s=%s" % (fieldName, values[0]))
-            genInfo[fieldName] = values[0]
-        else:
+        #valSet = set(values)
+
+        #logging.debug(fieldName)
+        #logging.debug(valSet)
+        #if len(valSet)==1:
+            #logging.debug("Field has only a single value, adding to info dict: %s=%s" % (fieldName, values[0]))
+            #genInfo[fieldName] = values[0]
+        #else:
             #cleanList.append( (fieldName, values) )
-            fieldList.append(fieldName)
+            #fieldList.append(fieldName)
 
-    return fieldList, genInfo
+    #return fieldList, genInfo
 
 def parseIdf(fname):
     " parse idf and return as dict key = value "
@@ -153,10 +175,15 @@ def translateIdf(idf):
     desc["title"] = toStr(idf["Investigation Title"])
     desc["abstract"] = toStr(idf["Experiment Description"])
     desc["design"] = toStr(idf["Experimental Design"])
+    desc["expType"] = toStr(idf["Comment[EAExperimentType]"])
     desc["methods"] = toStr(idf["Protocol Description"])
     desc["curator"] = toStr(idf["Comment[EACurator]"])+", EBI Single Cell Expression Atlas"
     desc["submitter"] = toStr(idf["Person First Name"])+" "+toStr(idf["Person Last Name"])+" <"+toStr(idf["Person Email"])+">"
     desc["submission_date"] = toStr(idf["Public Release Date"])
+    if "PubMed ID" in idf:
+        desc["pmid"] = toStr(idf["PubMed ID"])
+    if "Publication DOI" in idf:
+        desc["doi"] = toStr(idf["Publication DOI"])
 
     if "Comment[ArrayExpressAccession]" in idf:
         desc["arrayexpress"] = toStr(idf["Comment[ArrayExpressAccession]"])
@@ -224,16 +251,16 @@ def makeBasicCbConf(name, shortLabel, matrixFname="exprMatrix.tsv.gz"):
     c["meta"] = "meta.tsv"
     c["#priority"] = "10"
     c["tags"] = ["ebi"]
-    c["enumFields"] = "Cluster"
-    c["clusterField"] = "Cluster"
-    c["labelField"] = "Cluster"
+    c["enumFields"] = "cluster"
+    c["clusterField"] = "cluster"
+    c["labelField"] = "cluster"
     c["#unit"] = "TPM"
     c["coords"] = [{"file":"tsne_perp25.coords.tsv", "shortLabel" : "t-SNE Perp=25"}]
     c["markers"] = [{"file":"markers.tsv", "shortLabel":"Cluster-specific genes"}]
     c["quickGenesFile"] = "quickGenes.tsv"
     return c
 
-def writeMeta(clusters, cellIds, sdrfFields, cellMeta, metaFname):
+def writeMeta(clusters, cellIds, sdrfFields, boringFields, cellMeta, metaFname):
     " write a meta.tsv file, add in the clusters "
     #idIdx = None
     #fieldNames = []
@@ -282,6 +309,7 @@ def writeMeta(clusters, cellIds, sdrfFields, cellMeta, metaFname):
     #logging.info("Wrote %s" % newCoordFname)
 
     logging.debug("Fields in the SDRF: %s" % sdrfFields)
+    logging.debug("Boring fields: %s" % boringFields.keys())
 
     allFields = set()
     for cellId in cellIds:
@@ -292,14 +320,15 @@ def writeMeta(clusters, cellIds, sdrfFields, cellMeta, metaFname):
     fieldOrder = []
     doneFields = set()
     for fn in sdrfFields:
-        if fn in allFields and fn not in doneFields:
+        if fn not in boringFields and fn in allFields and fn not in doneFields:
             fieldOrder.append(fn)
             doneFields.add(fn)
+
     logging.debug("final field order: %s" % fieldOrder)
     assert(len(set(fieldOrder))==len(fieldOrder)) # fields must not appear twice
 
     ofh = open(metaFname, "w")
-    ofh.write("cellId\tCluster\t")
+    ofh.write("cell ID\tcluster\t")
     ofh.write("\t".join(fieldOrder))
     ofh.write("\n")
 
@@ -315,6 +344,24 @@ def writeMeta(clusters, cellIds, sdrfFields, cellMeta, metaFname):
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
+def findBoringFields(cellMetaDict):
+    """ return a dict of all fieldNames that have only a single value. The keys of this dict are the field names, 
+    the values of this dict are the single values."""
+    fieldValues = defaultdict(set)
+    for cellId, cellMeta in iterItems(cellMetaDict):
+        for fieldName, val in iterItems(cellMeta):
+            fieldValues[fieldName].add(val)
+
+    boringFields = {}
+    for fieldName, vals in iterItems(fieldValues):
+        if fieldName.endswith("_FILE_NAME") or fieldName.endswith("_URI"):
+            logging.debug("Skipping field %s" % fieldName)
+            boringFields[fieldName] = None
+            continue
+        if len(vals)==1:
+            boringFields[fieldName] = list(vals)[0]
+    return boringFields
+
 def convertFromEbi(origDir, acc, outDir):
     " convert single cell expression files to cell browser format "
     # cluster is a special meta data attribute, parse it into a dict
@@ -329,19 +376,21 @@ def convertFromEbi(origDir, acc, outDir):
     quickGeneFname = join(outDir, "quickGenes.tsv")
     writeQuickGenes(topGenes, quickGeneFname)
 
-    # meta data
-    sdrfFname = join(origDir, acc+".sdrf.txt")
-    fieldNames, sdrfInfo = parseSdrf(sdrfFname)
-    condSdrfFname = join(origDir, acc+".condensed-sdrf.tsv")
-    cellMeta = parseCondSdrf(condSdrfFname)
-
     # make sure we use the same cellID order in meta and matrix
     sampleNameFname = join(origDir, acc+".aggregated_filtered_counts.mtx_cols")
     sampleNames = open(sampleNameFname).read().splitlines()
 
+    # meta data
+    sdrfFname = join(origDir, acc+".sdrf.txt")
+    #fieldNames, sdrfInfo = parseSdrf(sdrfFname)
+    fieldNames = parseSdrfFieldNames(sdrfFname) # we're doing this to get them in the proper order
+    condSdrfFname = join(origDir, acc+".condensed-sdrf.tsv")
+    cellMeta = parseCondSdrf(sampleNames, condSdrfFname)
+    boringFields = findBoringFields(cellMeta)
+
     # write the meta 
     metaFname = join(outDir, "meta.tsv")
-    writeMeta(clusters, sampleNames, fieldNames, cellMeta, metaFname)
+    writeMeta(clusters, sampleNames, fieldNames, boringFields, cellMeta, metaFname)
 
     # default perp is 25
     coordFname = join(origDir, acc+".tsne_perp_25.tsv")
@@ -352,6 +401,7 @@ def convertFromEbi(origDir, acc, outDir):
     idfFname = join(origDir, acc+".idf.txt")
     idfInfo = parseIdf(idfFname)
     datasetDesc = translateIdf(idfInfo)
+    datasetDesc["custom"] = boringFields
     descFname = join(outDir, "desc.conf")
     writePyConf(datasetDesc, descFname)
 
@@ -371,11 +421,9 @@ def cbGetCli():
     " run downloaders "
     args, options = cbGet_parseArgs()
 
-    if len(args)<=1:
+    if len(args)<1:
         cbGet_parseArgs(showHelp=True)
         sys.exit(1)
-
-    acc = args[1]
 
     outDir = options.outDir
     if outDir is None:
@@ -386,13 +434,17 @@ def cbGetCli():
     cmds = ["ebi"]
 
     if cmd=="ebi":
-        origDir = join(outDir, "orig")
-        flagFname = join(origDir, "complete")
-        logging.debug("Checking %s" % flagFname)
-        if not isfile(flagFname):
-            hostName = "ftp.ebi.ac.uk"
-            ftpDir = "/pub/databases/microarray/data/atlas/sc_experiments/%s" % acc
-            mirrorFtp(hostName, ftpDir, origDir)
+        acc = options.acc
+        if options.inDir:
+            origDir = options.inDir
+        else:
+            origDir = join(outDir, "orig")
+            flagFname = join(origDir, "complete")
+            logging.debug("Checking %s" % flagFname)
+            if not isfile(flagFname):
+                hostName = "ftp.ebi.ac.uk"
+                ftpDir = "/pub/databases/microarray/data/atlas/sc_experiments/%s" % acc
+                mirrorFtp(hostName, ftpDir, origDir)
         convertFromEbi(origDir, acc, outDir)
     else:
         errAbort("Repository %s is not valid. Valid repos are: %s" % (cmd, ", ".join(cmds)))

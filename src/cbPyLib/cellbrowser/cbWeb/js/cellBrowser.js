@@ -426,14 +426,16 @@ var cellbrowser = function() {
         "paper_url":"Publication",
         "other_url" : "Website",
         "geo_series" : "NCBI GEO Series", // = CIRM tagsV5
-        "sra" : "NCBI SRA",
+        "sra" : "NCBI Short Read Archive",
         "pmid" : "PubMed Abstract",
         "pmcid" : "PubMed Fulltext",
         "sra_study" : "NCBI SRA Study",
         "bioproject" : "NCBI Bioproject",
         "dbgap" : "NCBI DbGaP",
         "biorxiv_url" : "BioRxiv preprint",
-        "doi" : "Publication DOI"
+        "doi" : "Publication Fulltext",
+        "arrayexpress" : "ArrayExpress",
+        "ena_project" : "European Nucleotide Archive",
     };
 
     let descUrls = {
@@ -444,6 +446,8 @@ var cellbrowser = function() {
         "pmcid" : "https://www.ncbi.nlm.nih.gov/pmc/articles/",
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
         "doi" : "http://dx.doi.org/",
+        "ena_project" : "https://www.ebi.ac.uk/ena/data/view/",
+        "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
     }
 
     function htmlAddLink(htmls, desc, key) {
@@ -519,6 +523,8 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "bioproject");
         htmlAddLink(htmls, desc, "sra");
         htmlAddLink(htmls, desc, "doi");
+        htmlAddLink(htmls, desc, "arrayexpress");
+        htmlAddLink(htmls, desc, "ena_project");
 
         if (desc.submitter) {
             htmls.push("<b>Submitted by: </b> "+desc.submitter);
@@ -587,18 +593,14 @@ var cellbrowser = function() {
     function buildListPanel(datasetList, noteSpace, listGroupHeight, leftPaneWidth, htmls) {
         /* make a dataset list and append its html lines to htmls */
         htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
-        for (var i = 0; i < datasetList.length; i++) {
-            var dataset = datasetList[i];
-
-            //if (dataset.name===openDsName)
-                //openDsInfo = dataset;
-
-        if (!gDatasetList || gDatasetList.length===0)
+        if (!gDatasetList || gDatasetList.length===0) {
             alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
                 " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
+            return;
+        }
 
-        if (!openDsInfo)
-            openDsInfo = gDatasetList[0];
+        for (var i = 0; i < datasetList.length; i++) {
+            var dataset = datasetList[i];
 
             var clickClass = "tpDatasetButton";
             if (dataset.isCollection)
@@ -642,18 +644,13 @@ var cellbrowser = function() {
         var noteSpace = "2px"; // space from top of dialog to info pane and tabs
         //var datasetList = [];
         var activeIdx = 0;
-        //var openDsInfo;
         var onlyInfo = false;
 
         if (datasetList===null)
             onlyInfo = true;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-<<<<<<< HEAD
         if (openDsInfo && openDsInfo.isCollection) {
-=======
-        if (openCollection) {
->>>>>>> 2217363e6f20d7bb7d0a2698b1518778ace04a6a
             // select from a collection
             title = "Select one dataset from the collection '"+openDsInfo.shortLabel+"'";
             //datasetList = openDsInfo.datasets;
@@ -2708,6 +2705,8 @@ var cellbrowser = function() {
             htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to Default</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow Qualitative</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s Qualitative</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative Paired</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="cb-Set1" href="#">Qualitative Pastel</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Shades of Blues</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Shades of Reds</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Beige to red</a></li>');

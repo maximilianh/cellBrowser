@@ -293,7 +293,7 @@ def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
-    logging.info("Loading settings from %s" % fname)
+    logging.debug("Loading settings from %s" % fname)
     g = {}
     l = OrderedDict()
     execfile(fname, g, l)
@@ -892,7 +892,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
     assert(len(newVals)==len(valList))
 
     if len(valCounts)==1:
-        logging.warn("Field contains only a single value")
+        logging.warn("Field %s contains only a single value" % fieldMeta["name"])
 
 
     if intCount+unknownCount==len(valList) and not forceEnum:
@@ -1047,7 +1047,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     fieldInfo = []
     validFieldNames = set()
     for colIdx, (fieldName, col) in enumerate(colData):
-        logging.info("Meta data field index %d: '%s'" % (colIdx, fieldName))
+        logging.debug("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
         forceEnum = (fieldName in sanEnumFields)
@@ -1097,9 +1097,9 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         del fieldMeta["_fmt"]
         fieldInfo.append(fieldMeta)
         if "type" in fieldMeta:
-            logging.info(("Type: %(type)s, %(diffValCount)d different values" % fieldMeta))
+            logging.info(("Field %(name)s: type %(type)s, %(diffValCount)d different values" % fieldMeta))
         else:
-            logging.info(("Type: %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
+            logging.info(("Field %(name)s: type %(type)s, %(diffValCount)d different values, max size %(maxSize)d " % fieldMeta))
 
     return fieldInfo, validFieldNames
 
@@ -2457,8 +2457,10 @@ def parseGeneInfo(geneToSym, fname):
         row = line.rstrip("\r\n").split(sep)
         sym = row[0]
         if validSyms is not None and sym not in validSyms:
-            logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
-            continue
+            sym = geneToSym.get(sym)
+            if sym is None:
+                logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
+                continue
 
         info = [sym]
         if len(row)>1:
