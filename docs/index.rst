@@ -2,7 +2,7 @@ UCSC Cell Browser
 -----------------
 
 The UCSC Cell Browser is a fast, lightweight viewer for single-cell data.
-Cells are presented along withmetadata and gene expression, with the ability
+Cells are presented along with metadata and gene expression, with the ability
 to color cells by both of these attributes. Additional information, such as
 cluster marker genes and selected dataset-relevant genes, can also be displayed
 using the Cell Browser.
