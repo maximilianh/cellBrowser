@@ -3105,6 +3105,10 @@ def anndataToTsv(ad, matFname, usePandas=False, useRaw=False):
             geneIdObj = var["gene_ids"]
             geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
             genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+        else if "gene_symbols" in var:
+            geneIdObj = var['gene_symbols']
+            geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
+            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
         else:
             genes = var.index.tolist()
 
