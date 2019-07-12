@@ -2997,7 +2997,7 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     fileBase = filePrefix+"_coords.tsv"
     fname = join(outDir, fileBase)
 
-    existNames = anndata.obsm.dtype.names
+    existNames = anndata.obsm.keys()
     altName1 = "X_"+fieldName
     altName2 = "X_draw_graph_"+fieldName
     if fieldName not in existNames:
