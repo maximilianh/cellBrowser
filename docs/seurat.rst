@@ -3,27 +3,38 @@ With Seurat
 
 There are a number of ways to create a cell browser using Seurat:
 
-* **Import a Seurat rds file** - create a cell browser with the Unix command line tool ``cbImportSeurat2``.
+* **Import a Seurat rds file** - create a cell browser with the Unix command line tool ``cbImportSeurat``.
 * **Using RStudio and a Seurat object** - create a cell browser directly using the ``ExportToCellbrowser()`` R function. 
 * **Run our basic Seurat pipeline** - with just an expression matrix, you can run our ``cbSeurat`` pipeline to create a cell browser.
 
 Each of these methods are described in more detail below.
 
-Convert a Seurat2 ``rds`` file
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Convert a Seurat ``rds`` file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First, create an .rds file in R as described in the Seurat tutorial::
 
     saveRDS(pbmc, "pbmc3k_small.rds")
 
-Next, on the Unix command line, use the ``cbImportSeurat2`` script to convert this ``rds``
+Next, on the Unix command line, use the ``cbImportSeurat`` script to convert this ``rds``
 file into a cell browser::
 
-    cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport
+    cbImportSeurat -i pbmc3k_small.rds -o pbmc3kImport
+
+This works with objects created by versions 2 and 3 of Seurat. Make sure that you have the same version of Seurat installed that was used to create the object.
 
 The ``-i`` option specifies the input ``rds`` file and the ``-o`` option specifies a name for the output
 directory. You can use the ``-n`` option to change the dataset name in the cell browser;
 if it is not specified, it will default to the output directory name.
+
+A Seurat object does not contain the marker genes by default, as FindAllMarkers() does not save its output.
+You can add it to the object when you save the .rds file with a command like this::
+
+    object@misc$markers <- FindAllMarkers(object)
+
+``cbImportSeurat`` will then use these markers. Otherwise, if ``misc$markers`` is not present in the object, it will
+run FindAllMarkers with the default values (Wilcoxon and 0.25 as the cutoff). Alternatively, you can also save the markers
+to a tab-separated file yourself and provide this file with the ``--markerFile`` option.
 
 Lastly, go into the ``pbmc3kImport`` directory and run ``cbBuild`` to create the cell browser
 output files::
@@ -31,9 +42,9 @@ output files::
     cd pbmc3kImport
     cbBuild -o ~/public_html/cb
     
-Alternatively, you can use the ``--htmlDir`` option for ``cbImportSeurat2`` to automatically run ``cbBuild`` for you::
+Alternatively, you can use the ``--htmlDir`` option for ``cbImportSeurat`` to automatically run ``cbBuild`` for you::
 
-    cbImportSeurat2 -i pbmc3k_small.rds -o pbmc3kImport --htmlDir=~/public_html/cb
+    cbImportSeurat -i pbmc3k_small.rds -o pbmc3kImport --htmlDir=~/public_html/cb
 
 Convert a Seurat object from R
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

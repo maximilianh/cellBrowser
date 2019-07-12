@@ -1,104 +1,11 @@
-#!/usr/bin/env Rscript
+#!/usr/bin/env python
 
-library(argparser, quietly=TRUE)
-require(data.table)
+# converter from seurat .rds to cellbrowser format
 
+import sys
+from os.path import join, dirname
 
-loadSeurat <- function(input) {
-  if (endsWith(input, ".rds")) {
-    seurat <- readRDS(input)
-  } else {
-    e <- new.env()
-    load(input, envir = e)
-    names <- ls(e)
-    if (length(names) != 1) {
-      stop(sprintf(
-        "File %s contains several values, don't know how to handle this. Values: %s",
-        input,
-        paste(names, collapse = ", ")
-      ))
-    }
-    seurat <- get(names[1], envir = e)
-  }
-  return(seurat)
-}
-
-saveExpression <- function(seurat, dir) {
-  df <- as.data.frame(as.matrix(seurat@data), check.names=FALSE)
-  df <- data.frame(gene=rownames(seurat@data), df, check.names=FALSE)
-  write.table(df, sep="\t", file=file.path(dir, "exprMatrix.tsv"), quote = FALSE, row.names = FALSE)
-}
-
-saveTSNE <- function(seurat, dir, order) {
-  df <- data.frame(
-    cellId=rownames(seurat@dr$tsne@cell.embeddings),
-    x=seurat@dr$tsne@cell.embeddings[,1],
-    y=seurat@dr$tsne@cell.embeddings[,2], check.names=FALSE
-  )
-  write.table(df[order, ], sep="\t", file=file.path(dir, "tsne.coords.tsv"), quote = FALSE, row.names = FALSE)
-}
-
-checkMeta <- function(seurat, fields) {
-  available <- colnames(seurat@meta.data)
-
-  if (length(fields) < 1 || is.na(fields)) {
-    stop(paste("No meta fields specified. Available:", paste(available, collapse = ", ")))
-  }
-  if (!all(fields %in% available)) {
-    unavailable <- fields[!(fields %in% available)]
-    stop(sprintf(
-      "Specifiend meta fields not found: %s. Available: %s",
-      paste(unavailable, collapse = ", "),
-      paste(available, collapse = ", ")
-    ))
-  }
-}
-
-saveMeta <- function(seurat, dir, order, fields) {
-  df <- seurat@meta.data[order, fields]
-  df <- data.frame(Cell=rownames(seurat@meta.data), df, check.names=FALSE)
-  colnames(df) <- c("Cell", fields)
-  write.table(df, sep="\t", file=file.path(dir, "meta.tsv"), quote = FALSE, row.names=FALSE)
-}
-
-saveMarkers <- function(dir, markers_file) {
-  markers <- fread(markers_file)
-  df <- data.frame(
-    cluster = markers$cluster,
-    gene = gsub('"|\'', '', markers$gene),
-    avg_diff = markers$avg_logFC,
-    p_val = markers$p_val_adj,
-    check.names=FALSE
-  )
-  write.table(df, sep="\t", file=file.path(dir, "markers.tsv"), quote = FALSE, row.names=FALSE)
-}
-
-extractTsv <- function(args) {
-  if (!args$markers_only) {
-    seurat <- loadSeurat(args$file)
-    checkMeta(seurat, args$meta)
-
-    cell_order <- colnames(seurat@data)
-
-    saveExpression(seurat, args$outDir)
-    saveTSNE(seurat, args$outDir, cell_order)
-    saveMeta(seurat, args$outDir, cell_order, args$meta)
-  }
-  if (!is.na(args$markers)) {
-    saveMarkers(args$outDir, args$markers)
-  }
-}
-
-main <- function() {
-  p <- arg_parser("Create Cell browser compatible tsv files form Seurat object")
-  p <- add_argument(p, "file", help="Seurat object file")
-  p <- add_argument(p, "--outDir", help="output directory")
-  p <- add_argument(p, "--name", help="name of dataset in cell browser", default="cbSeurat-Data")
-  p <- add_argument(p, "--meta", help="meta fields to export, space separated", nargs = Inf)
-  p <- add_argument(p, "--markers", help="markers file")
-  p <- add_argument(p, "--markers-only", help="just convert markers file", flag=TRUE)
-
-  extractTsv(parse_args(p))
-}
-
-main()
+import sys
+sys.path.append( join(dirname(__file__), "cbPyLib") )
+from cellbrowser import seurat
+seurat.cbImportSeurat2Cli()

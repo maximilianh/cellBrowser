@@ -548,7 +548,19 @@ var cellbrowser = function() {
 
         htmls.length = 0;
         if (desc.methods) {
+            htmls.push("<p>");
             htmls.push(desc.methods);
+            htmls.push("</p>");
+        }
+        if (desc.algParams) {
+            htmls.push("<p><b>Algorithm parameters: </b>");
+            let algParams = desc.algParams;
+            for (let i=0; i<algParams.length; i++) {
+                let key = algParams[i][0];
+                let val = algParams[i][1];
+                htmls.push(key+"="+val+", ");
+            }
+            htmls.push("</p>");
         }
         $( "#pane2" ).html(htmls.join(""));
 
@@ -577,10 +589,10 @@ var cellbrowser = function() {
 
             htmls.push("<p><b>Dimensionality reduction coordinates:</b><br>");
             for (let fname of desc.coordFiles)
-                htmls.push("<a target=_blank href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a>&nbsp;");
+                htmls.push("<a target=_blank href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
             htmls.push("</p>");
 
-            htmls.push("<p><b>Cell Browser configuration</b> (colors, mouse overs, etc): ");
+            htmls.push("<p><b>Cell Browser configuration</b>: ");
             htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
 
             htmls.push("<p><b>General dataset description</b>: ");
@@ -1729,7 +1741,7 @@ var cellbrowser = function() {
 
         htmls.push("<textarea id='tpIdList' style='height:320px;width:400px;display:block'>");
         htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
-        htmls.push("<input id='tpHasWildcard' type='checkbox' style='margin-right: 10px' /> Allow RegEx search<br>e.g. enter '^TH' to find all IDs that start with 'TH'<br>or '-1$' to find all IDs that end with '-1'");
+        htmls.push("<input id='tpHasWildcard' type='checkbox' style='margin-right: 10px' /> Allow RegEx search, e.g. enter '^TH' to find all IDs that <br>start with 'TH' or '-1$' to find all IDs that end with '-1'");
         var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
     }
@@ -2703,14 +2715,14 @@ var cellbrowser = function() {
             htmls.push("<button type='button' class='btn btn-default dropdown-toggle' data-toggle='dropdown' aria-haspopup='true' aria-expanded='false' id='tpChangeColorScheme'>Colors&nbsp;<span class='caret'> </span></button>");
             htmls.push('<ul class="dropdown-menu pull-right">');
             htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to Default</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Rainbow Qualitative</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Paul Tol&#39;s Qualitative</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative Paired</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="cb-Set1" href="#">Qualitative Pastel</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Shades of Blues</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Shades of Reds</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Beige to red</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Blue to red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Qualitative: Rainbow</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Qualitative: Paul Tol&#39;s</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative: paired</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="cb-Set3" href="#">Qualitative: pastel</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Gradient: shades of blue</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Gradient: shades of red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Gradient: beige to red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Gradient: blue to red</a></li>');
             htmls.push('</ul>');
         htmls.push("</div>"); // btn-group
         //htmls.push("</div>"); // tpToolbarButtons
@@ -2850,18 +2862,23 @@ var cellbrowser = function() {
         return true;
     }
 
-     function labelForBinMinMax(binMin, binMax) {
+     function labelForBinMinMax(binMin, binMax, isAllInt) {
         /* given the min/max of a numeric value bin, return a good legend for it */
         // pretty print the numbers
-        const minDig = 2;
+        var minDig = 2;
         //if (binMin % 1 === 0) // % 1 = fractional part
             //minDig = 0
 
-        const maxDig = 2;
+        var maxDig = 2;
         //if (binMin % 1 === 0)
          //   maxDig = 0
 
         
+        if (isAllInt) {
+            minDig = 0;
+            maxDig = 0
+        }
+
         var legLabel = "";
         if (binMax===0 && binMax===0)
             legLabel = "0";
@@ -2877,15 +2894,20 @@ var cellbrowser = function() {
     function makeLegendRowsNumeric(binInfo) {
         /* return an array of legend lines given bin info from gene expression or a numeric meta field  */
         var legendRows = [];
-        //var zeroIsGrey = false;
 
-        // special case for the first "0" element = no value, make this always grey
-        //var bin0Min = binInfo[0][0];
-        //var bin0Max = binInfo[0][1];
-        //if (bin0Min===0 && bin0Max===0)
-            //zeroIsGrey = true;
+        // figure out if all our ranges are integers
+        var isAllInt = true;
+        for (var binIdx = 0; binIdx < binInfo.length; binIdx++) {
+            let oneBin = binInfo[binIdx];
+            var binMin = oneBin[0];
+            var binMax = oneBin[1];
 
-        //var defColors = makeColorPalette(10, true, zeroIsGrey);
+            var restMin = binMin - Math.trunc(binMin);
+            var restMax = binMax - Math.trunc(binMax);
+            if (restMin!==0 || restMax!==0)
+                isAllInt = false;
+        }
+
         var colIdx = 0;
         for (var binIdx = 0; binIdx < binInfo.length; binIdx++) {
             let oneBin = binInfo[binIdx];
@@ -2896,7 +2918,7 @@ var cellbrowser = function() {
 
             var legendId = binIdx;
 
-            var legLabel = labelForBinMinMax(binMin, binMax);
+            var legLabel = labelForBinMinMax(binMin, binMax, isAllInt);
 
             var uniqueKey = legLabel;
          
@@ -3852,6 +3874,57 @@ var cellbrowser = function() {
     }
 
 
+    function makeXenaUrl(metaFieldName, geneSyms, geneSym, actMeta) {
+        /* return URL to Xena view with this dataset and geneSyms loaded */
+        var xenaId = db.conf.xenaId; 
+        var phenoId = db.conf.xenaPhenoId;
+        var browser = 'https://singlecell.xenabrowser.net/';
+        var view = [{
+                name: phenoId,
+                host: 'https://singlecellnew.xenahubs.net',
+                fields: metaFieldName,
+                columnLabel : 'Cell Annotations',
+                fieldLabel: metaFieldName
+            }];
+
+        if (geneSyms.length!==0)
+            view.push({
+                name: xenaId,
+                host: 'https://singlecellnew.xenahubs.net',
+                fields: geneSyms.join(" "),
+                width : 15*geneSyms.length, 
+                columnLabel : 'Dataset genes',
+                fieldLabel: geneSyms.join(" ")
+            });
+
+        if (actMeta)
+            view.push({
+                name: phenoId,
+                host: 'https://singlecellnew.xenahubs.net',
+                fields: actMeta,
+                width : 120, 
+                columnLabel : 'Current Meta',
+                fieldLabel: actMeta
+            });
+
+        if (geneSym)
+            view.push({
+                name: xenaId,
+                host: 'https://singlecellnew.xenahubs.net',
+                fields: geneSym,
+                width : 120, 
+                columnLabel : 'Current Gene',
+                fieldLabel: geneSym
+            });
+
+        var heatmap = { "showWelcome" : false };
+
+        var url = browser + 'heatmap/?columns=' + 
+            encodeURIComponent(JSON.stringify(view)) + 
+            '&heatmap=' + encodeURIComponent(JSON.stringify(heatmap));
+        return url;
+    }
+
     function makeHubUrl(geneSym) {
         /* return URL of the hub.txt file, possibly jumping to a given gene  */
             var hubUrl = db.conf.hubUrl;
@@ -3867,12 +3940,59 @@ var cellbrowser = function() {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
                 return "";
             }
-            var fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+            // we also accept just track names
+            var fullUrl = null;
+            if (hubUrl && hubUrl.indexOf("http")===-1)
+                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+hubUrl+"=full&genome="+ucscDb;
+            else
+                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
 
             if (geneSym!==undefined)
                 fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
 
             return fullUrl;
+    }
+
+    function onGenomeButtonClick(ev) {
+        /* run when the user clicks the 'genome browser' button */
+        let actSym = null;
+        if (gLegend.type==="expr")
+            actSym = gLegend.geneSym;
+        var fullUrl = makeHubUrl(actSym);
+        db.gbWin = window.open(fullUrl, 'gbTab');
+        return false;
+    }
+
+    function onXenaButtonClick(ev) {
+        /* run when the user clicks the xena button */
+        var geneInfos = db.conf.quickGenes;
+        var syms  = []
+        if (geneInfos!=undefined) {
+            for (var i = 0; i < geneInfos.length; i++)
+                syms.push( geneInfos[i][0] ); // make array of symbols
+        }
+
+        var actSym = null;
+        var actMeta = null;
+        if (gLegend.type==="expr")
+            actSym = gLegend.geneSym;
+        else
+            actMeta = gLegend.metaInfo.label;
+
+        if (syms.length===0 && actSym===null) {
+            alert("Sorry, the view is not colored by a gene and there are no 'Dataset genes' "+
+                   " defined, so there are no genes active "+
+                "that could be shown on the heatmap. Please color by a gene first, "+
+                "then click the button again.");
+            return;
+        }
+            
+        var fullUrl = makeXenaUrl(db.conf.labelField, syms, actSym, actMeta);
+        //if (!db.xenaWin)
+        db.xenaWin = window.open(fullUrl, 'xenaTab');
+        //else
+            //db.xenaWin.location.href = fullUrl;
+        return false;
     }
 
     function buildToolBar (coordInfo, dataset, fromLeft, fromTop) {
@@ -3886,11 +4006,15 @@ var cellbrowser = function() {
         htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Open another dataset" data-placement="bottom">Open...</button>');
 
         var nextLeft = 140;
-        var hubUrl = db.conf.hubUrl;
-        if (hubUrl!==undefined) {
-            var fullUrl = makeHubUrl();
-            htmls.push('<a target=_blank href="'+fullUrl+'" id="tpOpenUcsc" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Show sequencing read coverage and gene expression on UCSC Genome Browser" data-placement="bottom">Genome Browser</a>');
+        if (db.conf.hubUrl!==undefined) {
+            htmls.push('<a target=_blank href="#" id="tpOpenGenome" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Show sequencing read coverage and gene expression on UCSC Genome Browser" data-placement="bottom">Genome Browser</a>');
             nextLeft += 155;
+        }
+
+        var xenaId = db.conf.xenaId;
+        if (xenaId!==undefined) {
+            htmls.push('<a target=_blank href="#" id="tpOpenXena" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Show gene expression heatmap on UCSC Xena Browser, creates heatmap of current gene (if coloring by gene) and all dataset genes. Click this button also if you have an active Xena window open and want to update the view there." data-placement="bottom">Xena</a>');
+            nextLeft += 80;
         }
 
         buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
@@ -3903,6 +4027,9 @@ var cellbrowser = function() {
         htmls.push("</div>");
 
         $(document.body).append(htmls.join(""));
+
+        $('#tpOpenXena').click(onXenaButtonClick);
+        $('#tpOpenGenome').click(onGenomeButtonClick);
 
         activateTooltip('.tpIconButton');
         activateTooltip('#tpOpenUcsc');
@@ -5094,12 +5221,7 @@ var cellbrowser = function() {
 
     function onClusterNameHover(clusterName, nameIdx, ev) {
        /* user hovers over cluster label */
-       //var htmls = [];
-       //htmls.push("<div class='tpHover'>"+clusterName+"</div>");
-       //$(document.body).append(htmls.join(""));
-       //console.log("Hover over "+clusterName);
-       //console.log(ev);
-       var labelStr = clusterName;
+       var labelLines = [clusterName];
        
        var labelField = db.conf.labelField;
        var metaInfo = db.findMetaInfo(labelField);
@@ -5107,22 +5229,22 @@ var cellbrowser = function() {
        if (longLabels) {
             for (let i=0; i<longLabels.length; i++) {
                 let shortLabel = metaInfo.ui.shortLabels[i];
-                if (clusterName===shortLabel) {
-                    labelStr = longLabels[i];
+                let longLabel = longLabels[i];
+                if (clusterName===shortLabel && longLabel!==shortLabel) {
+                    labelLines.push(longLabels[i]);
                     break;
                 }
             }
        }
 
-       //var acronyms = db.conf.acronyms;
-       //if (acronyms!==undefined && clusterName in acronyms)
-           //labelStr = acronyms[clusterName];
-
+       if (db.conf.topMarkers!==undefined) {
+            labelLines.push("Top markers: "+db.conf.topMarkers[clusterName].join(", "));
+        }
        if (db.conf.markers!==undefined)
-            labelStr += "<br>Click to show marker gene list.";
-        showTooltip(ev.clientX+15, ev.clientY, labelStr);
-        //renderer.canvas.style.cursor = "pointer";
+            labelLines.push("Click to show full marker gene list.");
 
+        showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
+        //renderer.canvas.style.cursor = "pointer";
     }
 
     function onNoClusterNameHover(ev) {
@@ -5345,12 +5467,6 @@ var cellbrowser = function() {
         htmls.push("</div>");
 
         var doTabs = (tabInfo.length>1);
-
-        //var hubUrl = db.conf.hubUrl;
-        //if (hubUrl!==undefined) {
-            //htmls.push("<p>");
-            //htmls.push("<a target=_blank class='link' href='"+hubUrl+"'>Show Sequencing Reads on UCSC Genome Browser</a><p>");
-        //}
 
         if (doTabs) {
             htmls.push("<div id='tabs'>");

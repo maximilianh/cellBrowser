@@ -33,7 +33,7 @@ setuptools.setup(
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
         'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli',
         'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',
-        'cbImportSeurat2 = cellbrowser.seurat:cbImportSeurat2Cli',
+        'cbImportSeurat = cellbrowser.seurat:cbImportSeurat2Cli',
         'cbImportCellranger = cellbrowser.convert:cbCellrangerCli'
     ]
     },

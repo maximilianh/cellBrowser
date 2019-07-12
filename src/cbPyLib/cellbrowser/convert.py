@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
+from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
 from .cellbrowser import generateHtmls
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -69,6 +69,8 @@ def cbToolCli():
     elif cmd=="metaCat":
         inFnames = args[1:-1]
         outFname = args[-1]
+        if len(inFnames)==1:
+            errAbort("Sorry, need at least three filenames: two input files and one output file")
         metaCat(inFnames, outFname, options)
     else:
         errAbort("Command %s is not a valid command. Valid commands are: %s" % (cmd, ", ".join(cmds)))

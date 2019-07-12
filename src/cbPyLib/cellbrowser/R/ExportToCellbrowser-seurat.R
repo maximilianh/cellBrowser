@@ -51,23 +51,41 @@ ExportToCellbrowser <- function(
   message("Seurat Version installed: ", packageVersion("Seurat"))
   message("Object was created with Seurat version ", object@version)
 
-  if (substr(object@version, 1, 1)!='2') {
-          stop("can only process Seurat2 objects, version of rds is ", object@version)
+  if (substr(object@version, 1, 1)!='2' && substr(object@version, 1, 1)!='3') {
+          stop("can only process Seurat2 or Seurat3 objects, version of rds is ", object@version)
   }
 
-  #idents <- FetchData(object,c("ident"))$ident;
-  idents <- object@ident # Idents() in Seurat3
+  # compatibility layer for Seurat 2 vs 3 
+  # see https://satijalab.org/seurat/essential_commands.html
+  if (substr(object@version, 1, 1)=='2') {
+      # Seurat 2 data access
+      idents <- object@ident # Idents() in Seurat3
+      meta <- object@meta.data
+      cellOrder <- object@cell.names
+      mat <- as.matrix(object@raw.data)
+      genes <- rownames(x = object@data)
+      dr <- object@dr
+  } else {
+      # Seurat 3 functions
+      idents <- Idents(object)
+      meta <- object@meta.data
+      cellOrder <- colnames(object)
+      mat <- as.matrix(GetAssayData(object = object, slot="counts"))
+      dr <- object@reductions
+      genes <- rownames(x = object)
+  }
 
   if (is.null(cluster.field)) {
           cluster.field = "Cluster"
   }
 
   if (is.null(meta.fields)) {
-    meta.fields <- colnames(object@meta.data)
+    meta.fields <- colnames(meta)
     if (length(levels(idents)) > 1) {
       meta.fields <- c(meta.fields, ".ident")
     }
   }
+
   if (!is.null(port) && is.null(cb.dir)) {
     stop("cb.dir parameter is needed when port is set")
   }
@@ -78,15 +96,12 @@ ExportToCellbrowser <- function(
     stop("Output directory ", dir, " cannot be created or is a file")
   }
 
-  order <- object@cell.names
   enum.fields <- c()
 
   # Export expression matrix
   if (!skip.expr.matrix) { 
-      mat <- as.matrix(object@raw.data)
-      #mat <- as.matrix(GetAssayData(object = object, slot="counts"))
       df <- as.data.frame(mat, check.names=FALSE)
-      df <- data.frame(gene=rownames(object@data), df, check.names = FALSE)
+      df <- data.frame(gene=genes, df, check.names = FALSE)
       gzPath <- file.path(dir, "exprMatrix.tsv.gz")
       z <- gzfile(gzPath, "w")
       message("Writing expression matrix to ", gzPath)
@@ -96,9 +111,7 @@ ExportToCellbrowser <- function(
 
   # Export cell embeddings
   embeddings.conf <- c()
-  dr <- object@dr
   for (embedding in embeddings) {
-    #df <- Embeddings(object = object, reduction = embedding)
     emb <- dr[[embedding]]
     if (is.null(emb)) {
         message("Embedding ",embedding," does not exist in Seurat object. Skipping. ")
@@ -117,7 +130,7 @@ ExportToCellbrowser <- function(
       sprintf("%s.coords.tsv", embedding)
     )
     message("Writing embeddings to ", fname)
-    write.table(df[order, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
+    write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
     conf <- sprintf(
       '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
       embedding
@@ -126,7 +139,7 @@ ExportToCellbrowser <- function(
   }
 
   # Export metadata
-  df <- data.frame(row.names = object@cell.names, check.names=FALSE)
+  df <- data.frame(row.names = cellOrder, check.names=FALSE)
   for (field in meta.fields) {
     if (field == ".ident") {
       df$Cluster <- idents
@@ -138,7 +151,7 @@ ExportToCellbrowser <- function(
       }
       #df[[name]] <- object[[field]][, 1]
       #df[[name]] <- FetchData(object, field)[, 1]
-      df[[name]] <- object@meta.data[[field]]
+      df[[name]] <- meta[[field]]
       if (!is.numeric(df[[name]])) {
         enum.fields <- c(enum.fields, name)
       }
@@ -148,7 +161,7 @@ ExportToCellbrowser <- function(
 
   fname <- file.path(dir, "meta.tsv")
   message("Writing meta data to ", fname)
-  write.table(df[order, ], sep="\t", file=fname, quote = FALSE, row.names=FALSE)
+  write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names=FALSE)
 
   # Export markers
   markers.string <- ''
@@ -167,22 +180,34 @@ ExportToCellbrowser <- function(
   if (is.null(markers.file) && skip.markers) {
     file <- NULL
   }
+
   if (is.null(markers.file) && !skip.markers) {
     if (length(levels(idents)) > 1) {
-      message("Running FindAllMarkers(), using wilcox test, min logfc diff 0.35, and writing top ", markers.n, ", cluster markers to ", fname)
-      markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="wilcox", logfc.threshold = 0.25)
-      markers.helper <- function(x) {
-        partition <- markers[x,]
-        ord <- order(partition$p_val_adj < 0.05, -partition$avg_logFC)
-        res <- x[ord]
-        naCount <- max(0, length(x) - markers.n)
-        res <- c(res[1:markers.n], rep(NA, naCount))
-        return(res)
+
+          markers.helper <- function(x) {
+            partition <- markers[x,]
+            ord <- order(partition$p_val_adj < 0.05, -partition$avg_logFC)
+            res <- x[ord]
+            naCount <- max(0, length(x) - markers.n)
+            res <- c(res[1:markers.n], rep(NA, naCount))
+            return(res)
+          }
+
+      if (.hasSlot(object, "misc") && !is.null(object@misc["markers"])) {
+          message("Found precomputed markers in obj@misc['markers']")
+          markers <- object@misc["markers"]$markers
+      } else {
+          message("Running FindAllMarkers(), using wilcox test, min logfc diff 0.25")
+          markers <- FindAllMarkers(object, do.print=TRUE, print.bar=TRUE, test.use="wilcox", logfc.threshold = 0.25)
       }
+
+      message("Writing top ", markers.n, ", cluster markers to ", fname)
       markers.order <- ave(rownames(markers), markers$cluster, FUN=markers.helper)
       top.markers <- markers[markers.order[!is.na(markers.order)],]
       write.table(top.markers, fname, quote=FALSE, sep="\t", col.names=NA)
+
     } else {
+
       message("No clusters found in Seurat object and no external marker file provided, so no marker genes can be computed")
       file <- NULL
     }

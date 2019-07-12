@@ -4,7 +4,7 @@ import logging, optparse, sys, glob, os, datetime
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
-from .cellbrowser import setDebug, build, isDebugMode, generateHtmls
+from .cellbrowser import setDebug, build, isDebugMode, generateHtmls, runCommand
 
 def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
@@ -62,13 +62,48 @@ def runRscript(scriptFname, logFname):
     assert(err==0)
     logging.info("Wrote logfile of R run to %s" % logFname)
 
-def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
+def checkRVersion():
+    " make sure that we have > 3.4"
+    logging.debug("Checking R version")
+    cmd = ["Rscript", "-e",  "ver = R.Version(); if (ver$major<3 || (ver$major==3 && ver$minor < 4)) { stop('Sorry, Seurat requires at least R 3.4') } "]
+    runCommand(cmd)
+
+def getSeuratVersion():
+    " return current Seurat version "
+    logging.debug("Checking Seurat version")
+    cmd = ["Rscript", "-e",  "message(packageVersion('Seurat'))"]
+    proc, stdout = popen(cmd, useStderr=True)
+    if proc is None:
+        return None
+    else:
+        verStr = stdout.readline()
+        logging.debug("version is %s", verStr)
+        return verStr
+
+def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
     " write the seurat R script to a file "
+    checkRVersion()
+
+    version = getSeuratVersion()
+    if version is None:
+        logging.warn("Seurat is not installed, trying to install it now")
+        cmd = ["Rscript", "-e", "install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')"]
+        runCommand(cmd)
+        version = getSeuratVersion()
+        if version is None:
+            errAbort("Could not find or install Seurat")
+
+    if version.split(".")[0]=="3":
+        isSeurat3 = True
+    else:
+        isSeurat3 = False
+
     cmds = []
     # try to install Seurat if not already installed
     cmds.append("ver = R.Version()")
     cmds.append("if (ver$major<3 || (ver$major==3 && ver$minor < 4)) { error('Sorry, Seurat requires at least R 3.4') } ")
-    cmds.append("if (!require('Seurat',character.only = TRUE)) { install.packages(c('Seurat', 'data.table'), dep=TRUE, repos='http://cran.r-project.org/')}")
+    cmds.append("message('Seurat loaded, version ', packageVersion('Seurat'))")
+    cmds.append('print("Seurat: Reading data")')
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
     cmds.append('print("Seurat: Reading data")')
@@ -80,15 +115,17 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
             logging.error("You specified an .mtx file as the input matrix")
             logging.error("Seurat cannot read that. You need to specify the directory name, with a file matrix.mtx in it.")
             logging.error("The directory also has to contain two other files, genes.tsv and barcodes.tsv")
-            logging.error("Please rename your input files if necessary")
+            logging.error("They have to be called like this. Please rename your input files if necessary.")
             exit(1)
 
         if inData.endswith(".rds"):
             cmds.append('mat = readRDS(file = "%s")' % inData)
         else:
             if ".csv" in inData:
+                cmds.append('print("Loading csv file with read.table")')
                 cmds.append('mat = read.table("%s",sep=",",header=TRUE,row.names=1)' % inData)
             else:
+                cmds.append('print("Loading tsv file with read.delim")')
                 cmds.append('mat = read.delim("%s",header=TRUE,row.names=1)' % inData)
     else:
         matrixFname = join(inData, "matrix.mtx")
@@ -99,62 +136,86 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     undoLog = conf.get("undoLog", False)
     if undoLog:
         cmds.append('print("Undoing log2 on matrix, doing 2^mat")')
-        cmds.append('mat <- 2^mat')
+        cmds.append('mat <- 2^(mat-1)')
 
     minCells = conf.get("minCells", 3)
     minGenes = conf.get("minGenes", 200)
 
     cmds.append('print("Seurat: Setup")')
-    cmds.append('sobj <- CreateSeuratObject(raw.data = mat, min.cells=%d, min.genes=%d)' % (minCells, minGenes))
+    if isSeurat3:
+        cmds.append('sobj <- CreateSeuratObject(mat)')
+    else:
+        cmds.append('sobj <- CreateSeuratObject(raw.data = mat, min.cells=%d, min.genes=%d)' % (minCells, minGenes))
     #cmds.append('sobj=Setup(nbt,project = "NBT",min.cells = 3,names.field = 2,names.delim = "_",min.genes = 500, do.logNormalize = F, total.expr = 1e4)')
     cmds.append('sobj') # print size of the matrix
 
     # export the matrix as a proper .tsv.gz
-    cmds.append('print("Writing expression matrix to %s")' % matrixPath)
-    cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
-    # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
-    # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
-    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
-    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
-    #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') #  scaled
-    cmds.append('z <- gzfile("%s")' % matrixPath)
-    cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
+    if matrixPath:
+        cmds.append('print("Writing expression matrix to %s")' % matrixPath)
+        cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+        # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
+        # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
+        #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
+        #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
+        #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') #  scaled
+        cmds.append('z <- gzfile("%s")' % matrixPath)
+        cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
 
     # find mito genes, mito-%, and create plots for it
     # XX - ENSG names?
-    cmds.append('mito.genes <- grep(pattern = "^MT-", x = rownames(x = sobj@data), value = TRUE)')
-    cmds.append('percent.mito <- Matrix::colSums(sobj@raw.data[mito.genes, ])/Matrix::colSums(sobj@raw.data)')
-    cmds.append('sobj <- AddMetaData(object = sobj, metadata = percent.mito, col.name = "percent.mito")')
-    cmds.append('VlnPlot(object = sobj, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)')
-    cmds.append('par(mfrow = c(1, 2))')
-    cmds.append('GenePlot(object = sobj, gene1 = "nUMI", gene2 = "percent.mito")')
-    cmds.append('GenePlot(object = sobj, gene1 = "nUMI", gene2 = "nGene")')
+    if isSeurat3:
+        cmds.append('sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")')
+    else:
+        cmds.append('mito.genes <- grep(pattern = "^MT-", x = rownames(x = sobj@data), value = TRUE)')
+        cmds.append('percent.mito <- Matrix::colSums(sobj@raw.data[mito.genes, ])/Matrix::colSums(sobj@raw.data)')
+        cmds.append('sobj <- AddMetaData(object = sobj, metadata = percent.mito, col.name = "percent.mito")')
+
+    if isSeurat3:
+        cmds.append('VlnPlot(object = sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), nCol = 3)')
+        #cmds.append('plot1 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt")')
+        #cmds.append('plot2 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")')
+        #cmds.append('CombinePlots(plots = list(plot1, plot2))')
+    else:
+        cmds.append('VlnPlot(object = sobj, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)')
+        cmds.append('par(mfrow = c(1, 2))')
+        cmds.append('GenePlot(object = sobj, gene1 = "nUMI", gene2 = "percent.mito")')
+        cmds.append('GenePlot(object = sobj, gene1 = "nUMI", gene2 = "nGene")')
+
 
     # remove cells with > mitoMax and a gene count < minGenes or > maxGenes
     mitoMax=conf.get("mitoMax", 0.05)
     maxGenes=conf.get("maxGenes", 2500)
 
     # filter based on mito%
-    cmds.append('print("Removing cells with more than %f percent of mitochondrial genes")' % mitoMax)
+    cmds.append('print("Removing cells with more than %f percent of mitochondrial genes")' % (100*mitoMax))
     cmds.append('print("Keeping only cells with a geneCount %d-%d")' % (minGenes, maxGenes))
-    cmds.append('sobj <- FilterCells(object = sobj, subset.names = c("nGene", "percent.mito"), low.thresholds = c(%(minGenes)d, -Inf), high.thresholds = c(%(maxGenes)d, %(mitoMax)f))' % locals())
+
+    if isSeurat3:
+        cmds.append('sobj <- subset(sobj, subset = nFeature_RNA > %(minGenes)d & nFeature_RNA < %(maxGenes)d & percent.mt < %(mitoMax)f)' % locals())
+    else:
+        cmds.append('sobj <- FilterCells(object = sobj, subset.names = c("nGene", "percent.mito"), low.thresholds = c(%(minGenes)d, -Inf), high.thresholds = c(%(maxGenes)d, %(mitoMax)f))' % locals())
     cmds.append('sobj') # print size of the matrix
 
     # do the log
     cmds.append('sobj <- NormalizeData(object = sobj, normalization.method = "LogNormalize", scale.factor = 10000)')
 
-    # find most variable genes and gate on it
-    minMean = conf.get("varMinMean", 0.0125)
-    maxMean = conf.get("varMaxMean", 3)
-    minDisp = conf.get("varMinDisp", 0.5)
-
-    cmds.append('sobj <- FindVariableGenes(object = sobj, mean.function = ExpMean, dispersion.function = LogVMR, '
-        'x.low.cutoff = %f, x.high.cutoff = %f, y.cutoff = %s)' % (minMean, maxMean, minDisp))
-    #cmds.append('length(x = sobj@var.genes)')
+    if isSeurat3:
+        cmds.append('sobj <- FindVariableFeatures(sobj, selection.method = "vst", nfeatures = 2000)')
+    else:
+        # find most variable genes and gate on it
+        minMean = conf.get("varMinMean", 0.0125)
+        maxMean = conf.get("varMaxMean", 3)
+        minDisp = conf.get("varMinDisp", 0.5)
+        cmds.append('sobj <- FindVariableGenes(object = sobj, mean.function = ExpMean, dispersion.function = LogVMR, '
+            'x.low.cutoff = %f, x.high.cutoff = %f, y.cutoff = %s)' % (minMean, maxMean, minDisp))
+        #cmds.append('length(x = sobj@var.genes)')
     cmds.append('sobj') # print size of the matrix
 
     # scale
-    cmds.append('sobj <- ScaleData(object = sobj, vars.to.regress = c("nUMI", "percent.mito"))')
+    if isSeurat3:
+        cmds.append('sobj <- ScaleData(object = sobj)')
+    else:
+        cmds.append('sobj <- ScaleData(object = sobj, vars.to.regress = c("nUMI", "percent.mito"))')
 
     # PCA
     cmds.append('print("Running PCA")')
@@ -168,14 +229,18 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
         #cmds.append('JackStrawPlot(object = sobj, PCs = 1:12)')
         #cmds.append('sobj <- RunPCA(object = sobj, pcs.compute = 50, pc.genes = sobj@var.genes, do.print = FALSE, pcs.print = 1:5, genes.print = 5)')
     #else:
-    cmds.append('sobj <- RunPCA(object = sobj, pcs.compute = %d, pc.genes = sobj@var.genes, do.print = FALSE, pcs.print = 1:5, genes.print = 5)' % pcCountConfig)
-    cmds.append('print("PCA plots")')
-    cmds.append('VizPCA(object = sobj, pcs.use = 1:2)')
-    cmds.append('PCAPlot(object = sobj, dim.1 = 1, dim.2 = 2)')
-    #cmds.append('sobj <- ProjectPCA(object = sobj, do.print = FALSE)')
-    cmds.append('PCHeatmap(object = sobj, pc.use = 1:8, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)')
-
-    cmds.append('PCElbowPlot(object = sobj)')
+    if isSeurat3:
+        cmds.append('sobj <- RunPCA(sobj, npcs = %d)' % pcCountConfig)
+        cmds.append('VizDimLoadings(sobj, dims = 1:2, reduction = "pca")')
+        cmds.append('VizDimLoadings(sobj, dims = 2:3, reduction = "pca")')
+    else:
+        cmds.append('sobj <- RunPCA(object = sobj, pcs.compute = %d, pc.genes = sobj@var.genes, do.print = FALSE, pcs.print = 1:5, genes.print = 5)' % pcCountConfig)
+        cmds.append('print("PCA plots")')
+        cmds.append('VizPCA(object = sobj, pcs.use = 1:2)')
+        cmds.append('PCAPlot(object = sobj, dim.1 = 1, dim.2 = 2)')
+        #cmds.append('sobj <- ProjectPCA(object = sobj, do.print = FALSE)')
+        cmds.append('PCHeatmap(object = sobj, pc.use = 1:8, cells.use = 500, do.balanced = TRUE, label.columns = FALSE)')
+        cmds.append('PCElbowPlot(object = sobj)')
 
     #if pcCountConfig == "auto":
         #cmds.append('sobj <- JackStraw(object = sobj, num.replicate = 100, display.progress = FALSE)')
@@ -190,34 +255,58 @@ def writeSeurat2Script(conf, inData, tsnePath, clusterPath, markerPath, rdsPath,
     louvainRes = conf.get("louvainRes", 0.6)
     cmds.append('print("Finding clusters with resolution %f")' % louvainRes)
     #cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", dims.use = 1:pcCount, resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
-    cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
+    if isSeurat3:
+        cmds.append('sobj <- FindNeighbors(sobj)')
+        cmds.append('sobj <- FindClusters(sobj, resolution = %f)' % louvainRes)
+    else:
+        cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
+        cmds.append("PrintFindClustersParams(object = sobj)")
 
-    cmds.append("PrintFindClustersParams(object = sobj)")
 
     cmds.append('print("Running t-SNE")')
     #cmds.append("sobj <- RunTSNE(object = sobj, dims.use = 1:pcCount, do.fast = TRUE)")
     # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
-    cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE)")
-    cmds.append("TSNEPlot(object = sobj, doLabel=T)")
+    if isSeurat3:
+        cmds.append("sobj <- RunTSNE(sobj)")
+        cmds.append("sobj <- RunUMAP(sobj)")
+    else:
+        cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE)")
+        cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)
     cmds.append('print("Finding markers")')
-    cmds.append('all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
+    cmds.append('if (!is.null(sobj@misc["markers"])) {')
+    cmds.append('   all.markers <- sobj@misc["markers"]')
+    cmds.append('} else {')
+    if isSeurat3:
+        cmds.append('    all.markers <- FindAllMarkers(object = sobj)')
+        cmds.append('    sobj@misc["markers"] <- all.markers')
+    else:
+        cmds.append('    all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
+
+    cmds.append('}')
+    cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
 
     cmds.append('print("Saving .rds to %s")' % rdsPath)
     cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
     # export the data to tsvs
-    cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-    cmds.append('write.table(tsne12, "%s", quote=FALSE, sep="\t", col.names=NA)' % tsnePath)
-    cmds.append('clusters <- FetchData(sobj,c("ident"))')
+    if isSeurat3:
+        #cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
+        #cmds.append('umap12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
+        pass
+
+    else:
+        cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
+        cmds.append('clusters <- FetchData(sobj,c("ident"))')
+        cmds.append('PrintCalcParams(sobj, calculation = "RunPCA")')
+        cmds.append('PrintCalcParams(sobj, calculation = "RunTSNE")')
+
     cmds.append('colnames(clusters) <- c("cellId\tCluster")')
+    cmds.append('write.table(tsne12, "%s", quote=FALSE, sep="\t", col.names=NA)' % tsnePath)
     cmds.append('write.table(clusters, "%s", quote=FALSE, sep="\t")' % clusterPath)
     # marker file is the flag file for successful operation
-    cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
 
-    cmds.append('PrintCalcParams(sobj, calculation = "RunPCA")')
-    cmds.append('PrintCalcParams(sobj, calculation = "RunTSNE")')
 
     ofh = open(scriptPath, "w")
     for c in cmds:
@@ -261,20 +350,28 @@ def cbSeuratCli():
     matrixPath = join(outDir, "exprMatrix.tsv.gz")
 
     inConf = maybeLoadConfig(inConfFname)
-    writeSeurat2Script(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
+
+    confArgs = {"clusterField":"Cluster"}
+    if inConf.get("skipMatrixExport", False):
+        confArgs["exprMatrix"] = inMatrix
+        matrixPath = None
+
+    writeSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
     coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
-    writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
+
+
+    writeCellbrowserConf(datasetName, coords, cbConfPath, args=confArgs)
 
     generateHtmls(datasetName, outDir)
 
-def cbImportSeurat2_parseArgs(showHelp=False):
+def cbImportSeurat_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] -i input.rds -o outDir [-n datasetName] - convert Seurat2 object to cellbrowser
+    parser = optparse.OptionParser("""usage: %prog [options] -i input.rds -o outDir [-n datasetName] - convert Seurat object to cellbrowser
 
     Example:
     - %prog -i pbmc3k.rds -o pbmc3kSeurat - convert pbmc3k to directory of tab-separated files
@@ -324,8 +421,8 @@ def cbImportSeurat2_parseArgs(showHelp=False):
     return args, options
 
 def readExportScript(cmds):
-    " find the ExportToCellbrowser-seurat2.R script and add the commands between # --- to cmds "
-    fname = join(dirname(__file__), "R", "ExportToCellbrowser-seurat2.R")
+    " find the ExportToCellbrowser-seurat.R script and add the commands between # --- to cmds "
+    fname = join(dirname(__file__), "R", "ExportToCellbrowser-seurat.R")
 
     blockFound = False
     for line in open(fname):
@@ -346,8 +443,8 @@ def writeRScript(cmds, scriptPath, madeBy):
         ofh.write("\n")
     ofh.close()
 
-def cbImportSeurat2(rdsPath, outDir, datasetName, options):
-    " convert Seurat2 .rds file to tab-sep directory for cellbrowser "
+def cbImportSeurat(rdsPath, outDir, datasetName, options):
+    " convert Seurat 2 or 3 .rds file to tab-sep directory for cellbrowser "
     logging.info("inFname: %s, outDir: %s, datasetName: %s" % (rdsPath, outDir, datasetName))
 
     makeDir(outDir)
@@ -375,7 +472,7 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
 
     cmds.append("message('Reading %s')" % rdsPath)
     cmds.append("sobj <- readRDS(file='%s')" % rdsPath)
-    cmds.append("if (class(sobj)!='seurat') { stop('The input .rds file does not seem to contain a Seurat object') }")
+    cmds.append("if (class(sobj)!='seurat' && class(sobj)[1]!='Seurat') { stop('The input .rds file does not seem to contain a Seurat object') }")
     skipStr = str(skipMatrix).upper()
     skipMarkerStr = str(skipMarkers).upper()
     if isDebugMode():
@@ -389,7 +486,7 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
     cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE)" %
             (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr))
 
-    writeRScript(cmds, scriptPath, "cbImportSeurat2")
+    writeRScript(cmds, scriptPath, "cbImportSeurat")
     runRscript(scriptPath, logPath)
     if not isfile(metaPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
@@ -400,21 +497,21 @@ def cbImportSeurat2(rdsPath, outDir, datasetName, options):
 
     generateHtmls(datasetName, outDir)
 
-def cbImportSeurat2Cli():
+def cbImportSeuratCli():
     " convert .rds to directory "
-    args, options = cbImportSeurat2_parseArgs()
+    args, options = cbImportSeurat_parseArgs()
 
     inFname = options.inRds
     outDir = options.outDir
     if None in [inFname, outDir]:
-        cbImportSeurat2_parseArgs(showHelp=True)
+        cbImportSeurat_parseArgs(showHelp=True)
         errAbort("You need to specify at least an input rds file and an output directory")
 
     datasetName = options.datasetName
     if datasetName is None:
         datasetName = basename(outDir.rstrip("/"))
 
-    cbImportSeurat2(inFname, outDir, datasetName, options)
+    cbImportSeurat(inFname, outDir, datasetName, options)
 
     if options.port and not options.htmlDir:
         errAbort("--port requires --htmlDir")

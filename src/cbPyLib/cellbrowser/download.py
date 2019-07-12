@@ -242,7 +242,7 @@ def writeQuickGenes(topGenes, outFname):
     ofh.close()
     logging.info("Wrote %s" % outFname)
 
-def makeBasicCbConf(name, shortLabel, matrixFname="exprMatrix.tsv.gz"):
+def makeBasicCbConf(name, shortLabel, hasInferred, matrixFname="exprMatrix.tsv.gz"):
     " just fill a basic conf dict and return it "
     c = OrderedDict()
     c["name"] = name
@@ -252,8 +252,16 @@ def makeBasicCbConf(name, shortLabel, matrixFname="exprMatrix.tsv.gz"):
     c["#priority"] = "10"
     c["tags"] = ["ebi"]
     c["enumFields"] = "cluster"
-    c["clusterField"] = "cluster"
-    c["labelField"] = "cluster"
+
+    if hasInferred:
+        clusterField = "inferred cell type"
+        c["acroFname"] = "acronyms.tsv"
+    else:
+        clusterField = "cluster"
+
+    c["clusterField"] = clusterField
+    c["labelField"] = clusterField
+
     c["#unit"] = "TPM"
     c["coords"] = [{"file":"tsne_perp25.coords.tsv", "shortLabel" : "t-SNE Perp=25"}]
     c["markers"] = [{"file":"markers.tsv", "shortLabel":"Cluster-specific genes"}]
@@ -354,13 +362,28 @@ def findBoringFields(cellMetaDict):
 
     boringFields = {}
     for fieldName, vals in iterItems(fieldValues):
-        if fieldName.endswith("_FILE_NAME") or fieldName.endswith("_URI"):
+        if fieldName.endswith("_FILE_NAME") or fieldName.endswith("_URI") or fieldName=="single cell identifier":
             logging.debug("Skipping field %s" % fieldName)
             boringFields[fieldName] = None
             continue
         if len(vals)==1:
             boringFields[fieldName] = list(vals)[0]
     return boringFields
+
+def writeAcronyms(cellMeta, acroFname):
+    " extract acronyms from inferred cell name field "
+    ofh = open(acroFname, "w")
+    for cellId, metaDict in iterItems(cellMeta):
+        cellName = metaDict.get("inferred cell type")
+        if cellName and "(" in cellName:
+            longName, shortName = cellName.split("(")
+            longName = longName.strip()
+            shortName = shortName.strip(")")
+            metaDict["inferred cell type"] = shortName
+            ofh.write(shortName+"\t"+longName+"\n")
+    ofh.close()
+    logging.info("Wrote %s" % ofh.name)
+    return cellMeta
 
 def convertFromEbi(origDir, acc, outDir):
     " convert single cell expression files to cell browser format "
@@ -388,10 +411,6 @@ def convertFromEbi(origDir, acc, outDir):
     cellMeta = parseCondSdrf(sampleNames, condSdrfFname)
     boringFields = findBoringFields(cellMeta)
 
-    # write the meta 
-    metaFname = join(outDir, "meta.tsv")
-    writeMeta(clusters, sampleNames, fieldNames, boringFields, cellMeta, metaFname)
-
     # default perp is 25
     coordFname = join(origDir, acc+".tsne_perp_25.tsv")
     newCoordFname = join(outDir, "tsne_perp25.coords.tsv")
@@ -405,9 +424,19 @@ def convertFromEbi(origDir, acc, outDir):
     descFname = join(outDir, "desc.conf")
     writePyConf(datasetDesc, descFname)
 
+    # write acronyms and add the short names to the meta data
+    hasInferred = ("inferred cell type" in fieldNames)
+    if hasInferred:
+        acroFname = join(outDir, "acronyms.tsv")
+        cellMeta = writeAcronyms(cellMeta, acroFname)
+
+    # write the meta 
+    metaFname = join(outDir, "meta.tsv")
+    writeMeta(clusters, sampleNames, fieldNames, boringFields, cellMeta, metaFname)
+
     # cellbrowser.conf file
     confFname = join(outDir, "cellbrowser.conf")
-    conf = makeBasicCbConf(acc, datasetDesc["title"])
+    conf = makeBasicCbConf(acc, datasetDesc["title"], hasInferred)
     writePyConf(conf, confFname)
 
     mtxName = join(origDir, acc+".aggregated_filtered_counts.mtx.gz")
@@ -415,7 +444,8 @@ def convertFromEbi(origDir, acc, outDir):
     geneNamesFname = join(origDir, acc+".aggregated_filtered_counts.decorated.mtx_rows")
     outMatName = join(outDir, "exprMatrix.tsv.gz")
     #runGzip(inMatName, outMatName)
-    mtxToTsvGz(mtxName, geneNamesFname, sampleNamesFname, outMatName)
+    if not isfile(outMatName):
+        mtxToTsvGz(mtxName, geneNamesFname, sampleNamesFname, outMatName)
 
 def cbGetCli():
     " run downloaders "
