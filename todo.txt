@@ -1,17 +1,24 @@
-URGENT:
+Wed Jul 17 16:04:27 PDT 2019
+- Tom: need custom genes / my genes
+- Tom: change size and transparency
+
+Mon Jul  8 10:52:43 PDT 2019
+- Jim: "Open" for collections should show collection, not dataset
+
+urgent:
 - colors are not saved anymore!
-- mouse cursor does not change
+
 - intro page upon first start, make tutorial less intrusive
 - system to show notes at the top, and never show these again.
 
 immediate:
 - remove forceAtlas2 for big datasets in cbScanpy
-- format the cluster names as links and make them clickable to show the markers
 
 - make browsers:
   - Dana Peer
-  - Tara
-  - Scheuermann
+  - Tara?
+  - Scheuermann?
+  - SRA
 
 - when downloading the image, add the legend
 
@@ -43,3 +50,5 @@ Done:
 - implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
 - menu entry for data set info?
+- mouse cursor does not change
+- format the cluster names as links and make them clickable to show the markers

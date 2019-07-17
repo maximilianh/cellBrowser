@@ -2112,6 +2112,7 @@ def parseMarkerTable(filename, geneToSym):
         otherEnd = 9999
 
     otherHeaders = headers[otherStart:otherEnd]
+    logging.debug("Other headers: %s" % otherHeaders)
 
     data = defaultdict(list)
     otherColumns = defaultdict(list)
@@ -2145,6 +2146,7 @@ def parseMarkerTable(filename, geneToSym):
         if otherColType[colIdx]!="string":
             header = header+"|"+otherColType[colIdx]
         otherHeadersWithType.append(header)
+    logging.debug("Other headers with type: %s" % otherHeadersWithType)
 
     newHeaders = ["id", "symbol", headers[scoreIdx]+"|float"]
     newHeaders.extend(otherHeadersWithType)
@@ -2163,7 +2165,7 @@ def parseMarkerTable(filename, geneToSym):
     for clusterName, rows in iterItems(data):
         rows.sort(key=operator.itemgetter(2), reverse=revSort)
 
-    return data, otherHeaders
+    return data, newHeaders
 
 def splitMarkerTable(filename, geneToSym, outDir):
     """ split .tsv on first field and create many files in outDir with columns 2-end.
@@ -2498,6 +2500,8 @@ def parseGeneInfo(geneToSym, fname):
     sep = sepForFile(fname)
     geneInfo = []
     for line in openFile(fname):
+        if line.startswith("#"):
+            continue
         hasDesc = False
         hasPmid = False
         if line.startswith("symbol"):
