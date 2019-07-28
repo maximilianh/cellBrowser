@@ -5,6 +5,7 @@ from collections import defaultdict, namedtuple
 from os.path import join, basename, dirname, isfile
 
 from .cellbrowser import openStaticFile, staticFileNextRow, openFile, splitOnce, iterItems, lineFileNextRow, setDebug
+from .cellbrowser import readGeneSymbols
 
 dataDir = "geneAnnot"
 
@@ -224,6 +225,7 @@ def parseSimpleMap(inFname):
 def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmim, entrezToCosmic, entrezToHpo, entrezToLmd, entrezToEuroexpress, humanToMouseEntrezList, mouseEntrezToBrainspanMouseDev):
     " "
     headers = None
+    geneToSym = -1
     for row in lineFileNextRow(inFname):
         if headers is None:
             headers = list(row._fields)
@@ -232,6 +234,13 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
             headers.append("_geneLists")
             yield headers
         sym = row[1]
+
+        # convert gene IDs to symbols
+        if geneToSym is -1:
+            geneToSym = readGeneSymbols(None, [sym])
+        if geneToSym is not None:
+            sym = geneToSym.get(sym, sym)
+
         hprdClass = ""
         entrezId = symToEntrez.get(sym)
         omimId = entrezToOmim.get(entrezId, "")
@@ -284,6 +293,7 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
                     exprParts.append("BrainSpMouseDev|"+mouseEntrezToBrainspanMouseDev[mouseEntrez])
 
         row = list(row)
+        row[1] = sym # in case the original ID was a geneID, not a symbol
 
         row.append(hprdClass)
         row.append(";".join(exprParts))
