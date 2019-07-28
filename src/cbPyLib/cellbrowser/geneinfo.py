@@ -29,7 +29,7 @@ def parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] inFname outFname - annotate a tab-sep gene list file with information from other databases
             
-    A minimal input file has a header line with at one field called "gene" (=symbol) and
+    A minimal input file has a header line with at one field called "gene" (=symbol or ENS/Entrez geneID) and
     one field called "cluster".
     
     In the cellbrowser, the cluster name should match the cluster name in the meta data file.""")
