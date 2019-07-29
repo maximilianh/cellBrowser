@@ -16,12 +16,13 @@ please contact us at cells@ucsc.edu. We are happy to add any dataset.
 
 This is a viewer for a static, precomputed layout. If you're looking for an interative layout, where you can 
 move the cells around and run algorithsm interactively, try Chan-Zuckerberg's own cellxgene or Spring.
+Another viewer is `Scope <http://scope.aertslab.org/>`_.
 
 Apart from labs at UCSC, UCSF and Gladstone who host their data at
 cells.ucsc.edu, other groups have setup their own cell browsers:
 
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
-* Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in <a href="https://www.biorxiv.org/content/10.1101/351130v1">Zhang et al. 2018</a> and <a href="https://www.biorxiv.org/content/10.1101/382846v1">Der et al. 2018</a>
+* Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
 * The Seurat3Wizard, demo at http://nasqar.abudhabi.nyu.edu/SeuratV3Wizard, builds a cell browser as its last step
 
 Funded by the California Institute of Regenerative Medicine and the
