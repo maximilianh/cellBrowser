@@ -3,10 +3,9 @@
 Thanks for taking the time to contribute!
 
 You've found a bug or have an idea for a feature? 
-Great! You can open an issue in Github. If you don't know that means, just email us
+Great! You can open an issue in Github. If you don't know what that means, just email us
 at cells@ucsc.edu. We are happy about any pull requests. We try to get back to you within 1-2 days, especially on obvious bugs.
-Before you submit a pull request, don't hesitate to ask. Maybe we are already working on it or have some opinion how to 
-best implement something.
+Before you submit a pull request, don't hesitate to ask by email or via an issue. Maybe we are already working on it or have some opinion how to best implement something.
 
 ## Contribution Guidelines
 
