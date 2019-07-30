@@ -350,9 +350,9 @@ def main_parseArgs():
     return args, options
 
 # ---- GLOBAL ----
-defOutDir = getConfig("htmlDir")
+defOutDir = expanduser(getConfig("htmlDir"))
 if defOutDir is None:
-    defOutDir = os.environ.get("CBOUT")
+    defOutDir = expanduser(os.environ.get("CBOUT"))
 # ---- GLOBAL END ----
 
 def cbBuild_parseArgs(showHelp=False):
@@ -3258,7 +3258,6 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     import numpy as np
     import pandas as pd
-    #import scanpy.api as sc
     import anndata
 
     if not skipMatrix:
@@ -3590,8 +3589,7 @@ def cbBuildCli():
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
-    import scanpy.api as sc
-    #adata = sc.read(matFname)
+    import scanpy as sc
     if matrixFname.endswith(".mtx"):
         import pandas as pd
         logging.info("Loading expression matrix: mtx format")
@@ -3617,7 +3615,7 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
 
     else:
         logging.info("Loading expression matrix: scanpy-supported format, like h5ad, loom, tab-separated, etc.")
-        adata = sc.read(matrixFname, cache=False , first_column_names=True)
+        adata = sc.read(matrixFname, first_column_names=True)
         if not samplesOnRows:
             logging.debug("Scanpy defaults to samples on lines, so transposing the expression matrix")
             adata = adata.T
@@ -4205,7 +4203,7 @@ def getObsmKeys(adata):
 def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     """ run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data.
     Return an adata object. Optionally keeps a copy of the raw matrix in adata.raw """
-    import scanpy.api as sc
+    import scanpy as sc
     import pandas as pd
     import numpy as np
     import warnings
@@ -4271,17 +4269,18 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         adata = addMetaToAnnData(adata, inMeta)
 
     sampleCount = len(adata.obs)
-    useRaw = conf["useRaw"]
 
     bigDataset = False
-    if sampleCount < 400000:
-        adata.raw = adata # this is doing much more than assigning, it calls implicitely a function that copies
-        # a few things around. See the anndata source code under basic.py
-    else:
+    if sampleCount < 140000:
         bigDataset = True
-        logging.info("Big dataset: not keeping a .raw copy of the data to save RAM during analysis")
 
-    #anndataMatrixToTsv(adata, outMatrixFname, useRaw=useRaw)
+    #useRaw = conf["useRaw"]
+    #if useRaw and not bigDataset:
+        #adata.raw = adata # this is doing much more than assigning, it calls implicitely a function that copies
+        ## a few things around. See the anndata source code under basic.py
+    #else:
+        #bigDataset = True
+        #logging.info("Big dataset: not keeping a .raw copy of the data to save memory during analysis")
 
     if conf["doExp"]:
         pipeLog("Undoing log2 of data")
@@ -4298,7 +4297,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     if conf["doTrimGenes"]:
         minCells = conf["minCells"]
         pipeLog("Basic filtering: keep only gene with min %d cells" % (minCells))
-        sc.pp.filter_genes(adata, min_cells=minCells)
+        sc.pp.filter_genes(adata, min_cells=minCells) # adds n_counts to adata.obs?
 
     pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
@@ -4308,6 +4307,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
 
     if not "n_counts" in list(adata.obs.columns.values):
+        logging.debug("Adding obs.n_counts")
         adata.obs['n_counts'] = np.sum(adata.X, axis=1)
 
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
@@ -4357,10 +4357,12 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         pipeLog("Remove cells with less than %d and more than %d genes" % (low_thrsh_genes, up_thrsh_genes))
 
         #Filtering out cells according to filter parameters
-        pipeLog('Filtering cells')
+        pipeLog('Keeping only cells with < %d genes' % up_thrsh_genes)
         adata = adata[adata.obs['n_genes'] < up_thrsh_genes, :]
-        adata = adata[adata.obs['n_genes'] > low_thrsh_genes, :]
+        pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
+        pipeLog('Keeping only cells with > %d genes' % low_thrsh_genes)
+        adata = adata[adata.obs['n_genes'] > low_thrsh_genes, :]
         pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
     if conf["doNormalize"]:
