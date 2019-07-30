@@ -350,9 +350,13 @@ def main_parseArgs():
     return args, options
 
 # ---- GLOBAL ----
-defOutDir = expanduser(getConfig("htmlDir"))
+defOutDir = getConfig("htmlDir")
 if defOutDir is None:
-    defOutDir = expanduser(os.environ.get("CBOUT"))
+    defOutDir = os.environ.get("CBOUT")
+
+if defOutDir is not None:
+    defOutDir = expanduser(defOutDir)
+
 # ---- GLOBAL END ----
 
 def cbBuild_parseArgs(showHelp=False):
@@ -3578,7 +3582,7 @@ def cbBuildCli():
             logging.error("File %s does not exist." % fname)
             cbBuild_parseArgs(showHelp=True)
     if options.outDir is None:
-        logging.error("You have to specify at least the output directory or set the env. variable CBOUT.")
+        logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cellbrowser.conf.")
         cbBuild_parseArgs(showHelp=True)
 
     outDir = options.outDir
