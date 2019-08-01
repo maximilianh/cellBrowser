@@ -3094,9 +3094,13 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
             return
 
     logging.info("Writing %s coords to %s" % (fullName, fname))
-    fa2_coord=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
-    fa2_coord.columns=['x','y']
-    fa2_coord.to_csv(fname,sep='\t')
+    coordDf=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
+
+    # why they usually only have (x,y), some objects have more than 2 dimensions
+    if len(coordDf.columns)==2:
+        coordDf.columns=['x','y']
+
+    coordDf.to_csv(fname,sep='\t')
     desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
