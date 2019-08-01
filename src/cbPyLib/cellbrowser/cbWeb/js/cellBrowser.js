@@ -567,8 +567,9 @@ var cellbrowser = function() {
         // downloads pane
         htmls.length = 0;
         if (desc.coordFiles===undefined) {
-            htmls.push("Please select one of the datasets on the left and click the 'Info' button ");
-            htmls.push("then to show more information about how each data set was processed and how to download it.");
+            htmls.push("To download the data for datasets in this collection: open the collection, "); 
+            htmls.push("select a dataset in the list to the left, and navigate to the 'Data Download' tab. ");
+            htmls.push("This information can also be accessed while viewing a dataset by clicking the 'Info' button.");
         } else {
             htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
             htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
