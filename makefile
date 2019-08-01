@@ -14,9 +14,7 @@ pip:
 	rm -rf build/*
 	rm -rf dist/*
 	rm -rf build/*
-	python2 setup.py sdist bdist_wheel
-	python3 setup.py sdist bdist_wheel --keep-temp
-
-up:
+	python3 setup.py sdist
+	#python3 setup.py sdist 
 	twine upload dist/*
 
