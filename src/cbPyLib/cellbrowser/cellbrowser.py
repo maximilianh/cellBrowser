@@ -2605,7 +2605,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
 
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType=matType)
 
-    if matType=="int":
+    if matType=="int" or matType=="forceInt":
         outConf["matrixArrType"] = "Uint32"
     elif matType=="float":
         outConf["matrixArrType"] = "Float32"
