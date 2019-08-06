@@ -2003,7 +2003,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
         if ret!=0 and isfile(outFname):
             os.remove(outFname)
             sys.exit(1)
-        return None
+        return matType
 
     sep = "\t"
 
