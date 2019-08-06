@@ -1239,7 +1239,7 @@ class MatrixTsvReader:
         logging.debug("spooling back %d saved rows" % len(self.oldRows))
         for (geneId, sym, arr) in self.oldRows:
             # for the integer case though we have to fix up the type now
-            if self.matType=="int":
+            if self.matType=="int" or self.matType=="forceInt":
                 if numpyLoaded:
                     arr = arr.astype(int)
                 else:
@@ -1267,6 +1267,9 @@ class MatrixTsvReader:
                     #except ValueError as ex:
                     #logging.warn("Cannot parse expression matrix. This may be due to the numbers incorrectly auto-detected as integers even if they are floating point numbers. Set matrixType='float' in cellbrowser.conf to fix this and re-run cbBuild. The exact error message was: %s" % ex)
                     #arr = map(int, rest.split(sep)) # this doesn't work in python3, requires list(), so slower
+                elif self.matType=="forceInt":
+                    #try:
+                        arr = [int(float(x)) for x in rest.split(sep)]
                 else:
                     arr = [float(x) for x in rest.split(sep)]
                     #arr = map(float, rest.split(sep))
@@ -1579,7 +1582,7 @@ def exprEncode(geneDesc, exprArr, matType):
     else:
         if matType=="float":
             arrType = "f"
-        elif matType=="int":
+        elif matType=="int" or matType=="forceInt":
             arrType = "I"
         else:
             assert(False) # internal error
@@ -2581,6 +2584,8 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     and compressed version
     """
     matType = inConf.get("matrixType")
+    if matType=="auto":
+        matType = None
 
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
