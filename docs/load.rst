@@ -38,6 +38,8 @@ Or without downloading them first::
 Scanpy
 ^^^^^^
 
+To create an anndata object in Scanpy::
+
     import scanpy as sc
     import pandas as pd
     ad = sc.read_text("exprMatrix.tsv.gz")
