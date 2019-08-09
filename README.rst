@@ -1,3 +1,6 @@
+.. image:: https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat
+   :target: http://bioconda.github.io/recipes/ucsc-cell-browser/README.html
+
 UCSC Single Cell Browser
 ========================
 
@@ -24,6 +27,14 @@ cells.ucsc.edu, other groups have setup their own cell browsers:
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
 * The Seurat3Wizard, demo at http://nasqar.abudhabi.nyu.edu/SeuratV3Wizard, builds a cell browser as its last step
+
+Additional availability
+-----------------------
+
+* Bioconda: this tool is available to install via `bioconda <https://bioconda.github.io/recipes/ucsc-cell-browser/README.html>`_
+* Biocontainers: there is a biocontainer automatically generated from the bioconda package available `here <https://quay.io/repository/biocontainers/ucsc-cell-browser>`_
+* Galaxy: there is a Galaxy tool for UCSC CellBrowser, which can be installed on any Galaxy instance via its `Galaxy Toolshed entry <https://toolshed.g2.bx.psu.edu/view/ebi-gxa/ucsc_cell_browser>`_ or it can be directly used by users at the `Human Cell Atlas Galaxy instance <https://humancellatlas.usegalaxy.eu/root?tool_id=toolshed.g2.bx.psu.edu/repos/ebi-gxa/ucsc_cell_browser/ucsc_cell_browser>`_ or as part of the example workflows, such as the `Human Cell Atlas / Scanpy CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/humancellatlas-scanpy-cellbrowser>`_ or the `EBI Single Cell Expression Atlas / Scanpy / CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/atlas-scanpy-cellbrowser-imported-from-uploaded-file>`_
+
 
 Funded by the California Institute of Regenerative Medicine and the
 Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
