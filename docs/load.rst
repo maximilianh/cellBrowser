@@ -27,7 +27,7 @@ Run these commands if you have downloaded the file as above::
     meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
     so <- CreateSeuratObject(counts = mat, project = "cellBrowserImport", meta.data=meta)
 
-Or without downloading them first
+Or without downloading them first::
 
     require(data.tables)
     mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
