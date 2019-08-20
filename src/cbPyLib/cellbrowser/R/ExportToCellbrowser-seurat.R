@@ -193,7 +193,7 @@ ExportToCellbrowser <- function(
             return(res)
           }
 
-      if (.hasSlot(object, "misc") && !is.null(object@misc["markers"])) {
+      if (.hasSlot(object, "misc") && !is.null(object@misc["markers"][[1]])) {
           message("Found precomputed markers in obj@misc['markers']")
           markers <- object@misc["markers"]$markers
       } else {

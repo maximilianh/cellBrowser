@@ -86,6 +86,12 @@ INTNAN = -2**16
 # internet browser caching
 MD5LEN = 10
 
+# list of tags that are required:
+# for cellbrowser.conf of a dataset
+reqTagsDataset =['coords', 'meta', 'exprMatrix']
+# for cellbrowser.conf of a collection
+reqTagsColl =['name', 'shortLabel']
+
 coordLabels = {
     #  generic igraph neighbor-based layouts
     "fa": "ForceAtlas2",
@@ -289,14 +295,31 @@ def execfile(filepath, globals=None, locals=None):
     with open(filepath, 'rb') as file:
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
-def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
+def readLines(lines, fname):
+    " recursively read lines from fname, understands lines like #include 'filename.conf' "
+    for line in open(fname):
+        line = line.rstrip("\r\n")
+        if line.startswith("#include"):
+            newFname = splitOnce(line, " ")[1]
+            newFname = newFname.strip('"').strip("'")
+            lines.extend(readLines(lines, newFname))
+        else:
+            lines.append(line)
+    return lines
+
+def loadConfig(fname, addName=False, requireTags=[]):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
     logging.debug("Loading settings from %s" % fname)
     g = {}
     l = OrderedDict()
-    execfile(fname, g, l)
+    g["fileBase"] = basename(fname).split('.')[0]
+    g["dirName"] = basename(dirname(fname))
+
+
+    lines = readLines([], fname)
+    exec("\n".join(lines), g, l)
 
     conf = l
 
@@ -309,11 +332,19 @@ def loadConfig(fname, requireTags=['name', 'coords', 'meta', 'exprMatrix']):
 
     conf["inDir"] = dirname(fname)
 
+    if not "name" in conf and addName:
+        name = basename(dirname(abspath(fname)))
+        logging.debug("Deriving name from directory name: %s -> %s" % (abspath(fname), name))
+        assert(name!="")
+        conf["name"] = name
+
+    if "name" in conf and "/" in conf["name"]:
+        errAbort("Config file %s contains a slash in the name. Slashes in names are no allowed" % fname)
     return conf
 
 def maybeLoadConfig(confFname):
     if isfile(confFname):
-        conf = loadConfig(confFname, requireTags=[])
+        conf = loadConfig(confFname)
     else:
         logging.debug("Could not find %s, not loading config file" % confFname)
         conf = OrderedDict()
@@ -481,35 +512,19 @@ def cbScanpy_parseArgs():
 
 kwSet = set(keyword.kwlist)
 
-def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
-    """
-    parses tab-sep file with headers in first line
-    yields collection.namedtuples
-    strips "#"-prefix from header line
-    utfHacks forces all chars to latin1 and removes anything that doesn't fit into latin1
-    """
-
-    if isinstance(inFile, str):
-        # input file is a string = file name
-        fh = openFile(inFile, mode="rtU")
-        sep = sepForFile(inFile)
-    else:
-        fh = inFile
-        sep = "\t"
-
-    line1 = fh.readline()
-    line1 = line1.strip("\n\r").lstrip("#")
-    if utfHacks:
-        line1 = line1.decode("latin1")
+def sanitizeHeaders(headers):
+    " make headers of tsv/csv file compatible with namedtuple names "
+    headers[0] = headers[0].lstrip("#")
+    #if utfHacks:
+        #line1 = line1.decode("latin1")
         # skip special chars in meta data and keep only ASCII
-        line1 = unicodedata.normalize('NFKD', line1).encode('ascii','ignore')
-    headers = line1.split(sep)
+        #line1 = unicodedata.normalize('NFKD', line1).encode('ascii','ignore')
 
     if len(headers)>=255:
         errAbort("Cannot read more than 255 columns. Are you sure that this file is in the correct format?"
                 " It may have the wrong line endings and may require treatment with dos2unix or mac2unix. "
                 " Or it may be the wrong file type for this input, e.g. an expression matrix instead of a "
-                " coordinate file.")
+                " coordinate or meta data file.")
 
     # python does unfortunately not accept reserved names as named tuple names
     # We append a useless string to avoid errors
@@ -540,28 +555,58 @@ def lineFileNextRow(inFile, utfHacks=False, headerIsRow=False):
     headers = filtHeads
 
     origHeaders = headers
-    headers = [sanitizeHeader(h) for h in headers]
+    headers = [nonAlphaToUnderscores(h) for h in headers]
+
+    return headers
+
+def csvReader(fh):
+    " yield rows from input file object using Python's csv reader "
+    import csv
+    reader = csv.reader(fh)
+    try:
+        for row in reader:
+            yield row
+    except (csv.Error, e):
+        sys.exit('file %s, line %d: %s' % (filename, reader.line_num, e))
+
+def tsvReader(fh):
+    " yield rows from input file object "
+    for line in fh:
+        row = line.rstrip("\r\n").split("\t")
+        yield row
+
+def lineFileNextRow(inFile, headerIsRow=False):
+    """
+    parses tab-sep file with headers in first line
+    yields collection.namedtuples
+    strips "#"-prefix from header line
+    Can parse csv files with quotes.
+    """
+
+    if isinstance(inFile, str):
+        # input file is a string = file name
+        fh = openFile(inFile, mode="rtU")
+        sep = sepForFile(inFile)
+    else:
+        fh = inFile
+        sep = "\t"
+
+    if sep==",":
+        rowReader = csvReader(fh)
+    else:
+        rowReader = tsvReader(fh)
+
+    headers = nextEl(rowReader)
+    headers = sanitizeHeaders(headers)
 
     if headerIsRow:
-        yield origHeaders
+        yield headers
 
-    Record = namedtuple('tsvRec', headers)
+    Record = namedtuple('tsvCsvRec', headers)
 
-    for line in fh:
-        if line.startswith("#"):
+    for fields in rowReader:
+        if fields[0].startswith("#"):
             continue
-        if utfHacks:
-            line = line.decode("latin1")
-            # skip special chars in meta data and keep only ASCII
-            line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        #line = line.decode("latin1")
-        # skip special chars in meta data and keep only ASCII
-        #line = unicodedata.normalize('NFKD', line).encode('ascii','ignore')
-        line = line.rstrip("\r\n")
-        fields = line.split(sep)
-
-        if sep==",":
-            fields = [x.lstrip('"').rstrip('"') for x in fields]
 
         try:
             rec = Record(*fields)
@@ -579,7 +624,11 @@ def parseOneColumn(fname, colName):
     ifh = open(fname)
     sep = sepForFile(fname)
     headers = ifh.readline().rstrip("\r\n").split(sep)
-    colIdx = headers.index(colName)
+    try:
+        colIdx = headers.index(colName)
+    except ValueError:
+        raise Exception("there is no column %s in the file %s" % (colName, fname))
+
     vals = []
     for line in ifh:
         row = line.rstrip("\r\n").split(sep)
@@ -611,7 +660,7 @@ def parseIntoColumns(fname):
 
 def openFile(fname, mode="rt"):
     if fname.endswith(".gz"):
-        mode = mode.replace("U", "")
+        mode = mode.replace("U", "") # gzip reader does not support Universal newline mode yet, python bug
         if isPy3:
             fh = gzip.open(fname, mode, encoding="latin1")
         else:
@@ -871,8 +920,23 @@ def floatToIntList(vals):
             newVals.append(int(x))
     return newVals
 
+def itemsInOrder(valDict, keyOrder):
+    """ given a dict key->val and a list of keys, return (key, val) in the order of the list
+    """
+    logging.debug("sorting by manually specified order")
+    ret = []
+    doneKeys = set()
+    for key in keyOrder:
+        ret.append((key, valDict[key])) # if this fails, check your order file
+        doneKeys.add(key)
 
-def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
+    missKeys = set(valDict) - doneKeys
+    if len(missKeys)!=0:
+        errAbort("Keys %s are in the meta file but not in the enum order file." % missKeys)
+
+    return ret
+
+def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
     - 'type' can be: 'int', 'float', 'enum' or 'uniqueString'
@@ -957,7 +1021,13 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
         fieldMeta["type"] = "enum"
         valArr = list(valCounts.keys())
 
-        valCounts = list(sorted(valCounts.items(), key=operator.itemgetter(1), reverse=True)) # = (label, count)
+        if enumOrder:
+            valCounts = itemsInOrder(valCounts, enumOrder)
+        else:
+            # sort enums by count
+            valCounts = valCounts.items()
+            valCounts = list(sorted(valCounts, key=operator.itemgetter(1), reverse=True)) # = (label, count)
+
         #valCounts = valCounts.items()
         if colors!=None:
             colArr = []
@@ -974,7 +1044,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum):
             if foundColors > 0:
                 fieldMeta["colors"] = colArr
                 if len(notFound)!=0:
-                    logging.warn("No default color found for field values %s. Set these to defaults." % notFound)
+                    logging.warn("No default color found for field values %s. They were set to defaults." % notFound)
 
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
@@ -1057,16 +1127,22 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     colors = parseColors(colorFname)
     acronyms = readAcronyms(inConf, outConf)
+    enumOrder = inConf.get("enumOrder")
 
     # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
     # we have to strip special chars so fix the user's field names to our format
     sanEnumFields = []
     if enumFields is not None:
-        sanEnumFields = [sanitizeHeader(n) for n in enumFields]
+        sanEnumFields = [nonAlphaToUnderscores(n) for n in enumFields]
 
     fieldInfo = []
     validFieldNames = set()
     for colIdx, (fieldName, col) in enumerate(colData):
+        enumOrderList = None
+        if enumOrder and fieldName in enumOrder:
+            orderFname = join(inConf["inDir"], enumOrder[fieldName])
+            enumOrderList = open(orderFname).read().splitlines()
+
         logging.debug("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
@@ -1084,7 +1160,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
 
-        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum)
+        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum, enumOrderList)
 
         fieldType = fieldMeta["type"]
 
@@ -2080,7 +2156,7 @@ def sanitizeName(name):
     assert(len(newName)!=0)
     return newName
 
-def sanitizeHeader(name):
+def nonAlphaToUnderscores(name):
     " for tab-sep tables: replace nonalpha chars with  underscores "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
@@ -2250,7 +2326,7 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
     for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png", "protocol.pdf", "desc.conf"]:
         inFname = makeAbs(inDir, fileBase)
         if not isfile(inFname):
-            logging.info("%s does not exist" % inFname)
+            logging.debug("%s does not exist" % inFname)
         else:
             #copyFiles.append( (fname, "summary.html") )
             outPath = join(datasetDir, fileBase)
@@ -2313,7 +2389,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     outConf["fileVersions"]["desc"] = getFileVersion(confFname)
     outPath = join(datasetDir, "desc.json")
 
-    summInfo = loadConfig(confFname, requireTags=[])
+    summInfo = loadConfig(confFname)
 
     if coordFiles:
         summInfo["coordFiles"] = coordFiles
@@ -2342,8 +2418,8 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
             shutil.copyfile(rawInPath, rawOutPath)
 
     # need the collection info, too
-    if "collections" in outConf and not "collections" in summInfo:
-        summInfo["collections"] = outConf["collections"]
+    #if "collections" in outConf and not "collections" in summInfo:
+        #summInfo["collections"] = outConf["collections"]
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
@@ -2354,7 +2430,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         outConf["descMd5s"] = {}
 
     outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
-    logging.debug("Wrote %s" % outPath)
+    logging.debug("Wrote dataset description to %s" % outPath)
     return True
 
 def makeAbs(inDir, fname):
@@ -2497,7 +2573,7 @@ def parseGeneInfo(geneToSym, fname):
     Return as a dict symbol -> [description, pmid] """
     if fname is None:
         return {}
-    logging.info("Parsing %s" % fname)
+    logging.debug("Parsing %s" % fname)
     validSyms = None
     if geneToSym is not None:
         validSyms = set()
@@ -2572,7 +2648,7 @@ def guessGeneIdType(inputObj):
     elif geneId.startswith("KH2013:"):
         geneType = "ciona-kh2013"
     elif geneId.isdigit():
-        geneType = "entrez-human"
+        geneType = "entrez" # currently contains human and mouse symbols
     else:
         geneType = "symbols"
 
@@ -2988,9 +3064,12 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
 def readJson(fname, keepOrder=False):
     " read .json and return as a dict "
+    logging.debug("parsing json file %s" % fname)
     if keepOrder:
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         inStr = readFile(fname)
+        if not isPy3:
+            inStr = inStr.decode("utf8")
         data = customdecoder.decode(inStr)
     else:
         data = json.load(open(fname))
@@ -3032,11 +3111,11 @@ def convertDataset(inConf, outConf, datasetDir):
     # some config settings are passed through unmodified to the javascript
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
         "clusterField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility", "collections"]:
+        "unit", "violinField", "visibility"]:
         copyConf(inConf, outConf, tag)
-        if tag in ["collections"]:
-            if tag in inConf and not type(inConf[tag])==type([]):
-                errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
+        #if tag in ["collections"]:
+            #if tag in inConf and not type(inConf[tag])==type([]):
+                #errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
         if tag=="visibility":
             if tag in inConf and inConf[tag] not in ["hide", "show"]:
                 errAbort("Error in cellbrowser.conf: '%s' can only have values: 'hide' or 'show'" % (tag))
@@ -3076,7 +3155,7 @@ def convertDataset(inConf, outConf, datasetDir):
 
     readQuickGenes(inConf, geneToSym, outConf)
 
-    # need to able to see quickly how a dataset is described
+    # it's easier to have a single field that tells us if the desc.json is present
     if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
         outConf["hasFiles"] = ["datasetDesc"]
 
@@ -3126,7 +3205,7 @@ shortLabel='%(name)s'
 exprMatrix='%(matrixFname)s'
 #tags = ["10x", 'smartseq2']
 meta='%(metaFname)s'
-geneIdType='symbols'
+geneIdType='auto'
 clusterField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
@@ -3292,34 +3371,37 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     ##Check for cluster markers
     if markerField not in adata.uns:
         logging.warn("Couldnt find list of cluster marker genes in the h5ad file in adata.uns with the key '%s'. "
-        "As a result, your cell browser will not include marker genes. "
-        "From Python, try running sc.tl.rank_genes_groups(adata) to "
-        "create the cluster annotation." % markerField)
+        "In the future, from Python, try running sc.tl.rank_genes_groups(adata) to "
+        "create the cluster annotation and keep it in the object." % markerField)
         addMarkers = False
-    else:
-        top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
-        top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
-        marker_df= pd.DataFrame()
-        #for i in range(len(top_score.columns)):
-        for clustName in top_score.columns:
-            topScoreCol = top_score[[clustName]]
-            topGeneCol = top_gene[[clustName]]
-            concat=pd.concat([topScoreCol,topGeneCol],axis=1,ignore_index=True)
-            concat['cluster_name']=clustName
-            col=list(concat.columns)
-            col[0],col[-2]='z_score','gene'
-            concat.columns=col
-            marker_df=marker_df.append(concat)
+        logging.info("Now filtering for >5 cells and then running sc.tl.rank_genes_groups(adata) to get markers for the field '%s'" % clusterField)
+        import scanpy as sc
+        sc.pp.filter_genes(adata, min_cells=5) # rank_genes_groups crashes on zero-value genes
+        sc.tl.rank_genes_groups(adata, groupby=clusterField)
 
-        #Rearranging columns -> Cluster, gene, score
-        cols=marker_df.columns.tolist()
-        cols=cols[::-1]
-        marker_df=marker_df[cols]
-        #Export
-        fname = join(path, "markers.tsv")
-        logging.info("Writing %s" % fname)
-        pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
-        addMarkers = True
+    top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
+    top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
+    marker_df= pd.DataFrame()
+    #for i in range(len(top_score.columns)):
+    for clustName in top_score.columns:
+        topScoreCol = top_score[[clustName]]
+        topGeneCol = top_gene[[clustName]]
+        concat=pd.concat([topScoreCol,topGeneCol],axis=1,ignore_index=True)
+        concat['cluster_name']=clustName
+        col=list(concat.columns)
+        col[0],col[-2]='z_score','gene'
+        concat.columns=col
+        marker_df=marker_df.append(concat)
+
+    #Rearranging columns -> Cluster, gene, score
+    cols=marker_df.columns.tolist()
+    cols=cols[::-1]
+    marker_df=marker_df[cols]
+    #Export
+    fname = join(path, "markers.tsv")
+    logging.info("Writing %s" % fname)
+    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+    addMarkers = True
 
     ##Save metadata
     if metaFields is None:
@@ -3369,10 +3451,16 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     else:
         writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=addMarkers, args=argDict)
 
-def writeJson(data, outFname):
+def writeJson(data, outFname, ignoreKeys=None):
     """ https://stackoverflow.com/a/37795053/233871 """
     # Write JSON file
     tmpName = outFname+".tmp"
+    if ignoreKeys:
+        ignoredData = {}
+        for key in ignoreKeys:
+            ignoredData[key] = data
+            del data[key]
+
     with io.open(tmpName, 'w', encoding='utf8') as outfile:
         #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
         if isPy3:
@@ -3380,6 +3468,10 @@ def writeJson(data, outFname):
         else:
             str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
         outfile.write(str_)
+
+    if ignoreKeys:
+        data.update(ignoredData)
+
     os.rename(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
@@ -3396,7 +3488,7 @@ def writeConfig(inConf, outConf, datasetDir):
     # keep a copy of the original config in the output directory for debugging later
     confName = join(datasetDir, "cellbrowser.json.bak")
     writeJson(inConf, confName)
-    logging.info("Wrote %s" % confName)
+    logging.debug("Wrote %s" % confName)
 
     outConfFname = join(datasetDir, "dataset.json")
     writeJson(outConf, outConfFname)
@@ -3438,6 +3530,118 @@ def cbBuild(confFnames, outDir, port=None):
     " stay compatible with old name "
     build(confFnames, outDir, port)
 
+def findCollConfig(childConfFname, collName):
+    " find the cellbrowser.conf given a collName and an input directory "
+    #collBaseDir = getConfig("collDir")
+    #collFname = join(collBaseDir, collName, "cellbrowser.conf")
+    #if isfile(collFname):
+        #logging.debug("collection found at via collDir config statement, %s" % collFname)
+        #return collFname
+
+    parentFname = join(dirname(dirname(abspath(childConfFname))), "cellbrowser.conf")
+    if isfile(parentFname):
+        logging.debug("collection found at parent dir %s" % parentFname)
+        return parentFname
+
+    errAbort("could not find config for collection %s: neither %s, not %s exists" % (collName, collFname, parentFname))
+
+# make sure we don't parse a conf file twice
+confCache = {}
+
+def findParentConfigs(inFname, dataRoot, currentName):
+    """ return info about parents. A tuple of cellbrowser.conf filenames,
+    the list of just the parent names and the list of (name, shortLabel)
+    Stops at dataRoot.
+    """
+    fnameList = []
+    pathParts = []
+    parentInfos = []
+
+    inFname = abspath(inFname)
+    path = dirname(inFname)
+    logging.debug("Looking for parents of %s (path=%s, dataRoot=%s)" % (inFname, path, dataRoot))
+    while path!="/" and path!=dataRoot:
+        path = dirname(path)
+        confFname = join(path, "cellbrowser.conf")
+        if not isfile(confFname):
+            break
+
+        fnameList.append(confFname)
+        logging.debug("Found parent config at %s" % confFname)
+        if confFname not in confCache:
+            c = loadConfig(confFname, addName=True)
+            if path==dataRoot:
+                c["name"] = ""
+            confCache[confFname] = c
+        else:
+            c = confCache[confFname]
+
+        if path==dataRoot:
+            c["name"] = ""
+        else:
+            baseName = c["name"].split("/")[-1]
+            pathParts.append(c["name"])
+        parentInfo = (c["name"], c["shortLabel"])
+        parentInfos.append(parentInfo)
+
+    pathParts.append(currentName)
+    fullPath = "/".join(pathParts)
+    logging.debug("parent datasets of %s are: %s, full path: %s" % (inFname, fnameList, fullPath))
+    return list(reversed(fnameList)), fullPath, list(reversed(parentInfos))
+
+def rebuildCollections(dataRoot, webRoot, collList):
+    " recreate the dataset.json files for a list of cellbrowser.conf files of collections "
+    collList = list(collList)
+    collList.sort(key = len, reverse=True) # sort by length, so the deepest levels are rebuilt first
+
+    logging.debug("Need to rebuild these collections: %s" % collList)
+    for collFname in collList:
+        webCollDir = join(webRoot, relpath(dirname(collFname), dataRoot))
+        relCollDir = relpath(collFname, dataRoot)
+        collOutFname = join(webCollDir, "dataset.json")
+        collInfo = loadConfig(collFname, addName=True)
+        if dirname(collFname)!=dataRoot:
+            fullPath = findParentConfigs(collFname, dataRoot, collInfo["name"])[1]
+        else:
+            fullPath = ""
+        collInfo["name"] = fullPath
+        logging.debug("Rebuilding collection %s from %s and subdirs of %s" % (collOutFname, collFname, webCollDir))
+
+        # the collections summary comes from the JSON files
+        datasets = findDatasetJsons(webCollDir)
+        collSumm = summarizeDatasets(datasets)
+        collInfo["datasets"] = collSumm
+
+        parentFnames, fullPath, parentInfos = findParentConfigs(collFname, dataRoot, collInfo["name"])
+        if len(parentInfos)!=0:
+            collInfo["parents"] = parentInfos
+
+        collInfo["md5"] = md5ForList([json.dumps(collInfo)])[:MD5LEN]
+
+        writeJson(collInfo, collOutFname)
+
+def findRoot(inDir):
+    " return directory dataRoot defined in config file "
+    dataRoot = abspath(expanduser(getConfig("dataRoot")).rstrip("/"))
+    if dataRoot is None:
+        logging.info("dataRoot is not set in ~/.cellbrowser.conf. Dataset hierarchies are not supported.")
+
+    if not abspath(inDir).startswith(dataRoot):
+        logging.info("input directory %s is not located under dataRoot %s. Deactivating hierarchies." % (inDir, dataRoot))
+        return None
+
+    return dataRoot
+
+def findSiblingInfo(inDir):
+    " find name and label for all sibling datasets "
+    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
+    parentDir = dirname(inDir)
+    sibInfos = findDatasetJsons(parentDir, skipDir=inDir)
+    filtSibInfos = []
+    for si in sibInfos:
+        filtSibInfos.append({"name":si["name"], "shortLabel":si["shortLabel"]})
+    return filtSibInfos
+
 def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
     " build browser from config files confFnames into directory outDir and serve on port "
     if outDir=="" or outDir==None:
@@ -3445,34 +3649,65 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
 
     setDebug(doDebug)
     if type(confFnames)==type(""):
-        # it's very easy to forget that the input should be a list so we tolerate a single string
+        # it's very easy to forget that the input should be a list so we accept a single string instead
         confFnames = [confFnames]
 
     outDir = expanduser(outDir)
     datasets = []
+    dataRoot = None
+    todoConfigs = set() # list of collections we need to update once we're done
     for inConfFname in confFnames:
+        # load cellbrowser.conf
         if isdir(inConfFname):
             inConfFname = join(inConfFname, "cellbrowser.conf")
-        inConf = loadConfig(inConfFname)
+        inConf = loadConfig(inConfFname, reqTagsDataset)
 
         dsName = inConf["name"]
-        datasets.append(dsName)
 
-        datasetDir = join(outDir, dsName)
+        dataRoot = findRoot(inConfFname)
+
+        # detect hierarchical mode and construct the output path
+        relPath = inConf["name"]
+        if dataRoot:
+            relPath = relpath(dirname(abspath(inConfFname)), dataRoot)
+        datasetDir = join(outDir, relPath)
         makeDir(datasetDir)
 
-        outConfFname = join(outDir, "dataset.conf")
-        #if onlyMeta:
-            #outConf = json.parse(open(outConfFname)) # reuse the old config
-        #else:
+        datasets.append(dsName)
+
         outConf = OrderedDict()
 
-        convertDataset(inConf, outConf, datasetDir)
+        todoConfigs = set()
 
-        outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
-        outConf["md5"] = calcMd5ForDataset(outConf)
+        if not "meta" in inConf:
+            # convert the dataset itself only if we run in a directory where there is a dataset
+            logging.info("There is no meta data in cellbrowser.conf, so just rebuilding the hierarchy")
+            inPath = abspath(inConfFname)
+            logging.debug("Adding %s" % inPath)
+            todoConfigs.add(inPath)
+        else:
+            convertDataset(inConf, outConf, datasetDir)
 
-        writeConfig(inConf, outConf, datasetDir)
+        # find all parent cellbrowser.conf-files
+        if dataRoot is None:
+            logging.info("dataRoot not set in ~/.cellbrowser.conf, not rebuilding hierarchy")
+        else:
+            if not "fileVersions" in outConf:
+                outConf = loadConfig(inConfFname, addName=True)
+                outConf["fileVersions"] = {}
+            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, outConf["name"])
+            todoConfigs.update(parentFnames)
+            outConf["parents"] = parentInfos
+            if "name" in outConf:
+                outConf["name"] = fullPath
+
+            outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
+            outConf["md5"] = calcMd5ForDataset(outConf)
+
+            writeConfig(inConf, outConf, datasetDir)
+
+    if dataRoot is not None:
+        rebuildCollections(dataRoot, outDir, todoConfigs)
 
     cbUpgrade(outDir, datasets)
 
@@ -3643,94 +3878,94 @@ def addMd5(d, fname, keyName="md5", isSmall=False, shortMd5=True):
         md5 = md5[:MD5LEN]
     d[keyName] = md5
 
-def addCollections(collDir, datasets):
-    """ get all names of collections, find all their cellbrowser.conf files under collDir,
-    append to 'datasets', mark datasets with collections as hidden and return new list of datasets
-    """
-    # make map from dataset name to dataset info dict
-    nameToDs = {}
-    for ds in datasets:
-        assert(ds["name"] not in nameToDs)
-        nameToDs[ds["name"]] = ds
-
-    # make a map from collName -> dataset info dicts
-    # and dict with collection name -> list of dataset md5s
-    collToDatasets = defaultdict(list)
-    dsMd5s = defaultdict(list)
-    for ds in datasets:
-        for collName in ds.get("collections", []):
-            collToDatasets[collName].append(nameToDs[ds["name"]])
-            dsMd5s[collName].append(ds["md5"])
-            # a dataset that is part of a collection is hidden from the main list by default
-            if not "visibility" in ds:
-                logging.debug("Setting dataset %s to hide as it's part of collection %s" % (ds["name"], collName))
-                ds["visibility"] = "hide"
-
-    if collDir is None:
-        if len(collToDatasets)>0:
-            dsAssignment = {}
-            for collName, dsList in iterItems(collToDatasets):
-                dsAssignment[collName] = []
-                for ds in dsList:
-                    dsAssignment[collName].append(ds["name"])
-            errAbort("Some datasets defined collections but collDir is not defined in ~/.cellbrowser.conf. Found collection-dataset assignment: %s" % dsAssignment)
-        else:
-            logging.debug("collDir not defined in ~/.cellbrowser.conf, but also no collections used")
-            return datasets, {}
-    else:
-        logging.debug("collDir is set to %s" % collDir)
-
-    logging.debug("Scanning %s for collections" % collDir)
-    collDir = expanduser(collDir)
-    collLabels = {}
-    for collName, collDatasets in iterItems(collToDatasets):
-        datasetNames = [ds["name"] for ds in collDatasets]
-        subPath = join(collDir, collName)
-        if not isdir(subPath):
-            errAbort("%s is not a directory but datasets %s refer to a collection of this name" % (subPath, datasetNames))
-        fname = join(subPath, "cellbrowser.conf")
-        if not isfile(fname):
-            #logging.debug("Cannot find %s" % fname)
-            errAbort("%s does not exist but datasets %s refer to a collection of this name" % (fname, datasetNames))
-
-        conf = loadConfig(fname, requireTags=["name", "shortLabel"])
-
-        conf["name"] = collName
-        conf["isCollection"] = True
-        conf["datasetCount"] = len(collToDatasets[collName])
-        if isfile(join(subPath, "desc.conf")) or isfile(join(subPath, "datasetDesc.conf")):
-            conf["hasFiles"] = ["datasetDesc"]
-
-        if "collections" in conf:
-            errAbort("File %s defines a collection but is itself a collection. This is not allowed." % subPath)
-
-        fileVersions = {}
-        fileVersions["config"] = getFileVersion(fname)
-        conf["fileVersions"] = fileVersions
-
-        collLabels[collName] = conf["shortLabel"]
-        #conf["md5"] = collMd5s[collName]
-
-        datasets.append(conf)
-
-    # make map from collName -> list of only primary datasets (not others)
-    primCollDatasets = defaultdict(list)
-    for ds in datasets:
-        if "collections" in ds:
-            primCollName = ds["collections"][0]
-            primCollDatasets[primCollName].append(ds)
-
-    # add info about siblings to all datasets with the same primary collection
-    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
-    #dsSiblingLabels = defaultdict(list)
-    #for collName, dsList in iterItems(primCollDatasets):
-            #sibInfo = []
-            #for ds in dsList:
-                #sibInfo.append({"name":ds["name"], "shortLabel":ds["shortLabel"]})
-            #for ds in dsList:
-                #ds["sameCollection"] = sibInfo
-
-    return datasets, primCollDatasets
+#def addCollections(collDir, datasets):
+#    """ get all names of collections, find all their cellbrowser.conf files under collDir,
+#    append to 'datasets', mark datasets with collections as hidden and return new list of datasets
+#    """
+#    # make map from dataset name to dataset info dict
+#    nameToDs = {}
+#    for ds in datasets:
+#        assert(ds["name"] not in nameToDs)
+#        nameToDs[ds["name"]] = ds
+#
+#    # make a map from collName -> dataset info dicts
+#    # and dict with collection name -> list of dataset md5s
+#    collToDatasets = defaultdict(list)
+#    dsMd5s = defaultdict(list)
+#    for ds in datasets:
+#        for collName in ds.get("collections", []):
+#            collToDatasets[collName].append(nameToDs[ds["name"]])
+#            dsMd5s[collName].append(ds["md5"])
+#            # a dataset that is part of a collection is hidden from the main list by default
+#            if not "visibility" in ds:
+#                logging.debug("Setting dataset %s to hide as it's part of collection %s" % (ds["name"], collName))
+#                ds["visibility"] = "hide"
+#
+#    if collDir is None:
+#        if len(collToDatasets)>0:
+#            dsAssignment = {}
+#            for collName, dsList in iterItems(collToDatasets):
+#                dsAssignment[collName] = []
+#                for ds in dsList:
+#                    dsAssignment[collName].append(ds["name"])
+#            errAbort("Some datasets defined collections but collDir is not defined in ~/.cellbrowser.conf. Found collection-dataset assignment: %s" % dsAssignment)
+#        else:
+#            logging.debug("collDir not defined in ~/.cellbrowser.conf, but also no collections used")
+#            return datasets, {}
+#    else:
+#        logging.debug("collDir is set to %s" % collDir)
+#
+#    logging.debug("Scanning %s for collections" % collDir)
+#    collDir = expanduser(collDir)
+#    collLabels = {}
+#    for collName, collDatasets in iterItems(collToDatasets):
+#        datasetNames = [ds["name"] for ds in collDatasets]
+#        subPath = join(collDir, collName)
+#        if not isdir(subPath):
+#            errAbort("%s is not a directory but datasets %s refer to a collection of this name" % (subPath, datasetNames))
+#        fname = join(subPath, "cellbrowser.conf")
+#        if not isfile(fname):
+#            #logging.debug("Cannot find %s" % fname)
+#            errAbort("%s does not exist but datasets %s refer to a collection of this name" % (fname, datasetNames))
+#
+#        conf = loadConfig(fname, requireTags=reqTagsColl)
+#
+#        conf["name"] = collName
+#        conf["isCollection"] = True
+#        conf["datasetCount"] = len(collToDatasets[collName])
+#        if isfile(join(subPath, "desc.conf")) or isfile(join(subPath, "datasetDesc.conf")):
+#            conf["hasFiles"] = ["datasetDesc"]
+#
+#        #if "collections" in conf:
+#            #errAbort("File %s defines a collection but is itself a collection. This is not allowed." % subPath)
+#
+#        fileVersions = {}
+#        fileVersions["config"] = getFileVersion(fname)
+#        conf["fileVersions"] = fileVersions
+#
+#        collLabels[collName] = conf["shortLabel"]
+#        #conf["md5"] = collMd5s[collName]
+#
+#        datasets.append(conf)
+#
+#    # make map from collName -> list of only primary datasets (not others)
+#    primCollDatasets = defaultdict(list)
+#    for ds in datasets:
+#        if "collections" in ds:
+#            primCollName = ds["collections"][0]
+#            primCollDatasets[primCollName].append(ds)
+#
+#    # add info about siblings to all datasets with the same primary collection
+#    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
+#    #dsSiblingLabels = defaultdict(list)
+#    #for collName, dsList in iterItems(primCollDatasets):
+#            #sibInfo = []
+#            #for ds in dsList:
+#                #sibInfo.append({"name":ds["name"], "shortLabel":ds["shortLabel"]})
+#            #for ds in dsList:
+#                #ds["sameCollection"] = sibInfo
+#
+#    return datasets, primCollDatasets
 
 def calcMd5ForDataset(datasetDesc):
     " make a combined md5 for the dataset, based on the config file, meta, expression and the html or dataset descs "
@@ -3748,9 +3983,46 @@ def calcMd5ForDataset(datasetDesc):
 
     return md5ForList(md5s)[:MD5LEN]
 
+def findDatasetJsons(searchDir, skipDir=None):
+    logging.debug("Searching directory %s for datasets" % searchDir)
+    datasets = []
+    dsNames = defaultdict(list)
+    for subDir in os.listdir(searchDir):
+        #if isdir(join(searchDir, subDir)):
+            #continue
+        subPath = join(searchDir, subDir)
+        if subPath==skipDir:
+            logging.debug("Skipping directory %s" % subPath)
+            continue
+        fname = join(subPath, "dataset.json")
+        if not isfile(fname):
+            continue
+        logging.debug("Found %s" % fname)
+        datasetDesc = readJson(fname, keepOrder=True)
+
+        # we need at least a name, an md5 and a shortLabel
+        if not "md5" in datasetDesc:
+            datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
+            #errAbort("dataset %s has no md5" % datasetDesc)
+        if not "name" in datasetDesc: # every dataset has to have a name
+            errAbort("Dataset %s must have a 'name' field." % datasetDesc)
+
+        dsName = datasetDesc["name"]
+        if dsName in dsNames:
+            errAbort("Duplicate name: %s appears in these directories: %s and %s" % \
+                  (dsName, dsNames[dsName], subDir))
+        dsNames[dsName].append(subDir)
+
+        datasetDesc["baseUrl"] = subDir+"/"
+        datasets.append(datasetDesc)
+
+    datasets = list(sorted(datasets, key=lambda k: k.get('priority', 10)))
+    logging.info("Found %d datasets in subdirectories of directory %s" % (len(datasets), searchDir))
+    return datasets
+
 def findDatasets(outDir):
     """ search all subdirs of outDir for dataset.json files and return their
-    contents as a list A dataset description is a list with three members: A
+    contents as a list of dataset description is a list with three members: A
     label, the base URL and a longer description that can contain html.
     The attribute "priority" can be used to enforce an order on the datasets
     """
@@ -3770,18 +4042,11 @@ def findDatasets(outDir):
         if "isCollection" in datasetDesc:
             logging.debug("Dataset %s is a collection, so not parsing now" % datasetDesc["name"])
             continue
-        #datasetDesc = json.load(open(fname))
-        customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
-        inStr = open(fname).read()
-        if not isPy3:
-            inStr = inStr.decode("utf8")
-        inStr = readFile(fname)
 
-        datasetDesc = customdecoder.decode(inStr)
-
+        # a few older datasets don't have MD5s, tolerate that for now
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
-
+            #errAbort("dataset %s has no md5" % datasetDesc)
         if not "name" in datasetDesc: # every dataset has to have a name
             errAbort("Dataset %s must have a 'name' field." % datasetDesc)
 
@@ -3805,6 +4070,7 @@ def copyAllFiles(fromDir, subDir, toDir):
     " copy all files in fromDir/subDir to toDir/subDir "
     outDir = join(toDir, subDir)
     makeDir(outDir)
+    logging.debug("Copying all files from %s/%s to %s" % (fromDir, subDir, toDir))
     for filename in glob.glob(join(fromDir, subDir, '*')):
     # egg-support commented out for now
     #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
@@ -3812,7 +4078,7 @@ def copyAllFiles(fromDir, subDir, toDir):
             continue
         #fullPath = join(fromDir, subDir, filename)
         fullPath = filename
-        logging.debug("Copying %s to %s" % (fullPath, outDir))
+        #logging.debug("Copying %s to %s" % (fullPath, outDir))
         # copy uses chmod() which we don't want
         #shutil.copy(filename, outDir)
         dstPath = join(outDir, basename(filename))
@@ -3823,84 +4089,84 @@ def copyAllFiles(fromDir, subDir, toDir):
         #ofh.write(s)
         #ofh.close()
 
-def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
-    """ copy over the desc.conf files for all collections and generate md5s for them.
-    re-write all collection children, too.
-    """
-    if len(collToDatasets.keys())==0:
-        logging.debug("No collections used")
-        return
-
-    if collDir is None:
-        logging.warn("Collections are mentioned in at least one cellbrowser.conf file but 'collDir' is not defined in ~/.cellbrowser.conf. Not adding collections.")
-        logging.warn("Collections found: %s" % collToDatasets)
-        return
-
-    collDir = expanduser(collDir)
-
-    if not isdir(collDir):
-        logging.info("directory %s not found. To use collections, please read the documentation on how to set them up." % collDir)
-        return
-
-    # make map from dataset name to dataset info dict
-    nameToDs = {}
-    for ds in datasets:
-        #if (ds["name"] in nameToDs):
-            #errAbort("dataset name %s already used by %s" % (ds["name"], nameToDs[ds["name"]]))
-        nameToDs[ds["name"]] = ds
-
-    for collName, datasets in iterItems(collToDatasets):
-        inDir = join(collDir, collName)
-
-        collOutDir = join(outDir, collName)
-        if not isdir(collOutDir):
-            makeDir(collOutDir)
-
-        # make md5 for a collection: based on all datasets and the description files
-        collMd5s = []
-        collInfo = OrderedDict() # description of collection, goes into .json file at the end
-
-        for key, val in iterItems(nameToDs[collName]):
-            collInfo[key] = val
-
-        foundConf = writeDatasetDesc(inDir, collInfo, collOutDir)
-        if foundConf:
-            collMd5s.append(collInfo["descMd5s"]["datasetDesc"])
-
-        summFname = join(inDir, "summary.html")
-        if isfile(summFname):
-            logging.debug("Copying %s to %s" % (summFname, collOutDir))
-            #shutil.copy(summFname, collOutDir) # copy() uses chmod
-            shutil.copyfile(summFname, join(collOutDir, basename(summFname)))
-            collMd5s.append(md5ForFile(summFname))
-
-        for ds in datasets:
-            collMd5s.append( ds["md5"] )
-
-        collMd5 = md5ForList(collMd5s)[:MD5LEN]
-
-        summDsList = summarizeDatasets(datasets)
-        collInfo["datasets"] = summDsList
-        if collName not in nameToDs:
-            errAbort("collection %s is used by datasets %s, but there was no cellbrowser.conf found under %s" %
-                    (collName, [ds["name"] for ds in datasets], inDir))
-
-        # copy the full list of linked datasets into every child dataset
-        # and write these JSON files again
-        linkedDsList = summarizeDatasets(summDsList, minimal=True)
-
-        for dsInfo in summDsList:
-            dsName = dsInfo["name"]
-            childInfo = nameToDs[dsName]
-            childInfo["datasets"] = linkedDsList
-            childFname = join(outDir, dsName, "dataset.json")
-            writeJson(childInfo, childFname)
-
-        collInfo["md5"] = collMd5
-        nameToDs[collName]["md5"] = collMd5 # update the md5 in the big list, for the main summary
-
-        jsonFname = join(collOutDir, "dataset.json")
-        writeJson(collInfo, jsonFname)
+#def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
+#    """ copy over the desc.conf files for all collections and generate md5s for them.
+#    re-write all collection children, too.
+#    """
+#    if len(collToDatasets.keys())==0:
+#        logging.debug("No collections used")
+#        return
+#
+#    if collDir is None:
+#        logging.warn("Collections are mentioned in at least one cellbrowser.conf file but 'collDir' is not defined in ~/.cellbrowser.conf. Not adding collections.")
+#        logging.warn("Collections found: %s" % collToDatasets)
+#        return
+#
+#    collDir = expanduser(collDir)
+#
+#    if not isdir(collDir):
+#        logging.info("directory %s not found. To use collections, please read the documentation on how to set them up." % collDir)
+#        return
+#
+#    # make map from dataset name to dataset info dict
+#    nameToDs = {}
+#    for ds in datasets:
+#        #if (ds["name"] in nameToDs):
+#            #errAbort("dataset name %s already used by %s" % (ds["name"], nameToDs[ds["name"]]))
+#        nameToDs[ds["name"]] = ds
+#
+#    for collName, datasets in iterItems(collToDatasets):
+#        inDir = join(collDir, collName)
+#
+#        collOutDir = join(outDir, collName)
+#        if not isdir(collOutDir):
+#            makeDir(collOutDir)
+#
+#        # make md5 for a collection: based on all datasets and the description files
+#        collMd5s = []
+#        collInfo = OrderedDict() # description of collection, goes into .json file at the end
+#
+#        for key, val in iterItems(nameToDs[collName]):
+#            collInfo[key] = val
+#
+#        foundConf = writeDatasetDesc(inDir, collInfo, collOutDir)
+#        if foundConf:
+#            collMd5s.append(collInfo["descMd5s"]["datasetDesc"])
+#
+#        summFname = join(inDir, "summary.html")
+#        if isfile(summFname):
+#            logging.debug("Copying %s to %s" % (summFname, collOutDir))
+#            #shutil.copy(summFname, collOutDir) # copy() uses chmod
+#            shutil.copyfile(summFname, join(collOutDir, basename(summFname)))
+#            collMd5s.append(md5ForFile(summFname))
+#
+#        for ds in datasets:
+#            collMd5s.append( ds["md5"] )
+#
+#        collMd5 = md5ForList(collMd5s)[:MD5LEN]
+#
+#        summDsList = summarizeDatasets(datasets)
+#        collInfo["datasets"] = summDsList
+#        if collName not in nameToDs:
+#            errAbort("collection %s is used by datasets %s, but there was no cellbrowser.conf found under %s" %
+#                    (collName, [ds["name"] for ds in datasets], inDir))
+#
+#        # copy the full list of linked datasets into every child dataset
+#        # and write these JSON files again
+#        linkedDsList = summarizeDatasets(summDsList, minimal=True)
+#
+#        for dsInfo in summDsList:
+#            dsName = dsInfo["name"]
+#            childInfo = nameToDs[dsName]
+#            childInfo["datasets"] = linkedDsList
+#            childFname = join(outDir, dsName, "dataset.json")
+#            writeJson(childInfo, childFname)
+#
+#        collInfo["md5"] = collMd5
+#        nameToDs[collName]["md5"] = collMd5 # update the md5 in the big list, for the main summary
+#
+#        jsonFname = join(collOutDir, "dataset.json")
+#        writeJson(collInfo, jsonFname)
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -3948,27 +4214,31 @@ def writeGaScript(ofh, gaTag):
 
 """ % (gaTag, gaTag))
 
-def summarizeDatasets(datasets, minimal=False):
-    " keep only the most important fields of a list of datasets and return them as a list of dicts "
+def summarizeDatasets(datasets):
+    """ keep only the most important fields of a list of datasets and return them as a list of dicts.
+    Also create a new md5 from all the datasets. """
+    #allMd5s = []
     dsList = []
     for ds in datasets:
         summDs = {
-                "shortLabel" : ds["shortLabel"],
-                "name" : ds["name"],
-                "md5" : ds["md5"],
-                }
+            "shortLabel" : ds["shortLabel"],
+            "name" : ds["name"],
+            "md5" : ds["md5"],
+        }
+        #allMd5s.append(ds["md5"])
 
-        if not minimal:
-            if "sampleCount" in ds:
-                summDs["sampleCount"] = ds["sampleCount"]
-            else:
-                summDs["isCollection"] = True
-                summDs["datasetCount"] = ds["datasetCount"]
+        #if not minimal:
+        if "sampleCount" in ds:
+            summDs["sampleCount"] = ds["sampleCount"]
+        else:
+            summDs["isCollection"] = True
+            #summDs["datasetCount"] = ds["datasetCount"]
+            summDs["datasetCount"] = len(ds["datasets"])
 
-            for optListTag in ["tags", "collections", "hasFiles"]:
-                if optListTag in ds:
-                    assert(type(ds[optListTag])==type([])) # has to be a list
-                    summDs[optListTag] = ds[optListTag]
+        for optListTag in ["tags", "hasFiles"]:
+            if optListTag in ds:
+                assert(type(ds[optListTag])==type([])) # has to be a list
+                summDs[optListTag] = ds[optListTag]
 
             #for optTag in ["visibility"]:
                 #if optTag in ds:
@@ -3977,13 +4247,14 @@ def summarizeDatasets(datasets, minimal=False):
         dsList.append(summDs)
     return dsList
 
-def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
+def makeIndexHtml(baseDir, outDir, devMode=False):
     " make the index.html, copy over all .js and related files and add their md5s "
     logging.debug("Development mode is: %s" % repr(devMode))
 
-    dsList = summarizeDatasets(datasets)
+    #dsList = summarizeDatasets(datasets)
+
     indexFname = join(baseDir, "html", "index.html")
-    datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
+    #datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
 
     newFname = join(outDir, "index.html")
     tmpFname = newFname+".tmp"
@@ -4049,10 +4320,11 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
     ofh.write('</head>\n')
     ofh.write('<body>\n')
     ofh.write('<script>\n')
-    ofh.write(datasetListJs)
+    #ofh.write(datasetListJs)
     #ofh.write(colListJs)
-    ofh.write('\n')
-    ofh.write('cellbrowser.loadData(datasets);\n')
+    ofh.write("""  jQuery.getJSON("dataset.json", function (datasetInfo) {\n""")
+    ofh.write('      cellbrowser.loadData(datasetInfo);\n')
+    ofh.write("""        });\n""")
     ofh.write('</script>\n');
     ofh.write('</body>\n')
     ofh.write('</html>\n')
@@ -4060,8 +4332,8 @@ def makeIndexHtml(baseDir, datasets, outDir, devMode=False):
     ofh.close()
     os.rename(tmpFname, newFname)
 
-    datasetLabels = [x["name"] for x in dsList]
-    logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
+    #datasetLabels = [x["name"] for x in dsList]
+    #logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
 
 def removeHiddenDatasets(datasets):
     """ visibility="hidden" removes datasets from the list, e.g. during paper review """
@@ -4076,24 +4348,20 @@ def removeHiddenDatasets(datasets):
 def cbMake(outDir, onlyDatasets=None, devMode=False):
     cbUpgrade(outDir, onlyDatasets, devMode)
 
+def makeDatasetListJsons(datasets, outDir):
+    " recusively write dataset.json files from datasets to outDir "
+    for dataset in datasets:
+        if "children" in dataset:
+            makeDatasetListJsons(dataset["children"], join(outDir, dataset["name"]))
+        outFname = join(outDir, "dataset.json")
+        writeJson(dataset, outFname, ignoreKeys=["children"])
+
 def cbUpgrade(outDir, onlyDatasets=None, devMode=False):
-    " create index.html in outDir and copy over all other static files "
+    " create index.html and datasets.json in outDir. Copy over all other static files "
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
     copyStatic(webDir, outDir)
-    datasets = findDatasets(outDir)
-
-    collDir = getConfig("collDir")
-    for ds in datasets:
-        print(ds["name"])
-    datasets, primCollDatasets = addCollections(collDir, datasets)
-
-    writeCollectionFiles(collDir, datasets, primCollDatasets, onlyDatasets, outDir)
-
-    datasets = removeHiddenDatasets(datasets)
-
-    makeIndexHtml(webDir, datasets, outDir, devMode=devMode)
-
+    makeIndexHtml(webDir, outDir, devMode=devMode)
 
 def cbUpgradeCli():
     " command line interface for copying over the html and js files and recreate index.html "
@@ -4868,6 +5136,7 @@ def generateDownloads(datasetName, outDir):
 
 def generateHtmls(datasetName, outDir):
     " generate downloads.html and summary.html in outDir, if they don't exist "
+    # XX TODO: don't generate these anymore, but generate a desc.conf
     copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
     generateDownloads(datasetName, outDir)
 

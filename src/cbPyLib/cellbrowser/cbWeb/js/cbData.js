@@ -13,6 +13,8 @@ var cbUtil = (function () {
 
     my.joinPaths = function joinPaths(parts, separator) {
     // join paths together, taking care of duplicated /s
+      if (parts[0]==="") // ["", "test.txt] should just be test.txt, not /test.txt
+          parts.shift();
       return parts.map(function(part) { return part.trim().replace(/(^[\/]*|[\/]*$)/g, ''); }).join(separator || '/');
     };
 

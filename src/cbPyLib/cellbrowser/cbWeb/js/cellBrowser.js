@@ -391,7 +391,16 @@ var cellbrowser = function() {
             var jsonUrl = joinPaths([datasetName, "desc.json"]) +"?"+md5;
             fetch(jsonUrl)
               .then(function(response) {
+                if(!response.ok) {
+                    throw new Error('Could not find desc.json file');
+                }
                 return response.json();
+              })
+              .catch(function(err) {
+                  var msg = "File "+jsonUrl+" was not found. Please create a desc.json in your input directory and rebuild, see https://cellbrowser.readthedocs.io/dataDesc.html";
+                  $( "#pane1" ).html(msg);
+                  $( "#pane2" ).html(msg);
+                  $( "#pane3" ).html(msg);
               })
               .then(function(desc) { 
                   datasetDescToHtml(datasetInfo, desc); 
@@ -538,10 +547,13 @@ var cellbrowser = function() {
         }
 
 
-        if (datasetInfo.collections===undefined)
+        if (datasetInfo.name.search("/")===-1) {
             htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+datasetInfo.name+".cells.ucsc.edu");
-        else
-            htmls.push("<b>Direct link to collection for manuscripts: </b> https://"+datasetInfo.collections[0]+".cells.ucsc.edu");
+        }
+        else {
+            let topName = datasetInfo.name.split("/")[0];
+            htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
+        }
         htmls.push("<br>");
 
         $( "#pane1" ).html(htmls.join(""));
@@ -593,11 +605,11 @@ var cellbrowser = function() {
                 htmls.push("<a target=_blank href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
             htmls.push("</p>");
 
+            htmls.push("<p><b>Dataset description</b>: ");
+            htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
+
             htmls.push("<p><b>Cell Browser configuration</b>: ");
             htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
-
-            htmls.push("<p><b>General dataset description</b>: ");
-            htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
         }
 
         $( "#pane3" ).html(htmls.join(""));
@@ -653,7 +665,7 @@ var cellbrowser = function() {
      * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
      */
         var title = null;
-        var note = "";
+        var noteLines = [];
         var noteSpace = "2px"; // space from top of dialog to info pane and tabs
         //var datasetList = [];
         var activeIdx = 0;
@@ -663,14 +675,28 @@ var cellbrowser = function() {
             onlyInfo = true;
 
         // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (openDsInfo && openDsInfo.isCollection) {
+        if (openDsInfo && openDsInfo.parents) {
+            let parents = openDsInfo.parents;
+            let dsCount = parents.length;
             // select from a collection
-            title = "Select one dataset from the collection '"+openDsInfo.shortLabel+"'";
+            title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
             //datasetList = openDsInfo.datasets;
-            note = "<p>The collection '"+openDsInfo.shortLabel+"' contains "+datasetList.length+" datasets. " +
+            noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
                 "Double-click or click 'Open' below. To move between datasets later in the cell browser, " +
-                "use the 'Collection' dropdown. </p>" +
-                "<span id='tpBackToMainLink' class='link'>&lt; back to the main list</span>";
+                "use the 'Collection' dropdown. </p>"+
+                "Go back to: " );
+            let backLinks = [];
+
+            //backLinks.push("<span class='tpBackLink link' id='/'>Main menu</span>");
+
+            for (let i=0; i<parents.length; i++) {
+                let parentInfo = parents[i];
+                let parName = parentInfo[0];
+                let parLabel = parentInfo[1];
+                backLinks.push("<span class='tpBackLink link' data-datasetid='"+parName+"'>"+parLabel+"</span>");
+            }
+            noteLines.push(backLinks.join("&nbsp;&gt;&nbsp;"));
+
             noteSpace = "4em";
             changeUrl({"ds":openDsInfo.name});
             activeIdx = 0;
@@ -696,7 +722,7 @@ var cellbrowser = function() {
         var listGroupHeight = winHeight - 100;
 
         var htmls = [];
-        htmls.push(note);
+        htmls.push(noteLines.join(""));
 
         if (onlyInfo)
             leftPaneWidth = 0;
@@ -747,10 +773,13 @@ var cellbrowser = function() {
 
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, buttons: buttons});
 
-        $('#tpBackToMainLink').click( function() {
-            $(".ui-dialog-content").dialog("close");
-            openDatasetDialog(gDatasetList, gDatasetList[0]);
-        } );
+        $('.tpBackLink').click( function(ev) {
+            let datasetId = $(ev.target).attr('data-datasetid');
+            loadCollectionInfo(datasetId, function(data) {
+                $(".ui-dialog-content").dialog("close");
+                openDatasetDialog(data.datasets, data.datasets[0]);
+            });
+        });
 
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
 
@@ -5863,12 +5892,13 @@ var cellbrowser = function() {
     }
 
     /* ==== MAIN ==== ENTRY FUNCTION */
-    function loadData(datasetList, globalOpts) {
+    function loadData(inConf) {
         /* start the data loaders, show first dataset */
         if (redirectIfSubdomain())
             return;
-        gDatasetList = datasetList;
+        gDatasetList = inConf.datasets;
 
+        var globalOpts = inConf.opts;
         if (globalOpts!==undefined) {
             if ("sampleType" in globalOpts)
                 gSampleDesc = globalOpts["sampleType"];
@@ -5879,7 +5909,7 @@ var cellbrowser = function() {
         setupKeyboard();
         buildMenuBar();
 
-        var datasetName = extractDatasetFromUrl(datasetList)
+        var datasetName = extractDatasetFromUrl(gDatasetList)
         var dsInfo = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName);
         var md5 = null;
         if (dsInfo)
