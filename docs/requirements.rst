@@ -15,6 +15,12 @@ of color codes, you have to install the module webcolors::
 
     pip install webcolors
 
+Image sizes
+^^^^^^
+
+To get the image sizes, cbBuild uses either the "file" command or the "identify" command (for JPEGs). 
+You may have to install the ImageMagick package to get the identify command.
+
 Matrices in mtx format
 ^^^^^^
 

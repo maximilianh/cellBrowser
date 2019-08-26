@@ -90,7 +90,7 @@ MD5LEN = 10
 # for cellbrowser.conf of a dataset
 reqTagsDataset =['coords', 'meta', 'exprMatrix']
 # for cellbrowser.conf of a collection
-reqTagsColl =['name', 'shortLabel']
+reqTagsColl =['shortLabel']
 
 coordLabels = {
     #  generic igraph neighbor-based layouts
@@ -307,7 +307,7 @@ def readLines(lines, fname):
             lines.append(line)
     return lines
 
-def loadConfig(fname, addName=False, requireTags=[]):
+def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
@@ -323,7 +323,7 @@ def loadConfig(fname, addName=False, requireTags=[]):
 
     conf = l
 
-    for rt in requireTags:
+    for rt in reqTags:
         if not rt in conf:
             errAbort("The input configuration has to define the %s statement" % rt)
         if rt=="tags":
@@ -332,7 +332,10 @@ def loadConfig(fname, addName=False, requireTags=[]):
 
     conf["inDir"] = dirname(fname)
 
-    if not "name" in conf and addName:
+    if "name" in conf and ignoreName:
+        logging.warn("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
+
+    if (not "name" in conf and addName) or ignoreName:
         name = basename(dirname(abspath(fname)))
         logging.debug("Deriving name from directory name: %s -> %s" % (abspath(fname), name))
         assert(name!="")
@@ -414,6 +417,12 @@ def cbBuild_parseArgs(showHelp=False):
 
     parser.add_option("-p", "--port", dest="port", action="store",
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
+
+    parser.add_option("-r", "--recursive", dest="recursive", action="store_true",
+        help="run in all subdirectories of the current directory. Useful when rebuilding a full hierarchy.")
+
+    parser.add_option("", "--redo", dest="redo", action="store",
+            help="do not use cached old data. Can be: 'meta' or 'matrix' (matrix includes meta).")
 
     (options, args) = parser.parse_args()
 
@@ -571,8 +580,14 @@ def csvReader(fh):
 
 def tsvReader(fh):
     " yield rows from input file object "
+    hasQuotes = None
     for line in fh:
         row = line.rstrip("\r\n").split("\t")
+        if hasQuotes is None and row[0].startswith('"'):
+            hasQuotes = row[0].startswith('"')
+
+        if hasQuotes:
+            row = [f.strip('"') for f in row] # this is technically not necessary, but was requested in #130
         yield row
 
 def lineFileNextRow(inFile, headerIsRow=False):
@@ -1938,14 +1953,15 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     tmpFname = fixedMetaFname+".tmp"
     ofh = open(tmpFname, "w")
     metaToRow = {}
-    sep = sepForFile(metaFname)
+    #sep = sepForFile(metaFname)
     fieldValues = defaultdict(set)
-    for lNo, line in enumerate(open(metaFname, "rtU")):
-        row = line.rstrip("\r\n").split(sep)
-        if lNo==0:
-            headers = row
-            continue
-        row = line.rstrip("\r\n").split(sep)
+    headers = None
+    #for line in enumerate(open(metaFname, "rtU")):
+    for row in lineFileNextRow(metaFname):
+        #row = line.rstrip("\r\n").split(sep)
+        headers = row._fields
+        #continue
+        #row = line.rstrip("\r\n").split(sep)
         metaToRow[row[0]] = row
 
         for fieldIdx, val in enumerate(row):
@@ -2346,8 +2362,25 @@ def copyImage(inDir, summInfo, datasetDir):
     imgLine = stdout.readline()
     # thumb.png: PNG image data, 400 x 267, 8-bit/color RGBA, non-interlaced
     sizeStr = imgLine.split(":")[1].split(", ")[1]
-    width, height = sizeStr.split(" x ")
+    if " x " in sizeStr:
+        width, height = sizeStr.split(" x ")
+    else:
+        cmd = ["identify", inFname]
+        proc, stdout = popen(cmd)
+        imgLine = stdout.readline()
+        # thumb.jpg JPEG 400x566 400x566+0+0 8-bit DirectClass 39.1KB 0.000u 0:00.010
+        sizeStr = imgLine.split(" ")[2]
+        width, height = sizeStr.split("x")
+
     summInfo["image"] = (summInfo["image"], width, height)
+
+    if "imageMapFile" in summInfo:
+        mapFname = join(inDir, summInfo["imageMapFile"])
+        logging.debug("Loading image map from %s" % mapFname)
+        areaData = open(mapFname, "r").read()
+        summInfo["imageMap"] = areaData
+        del summInfo["imageMapFile"]
+
     return summInfo
 
 def readFile(fname, encoding="utf8"):
@@ -2363,6 +2396,7 @@ def readFile(fname, encoding="utf8"):
 
 def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf8"):
     " return file with encoding as string into dictionary "
+    logging.debug("Reading file into dict. %s, inDir %s, file name %s" % (key, inDir, fname))
     fname = join(inDir, fname)
     if not isfile(fname):
         if mustExist:
@@ -2430,6 +2464,13 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         outConf["descMd5s"] = {}
 
     outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
+
+    # it's easier to have a single field that tells us if the desc.json is present
+    if not "hasFiles" in outConf:
+        outConf["hasFiles"] = {}
+    if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
+        outConf["hasFiles"] = ["datasetDesc"]
+
     logging.debug("Wrote dataset description to %s" % outPath)
     return True
 
@@ -2737,7 +2778,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
         if hasLabels:
-            logging.info("Calculating cluster midpoints for "+coordLabel)
+            logging.debug("Calculating cluster midpoints for "+coordLabel)
             clusterMids= makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
             clusterOrder = orderClusters(clusterMids, outConf)
 
@@ -2813,7 +2854,6 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
         makeDir(markerDir)
 
         clusterNames, topMarkers = splitMarkerTable(markerFname, geneToSym, markerDir)
-        
         # only use the top markers of the first marker file
         if not topMarkersDone:
             outConf["topMarkers"] = topMarkers
@@ -2855,21 +2895,24 @@ def checkFieldNames(outConf, fieldNames, validFieldNames):
             errAbort("Config statement '%s' contains an invalid field name, '%s'. Valid meta field names are: %s" % \
                 (fn, outConf[fn], ", ".join(validFieldNames)))
 
-def convertMeta(inConf, outConf, outDir):
+def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     """ convert the meta data to binary files. The new meta is re-ordered, so it's in the same
     order as the samples in the expression matrix.
+    returns: sampleNames, whether sample names have changed and file name of meta info
     """
     if not "fileVersions" in outConf:
         outConf["fileVersions"] = {}
 
     metaFname = getAbsPath(inConf, "meta")
     outConf["fileVersions"]["inMeta"] = getFileVersion(metaFname)
+    if "colors" in inConf:
+        fullColorFname = abspath(join(inDir, inConf["colors"]))
+        inConf["colors"] = fullColorFname
+        outConf["fileVersions"]["colors"] = getFileVersion(fullColorFname)
 
     metaDir = join(outDir, "metaFields")
     makeDir(metaDir)
     metaIdxFname = join(outDir, "meta.index")
-
-    finalMetaFname = join(outDir, "meta.tsv")
 
     matrixFname = getAbsPath(inConf, "exprMatrix")
     sampleNames, needFilterMatrix = metaReorder(matrixFname, metaFname, finalMetaFname)
@@ -2890,7 +2933,7 @@ def convertMeta(inConf, outConf, outDir):
 
     outConf["fileVersions"]["outMeta"] = getFileVersion(finalMetaFname)
 
-    return sampleNames, needFilterMatrix, finalMetaFname
+    return sampleNames, needFilterMatrix
 
 def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
     " return geneToSym, based on gene tables "
@@ -2970,6 +3013,8 @@ def getMd5Using(md5Cmd, fname):
     cmd = [md5Cmd, fname]
     logging.debug("Cmd: %s" % cmd)
     proc, stdout = popen(cmd)
+    if stdout is None:
+        errAbort("File %s does not exist (command failed: %s)" % (fname, cmd))
     md5 = stdout.readline()
     #proc.stdout.close()
     #stat = os.waitpid(proc.pid, 0)
@@ -3017,11 +3062,11 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     confName = join(datasetDir, "dataset.json")
     if not isfile(confName):
-        logging.info("%s does not exist. This looks like the first run with this output directory" % confName)
+        logging.debug("%s does not exist. This looks like the first run with this output directory" % confName)
         return True
 
     try:
-        lastConf = json.load(open(confName))
+        lastConf = readJson(confName)
     except json.decoder.JSONDecodeError:
         errAbort("Is the file %s broken? Please remove the file and run this command again." % confName)
 
@@ -3038,15 +3083,19 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     if not matrixIsSame:
         logging.info("input matrix has input file size that is different from prevously processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" % (oldMatrixInfo, nowSize))
         return True
+
+    if not "fileVersions" in outConf:
+        outConf["fileVersions"] = {}
+
     outConf["fileVersions"]["inMatrix"] = oldMatrixInfo
     outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
     # this obscure command gets file with the the cell identifiers in the dataset directory
-    sampleNameFname = join(datasetDir, "metaFields", outConf["metaFields"][0]["name"]+".bin.gz")
+    sampleNameFname = join(datasetDir, "metaFields", lastConf["metaFields"][0]["name"]+".bin.gz")
     logging.debug("Reading meta sample names from %s" % sampleNameFname)
 
-    # python3 has 'text mode' but python2 doesn't have that so decode explicitely
+    # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitely
     metaSampleNames = []
     for line in gzip.open(sampleNameFname, "r"):
         metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
@@ -3103,38 +3152,68 @@ def orderClusters(labelCoords, outConf):
 
     return labelOrder
 
-def convertDataset(inConf, outConf, datasetDir):
-    """ convert everything needed for a dataset to datasetDir, write config to outConf.
-    If the expression matrix has not changed since the last run, and the sampleNames are the same,
-    it won't be converted again.
-    """
-    # some config settings are passed through unmodified to the javascript
-    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility"]:
-        copyConf(inConf, outConf, tag)
-        #if tag in ["collections"]:
-            #if tag in inConf and not type(inConf[tag])==type([]):
-                #errAbort("Error in cellbrowser.conf: '%s' must be a list" % (tag))
+def metaHasChanged(datasetDir, metaOutFname):
+    " return true if md5 of metaOutFname is different from the one in datasetDir/dataset.json:fileVersions -> outMeta -> md5"
+    oldJsonFname = join(datasetDir, "dataset.json")
+    if not isfile(oldJsonFname):
+        logging.debug("%s not found, assuming that meta data has to be recreated" % oldJsonFname)
+        return True
+
+    oldData = readJson(oldJsonFname)
+    oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
+
+    newMd5 = md5ForFile(metaOutFname)
+
+    if oldMd5 != newMd5[:len(oldMd5)]:
+        logging.debug("%s has a different md5 now, rebuilding meta data" % metaOutFname)
+        return True
+
+    logging.info("%s has the same md5 as in %s, no need to rebuild meta data" % (metaOutFname, oldJsonFname))
+    return False
+
+def checkConfig(inConf):
+    for tag in reqTagsDataset:
+        if tag not in inConf:
+            errAbort("tag '%s' must be defined in cellbrowser.conf" % tag)
         if tag=="visibility":
             if tag in inConf and inConf[tag] not in ["hide", "show"]:
                 errAbort("Error in cellbrowser.conf: '%s' can only have values: 'hide' or 'show'" % (tag))
 
-    if " " in inConf["name"]:
-        errAbort("Sorry, please no whitespace in the dataset 'name' in the .conf file")
+    if "name" in inConf and " " in inConf["name"] or "/" in inConf["name"]:
+        errAbort("whitespace or slashes in the dataset 'name' in cellbrowser.conf are not allowed")
 
-    # convertMeta also compares the sample IDs between meta and matrix
-    # outMeta is a reordered & trimmed tsv version of the meta table
-    sampleNames, needFilterMatrix, outMeta = convertMeta(inConf, outConf, datasetDir)
 
-    geneToSym = None
-
-    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
-    geneToSym = -1 # None would mean "there are no gene symbols to map to"
+def convertDataset(inDir, inConf, outConf, datasetDir, redo):
+    """ convert everything needed for a dataset to datasetDir, write config to outConf.
+    If the expression matrix has not changed since the last run, and the sampleNames are the same,
+    it won't be converted again.
+    """
+    checkConfig(inConf)
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
-    doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
+    # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
+    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+    outMetaFname = join(datasetDir, "meta.tsv")
 
-    if doMatrix:
+    # try not to recreate files that have been created before, as this is quite slow (=Python)
+    doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
+    doMeta = metaHasChanged(datasetDir, outMetaFname)
+
+
+    if doMeta or doMatrix or redo in ["meta", "matrix"]:
+        # convertMeta also compares the sample IDs between meta and matrix to determine if the meta file 
+        # needs reordering or trimming (=if the meta contains more cells than the matrix)
+        sampleNames, needFilterMatrix = convertMeta(inDir, inConf, outConf, datasetDir, outMetaFname)
+    else:
+        sampleNames = readSampleNames(outMetaFname)
+        needFilterMatrix = False
+        oldConfFname = join(datasetDir, "dataset.json")
+        logging.info("Loading old config from %s" % oldConfFname)
+        oldConf = readJson(oldConfFname, keepOrder=True)
+        outConf.update(oldConf)
+
+    geneToSym = -1 # None would mean "there are no gene symbols to map to"
+
+    if doMatrix or redo=='matrix':
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
         # in case script crashes after this, keep the current state of the config
@@ -3142,7 +3221,7 @@ def convertDataset(inConf, outConf, datasetDir):
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
 
-    coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMeta, datasetDir)
+    coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
     foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
     if not foundConf:
@@ -3155,9 +3234,12 @@ def convertDataset(inConf, outConf, datasetDir):
 
     readQuickGenes(inConf, geneToSym, outConf)
 
-    # it's easier to have a single field that tells us if the desc.json is present
-    if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
-        outConf["hasFiles"] = ["datasetDesc"]
+    # a few settings are passed through to the Javascript as they are
+    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
+        "clusterField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
+        "unit", "violinField", "visibility"]:
+        copyConf(inConf, outConf, tag)
+
 
 def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     " write embedding coordinates from anndata object to outDir, the new filename is <prefix>_coords.tsv "
@@ -3488,11 +3570,11 @@ def writeConfig(inConf, outConf, datasetDir):
     # keep a copy of the original config in the output directory for debugging later
     confName = join(datasetDir, "cellbrowser.json.bak")
     writeJson(inConf, confName)
-    logging.debug("Wrote %s" % confName)
+    logging.debug("Wrote backup config %s" % confName)
 
     outConfFname = join(datasetDir, "dataset.json")
     writeJson(outConf, outConfFname)
-    logging.info("Wrote %s" % outConfFname)
+    logging.info("Wrote main config %s" % outConfFname)
 
 def startHttpServer(outDir, port):
     " start an http server on localhost serving outDir on a given port "
@@ -3563,30 +3645,39 @@ def findParentConfigs(inFname, dataRoot, currentName):
     while path!="/" and path!=dataRoot:
         path = dirname(path)
         confFname = join(path, "cellbrowser.conf")
-        if not isfile(confFname):
-            break
+        #if not isfile(confFname):
+            #break
 
         fnameList.append(confFname)
         logging.debug("Found parent config at %s" % confFname)
         if confFname not in confCache:
-            c = loadConfig(confFname, addName=True)
+            c = loadConfig(confFname, ignoreName=True)
             if path==dataRoot:
                 c["name"] = ""
             confCache[confFname] = c
         else:
             c = confCache[confFname]
 
-        if path==dataRoot:
-            c["name"] = ""
-        else:
-            baseName = c["name"].split("/")[-1]
-            pathParts.append(c["name"])
+        #if path==dataRoot:
+            #c["name"] = ""
+        #else:
+        baseName = c["name"].split("/")[-1]
+        pathParts.append(c["name"])
         parentInfo = (c["name"], c["shortLabel"])
         parentInfos.append(parentInfo)
+        logging.debug("parentInfos: %s" % parentInfos)
 
-    pathParts.append(currentName)
+    # need to reverse now, as we went upwards
+    pathParts = list(reversed(pathParts))
+
+    # then append the currentName
+    baseName = currentName.split("/")[-1]
+    pathParts.append(baseName)
+
+    pathParts = [x for x in pathParts if x!=""]
     fullPath = "/".join(pathParts)
-    logging.debug("parent datasets of %s are: %s, full path: %s" % (inFname, fnameList, fullPath))
+
+    logging.debug("parent datasets of %s are: %s, full path: %s, parts %s" % (inFname, fnameList, fullPath, pathParts))
     return list(reversed(fnameList)), fullPath, list(reversed(parentInfos))
 
 def rebuildCollections(dataRoot, webRoot, collList):
@@ -3599,12 +3690,14 @@ def rebuildCollections(dataRoot, webRoot, collList):
         webCollDir = join(webRoot, relpath(dirname(collFname), dataRoot))
         relCollDir = relpath(collFname, dataRoot)
         collOutFname = join(webCollDir, "dataset.json")
-        collInfo = loadConfig(collFname, addName=True)
+        collInfo = loadConfig(collFname, ignoreName=True)
+
         if dirname(collFname)!=dataRoot:
             fullPath = findParentConfigs(collFname, dataRoot, collInfo["name"])[1]
         else:
             fullPath = ""
         collInfo["name"] = fullPath
+
         logging.debug("Rebuilding collection %s from %s and subdirs of %s" % (collOutFname, collFname, webCollDir))
 
         # the collections summary comes from the JSON files
@@ -3617,6 +3710,8 @@ def rebuildCollections(dataRoot, webRoot, collList):
             collInfo["parents"] = parentInfos
 
         collInfo["md5"] = md5ForList([json.dumps(collInfo)])[:MD5LEN]
+
+        writeDatasetDesc(dirname(collFname), collInfo, webCollDir, coordFiles=None)
 
         writeJson(collInfo, collOutFname)
 
@@ -3632,27 +3727,18 @@ def findRoot(inDir):
 
     return dataRoot
 
-def findSiblingInfo(inDir):
-    " find name and label for all sibling datasets "
-    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
-    parentDir = dirname(inDir)
-    sibInfos = findDatasetJsons(parentDir, skipDir=inDir)
-    filtSibInfos = []
-    for si in sibInfos:
-        filtSibInfos.append({"name":si["name"], "shortLabel":si["shortLabel"]})
-    return filtSibInfos
-
-def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
+def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None):
     " build browser from config files confFnames into directory outDir and serve on port "
     if outDir=="" or outDir==None:
         outDir = defOutDir
+    outDir = expanduser(outDir)
 
     setDebug(doDebug)
     if type(confFnames)==type(""):
         # it's very easy to forget that the input should be a list so we accept a single string instead
+        logging.debug("got a string, converting to a list")
         confFnames = [confFnames]
 
-    outDir = expanduser(outDir)
     datasets = []
     dataRoot = None
     todoConfigs = set() # list of collections we need to update once we're done
@@ -3660,18 +3746,26 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
         # load cellbrowser.conf
         if isdir(inConfFname):
             inConfFname = join(inConfFname, "cellbrowser.conf")
-        inConf = loadConfig(inConfFname, reqTagsDataset)
+        logging.debug("Processing %s" % inConfFname)
 
-        dsName = inConf["name"]
-
-        dataRoot = findRoot(inConfFname)
+        inConf = loadConfig(inConfFname)
+        inDir = dirname(abspath(inConfFname))
 
         # detect hierarchical mode and construct the output path
-        relPath = inConf["name"]
+        dataRoot = findRoot(inConfFname)
         if dataRoot:
+            if "name" in inConf:
+                logging.warn("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
+            logging.debug("Deriving dataset name from path")
+            inConf["name"] = basename(dirname(abspath(inConfFname)))
+
             relPath = relpath(dirname(abspath(inConfFname)), dataRoot)
+        else:
+            relPath = inConf["name"]
         datasetDir = join(outDir, relPath)
         makeDir(datasetDir)
+
+        dsName = inConf["name"]
 
         datasets.append(dsName)
 
@@ -3686,14 +3780,15 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
             logging.debug("Adding %s" % inPath)
             todoConfigs.add(inPath)
         else:
-            convertDataset(inConf, outConf, datasetDir)
+            convertDataset(inDir, inConf, outConf, datasetDir, redo)
 
         # find all parent cellbrowser.conf-files
         if dataRoot is None:
             logging.info("dataRoot not set in ~/.cellbrowser.conf, not rebuilding hierarchy")
+            dataRoot = None
         else:
             if not "fileVersions" in outConf:
-                outConf = loadConfig(inConfFname, addName=True)
+                outConf = loadConfig(inConfFname, ignoreName=True)
                 outConf["fileVersions"] = {}
             parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, outConf["name"])
             todoConfigs.update(parentFnames)
@@ -3706,7 +3801,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False):
 
             writeConfig(inConf, outConf, datasetDir)
 
-    if dataRoot is not None:
+    if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
 
     cbUpgrade(outDir, datasets)
@@ -3812,6 +3907,9 @@ def cbBuildCli():
     " command line interface for dataset converter, also copies the html/js/etc files "
     args, options = cbBuild_parseArgs()
 
+    if len(args)!=0:
+        errAbort("This program doesn't accept arguments. Did you forget to use the -i option?")
+
     confFnames = options.inConf
     if confFnames==None:
         confFnames = ["cellbrowser.conf"]
@@ -3825,6 +3923,7 @@ def cbBuildCli():
         if not isfile(fname):
             logging.error("File %s does not exist." % fname)
             cbBuild_parseArgs(showHelp=True)
+
     if options.outDir is None:
         logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cellbrowser.conf.")
         cbBuild_parseArgs(showHelp=True)
@@ -3833,7 +3932,12 @@ def cbBuildCli():
     #onlyMeta = options.onlyMeta
     port = options.port
 
-    build(confFnames, outDir, port)
+    if options.recursive:
+        confFnames = glob.glob("*/cellbrowser.conf")
+        for cf in confFnames:
+            build(cf, outDir, redo=options.redo)
+    else:
+        build(confFnames, outDir, port, redo=options.redo)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
@@ -4062,7 +4166,8 @@ def findDatasets(outDir):
 
         datasetDesc["baseUrl"] = subDir+"/"
         datasets.append(datasetDesc)
-    datasets = list(sorted(datasets, key=lambda k: k.get('priority', 10)))
+
+    datasets = list(sorted(datasets, key=lambda k: k.get('priority', 0)))
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
@@ -4223,7 +4328,7 @@ def summarizeDatasets(datasets):
         summDs = {
             "shortLabel" : ds["shortLabel"],
             "name" : ds["name"],
-            "md5" : ds["md5"],
+            "md5" : ds["md5"]
         }
         #allMd5s.append(ds["md5"])
 
@@ -4245,6 +4350,7 @@ def summarizeDatasets(datasets):
                     #summDs[optTag] = ds[optTag]
 
         dsList.append(summDs)
+
     return dsList
 
 def makeIndexHtml(baseDir, outDir, devMode=False):
@@ -4317,16 +4423,16 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
         gaTag = getConfig("gaTag")
         writeGaScript(ofh, gaTag)
 
+    md5 = md5WithPython(join(outDir, "dataset.json"))
+
     ofh.write('</head>\n')
     ofh.write('<body>\n')
-    ofh.write('<script>\n')
-    #ofh.write(datasetListJs)
-    #ofh.write(colListJs)
-    ofh.write("""  jQuery.getJSON("dataset.json", function (datasetInfo) {\n""")
-    ofh.write('      cellbrowser.loadData(datasetInfo);\n')
-    ofh.write("""        });\n""")
-    ofh.write('</script>\n');
+    #ofh.write('<div id="tpWait">Please wait. Cell Browser is loading...</div>\n')
     ofh.write('</body>\n')
+    ofh.write('<script>\n')
+    ofh.write("var rootMd5 = '%s';\n" % md5[:MD5LEN])
+    ofh.write('cellbrowser.main(rootMd5);\n')
+    ofh.write('</script>\n');
     ofh.write('</html>\n')
 
     ofh.close()
@@ -4843,29 +4949,40 @@ def mustBePython3():
         print("Once this is all done, install scanpy.")
         sys.exit(1)
 
-def generateDataDesc(datasetName, outDir, algParams):
+def generateDataDesc(datasetName, outDir, algParams=None):
     " write a desc.conf to outDir "
     outFname = join(outDir, "desc.conf")
+
+    if isfile(outFname):
+        logging.info("Not writing %s, already exists" % outFname)
+        return
+
     c = maybeLoadConfig(outFname)
     #if isfile(outFname):
         #c = loadConfig(outFname)
     #else:
         #c = OrderedDict()
 
-    c["title"] = datasetName
+    c["title"] = datasetName.replace("_", " ")
     if not "image" in c:
         c["#image"] = "thumb.png"
     if not "abstract" in c:
         c["abstract"] = "Please edit desc.conf to modify this abstract, then rerun cbBuild"
     if not "methods" in c:
-        c["methods"] = "This dataset was created by a generic Scanpy pipeline run through cbScanpy."
+        c["methods"] = \
+"""<section>Sample collection</section>
+TBD
+<section>Analysis</section>
+This dataset was created by a generic Scanpy pipeline run through cbScanpy.
+"""
 
     if not "unitDesc" in c:
         c["#unitDesc"] = "count"
 
     # always overwrite the parameters
-    algParams = list(algParams.items())
-    c["algParams"] = algParams
+    if algParams:
+        algParams = list(algParams.items())
+        c["algParams"] = algParams
 
     writePyConf(c, outFname)
 
@@ -4971,7 +5088,6 @@ def cbScanpyCli():
         outMatrixFname = join(outDir, "exprMatrix.tsv.gz")
         copyTsvMatrix(matrixFname, outMatrixFname)
 
-    #generateHtmls(datasetName, outDir)
     generateDataDesc(datasetName, outDir, params)
 
 def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
@@ -5135,10 +5251,10 @@ def generateDownloads(datasetName, outDir):
     logging.info("Wrote %s" % ofh.name)
 
 def generateHtmls(datasetName, outDir):
-    " generate downloads.html and summary.html in outDir, if they don't exist "
-    # XX TODO: don't generate these anymore, but generate a desc.conf
-    copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
-    generateDownloads(datasetName, outDir)
+    " generate desc.conf in outDir, if it doesn't exist "
+    #copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
+    generateDataDesc(datasetName, outDir, {})
+    #generateDownloads(datasetName, outDir)
 
 if __name__=="__main__":
     args, options = main_parseArgs()
