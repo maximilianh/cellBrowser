@@ -405,38 +405,11 @@ var cellbrowser = function() {
               .then(function(desc) { 
                   datasetDescToHtml(datasetInfo, desc); 
               });
-        } else {
-            // for older datasets that don't have .json descriptors yet
-            var descUrl = cbUtil.joinPaths([datasetName, "summary.html"]) +"?"+md5;
-            $("#pane1").load(descUrl, function( response, status, xhr ) {
-                if ( status === "error" ) {
-                    $( "#pane1" ).html("File "+descUrl.split("?")[0]+" was not found");
-                }
-                $("#tabLink1").tab("show");
-            });
-
-            var methodsUrl = cbUtil.joinPaths([datasetName, "methods.html"]) +"?"+md5;
-            $("#pane2").load(methodsUrl, function( response, status, xhr ) {
-                if ( status === "error" ) {
-                    $( "#pane2" ).html("File "+methodsUrl.split("?")[0]+" was not found");
-                }
-            });
-
-            var downloadUrl = cbUtil.joinPaths([datasetName, "downloads.html"]) +"?"+md5;
-            $("#pane3").load(downloadUrl, function( response, status, xhr ) {
-                if ( status === "error" ) {
-                    $( "#pane3" ).html("File "+downloadUrl.split("?")[0]+" was not found");
-                }
-            });
-            $( "#pane1" ).show();
-            $( "#pane2" ).show();
-            $( "#pane3" ).show();
+        }
+        else {
+          $( "#pane1" ).html("This dataset does not seem to have a desc.conf file. Please read https://cellbrowser.readthedocs.io/dataDesc.html or run 'cbBuild --init' to create one");
         }
         $("#tpOpenDialogTabs").tabs("refresh").tabs("option", "active", 0);
-
-        // this is weird, but I have not found a better way to make the tab show up
-        //$("#tpOpenDialogTabs a:last").tab("show");
-        //$("#tpOpenDialogTabs a:first").tab("show");
     }
 
     let descLabels = {
@@ -523,7 +496,7 @@ var cellbrowser = function() {
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
                 htmls.push("/meta.tsv'>meta.tsv</a></p>");
 
-                htmls.push("<p><a href='https://cellbrowser.readthedocs.io/load.html'>Want to load these into Seurat or Scanpy?</a></p>");
+                htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
 
                 htmls.push("<p><b>Dimensionality reduction coordinates:</b><br>");
                 for (let fname of desc.coordFiles)
@@ -578,7 +551,7 @@ var cellbrowser = function() {
 
         let htmls = [];
 
-        if (datasetInfo.name==="")
+        if (datasetInfo.name==="") // the root dataset
             $('#tabLink1').text("Overview");
         else
             $('#tabLink1').text("Abstract");
@@ -660,7 +633,7 @@ var cellbrowser = function() {
                 htmls.push("<br>");
             }
             else {
-                htmls.push("<b>Direct link to this dataset for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
+                htmls.push("<b>Direct link to this plot for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
                 htmls.push("<br>");
                 htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+"</small></p>");
             }
@@ -672,7 +645,9 @@ var cellbrowser = function() {
         buildMethodsPane(datasetInfo, desc);
         buildDownloadsPane(datasetInfo, desc);
 
-        $("#tpOpenDialogTabs").tabs("refresh").tabs("option", "active", 0);
+        $("#tpOpenDialogTabs").tabs("refresh");
+        //.tabs("option", "active", 0) does not do the color change of the tab so doing this instead
+        $("#tabLink1").click();
         $("area").click( function(ev) { 
             var dsName = ev.target.href.split("/").pop();
             loadDataset(db.conf.name+"/"+dsName, true);
@@ -737,7 +712,7 @@ var cellbrowser = function() {
      * - openDsInfo is the currently open object or a collection. 
      * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
      */
-        var title = null;
+        var title = "Choose Cell Browser Dataset";
         var noteLines = [];
         var noteSpace = "2px"; // space from top of dialog to info pane and tabs
         //var datasetList = [];
@@ -749,10 +724,10 @@ var cellbrowser = function() {
         if (datasetList===undefined)
             onlyInfo = true;
 
-        // click handlers send the click event, so make sure the collInfo is really a collinfo object
-        if (openDsInfo && openDsInfo.parents) {
-            let dsCount = datasetList.length;
+        // create links to the parents of the dataset
+        if (openDsInfo && openDsInfo.parents && !onlyInfo) {
 
+            noteLines.push("Go back to: " );
             // make the back links
             let backLinks = [];
             let parents = openDsInfo.parents;
@@ -767,26 +742,19 @@ var cellbrowser = function() {
                     childName = parents[i+1][0];
                 backLinks.push("<span class='tpBackLink link' data-open-dataset='"+parName+"' data-sel-dataset='"+childName+"'>"+parLabel+"</span>");
             }
+            noteLines.push(backLinks.join("&nbsp;&gt;&nbsp;"));
+            noteSpace = "4em"; // TODO: redesign dialog to not have hard-coded spacing
+        }
 
-            // select from a collection
+        // if this is a collection, not a dataset, change descriptive text in dialog
+        if (datasetList) {
+            let dsCount = datasetList.length;
             title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
             noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
                 "Double-click or click 'Open' below. To move between datasets later in the cell browser, " +
-                "use the 'Collection' dropdown. </p>"+
-                "Go back to: " );
+                "use the 'Collection' dropdown. </p>)");
 
-            //backLinks.push("<span class='tpBackLink link' id='/'>Main menu</span>");
-
-            noteLines.push(backLinks.join("&nbsp;&gt;&nbsp;"));
-
-            noteSpace = "4em";
             changeUrl({"ds":openDsInfo.name});
-            //activeIdx = 0;
-        }
-        else {
-            // select from the top-level list
-            //datasetList = gDatasetList;
-            title = "Choose Cell Browser Dataset";
         }
 
         if (onlyInfo)
@@ -3142,7 +3110,8 @@ var cellbrowser = function() {
             addStr = "max-width:"+options.width+"px;";
         var maxHeight = $(window).height()-200;
         // unshift = insert at pos 0
-        htmlLines.unshift("<div style='display:none;"+addStr+"max-height:"+maxHeight+"px' id='tpDialog' title='"+title+"'>");
+        //htmlLines.unshift("<div style='display:none;"+addStr+"max-height:"+maxHeight+"px' id='tpDialog' title='"+title+"'>");
+        htmlLines.unshift("<div style='display:none;"+addStr+"' id='tpDialog' title='"+title+"'>");
         htmlLines.push("</div>");
         $(document.body).append(htmlLines.join(""));
 
@@ -3151,7 +3120,7 @@ var cellbrowser = function() {
             dialogOpts["width"] = options.width;
         if (options.height!==undefined)
             dialogOpts["height"] = options.height;
-        dialogOpts["maxHeight"] = maxHeight;
+        //dialogOpts["maxHeight"] = maxHeight;
         if (options.buttons!==undefined)
             dialogOpts["buttons"] =  options.buttons;
         else

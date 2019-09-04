@@ -635,18 +635,15 @@ def lineFileNextRow(inFile, headerIsRow=False):
         yield rec
 
 def parseOneColumn(fname, colName):
-    " return a single column from a tsv as a list "
-    ifh = open(fname)
-    sep = sepForFile(fname)
-    headers = ifh.readline().rstrip("\r\n").split(sep)
-    try:
-        colIdx = headers.index(colName)
-    except ValueError:
-        raise Exception("there is no column %s in the file %s" % (colName, fname))
-
+    " return a single column from a tsv as a list, without the header "
     vals = []
-    for line in ifh:
-        row = line.rstrip("\r\n").split(sep)
+    colIdx = None
+    for row in lineFileNextRow(fname):
+        if colIdx is None:
+            try:
+                colIdx = row._fields.index(colName)
+            except ValueError:
+                raise Exception("there is no column %s in the file %s" % (repr(colName), fname))
         vals.append(row[colIdx])
     return vals
 
@@ -2408,30 +2405,39 @@ def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf
     summInfo[key] = text
 
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
-    " write a json file that describes the dataset abstract/methods/downloads, easier than summary/methods/downloads.html "
+    " write a json file that describes the dataset abstract/methods/downloads, easier than a summary.html "
     confFname = join(inDir, "datasetDesc.conf")
     if not isfile(confFname):
         confFname = join(inDir, "desc.conf")
 
-    if not isfile(confFname):
-        logging.debug("Could not find %s" % confFname)
-        return False
-
     if "fileVersions" not in outConf:
         outConf["fileVersions"] = {}
 
-    outConf["fileVersions"]["desc"] = getFileVersion(confFname)
-    outPath = join(datasetDir, "desc.json")
+    if isfile(confFname):
+        outConf["fileVersions"]["desc"] = getFileVersion(confFname)
+        summInfo = loadConfig(confFname)
+        outConf["hasFiles"] = ["datasetDesc"]
+    else:
+        logging.debug("Could not find %s" % confFname)
+        summFname = join(inDir, "summary.html")
+        if not summFname:
+            logging.debug("no summary.html found")
+        else:
+            summInfo = {}
 
-    summInfo = loadConfig(confFname)
+    outPath = join(datasetDir, "desc.json")
 
     if coordFiles:
         summInfo["coordFiles"] = coordFiles
 
     # try various ways to get the abstract and methods html text
     readFileIntoDict(summInfo, "abstract", inDir, "abstract.html")
-    readFileIntoDict(summInfo, "abstract", inDir, "summary.html")
     readFileIntoDict(summInfo, "methods", inDir, "methods.html")
+
+    # this is only for very old datasets with a desc.conf - deprecated
+    readFileIntoDict(summInfo, "abstract", inDir, "summary.html")
+    readFileIntoDict(summInfo, "downloads", inDir, "downloads.html")
+
     if "abstractFile" in summInfo:
         readFileIntoDict(summInfo, "abstract", inDir, summInfo["abstractFile"], mustExist=True)
         del summInfo["abstractFile"]
@@ -2451,24 +2457,20 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
             logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
             shutil.copyfile(rawInPath, rawOutPath)
 
-    # need the collection info, too
-    #if "collections" in outConf and not "collections" in summInfo:
-        #summInfo["collections"] = outConf["collections"]
-
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
 
     writeJson(summInfo, outPath)
 
-    if "descMd5s" not in outConf:
-        outConf["descMd5s"] = {}
+    #if "descMd5s" not in outConf:
+        #outConf["descMd5s"] = {}
 
-    outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
+    #outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
 
     # it's easier to have a single field that tells us if the desc.json is present
     if not "hasFiles" in outConf:
         outConf["hasFiles"] = {}
-    if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
+    #if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
         outConf["hasFiles"] = ["datasetDesc"]
 
     logging.debug("Wrote dataset description to %s" % outPath)
@@ -2489,7 +2491,7 @@ def makeAbsDict(conf, key):
     return dicts
 
 def parseTsvColumn(fname, colName):
-    " parse a tsv file and return column as a pair (values, assignment row -> index in values) "
+    " parse a tsv file and return a single column as a pair (values, assignment row -> index in values) "
     logging.info("Parsing column %s from %s" % (colName, fname))
     vals = parseOneColumn(fname, colName)
 
@@ -2907,8 +2909,9 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     outConf["fileVersions"]["inMeta"] = getFileVersion(metaFname)
     if "colors" in inConf:
         fullColorFname = abspath(join(inDir, inConf["colors"]))
-        inConf["colors"] = fullColorFname
-        outConf["fileVersions"]["colors"] = getFileVersion(fullColorFname)
+        if isfile(fullColorFname):
+            inConf["colors"] = fullColorFname
+            outConf["fileVersions"]["colors"] = getFileVersion(fullColorFname)
 
     metaDir = join(outDir, "metaFields")
     makeDir(metaDir)
@@ -3224,8 +3227,8 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
     foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
-    if not foundConf:
-        copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
+    #if not foundConf:
+        #copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 
     if geneToSym==-1:
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
@@ -3402,6 +3405,23 @@ def makeDictDefaults(inVar, defaults):
         d[val] = defaults.get(val, val)
     return d
 
+def runSafeRankGenesGroups(adata, clusterField, minCells=5):
+    " run scanpy's rank_genes_groups in a way that hopefully doesn't crash "
+    import scanpy as sc
+    adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
+    sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
+
+    # single-cell cluster crash rank_genes, so remove their cells
+    clusterCellCounts = list(adata.obs.groupby([clusterField]).apply(len).iteritems())
+    filterOutClusters = [cluster for (cluster,count) in clusterCellCounts if count==1]
+    if len(filterOutClusters)!=0:
+        logging.info("Removing cells in clusters %s, as they have only a single cell" % filterOutClusters)
+        adata = adata[~adata.obs[clusterField].isin(filterOutClusters)] 
+
+    logging.info("Calculating 100 marker genes for each cluster")
+    sc.tl.rank_genes_groups(adata, groupby=clusterField)
+    return adata
+
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
         markerField='rank_genes_groups'):
@@ -3456,10 +3476,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         "In the future, from Python, try running sc.tl.rank_genes_groups(adata) to "
         "create the cluster annotation and keep it in the object." % markerField)
         addMarkers = False
-        logging.info("Now filtering for >5 cells and then running sc.tl.rank_genes_groups(adata) to get markers for the field '%s'" % clusterField)
-        import scanpy as sc
-        sc.pp.filter_genes(adata, min_cells=5) # rank_genes_groups crashes on zero-value genes
-        sc.tl.rank_genes_groups(adata, groupby=clusterField)
+        logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
+        adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
     top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
@@ -3935,6 +3953,7 @@ def cbBuildCli():
     if options.recursive:
         confFnames = glob.glob("*/cellbrowser.conf")
         for cf in confFnames:
+            logging.info("Recursive mode: processing %s" % cf)
             build(cf, outDir, redo=options.redo)
     else:
         build(confFnames, outDir, port, redo=options.redo)
@@ -4519,7 +4538,7 @@ def excepthook(type, value, traceback):
 def checkLayouts(conf):
     """ it's very easy to get the layout names wrong: check them and handle the special value 'all' """
     if "doLayouts" not in conf:
-        return ["tsne", "umap"]
+        return ["tsne", "umap", "drl"]
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
@@ -4895,8 +4914,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     if conf["doMarkers"]:
         nGenes = conf["markerCount"]
         pipeLog('Finding top markers for each cluster')
-
-        sc.tl.rank_genes_groups(adata, clusterField)
+        adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
         if bigDataset:
             pipeLog("Not doing rank_genes plot, big dataset")
@@ -5066,16 +5084,16 @@ def cbScanpyCli():
 
 
     # anndata in newer versions can't save without the ordering so force an ordering now
-    import pandas as pd
-    for colName in adata.obs.columns:
-        col = adata.obs[colName]
-        if col.dtype.kind!="O":
-            continue
-        logging.debug("Converting column %s to ordered categories" % colName)
-        dt = pd.api.types.CategoricalDtype(col.unique(), ordered=True)
-        #newCol = col.astype("category", categories=col.unique(), ordered=True)
-        newCol = col.astype(dt)
-        adata.obs[colName] = newCol
+    #import pandas as pd
+    #for colName in adata.obs.columns:
+    #    col = adata.obs[colName]
+    #    if col.dtype.kind!="O":
+    #        continue
+    #    logging.debug("Converting column %s to ordered categories" % colName)
+    #    dt = pd.api.types.CategoricalDtype(col.unique(), ordered=True)
+    #    #newCol = col.astype("category", categories=col.unique(), ordered=True)
+    #    newCol = col.astype(dt)
+    #    adata.obs[colName] = newCol
 
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)

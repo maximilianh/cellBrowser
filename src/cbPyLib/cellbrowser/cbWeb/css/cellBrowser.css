@@ -285,3 +285,9 @@ th[role=columnheader]:not(.no-sort):hover:after {
                 overflow:hidden !important; 
                 padding: 5px !important; 
         }
+
+
+// obscure bugfix: https://stackoverflow.com/questions/31584544/jquery-ui-dialog-on-resizing-shrinks-the-content-of-the-dialog
+.ui-dialog, .ui-dialog-content {
+    box-sizing: content-box;
+}
