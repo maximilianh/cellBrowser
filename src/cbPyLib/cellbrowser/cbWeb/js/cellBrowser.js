@@ -397,7 +397,7 @@ var cellbrowser = function() {
                 return response.json();
               })
               .catch(function(err) {
-                  var msg = "File "+jsonUrl+" was not found. Please create a desc.json in your input directory and rebuild, see https://cellbrowser.readthedocs.io/dataDesc.html";
+                  var msg = "File "+jsonUrl+" was not found but datasetDesc.json has 'datasetDesc' in hasFiles. Internal error. Please contact the site admin or cells@ucsc.edu";
                   $( "#pane1" ).html(msg);
                   $( "#pane2" ).html(msg);
                   $( "#pane3" ).html(msg);
@@ -821,6 +821,8 @@ var cellbrowser = function() {
             });
         }
 
+        $(".ui-dialog-content").dialog("close"); // close the last dialog box
+
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, buttons: buttons});
 
         $("#tpOpenDialogTabs").tabs();
@@ -829,7 +831,6 @@ var cellbrowser = function() {
             let openDatasetName = $(ev.target).attr('data-open-dataset');
             let selDatasetName = $(ev.target).attr('data-sel-dataset');
             loadCollectionInfo(openDatasetName, function(newCollInfo) {
-                $(".ui-dialog-content").dialog("close");
                 openDatasetDialog(newCollInfo, selDatasetName);
             });
         });
@@ -3841,8 +3842,10 @@ var cellbrowser = function() {
 
         //var datasetIdx = parseInt(params.selected);
         //var datasetInfo = gDatasetList[datasetIdx];
-        var datasetName = params.selected;
-        var md5 = cbUtil.findIdxWhereEq(db.conf.datasets, "name", datasetName).md5;
+        var parts = params.selected.split("?");
+        //var md5 = cbUtil.findIdxWhereEq(db.conf.datasets, "name", datasetName).md5;
+        var datasetName = parts[0];
+        var md5 = parts[1];
         loadDataset(datasetName, true, md5);
     }
 
@@ -3861,18 +3864,16 @@ var cellbrowser = function() {
         htmls.push('</div>');
     }
 
-    function buildCollectionCombo(htmls, dataset, id, width, left, top) {
+    function buildCollectionCombo(htmls, id, width, left, top) {
         /* build combobox with shortLabels of all datasets that are part of same collection */
         htmls.push('<div class="tpToolBarItem" style="position:absolute;width:'+width+'px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Collection</label>');
 
-        var collName = dataset.collections[0];
         var entries = [];
-        var linkedDatasets = db.conf.datasets;
-        for (var i = 0; i < linkedDatasets.length; i++) {
-            var dsInfo = linkedDatasets[i];
-            if (dsInfo.collections!==undefined && dsInfo.collections.find(collName)!==undefined)
-                entries.push( [i, dsInfo.shortLabel] );
-        }
+        //var linkedDatasets = parentConf.datasets;
+        //for (var i = 0; i < linkedDatasets.length; i++) {
+            //var dsInfo = linkedDatasets[i];
+            //entries.push( [i, dsInfo.shortLabel] );
+        //}
 
         buildComboBox(htmls, id, entries, 0, "Select a dataset...", width);
         htmls.push('</div>');
@@ -3915,21 +3916,20 @@ var cellbrowser = function() {
         });
     }
 
-    function updateCollectionCombo(id, currDsName, collName) {
-        /* load sibling labels into collection combobox from json */
-        loadCollectionInfo(collName, function(collData) {
-            var htmls = [];
-            var datasets = collData.datasets;
-            for (var i = 0; i < datasets.length; i++) {
-                var ds = datasets[i];
-                var selStr = "";
-                if (ds.name===currDsName)
-                    selStr = "selected";
-                htmls.push('<option value="'+ds["name"]+'"'+selStr+'>'+ds.shortLabel+'</option>');
-            }
-            $('#'+id).html(htmls.join(""));
-            $("#"+id).trigger("chosen:updated");
-        });
+    function updateCollectionCombo(id, collData) {
+        /* load dataset sibling labels into collection combobox from json */
+        var htmls = [];
+        var datasets = collData.datasets;
+        for (var i = 0; i < datasets.length; i++) {
+            var ds = datasets[i];
+            var selStr =  "";
+            if (ds.name===db.conf.name)
+                selStr = "selected";
+            var val = ds["name"]+"?"+ds["md5"];
+            htmls.push('<option value="'+val+'"'+selStr+'>'+ds.shortLabel+'</option>');
+        }
+        $('#'+id).html(htmls.join(""));
+        $("#"+id).trigger("chosen:updated");
     }
 
     function geneComboSearch(query, callback) {
@@ -4103,8 +4103,12 @@ var cellbrowser = function() {
         buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
         nextLeft += 215;
 
-        if (dataset.collections) {
-            buildCollectionCombo(htmls, dataset, "tpCollectionCombo", 330, nextLeft, 0);
+        var nameParts = dataset.name.split("/");
+        var parentName = null;
+        if (nameParts.length > 1) {
+            buildCollectionCombo(htmls, "tpCollectionCombo", 330, nextLeft, 0);
+            nameParts.pop();
+            parentName = nameParts.join("/");
         }
 
         htmls.push("</div>");
@@ -4122,9 +4126,11 @@ var cellbrowser = function() {
 
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
-        if (dataset.collections) {
+        if (parentName!==null) {
             activateCombobox("tpCollectionCombo", collectionComboWidth);
-            updateCollectionCombo("tpCollectionCombo", dataset.name, dataset.collections[0]);
+            loadCollectionInfo( parentName, function(dataset) {
+                updateCollectionCombo("tpCollectionCombo", dataset);
+            });
         }
 
         var select = $('#tpGeneCombo').selectize({
@@ -5588,7 +5594,9 @@ var cellbrowser = function() {
             //var nameIdx = cbUtil.findIdxWhereEq(metaInfo.ui.shortLabels, 0, clusterName);
             //var acronyms = db.conf.acronyms;
             //title += " - "+acronyms[clusterName];
-            title += " - "+metaInfo.ui.longLabels[nameIdx];
+            var longLabel = metaInfo.ui.longLabels[nameIdx];
+            if (clusterName!==longLabel)
+                title += " - "+metaInfo.ui.longLabels[nameIdx];
         }
 
         //if (acronyms!==undefined && clusterName in acronyms)

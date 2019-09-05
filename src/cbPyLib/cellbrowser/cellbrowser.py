@@ -487,6 +487,9 @@ def cbScanpy_parseArgs():
     parser.add_option("", "--inCluster", dest="inCluster", action="store",
             help="Do not louvain-cluster, but use this meta field (=obs) when calculating marker genes. The default is to use the louvain clustering results. Also in scanpy.conf.")
 
+    parser.add_option("", "--skipMatrix", dest="skipMatrix", action="store_true",
+            help="do not write the scanpy matrix to the destination directory as a file exprMatrix.tsv.gz")
+
     parser.add_option("", "--copyMatrix", dest="copyMatrix", action="store_true",
             help="Instead of reading the input matrix into scanpy and then writing it back out, just copy the input matrix. Only works if the input matrix is gzipped and in the right format and a tsv or csv file, not mtx or h5-based files.")
 
@@ -2247,8 +2250,8 @@ def parseMarkerTable(filename, geneToSym):
     newHeaders = ["id", "symbol", headers[scoreIdx]+"|float"]
     newHeaders.extend(otherHeadersWithType)
 
-    if len(data) > 200:
-        errAbort("Your marker file has more than 200 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
+    if len(data) > 300:
+        errAbort("Your marker file has more than 300 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
 
     # determine if the score field is most likely a p-value, needed for sorting
     revSort = True
@@ -2265,7 +2268,7 @@ def parseMarkerTable(filename, geneToSym):
 
 def splitMarkerTable(filename, geneToSym, outDir):
     """ split .tsv on first field and create many files in outDir with columns 2-end.
-        Returns the names of the clusters and a dict topMarkers with clusterName -> list of three top marker genes.
+        Returns the names of the clusters and a dict topMarkers with clusterName -> list of five top marker genes.
     """
     topMarkerCount = 5
 
@@ -3411,12 +3414,12 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
 
-    # single-cell cluster crash rank_genes, so remove their cells
+    # single-cell clusters crash rank_genes, so remove their cells
     clusterCellCounts = list(adata.obs.groupby([clusterField]).apply(len).iteritems())
     filterOutClusters = [cluster for (cluster,count) in clusterCellCounts if count==1]
     if len(filterOutClusters)!=0:
         logging.info("Removing cells in clusters %s, as they have only a single cell" % filterOutClusters)
-        adata = adata[~adata.obs[clusterField].isin(filterOutClusters)] 
+        adata = adata[~adata.obs[clusterField].isin(filterOutClusters)]
 
     logging.info("Calculating 100 marker genes for each cluster")
     sc.tl.rank_genes_groups(adata, groupby=clusterField)
@@ -4855,6 +4858,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     clusterField = conf.get("inCluster")
     if clusterField is None:
         clusterField = "louvain"
+    logging.info("Using cluster annotation from field: %s" % clusterField)
 
     if "tsne" in doLayouts:
         sc.pl.tsne(adata, color=clusterField)
@@ -5066,6 +5070,7 @@ def cbScanpyCli():
     confFname = options.confFname
     inCluster = options.inCluster
     copyMatrix = options.copyMatrix
+    skipMatrix = options.skipMatrix
 
     if copyMatrix and not matrixFname.endswith(".gz"):
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
@@ -5100,7 +5105,7 @@ def cbScanpyCli():
     datasetName=options.name
 
     scanpyToCellbrowser(adata, outDir, datasetName=datasetName,
-            clusterField=inCluster, skipMatrix=copyMatrix, useRaw=True)
+            clusterField=inCluster, skipMatrix=(copyMatrix or skipMatrix), useRaw=True)
 
     if copyMatrix:
         outMatrixFname = join(outDir, "exprMatrix.tsv.gz")
