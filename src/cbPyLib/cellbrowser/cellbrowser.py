@@ -411,7 +411,7 @@ def cbBuild_parseArgs(showHelp=False):
         help="show debug messages")
 
     parser.add_option("-i", "--inConf", dest="inConf", action="append",
-        help="a cellbrowser.conf file that specifies labels and all input files, default %default, can be specified multiple times")
+        help="a cellbrowser.conf file that specifies labels and all input files, default is ./cellbrowser.conf, can be specified multiple times")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT or ~/.cellbrowser.conf, current value: %default", default=defOutDir)
 
@@ -485,16 +485,13 @@ def cbScanpy_parseArgs():
             #help="Existing meta data to read into the scanpy anndata.obs system. A .tsv or .csv file. Use in combination with --inCluster to get marker genes for existing cell type clusters. Can also be set in scanpy.conf.")
 
     parser.add_option("", "--inCluster", dest="inCluster", action="store",
-            help="Do not louvain-cluster, but use this meta field (=obs) when calculating marker genes. The default is to use the louvain clustering results. Also in scanpy.conf.")
+            help="Do not run louvain-clustering, but use this meta field from ad.obs when calculating marker genes. The default is to use the louvain clustering results. Can be specified also in scanpy.conf.")
 
     parser.add_option("", "--skipMatrix", dest="skipMatrix", action="store_true",
             help="do not write the scanpy matrix to the destination directory as a file exprMatrix.tsv.gz")
 
     parser.add_option("", "--copyMatrix", dest="copyMatrix", action="store_true",
             help="Instead of reading the input matrix into scanpy and then writing it back out, just copy the input matrix. Only works if the input matrix is gzipped and in the right format and a tsv or csv file, not mtx or h5-based files.")
-
-    #parser.add_option("", "--skipMatrix", dest="skipMatrix", action="store_true",
-            #help="Do not write the matrix. You will have to copy it manually.")
 
     parser.add_option("-g", "--genome", dest="genome", action="store",
             help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
@@ -593,13 +590,8 @@ def tsvReader(fh):
             row = [f.strip('"') for f in row] # this is technically not necessary, but was requested in #130
         yield row
 
-def lineFileNextRow(inFile, headerIsRow=False):
-    """
-    parses tab-sep file with headers in first line
-    yields collection.namedtuples
-    strips "#"-prefix from header line
-    Can parse csv files with quotes.
-    """
+def textFileRows(inFile):
+    " iterate over lines from tsv or csv file and yield lists "
 
     if isinstance(inFile, str):
         # input file is a string = file name
@@ -614,15 +606,28 @@ def lineFileNextRow(inFile, headerIsRow=False):
     else:
         rowReader = tsvReader(fh)
 
-    headers = nextEl(rowReader)
-    headers = sanitizeHeaders(headers)
+    for row in rowReader:
+        yield row
+
+def lineFileNextRow(inFile, headerIsRow=False):
+    """
+    parses tab-sep file with headers in first line
+    yields collection.namedtuples
+    strips "#"-prefix from header line
+    Can parse csv files with quotes.
+    """
+
+    ifh = textFileRows(inFile)
+    headers = nextEl(ifh)
+
 
     if headerIsRow:
         yield headers
 
+    headers = sanitizeHeaders(headers)
     Record = namedtuple('tsvCsvRec', headers)
 
-    for fields in rowReader:
+    for fields in ifh:
         if fields[0].startswith("#"):
             continue
 
@@ -641,12 +646,17 @@ def parseOneColumn(fname, colName):
     " return a single column from a tsv as a list, without the header "
     vals = []
     colIdx = None
-    for row in lineFileNextRow(fname):
+    logging.debug("Parsing column %s from file %s" % (colName, fname))
+   
+    colIdx = None
+    for row in textFileRows(fname):
         if colIdx is None:
             try:
-                colIdx = row._fields.index(colName)
+                colIdx = row.index(colName)
+                continue
             except ValueError:
-                raise Exception("there is no column %s in the file %s" % (repr(colName), fname))
+                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again." % (repr(colName), fname))
+
         vals.append(row[colIdx])
     return vals
 
@@ -1126,6 +1136,7 @@ def addLongLabels(acronyms, fieldMeta):
                 logging.warning("Field %s: value %s has no long label through the acronyms" %
                         (fieldMeta["label"], shortLabel))
                 longLabel = shortLabel
+            #longLabel = longLabel.replace("_", " ")
             longLabels.append(longLabel)
         fieldMeta["longLabels"] = longLabels
 
@@ -1956,12 +1967,10 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     #sep = sepForFile(metaFname)
     fieldValues = defaultdict(set)
     headers = None
-    #for line in enumerate(open(metaFname, "rtU")):
-    for row in lineFileNextRow(metaFname):
-        #row = line.rstrip("\r\n").split(sep)
-        headers = row._fields
-        #continue
-        #row = line.rstrip("\r\n").split(sep)
+    for row in textFileRows(metaFname):
+        if headers is None:
+            headers = row
+            continue
         metaToRow[row[0]] = row
 
         for fieldIdx, val in enumerate(row):
@@ -2284,7 +2293,7 @@ def splitMarkerTable(filename, geneToSym, outDir):
     for clusterName, rows in iterItems(data):
         logging.debug("Cluster: %s" % clusterName)
         sanName = sanitizeName(clusterName)
-        assert(sanName not in sanNames) # after sanitation, cluster names must be unique
+        assert(sanName not in sanNames) # after removing special chars, cluster names must still be unique. this is most likely due to typos in your meta annotation table. 
         sanNames.add(sanName)
 
         outFname = join(outDir, sanName+".tsv")
@@ -2808,6 +2817,9 @@ def readAcronyms(inConf, outConf):
     " read the acronyms and save them into the config "
     inDir = inConf["inDir"]
     fname = inConf.get("acroFname")
+    if fname is None:
+        fname = inConf.get("acronymFile")
+
     if fname is not None:
         fname = makeAbs(inDir, fname)
         if not isfile(fname):
@@ -2816,7 +2828,6 @@ def readAcronyms(inConf, outConf):
         else:
             acronyms = parseDict(fname)
             logging.info("Read %d acronyms from %s" % (len(acronyms), fname))
-            #outConf["acronyms"] = acronyms
         return acronyms
 
 def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
@@ -2848,7 +2859,7 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     newMarkers = []
     #doAbort = True # only the first marker file leads to abort, we're more tolerant for the others
-    doAbort = False # temp hack
+    doAbort = False # temp hack # because of single cell cluster filtering in cbScanpy
     topMarkersDone = False
     for markerIdx, markerInfo in enumerate(markerFnames):
         markerFname = markerInfo["file"]
@@ -2931,7 +2942,7 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     fieldConf, validFieldNames = metaToBin(inConf, outConf, finalMetaFname, colorFname, metaDir, enumFields)
     outConf["metaFields"] = fieldConf
 
-    checkFieldNames(outConf, ["violinField", "clusterField", "labelField"], validFieldNames)
+    checkFieldNames(outConf, ["violinField", "clusterField", "defColorField", "labelField"], validFieldNames)
 
     indexMeta(finalMetaFname, metaIdxFname)
 
@@ -3242,7 +3253,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     # a few settings are passed through to the Javascript as they are
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
-        "clusterField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
+        "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility"]:
         copyConf(inConf, outConf, tag)
 
@@ -3294,7 +3305,7 @@ exprMatrix='%(matrixFname)s'
 #tags = ["10x", 'smartseq2']
 meta='%(metaFname)s'
 geneIdType='auto'
-clusterField='%(clusterField)s'
+defColorField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
@@ -3436,7 +3447,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     This function export files needed for the ucsc cells viewer from the Scanpy Anndata object
     :param anndata: Scanpy AnnData object where information are stored
     :param path : Path to folder where to save data (tsv tables)
-    :param clusterField: name of cluster field, used for labeling/default coloring, default is 'louvain'
+    :param clusterField: name of cluster field, used for labeling and default coloring, default is 'louvain'
     :param metaFields: list of metadata names (string) to export
     from the AnnData object (other than 'louvain' to also save (eg: batches, ...)).
     This can also be a dict of name -> label, if you want to have more human-readable names.
@@ -4352,15 +4363,25 @@ def summarizeDatasets(datasets):
             "name" : ds["name"],
             "md5" : ds["md5"]
         }
-        #allMd5s.append(ds["md5"])
 
-        #if not minimal:
         if "sampleCount" in ds:
             summDs["sampleCount"] = ds["sampleCount"]
         else:
             summDs["isCollection"] = True
-            #summDs["datasetCount"] = ds["datasetCount"]
-            summDs["datasetCount"] = len(ds["datasets"])
+            children = ds["datasets"]
+
+            collCount = 0
+            dsCount = 0
+            for child in children:
+                if "datasets" in child or "isCollection" in child:
+                    collCount += 1
+                else:
+                    dsCount +=1
+
+            if dsCount!=0:
+                summDs["datasetCount"] = dsCount
+            if collCount!=0:
+                summDs["collectionCount"] = collCount
 
         for optListTag in ["tags", "hasFiles"]:
             if optListTag in ds:
@@ -4377,13 +4398,6 @@ def summarizeDatasets(datasets):
 
 def makeIndexHtml(baseDir, outDir, devMode=False):
     " make the index.html, copy over all .js and related files and add their md5s "
-    logging.debug("Development mode is: %s" % repr(devMode))
-
-    #dsList = summarizeDatasets(datasets)
-
-    indexFname = join(baseDir, "html", "index.html")
-    #datasetListJs = "var datasets = "+json.dumps(dsList, sort_keys=True, indent=4, separators=(',', ': '))+";"
-
     newFname = join(outDir, "index.html")
     tmpFname = newFname+".tmp"
     ofh = open(tmpFname, "w")
@@ -4432,6 +4446,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
         "ext/slick.cellrangedecorator.js", "ext/slick.cellrangeselector.js", "ext/slick.cellselectionmodel.js",
         "ext/slick.editors.js", "ext/slick.formatters.js", "ext/slick.grid.js",
         "ext/tiny-queue.js", "ext/science.v1.js", "ext/reorder.v1.js",  # commit d51dda9ad5cfb987b9e7f2d7bd81bb9bbea82dfe
+        "ext/scaleColorPerceptual.js",  # https://github.com/politiken-journalism/scale-color-perceptual tag 1.1.2
         "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js", "js/maxHeat.js",
         ]
 
@@ -4461,7 +4476,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     os.rename(tmpFname, newFname)
 
     #datasetLabels = [x["name"] for x in dsList]
-    #logging.info("Wrote %s, added datasets: %s" % (newFname, " - ".join(datasetLabels)))
+    logging.info("Wrote %s (devMode: %s)" % (newFname, devMode))
 
 def removeHiddenDatasets(datasets):
     """ visibility="hidden" removes datasets from the list, e.g. during paper review """
@@ -4635,6 +4650,10 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
     pipeLog("cbScanpy $Id$")
     pipeLog("Input file: %s" % matrixFname)
+
+    pipeLog("Restricting OPENBLAS to 4 threads")
+    os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
+
     #printLog("Output directory: %s" % outDir)
     pipeLog("Start time: %s" % datetime.datetime.now())
     sc.logging.print_versions()
@@ -5043,6 +5062,16 @@ def generateQuickGenes(outDir):
         ofh.write("%s\t%s\n" % (sym, ", ".join(clusterNames)))
     ofh.close()
 
+def checkDsName(datasetName):
+    " make sure that datasetName contains only ASCII chars and - or _, errAbort if not "
+    if datasetName.startswith("-"):
+        errAbort("dataset name cannot start with a dash. (forgot to supply an argument for -n?)")
+    if "/" in datasetName:
+        errAbort("dataset name cannot contain slashes, these are reserved for collections")
+    match = re.match("^[a-zA-Z-_]*$", datasetName)
+    if match is None:
+        errAbort("dataset name can only contain lower or uppercase letters or dash or underscore")
+
 def cbScanpyCli():
     " command line interface for cbScanpy "
     mustBePython3()
@@ -5071,6 +5100,9 @@ def cbScanpyCli():
     inCluster = options.inCluster
     copyMatrix = options.copyMatrix
     skipMatrix = options.skipMatrix
+    datasetName=options.name
+
+    checkDsName(datasetName)
 
     if copyMatrix and not matrixFname.endswith(".gz"):
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
@@ -5087,22 +5119,8 @@ def cbScanpyCli():
 
     adata, params = cbScanpy(matrixFname, metaFname, inCluster, confFname, figDir, logFname)
 
-
-    # anndata in newer versions can't save without the ordering so force an ordering now
-    #import pandas as pd
-    #for colName in adata.obs.columns:
-    #    col = adata.obs[colName]
-    #    if col.dtype.kind!="O":
-    #        continue
-    #    logging.debug("Converting column %s to ordered categories" % colName)
-    #    dt = pd.api.types.CategoricalDtype(col.unique(), ordered=True)
-    #    #newCol = col.astype("category", categories=col.unique(), ordered=True)
-    #    newCol = col.astype(dt)
-    #    adata.obs[colName] = newCol
-
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
-    datasetName=options.name
 
     scanpyToCellbrowser(adata, outDir, datasetName=datasetName,
             clusterField=inCluster, skipMatrix=(copyMatrix or skipMatrix), useRaw=True)

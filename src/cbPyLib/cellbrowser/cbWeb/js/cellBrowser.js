@@ -376,14 +376,6 @@ var cellbrowser = function() {
             },
         });
 
-        //if (datasetInfo.datasetCount!==undefined) {
-            //$("#tabLink2").hide();
-            //$("#tabLink3").hide();
-        //} else {
-            //$("#tabLink2").show();
-            //$("#tabLink3").show();
-        //}
-
         let datasetName = datasetInfo.name;
         let md5 = datasetInfo.md5;
         if (datasetInfo.hasFiles && datasetInfo.hasFiles.indexOf("datasetDesc")!==-1) {
@@ -692,6 +684,10 @@ var cellbrowser = function() {
                 htmls.push("<span class='badge' style='background-color: #28a745'>"+dataset.datasetCount+" datasets</span>");
             }
 
+            if (dataset.collectionCount!==undefined) {
+                htmls.push("<span class='badge' style='background-color: #188725'>"+dataset.collectionCount+" collections</span>");
+            }
+
             if (dataset.tags!==undefined) {
                 for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
                 var tag = dataset.tags[tagI];
@@ -713,7 +709,6 @@ var cellbrowser = function() {
      * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
      */
         var title = "Choose Cell Browser Dataset";
-        var noteLines = [];
         var noteSpace = "2px"; // space from top of dialog to info pane and tabs
         //var datasetList = [];
         var activeIdx = 0;
@@ -723,6 +718,19 @@ var cellbrowser = function() {
 
         if (datasetList===undefined)
             onlyInfo = true;
+
+        var noteLines = [];
+
+        // if this is a collection, not a dataset, change descriptive text in dialog
+        if (datasetList) {
+            let dsCount = datasetList.length;
+            title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
+            noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
+                "Double-click or click 'Open' below. To move between datasets later in the cell browser, " +
+                "use the 'Collection' dropdown. </p>");
+
+            changeUrl({"ds":openDsInfo.name});
+        }
 
         // create links to the parents of the dataset
         if (openDsInfo && openDsInfo.parents && !onlyInfo) {
@@ -746,17 +754,6 @@ var cellbrowser = function() {
             noteSpace = "4em"; // TODO: redesign dialog to not have hard-coded spacing
         }
 
-        // if this is a collection, not a dataset, change descriptive text in dialog
-        if (datasetList) {
-            let dsCount = datasetList.length;
-            title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
-            noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
-                "Double-click or click 'Open' below. To move between datasets later in the cell browser, " +
-                "use the 'Collection' dropdown. </p>)");
-
-            changeUrl({"ds":openDsInfo.name});
-        }
-
         if (onlyInfo)
             title = "Dataset Information";
         else {
@@ -774,8 +771,9 @@ var cellbrowser = function() {
         var tabsWidth = winWidth - leftPaneWidth - 70;
         var listGroupHeight = winHeight - 100;
 
-        var htmls = [];
+        var htmls = ["<div style='line-height: 1.1em'>"];
         htmls.push(noteLines.join(""));
+        htmls.push("</div>");
 
         if (onlyInfo)
             leftPaneWidth = 0;
@@ -1711,6 +1709,7 @@ var cellbrowser = function() {
 
                 cartOverwrite(db, clusterField, fieldMeta);
                 var metaInfo = db.findMetaInfo(clusterField);
+
                 renderer.setLabels(metaInfo.ui.shortLabels);
 
                 // only need to update the legend if the current field is shown
@@ -2534,6 +2533,20 @@ var cellbrowser = function() {
        }
     }
 
+   function makeFullLabel(db) {
+       /* return full name of current dataset, including parent names */
+       var nameParts = [];
+       var parents = db.conf.parents;
+       if (parents)
+           for (var i=0; i < parents.length; i++)
+               if (parents[i][0]!="") // "" is the root dataset = no need to add
+                   nameParts.push( parents[i][1] );
+
+       nameParts.push( db.conf.shortLabel );
+       var datasetLabel = nameParts.join(" - ");
+       return datasetLabel;
+   }
+
     function renderData() {
     /* init the renderer, start loading and draw data when ready
      */
@@ -2555,18 +2568,8 @@ var cellbrowser = function() {
                else
                    renderer.setColors(legendGetColors(gLegend.rows));
 
-               // make the name include the full path
-               var nameParts = [];
-               var parents = db.conf.parents;
-               if (parents)
-                   for (var i=0; i < parents.length; i++)
-                       if (parents[i][0]!="") // "" is the root dataset = no need to add
-                           nameParts.push( parents[i][1] );
 
-               nameParts.push( db.conf.shortLabel );
-               var datasetLabel = nameParts.join(" - ");
-
-               renderer.setTitle("Dataset: "+datasetLabel);
+               renderer.setTitle("Dataset: "+makeFullLabel(db));
                
                if (selList)
                    findCellsMatchingQueryList(selList, function (cellIds) {
@@ -2809,6 +2812,7 @@ var cellbrowser = function() {
             htmls.push('<ul class="dropdown-menu pull-right">');
             htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to Default</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Qualitative: Rainbow</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="viridis" href="#">Qualitative: Viridis</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Qualitative: Paul Tol&#39;s</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative: paired</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="cb-Set3" href="#">Qualitative: pastel</a></li>');
@@ -2816,6 +2820,10 @@ var cellbrowser = function() {
             htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Gradient: shades of red</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Gradient: beige to red</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-rainbow" href="#">Gradient: blue to red</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="viridis" href="#">Gradient: Viridis</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="magma" href="#">Gradient: Magma</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="inferno" href="#">Gradient: Inferno</a></li>');
+            htmls.push('<li><a class="tpColorLink" data-palette="plasma" href="#">Gradient: Plasma</a></li>');
             htmls.push('</ul>');
         htmls.push("</div>"); // btn-group
         //htmls.push("</div>"); // tpToolbarButtons
@@ -4439,6 +4447,26 @@ var cellbrowser = function() {
 	return (luma < 40);
     }
 
+    function makePercPalette(palName, n) {
+        /* palettes from https://github.com/politiken-journalism/scale-color-perceptual */
+        var pal = [];
+        var step = 1/(n-1);
+
+        var func = null;
+        switch (palName) {
+            case 'inferno' : func =  scale.color.perceptual.inferno; break;
+            case 'viridis' : func =  scale.color.perceptual.viridis; break;
+            case 'magma' : func =  scale.color.perceptual.magma; break;
+            case 'plasma' : func =  scale.color.perceptual.plasma; break;
+        }
+
+        for (let x=0; x<=1.0; x+=step) {
+            pal.push(func(x).substr(1));
+        }
+
+        return pal;
+    }
+
     function makeColorPalette(palName, n) {
     /* return an array with n color hex strings */
     /* Use Google's palette functions for now, first Paul Tol's colors, if that fails, use the usual HSV rainbow
@@ -4447,6 +4475,8 @@ var cellbrowser = function() {
         var pal = [];
         if (palName==="blues")
             pal = makeHslPalette(0.6, n);
+        else if (palName==="magma" || palName==="viridis" || palName==="inferno" || palName=="viridis")
+            pal = makePercPalette(palName, n);
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);
         else {
@@ -5385,6 +5415,7 @@ var cellbrowser = function() {
 
             $("#tpSplitMenuEntry").text("Unsplit Screen");
             $("#mpCloseButton").click(onSplitClick);
+
         } else {
             // stop the split
             if (!renderer.isMain) {
@@ -5754,7 +5785,7 @@ var cellbrowser = function() {
             var geneSym = ev.target.getAttribute("data-gene");
             $(".ui-dialog").remove(); // close marker dialog box
             if (selectOnClick) {
-                var clusterField = db.conf.labelField;
+                clusterField = db.conf.labelField;
                 var queryList = [{'m':clusterField, 'eq':clusterName}];
                 findCellsMatchingQueryList(queryList, function(cellIds) {
                         renderer.selectSet(cellIds);

@@ -374,22 +374,6 @@ function MaxPlot(div, top, left, width, height, args) {
         div.id = 'mpCloseButton';
         div.textContent = "Close";
         self.div.appendChild(div);
-
-        div = document.createElement('div');
-        div.style.cursor = "default";
-        div.style.left = left+"px";
-        div.style.top = top+"px";
-        div.style.display = "block";
-        div.style.position = "absolute";
-        div.style.fontSize = gTitleSize;
-        div.style.padding = "3px";
-        div.style.borderRadius = "3px";
-        div.style.border = "1px solid #c5c5c5";
-        div.style.backgroundColor = "#f6f6f6";
-        div.style.color = "#454545";
-        div.id = 'mpCloseButton';
-        div.textContent = "Close";
-        self.div.appendChild(div);
         return div;
     }
 
@@ -2029,8 +2013,8 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.onNoLabelHover = self.onNoLabelHover;
         plot2.onActiveChange = self.onActiveChange;
 
-        var closeButton = gebi('mpCloseButton');
-        closeButton.addEventListener('click', self.unsplit);
+        //var closeButton = gebi('mpCloseButton');
+        //closeButton.addEventListener('click', self.unsplit);
 
         plot2.drawDots();
 
