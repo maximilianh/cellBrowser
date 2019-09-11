@@ -935,15 +935,15 @@ def likeEmptyString(val):
     " returns true if string is a well-known synonym of 'unknown' or 'NaN'. ported from cellbrowser.js "
     return val.strip() in emptyVals
 
-def floatToIntList(vals):
-    " convert a list of floats to a integers, take care of -inf values "
-    newVals = []
-    for x in vals:
-        if x==FLOATNAN:
-            newVals.append(INTNAN)
-        else:
-            newVals.append(int(x))
-    return newVals
+#def floatToIntList(vals):
+#    " convert a list of floats to integers, take care of -inf values "
+#    newVals = []
+#    for x in vals:
+#        if x==FLOATNAN:
+#            newVals.append(INTNAN)
+#        else:
+#            newVals.append(int(x))
+#    return newVals
 
 def itemsInOrder(valDict, keyOrder):
     """ given a dict key->val and a list of keys, return (key, val) in the order of the list
@@ -965,7 +965,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
     - 'type' can be: 'int', 'float', 'enum' or 'uniqueString'
-    - if int or float: 'deciles' is a list of the deciles
+    - if int or float: replace 0 or NaN with the FLOATNAN global (-inf)
     - if uniqueString: 'maxLen' is the length of the longest string
     - if enum: 'values' is a list of all possible values
     - if colors is not None: 'colors' is a list of the default colors
@@ -1648,24 +1648,24 @@ def maxVal(a):
     else:
         return max(a)
 
-def discretExprRowEncode(geneDesc, binInfo, digArr):
-    " encode geneDesc, deciles and array of decile indixes into a single string that can be read by the .js code "
-    # The format of a record is:
-    # - 2 bytes: length of descStr, e.g. gene identifier or else
-    # - len(descStr) bytes: the descriptive string descStr
-    # - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
-    # - array of n bytes, n = number of cells
-    decChrList = [chr(x) for x in digArr]
-    decStr = "".join(decChrList)
-    geneIdLen = struct.pack("<H", len(geneDesc))
-
-    binStr = binEncode(binInfo)
-    geneStr = geneIdLen+geneDesc+binStr+decStr
-
-    geneCompr = zlib.compress(geneStr)
-    logging.debug("compression factor of %s: %f, before %d, after %d"% (geneDesc, float(len(geneCompr)) / len(geneStr), len(geneStr), len(geneCompr)))
-
-    return geneCompr
+#def discretExprRowEncode(geneDesc, binInfo, digArr):
+#    " encode geneDesc, deciles and array of decile indixes into a single string that can be read by the .js code "
+#    # The format of a record is:
+#    # - 2 bytes: length of descStr, e.g. gene identifier or else
+#    # - len(descStr) bytes: the descriptive string descStr
+#    # - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
+#    # - array of n bytes, n = number of cells
+#    decChrList = [chr(x) for x in digArr]
+#    decStr = "".join(decChrList)
+#    geneIdLen = struct.pack("<H", len(geneDesc))
+#
+#    binStr = binEncode(binInfo)
+#    geneStr = geneIdLen+geneDesc+binStr+decStr
+#
+#    geneCompr = zlib.compress(geneStr)
+#    logging.debug("compression factor of %s: %f, before %d, after %d"% (geneDesc, float(len(geneCompr)) / len(geneStr), len(geneStr), len(geneCompr)))
+#
+#    return geneCompr
 
 def exprEncode(geneDesc, exprArr, matType):
     """ convert an array of numbers of type matType (int or float) to a compressed string of
@@ -1681,6 +1681,7 @@ def exprEncode(geneDesc, exprArr, matType):
     # on cortex-dev, numpy was around 30% faster. Not a huge difference.
     if numpyLoaded:
         exprStr = exprArr.tobytes()
+        minVal = np.amin(exprArr)
     else:
         if matType=="float":
             arrType = "f"
@@ -1689,6 +1690,7 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
         exprStr = array.array(arrType, exprArr).tostring()
+        minVal = min(exprArr)
 
     if isPy3:
         geneStr = geneIdLen+bytes(geneDesc, encoding="ascii")+exprStr
@@ -1699,7 +1701,7 @@ def exprEncode(geneDesc, exprArr, matType):
 
     fact = float(len(geneCompr)) / len(geneStr)
     logging.debug("raw - compression factor of %s: %f, before %d, after %d"% (geneDesc, fact, len(geneStr), len(geneCompr)))
-    return geneCompr
+    return geneCompr, minVal
 
 def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, matType=None):
     """ convert gene expression vectors to vectors of deciles
@@ -1731,6 +1733,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
     symCounts = defaultdict(int)
     geneCount = 0
+    allMin = 99999999
     for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
 
@@ -1745,12 +1748,14 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
             #highCount += 1
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
-        exprStr = exprEncode(geneId, exprArr, matType)
+        exprStr, minVal = exprEncode(geneId, exprArr, matType)
         exprIndex[sym] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
 
         if geneCount % 1000 == 0:
             logging.info("Wrote compressed expression values for %d genes" % geneCount)
+
+        allMin = min(allMin, minVal)
 
     discretOfh.close()
     ofh.close()
@@ -1763,6 +1768,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     if len(exprIndex)==0:
         errAbort("No genes from the expression matrix could be mapped to symbols."
             "Are you sure these are Ensembl IDs? Adapt geneIdType in cellbrowser.conf.")
+
+    # keep a flag so the client later can figure out if the expression matrix contains any negative values
+    # this is important for handling the 0-value
+    exprIndex["_range"] = (allMin,0)
+    logging.info("Global minimum in matrix is: %f" % allMin)
 
     jsonOfh = open(jsonFname, "w")
     json.dump(exprIndex, jsonOfh)

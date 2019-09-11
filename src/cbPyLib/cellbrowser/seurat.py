@@ -314,6 +314,10 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     ofh.close()
     logging.info("Wrote R code to %s" % scriptPath)
 
+def cbSeurat2Cli():
+    " stay backwards compatible "
+    cbSeuratCli()
+
 def cbSeuratCli():
     global options
     args, options = parseArgs()

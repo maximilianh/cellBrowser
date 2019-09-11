@@ -2457,6 +2457,7 @@ var cellbrowser = function() {
 
         changeUrl({"gene":geneSym, "meta":null, "pal":null});
         console.log("Loading gene expression vector for "+geneSym);
+
         db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress);
 
         // clear the meta combo
@@ -2642,6 +2643,11 @@ var cellbrowser = function() {
 
        colorByDefaultField(doneOnePart);
 
+       // pre-load the config file, as the users will often go directly to the info dialog
+       // and the following pre-loads risk blocking it.
+       var jsonUrl = cbUtil.joinPaths([db.conf.name, "desc.json"]) +"?"+db.conf.md5;
+       fetch(jsonUrl);
+
        if (db.conf.quickGenes)
            db.preloadGenes(db.conf.quickGenes, function() { 
                updateGeneTableColors(null); 
@@ -2814,8 +2820,8 @@ var cellbrowser = function() {
             htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Qualitative: Rainbow</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="viridis" href="#">Qualitative: Viridis</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Qualitative: Paul Tol&#39;s</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative: paired</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="cb-Set3" href="#">Qualitative: pastel</a></li>');
+            //htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative: paired</a></li>');
+            //htmls.push('<li><a class="tpColorLink" data-palette="cb-Set3" href="#">Qualitative: pastel</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="blues" href="#">Gradient: shades of blue</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="reds" href="#">Gradient: shades of red</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-sq-blue" href="#">Gradient: beige to red</a></li>');

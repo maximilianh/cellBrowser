@@ -528,24 +528,10 @@ function CbDbFile(url) {
 
     function discretizeArray(arr, maxBinCount, bin0Val) {
         /* discretize numeric values to deciles. return an obj with dArr and binInfo */
+        /* bin0Val is the value that is treated different, it is kept in its own bin */
+        /* is bin0Val is null, switch off special bin0Value handling
         /* ported from Python cbAdd:discretizeArray */
         /* supports NaN special values */
-
-        //var isMeta = False;
-        //var findFunc = findBins_expr;
-        //var metaNan = null; // expr data doesn't have NaNs
-
-        //if (dataType==="float") {
-            //isMeta = True;
-            //metaNan = FLOATNAN;
-            //findFunc = findBins_meta;
-        //}
-        //else if (dataType==="int") {
-            //isMeta = True;
-            //metaNan = INTNAN;
-            //findFunc = findBins_meta;
-        //}
-
         var counts = countAndSort(arr);
 
         // if we have just a few values, do not do any binning, just count
@@ -595,13 +581,13 @@ function CbDbFile(url) {
         // convert to format (min, max, count)
         // bin0 has special min/max of "Unknown" or 0
         var binInfo = [];
+
         var bin0MinMax = "Unknown";
         if (bin0Val===0)
             bin0MinMax = 0;
-
         binInfo.push( [bin0MinMax, bin0MinMax, binCounts[0]] );
 
-        for (let i=0; i<breakValues.length; i++) { // starts at 1, as bin0 is special case
+        for (let i=0; i<breakValues.length; i++) {
             var binMin = minVal;
             if (i!==0)
                 binMin = parseFloat(breakValues[i-1]);
@@ -618,10 +604,17 @@ function CbDbFile(url) {
      * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
      * binInfo) */
 
+        var binCount = self.exprBinCount;
+
         function onLoadedVec(exprArr, geneSym, geneDesc) {
-            console.time("discretize");
-            var da = discretizeArray(exprArr, binCount, 0);
-            console.timeEnd("discretize");
+            console.time("discretize "+geneSym);
+            var specVal = 0;
+            var matrixMin = self.getMatrixMin();
+            if (matrixMin < 0)
+                specVal = null;
+
+            var da = discretizeArray(exprArr, binCount, specVal);
+            console.timeEnd("discretize "+geneSym);
             onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
         }
 
@@ -841,7 +834,7 @@ function CbDbFile(url) {
     function countAndSort(arr) {
         /* count values in array, return an array of [value, count]. */
         //var counts = {};
-        var counts = new Map();
+        var counts = new Map(); // this is a relatively recent Javascript feature, but is faster
         for (var i=0; i < arr.length; i++) {
             var num = arr[i];
             //without the Map(), it's a bit slower: counts[num] = counts[num] ? counts[num] + 1 : 1;
@@ -872,21 +865,6 @@ function CbDbFile(url) {
 	}
 	return lo;
     }
-
-    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress) {
-    /* given a geneSym (string), retrieve array of array put into binCount bins
-     * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
-     * binInfo) */
-
-        function onLoadedVec(exprArr, geneSym, geneDesc) {
-            console.time("discretize");
-            var da = discretizeArray(exprArr, self.exprBinCount, 0);
-            console.timeEnd("discretize");
-            onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
-        }
-
-        this.loadExprVec(geneSym, onLoadedVec, onProgress)
-    };
 
     this.loadExprVec = function(geneSym, onDone, onProgress, otherInfo) {
     /* given a geneSym (string), retrieve array of values and call onDone with
@@ -1003,9 +981,19 @@ function CbDbFile(url) {
         }
     }
 
+    this.getMatrixMin = function() {
+        /* return the minimum valu in the matrix */
+       var validGenes = self.getGenes();
+       var matrixMin = 0;
+       if ("_range" in validGenes)
+           matrixMin = validGenes["_range"][0];
+        return matrixMin;
+    }
+
     this.preloadGenes = function(geneSyms, onDone, onProgress) {
        /* start loading the gene expression vectors in the background. call onDone when done. */
        var validGenes = self.getGenes();
+
        var loadCounter = 0;
        if (geneSyms) {
            for (var i=0; i<geneSyms.length; i++) {
