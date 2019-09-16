@@ -152,14 +152,27 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     # export the matrix as a proper .tsv.gz
     if matrixPath:
         cmds.append('print("Writing expression matrix to %s")' % matrixPath)
-        cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+        if isdir(matrixPath):
+            matrixDir = matrixPath
+            mtxFname = join(matrixDir, "matrix.mtx.gz")
+            geneFname = join(matrixDir, "genes.tsv")
+            barcodeFname = join(matrixDir, "barcodes.tsv")
+            cmds.append("writeMM(mat, '%s')" % mtxFname)
+            cmds.append('write(rownames(mat), file = "%s")' % geneFname)
+            cmds.append('write(colnames(mat), file = "%s")' % barcodeFname)
+            # annoyingly, writeMM doesn't support connections
+            cmds.append("gzip('%s')" % matrixPath)
+            cmds.append("gzip('%s')" % geneFname)
+            cmds.append("gzip('%s')" % barcodeFname)
+        else:
+            cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+            cmds.append('z <- gzfile("%s")' % matrixPath)
+            cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
         # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
         # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') #  scaled
-        cmds.append('z <- gzfile("%s")' % matrixPath)
-        cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
 
     # find mito genes, mito-%, and create plots for it
     # XX - ENSG names?
@@ -466,7 +479,7 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
     metaPath = join(outDir, "meta.tsv")
     markerPath = join(outDir, "markers.tsv")
     scriptPath = join(outDir, "runSeurat.R")
-    matrixPath = join(outDir, "exprMatrix.tsv.gz")
+    matrixPath = join(outDir, "matrix.mtx")
     logPath = join(outDir, "analysisLog.txt")
 
     cmds = ["require(methods)"] # for the 'slots()' function
@@ -487,7 +500,7 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
         clusterStr = "'%s'" % clusterField
 
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE)" %
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE, use.mtx=TRUE)" %
             (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr))
 
     writeRScript(cmds, scriptPath, "cbImportSeurat")

@@ -38,7 +38,7 @@ except:
 
 # We do not require numpy but numpy is around 30-40% faster in serializing arrays
 # So use it if it's present
-numpyLoaded = False
+numpyLoaded = True
 try:
     import numpy as np
 except:
@@ -747,13 +747,16 @@ def getDecilesList_np(values):
 def bytesAndFmt(x):
     """ how many bytes do we need to store x values and what is the sprintf
     format string for it?
+    Return tuple of Javascript type and python struct type.
+    See :
+        Javascript typed array names, https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays
+        https://docs.python.org/2/library/struct.html
     """
 
     if x > 65535:
-        assert(False) # field with more than 65k elements or high numbers? Weird meta data.
-
-    if x > 255:
-        return "Uint16", "<H" # see javascript typed array names, https://developer.mozilla.org/en-US/docs/Web/JavaScript/Typed_arrays
+        return "Uint32", "<I"
+    elif x > 255:
+        return "Uint16", "<H"
     else:
         return "Uint8", "<B"
 
@@ -1073,6 +1076,11 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
 
         fieldMeta["valCounts"] = valCounts
         fieldMeta["arrType"], fieldMeta["_fmt"] = bytesAndFmt(len(valArr))
+
+        if fieldMeta["arrType"].endswith("32"):
+            errAbort("Meta field %s has more than 32k different values and makes little sense to keep. "
+                "Please or remove the field from the meta data table or contact us, cells@ucsc.edu.", fieldMeta["name"])
+
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
         newVals = [valToInt[x] for x in valList] #
 
@@ -1238,6 +1246,68 @@ def iterLineOffsets(ifh):
            yield line, start, end
        start = ifh.tell()
 
+def findMtxFiles(fname):
+    " given the name of a .mtx.gz or directory name, find the .mtx.gz, genes/features and barcode files " 
+    if isdir(fname):
+        matDir = fname
+    else:
+        matDir = dirname(fname)
+
+    mtxFname = join(matDir, "matrix.mtx.gz")
+    genesFname = join(matDir, "genes.tsv.gz")
+    if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
+        genesFname = join(matDir, "features.tsv.gz")
+    barcodeFname = join(matDir, "barcodes.tsv.gz")
+
+    logging.debug("mtx filename: %s, %s and %s" % (mtxFname, genesFname, barcodeFname))
+    return mtxFname, genesFname, barcodeFname
+
+class MatrixMtxReader:
+    " open a .mtx file and yield rows via iterRows. gz and csv OK."
+    def __init__(self, geneToSym=None):
+        " can automatically translate to symbols, if dict geneId -> sym is provided "
+        logging.debug(".mtx.gz reader initialized")
+        self.geneToSym = geneToSym
+
+    def open(self, fname, matType=None):
+        import scipy.io
+        import numpy as np
+        logging.info("Loading %s" % fname)
+        mtxFname, genesFname, barcodeFname = findMtxFiles(fname)
+
+        self.mat, self.genes, self.barcodes = open10xMtxForRows(mtxFname, genesFname, barcodeFname)
+
+    def close(self):
+        pass
+
+    def getMatType(self):
+        " return 'int' or 'float' "
+        dt = str(self.mat.dtype)
+        if dt.startswith('int'):
+            return "int"
+        else:
+            return "float"
+
+    def getSampleNames(self):
+        return self.barcodes
+
+    def iterRows(self):
+        " yield (geneId, symbol, array) tuples from gene expression file. "
+        mat = self.mat
+        genes = self.genes
+        for i in range(0, len(self.genes)):
+            geneId = genes[i]
+            geneSym = geneId
+            if "|" in geneId:
+                geneId, geneSym = geneId.split("|")[:2]
+            if self.geneToSym and geneSym is not None:
+                geneSym = self.geneToSym.get(geneId)
+
+            if i%1000==0:
+                logging.info("%d genes written..." % i)
+            arr = mat.getrow(i).toarray()
+            yield (geneId, geneSym, arr)
+
 class MatrixTsvReader:
     " open a .tsv or .csv file and yield rows via iterRows. gz and csv OK."
 
@@ -1281,7 +1351,7 @@ class MatrixTsvReader:
 
         self.oldRows = []
         if matType is None:
-            self.matType = self.autoDetectMatType(10)
+            self.matType = self._autoDetectMatType(10)
             logging.info("Auto-detect: Numbers in matrix are of type '%s'", self.matType)
         else:
             logging.debug("Pre-determined: Numbers in matrix are '%s'" % matType)
@@ -1296,7 +1366,7 @@ class MatrixTsvReader:
     def getSampleNames(self):
         return self.sampleNames
 
-    def autoDetectMatType(self, n):
+    def _autoDetectMatType(self, n):
         " check if matrix has 'int' or 'float' data type by looking at the first n genes"
         # auto-detect the type of the matrix: int vs float
         logging.info("Auto-detecting number type of %s" % self.fname)
@@ -1389,7 +1459,7 @@ class MatrixTsvReader:
 
                     if symbol is None:
                         skipIds += 1
-                        logging.warn("line %d: %s is not a valid gene ID, check geneIdType setting in cellbrowser.conf" % (lineNo, gene))
+                        logging.warn("line %d: could not find symbol for ID %s, looks like it is not a valid gene ID, check geneIdType setting in cellbrowser.conf or gene symbol mapping tables" % (lineNo, gene))
                         symbol = gene
 
                     if symbol.isdigit():
@@ -1667,6 +1737,18 @@ def maxVal(a):
 #
 #    return geneCompr
 
+def isMtx(path):
+    " return true if path looks like it could indicate an .mtx-style matrix "
+    if isdir(path):
+        return True
+    elif path.lower().endswith(".mtx.gz"):
+        return True
+    elif path.lower().endswith(".mtx"):
+        return True
+    else:
+        loggging.debug("%s is not an MTX file" % path)
+        return False
+
 def exprEncode(geneDesc, exprArr, matType):
     """ convert an array of numbers of type matType (int or float) to a compressed string of
     floats
@@ -1689,6 +1771,7 @@ def exprEncode(geneDesc, exprArr, matType):
             arrType = "I"
         else:
             assert(False) # internal error
+
         exprStr = array.array(arrType, exprArr).tostring()
         minVal = min(exprArr)
 
@@ -1703,7 +1786,7 @@ def exprEncode(geneDesc, exprArr, matType):
     logging.debug("raw - compression factor of %s: %f, before %d, after %d"% (geneDesc, fact, len(geneStr), len(geneCompr)))
     return geneCompr, minVal
 
-def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, matType=None):
+def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, metaSampleNames, matType=None):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
@@ -1723,13 +1806,33 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     skipIds = 0
     highCount = 0
 
-    matReader = MatrixTsvReader(geneToSym)
+    if isMtx(fname):
+        matReader = MatrixMtxReader(geneToSym)
+    else:
+        matReader = MatrixTsvReader(geneToSym)
+
     matReader.open(fname, matType=matType)
+
 
     if matType is None:
         matType = matReader.getMatType()
 
     sampleNames = matReader.getSampleNames()
+
+    # filter matrix: find the indices of sample names that are in the matrix
+    metaSet = set(metaSampleNames)
+    matrixSet = set(sampleNames)
+    idxList = None
+    if len(matrixSet - metaSet)!=0:
+        idxList = []
+        for i in range(len(sampleNames)):
+            sampleName = sampleNames[i]
+            if sampleName in metaSet:
+                idxList.append(i)
+        if numpyLoaded:
+            idxList = np.array(idxList)
+        logging.debug("Filtering %d matrix samples down to %d" % (len(matrixSet), len(idxList)))
+    assert(len(metaSet-matrixSet)==0) # at this stage, samples with meta but not in matrix cannot happen
 
     symCounts = defaultdict(int)
     geneCount = 0
@@ -1748,6 +1851,13 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
             #highCount += 1
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
+        # filter the row down to the meta-samples
+        if idxList:
+            if numpyLoaded:
+                exprArr = exprArr[idxList]
+            else:
+                exprArr = [exprArr[i] for i in idxList]
+
         exprStr, minVal = exprEncode(geneId, exprArr, matType)
         exprIndex[sym] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
@@ -1771,7 +1881,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
     # keep a flag so the client later can figure out if the expression matrix contains any negative values
     # this is important for handling the 0-value
-    exprIndex["_range"] = (allMin,0)
+    exprIndex["_range"] = (int(allMin),0)
     logging.info("Global minimum in matrix is: %f" % allMin)
 
     jsonOfh = open(jsonFname, "w")
@@ -1930,6 +2040,21 @@ def sliceRow(row, skipFields):
         if i not in skipFields:
             yield val
 
+def readMatrixSampleNames(fname):
+    " return a list of the sample names of a matrix fname "
+    if fname.endswith(".mtx.gz"):
+        matrixPath = dirname(fname)
+        barcodePath = join(matrixPath, "barcodes.tsv.gz")
+        logging.info("Reading sample names for %s -> %s" % (matrixPath, barcodePath))
+        lines = openFile(barcodePath).read().splitlines()
+        ret = []
+        for l in lines:
+            ret.append(l.split()[0])
+        return ret
+
+    else:
+        return readHeaders(fname)[1:]
+
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     """ check and reorder the meta data, has to be in the same order as the
     expression matrix, write to fixedMetaFname. Remove single-value fields. """
@@ -1938,7 +2063,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     metaSampleNames = readSampleNames(metaFname)
 
     if matrixFname is not None:
-        matrixSampleNames = readHeaders(matrixFname)[1:]
+        matrixSampleNames = readMatrixSampleNames(matrixFname)
     else:
         matrixSampleNames=metaSampleNames
 
@@ -2060,8 +2185,10 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
         yVals.append(y)
 
     if len(missNames)!=0:
-        logging.info("%s: %d cells have meta but no coord. E.g. %s" % \
-            (coordName, len(missNames), missNames[:3]))
+        logging.info("%s: %d cells have meta and coords. %d cells have meta but no coord. E.g. %s" % \
+            (coordName, len(xVals), len(missNames), missNames[:3]))
+        if len(xVals)-len(missNames)==0:
+            errAbort("No coordinates that are also in meta. Check coord and meta cell identifiers.")
 
     binFh.close()
     os.rename(tmpFname, coordBinFname)
@@ -2104,7 +2231,12 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
     Returns the format of the matrix, "float" or "int", or None if not known
     """
-    if not doFilter and not ".csv" in inFname.lower():
+    if isMtx(inFname):
+        fname1, fname2, fname3 = findMtxFiles(inFname)
+        syncFiles([fname1, fname2, fname3], dirname(outFname))
+        return None
+
+    if (not doFilter and not ".csv" in inFname.lower()):
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
 
         # XX stupid .gz heuristics... 
@@ -2208,6 +2340,7 @@ def parseMarkerTable(filename, geneToSym):
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
     seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
+    seuratLine4 = "Gene\tp-value\tlog2(FoldChange)\tpct.1\tpct.2\tadjusted p-value\tCluster"
     headerLine = ifh.readline().rstrip("\r\n")
 
     sep = sepForFile(filename)
@@ -2216,6 +2349,13 @@ def parseMarkerTable(filename, geneToSym):
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
         geneIdx = 7
+        scoreIdx = 1
+        clusterIdx = 6
+        otherStart = 2
+        otherEnd = 6
+    elif headerLine == seuratLine4:
+        headers = headerLine.split(sep)
+        geneIdx = 0
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
@@ -2351,6 +2491,15 @@ def splitMarkerTable(filename, geneToSym, outDir):
         #if isfile(acronymFname):
             #otherFiles["markerLists"] = [markerFname]
     #return conf
+
+def syncFiles(inFnames, outDir):
+    " compare filesizes and copy to outDir, if needed "
+    logging.info("Syncing %s to %s" % (inFnames, outDir))
+    for inFname in inFnames:
+        outFname = join(outDir, basename(inFname))
+        if not isfile(outFname) or getsize(inFname)!=getsize(outFname):
+            logging.debug("Copying %s to %s" % (inFname, outFname))
+            shutil.copyfile(inFname, outFname)
 
 def copyDatasetHtmls(inDir, outConf, datasetDir):
     " copy dataset description html files to output directory. Add md5s to outConf. "
@@ -2697,12 +2846,15 @@ def guessGeneIdType(inputObj):
         geneIds = inputObj
     else:
         matrixFname = inputObj
-        matIter = MatrixTsvReader()
-        matIter.open(matrixFname, usePyGzip=True)
-
-        geneId, sym, exprArr = nextEl(matIter.iterRows())
-        matIter.close()
-        geneIds = [geneId]
+        if matrixFname.endswith(".mtx.gz"):
+            _mtxFname, geneFname, barcodeFname = findMtxFiles(matrixFname)
+            geneIds, barcodes = readGenesBarcodes(geneFname, barcodeFname)
+        else:
+            matIter = MatrixTsvReader()
+            matIter.open(matrixFname, usePyGzip=True)
+            geneId, sym, exprArr = nextEl(matIter.iterRows())
+            matIter.close()
+            geneIds = [geneId]
 
     geneId = geneIds[0]
 
@@ -2728,6 +2880,9 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     if matType=="auto":
         matType = None
 
+    #if isMtx(outMatrixFname):
+        #errAbort("some cell identifiers are in the matrix but not in the meta. Cannot trim .mtx files now, only .tsv. Consider using cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy.")
+
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
     matrixFname = getAbsPath(inConf, "exprMatrix")
@@ -2744,7 +2899,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, matType=matType)
+    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType)
 
     if matType=="int" or matType=="forceInt":
         outConf["matrixArrType"] = "Uint32"
@@ -3108,7 +3263,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     matrixIsSame = (origSize==nowSize)
 
     if not matrixIsSame:
-        logging.info("input matrix has input file size that is different from prevously processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" % (oldMatrixInfo, nowSize))
+        logging.info("input matrix has input file size that is different from previously processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" % (oldMatrixInfo, nowSize))
         return True
 
     if not "fileVersions" in outConf:
@@ -3218,13 +3373,23 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     checkConfig(inConf)
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
-    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+    if isMtx(inMatrixFname):
+        outMatrixFname = join(datasetDir, "matrix.mtx.gz")
+    else:
+        outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+
     outMetaFname = join(datasetDir, "meta.tsv")
 
     # try not to recreate files that have been created before, as this is quite slow (=Python)
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
     doMeta = metaHasChanged(datasetDir, outMetaFname)
 
+    geneToSym = -1 # None would mean "there are no gene symbols to map to"
+
+    if not doMeta:
+        sampleNames = readSampleNames(outMetaFname)
+
+    needFilterMatrix = True
 
     if doMeta or doMatrix or redo in ["meta", "matrix"]:
         # convertMeta also compares the sample IDs between meta and matrix to determine if the meta file 
@@ -3237,8 +3402,6 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         logging.info("Loading old config from %s" % oldConfFname)
         oldConf = readJson(oldConfFname, keepOrder=True)
         outConf.update(oldConf)
-
-    geneToSym = -1 # None would mean "there are no gene symbols to map to"
 
     if doMatrix or redo=='matrix':
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
@@ -3306,9 +3469,10 @@ def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     matrixFname = args.get("exprMatrix", "exprMatrix.tsv.gz")
 
     conf = """
-# This is a bare-bones, auto-generated cellbrowser config file.
+# This is a bare-bones, auto-generated Cell Browser config file.
 # Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
 # for a list of possible options
+# You can also write a default template into the current directory with cbBuild --init
 name='%(name)s'
 shortLabel='%(name)s'
 exprMatrix='%(matrixFname)s'
@@ -3326,6 +3490,9 @@ coords=%(coordStr)s
 
     if addMarkers:
         conf += 'markers = [{"file": "markers.tsv", "shortLabel":"Cluster Markers"}]\n'
+
+    if "quickGenesFile" in args:
+        conf += 'quickGenesFile="%s"\n' % args["quickGenesFile"]
 
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
@@ -3568,7 +3735,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     if addMarkers:
         generateQuickGenes(path)
-        argDict['quickGenes'] = "quickGenes.tsv"
+        argDict['quickGenesFile'] = "quickGenes.tsv"
 
     if isfile(confName):
         logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
@@ -3985,6 +4152,9 @@ def cbBuildCli():
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
     import scanpy as sc
+    if matrixFname.endswith(".mtx.gz"):
+        errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
+
     if matrixFname.endswith(".mtx"):
         import pandas as pd
         logging.info("Loading expression matrix: mtx format")
@@ -3993,6 +4163,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         mtxDir = dirname(matrixFname)
         adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
         adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
+
+    elif isdir(matrixFname):
+        logging.info("Loading expression matrix: cellranger3 mtx.gz format from %s" % matrixFname)
+        adata = sc.read_10x_mtx(matrixFname)
 
     elif matrixFname.endswith(".h5"):
         import h5py
@@ -4866,7 +5040,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
                 pc_nb+=1
         pipeLog('%d PCs will be used for tSNE and clustering' % pc_nb)
     else:
-        pc_nb = pcCount
+        pc_nb = int(pcCount)
         pipeLog("Using %d PCs as configured in config" % pcCount)
 
     if "tsne" in doLayouts:
@@ -5078,7 +5252,7 @@ def checkDsName(datasetName):
         errAbort("dataset name cannot start with a dash. (forgot to supply an argument for -n?)")
     if "/" in datasetName:
         errAbort("dataset name cannot contain slashes, these are reserved for collections")
-    match = re.match("^[a-zA-Z-_]*$", datasetName)
+    match = re.match("^[a-z0-9A-Z-_]*$", datasetName)
     if match is None:
         errAbort("dataset name can only contain lower or uppercase letters or dash or underscore")
 
@@ -5141,12 +5315,8 @@ def cbScanpyCli():
 
     generateDataDesc(datasetName, outDir, params)
 
-def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
-    " convert mtx to tab-sep without scanpy. gzip if needed "
-    import scipy.io
-    import numpy as np
-    logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
-
+def readGenesBarcodes(geneFname, barcodeFname):
+    " return two lists "
     genes = []
     sep = sepForFile(geneFname)
     for l in openFile(geneFname):
@@ -5159,14 +5329,16 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
             genes.append(geneId)
 
     barcodes = [l.strip() for l in openFile(barcodeFname) if l!="\n"]
+    return genes, barcodes
 
-    if translateIds:
-        geneToSym = readGeneSymbols(None, genes)
-        genes = [geneToSym[geneId] for geneId in genes]
+def open10xMtxForRows(mtxFname, geneFname, barcodeFname):
+    """ open the three files required for 10x matrices and return mat, genes, barcodes
+    also convert the csc matrix to a csr matrix so row access is fast.
+    """
+    import scipy.io
 
-    logging.info("Read %d genes and %d barcodes" % (len(genes), len(barcodes)))
-
-    logging.info("Reading expression matrix...")
+    genes, barcodes = readGenesBarcodes(geneFname, barcodeFname)
+    logging.info("Loading expression matrix...")
     mat = scipy.io.mmread(mtxFname)
 
     logging.info("Dimensions of matrix: %d , %d" % mat.shape)
@@ -5193,8 +5365,22 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
     assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count
     assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
 
-    logging.info("Writing matrix to text")
-    tmpFname = outFname+".tmp"
+    return mat, genes, barcodes
+
+def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
+    " convert mtx to tab-sep without scanpy. gzip if needed "
+    import numpy as np
+    logging.info("Reading matrix from %s, %s and %s" % (mtxFname, geneFname, barcodeFname))
+
+    genes, barcodes = readGenesBarcodes(geneFname, barcodeFname)
+
+    if translateIds:
+        geneToSym = readGeneSymbols(None, genes)
+        genes = [geneToSym[geneId] for geneId in genes]
+
+    logging.info("Read %d genes and %d barcodes" % (len(genes), len(barcodes)))
+
+    mat, genes, barcodes = open10xMtxForRows(mtxFname, geneFname, barcodeFname)
 
     # could not find a cross-python way to open ofh for np.savetxt
     # see https://github.com/maximilianh/cellBrowser/issues/73 and numpy ticket referenced therein

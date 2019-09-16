@@ -87,7 +87,7 @@ var cellbrowser = function() {
     var METABOXTITLE   = "Cell Annotations";
 
     // maximum number of distinct values that one can color on
-    const MAXCOLORCOUNT = 200;
+    const MAXCOLORCOUNT = 500;
 
     // histograms show only the top X values and summarize the rest into "other"
     var HISTOCOUNT = 12;
@@ -2818,7 +2818,6 @@ var cellbrowser = function() {
             htmls.push('<ul class="dropdown-menu pull-right">');
             htmls.push('<li><a class="tpColorLink" data-palette="default" href="#">Reset to Default</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="rainbow" href="#">Qualitative: Rainbow</a></li>');
-            htmls.push('<li><a class="tpColorLink" data-palette="viridis" href="#">Qualitative: Viridis</a></li>');
             htmls.push('<li><a class="tpColorLink" data-palette="tol-dv" href="#">Qualitative: Paul Tol&#39;s</a></li>');
             //htmls.push('<li><a class="tpColorLink" data-palette="cb-Paired" href="#">Qualitative: paired</a></li>');
             //htmls.push('<li><a class="tpColorLink" data-palette="cb-Set3" href="#">Qualitative: pastel</a></li>');
@@ -4192,7 +4191,7 @@ var cellbrowser = function() {
             fieldLabel = fieldLabel.replace(/_/g, " ");
 
             // fields without binning and with too many unique values are greyed out
-            var isGrey = (metaInfo.diffValCount>100 && metaInfo.binMethod===undefined);
+            var isGrey = (metaInfo.diffValCount>MAXCOLORCOUNT && metaInfo.binMethod===undefined);
 
             var addClass = "";
             var addTitle="";
@@ -4481,7 +4480,7 @@ var cellbrowser = function() {
         var pal = [];
         if (palName==="blues")
             pal = makeHslPalette(0.6, n);
-        else if (palName==="magma" || palName==="viridis" || palName==="inferno" || palName=="viridis")
+        else if (palName==="magma" || palName==="viridis" || palName==="inferno" || palName=="plasma")
             pal = makePercPalette(palName, n);
         else if (palName==="reds")
             pal = makeHslPalette(0.0, n);

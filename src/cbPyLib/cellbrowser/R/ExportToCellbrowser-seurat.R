@@ -13,6 +13,7 @@ require(reticulate)
 #' @param meta.fields.names list that defines metadata field names
 #'                          after the export. Should map metadata
 #'                          column name to export name
+#' @param use.mtx for datasets > 100k cells, this is necessary, as otherwise R will report "problem too big"
 #' @param embeddings vector of embedding names to export
 #' @param markers.file path to file with marker genes
 #' @param cluster.field name of the metadata field containing cell cluster
@@ -43,7 +44,8 @@ ExportToCellbrowser <- function(
   markers.n = 100,
   skip.expr.matrix = FALSE,
   skip.markers = FALSE,
-  all.meta = FALSE
+  all.meta = FALSE,
+  use.mtx = FALSE
 ) {
   if (!require("Seurat",character.only = TRUE)) {
           stop("This script requires that Seurat (V2 or V3) is installed")
@@ -55,6 +57,11 @@ ExportToCellbrowser <- function(
           stop("can only process Seurat2 or Seurat3 objects, version of rds is ", object@version)
   }
 
+  if (substr(object@version, 1, 1)!=substr( packageVersion("Seurat"), 1, 1)) {
+          stop("The installed version of Seurat is different from Seurat object loaded. You have to down- or upgrade your installed Seurat version, see the Seurat documentation")
+  }
+
+
   # compatibility layer for Seurat 2 vs 3 
   # see https://satijalab.org/seurat/essential_commands.html
   if (substr(object@version, 1, 1)=='2') {
@@ -62,7 +69,7 @@ ExportToCellbrowser <- function(
       idents <- object@ident # Idents() in Seurat3
       meta <- object@meta.data
       cellOrder <- object@cell.names
-      mat <- as.matrix(object@raw.data)
+      counts <- object@raw.data
       genes <- rownames(x = object@data)
       dr <- object@dr
   } else {
@@ -70,7 +77,7 @@ ExportToCellbrowser <- function(
       idents <- Idents(object)
       meta <- object@meta.data
       cellOrder <- colnames(object)
-      mat <- as.matrix(GetAssayData(object = object, slot="counts"))
+      counts <- GetAssayData(object = object, slot="counts")
       dr <- object@reductions
       genes <- rownames(x = object)
   }
@@ -99,14 +106,32 @@ ExportToCellbrowser <- function(
   enum.fields <- c()
 
   # Export expression matrix
+
   if (!skip.expr.matrix) { 
-      df <- as.data.frame(mat, check.names=FALSE)
-      df <- data.frame(gene=genes, df, check.names = FALSE)
-      gzPath <- file.path(dir, "exprMatrix.tsv.gz")
-      z <- gzfile(gzPath, "w")
-      message("Writing expression matrix to ", gzPath)
-      write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
-      close(con = z)
+      if (use.mtx) {
+            require(Matrix)
+            require(R.utils)
+            matrixPath <- file.path(dir, "matrix.mtx")
+            genesPath <- file.path(dir, "genes.tsv")
+            barcodesPath <- file.path(dir, "barcodes.tsv")
+            message("Writing expression matrix to ", matrixPath)
+            writeMM(counts, matrixPath)
+            write(rownames(counts), file = genesPath)
+            write(colnames(counts), file = barcodesPath)
+            message("Gzipping expression matrix")
+            gzip(matrixPath)
+            gzip(genesPath)
+            gzip(barcodesPath)
+      } else {
+          mat = as.matrix(counts)
+          df <- as.data.frame(mat, check.names=FALSE)
+          df <- data.frame(gene=genes, df, check.names = FALSE)
+          gzPath <- file.path(dir, "exprMatrix.tsv.gz")
+          z <- gzfile(gzPath, "w")
+          message("Writing expression matrix to ", gzPath)
+          write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
+          close(con = z)
+      }
   }
 
   # Export cell embeddings
@@ -220,13 +245,17 @@ ExportToCellbrowser <- function(
     )
   }
 
+  matrixOutPath <- "exprMatrix.tsv.gz"
+  if (use.mtx)
+      matrixOutPath <- "matrix.mtx.gz"
+
   config <- '
-# This is a bare-bones, auto-generated cellbrowser config file.
+# This is a bare-bones cellbrowser config file auto-generated from R.
 # Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
 # for a full file that shows all possible options
 name="%s"
 shortLabel="%1$s"
-exprMatrix="exprMatrix.tsv.gz"
+exprMatrix="%s"
 #tags = ["10x", "smartseq2"]
 meta="meta.tsv"
 # possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
@@ -238,6 +267,7 @@ labelField="%2$s"
 enumFields=%s
 %s
 coords=%s'
+
   enum.string <- paste0(
     "[",
     paste(paste0('"', enum.fields, '"'), collapse = ", "),
@@ -251,6 +281,7 @@ coords=%s'
   config <- sprintf(
     config,
     dataset.name,
+    matrixOutPath,
     cluster.field,
     enum.string,
     markers.string,
