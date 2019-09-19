@@ -1746,7 +1746,7 @@ def isMtx(path):
     elif path.lower().endswith(".mtx"):
         return True
     else:
-        loggging.debug("%s is not an MTX file" % path)
+        logging.debug("%s is not an MTX file" % path)
         return False
 
 def exprEncode(geneDesc, exprArr, matType):
@@ -4174,7 +4174,8 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         groups = list(ifh.keys())
         ifh.close()
 
-        if genome not in groups:
+        # "matrix" indicates a cellranger3 file which does not have a clear genome list
+        if "matrix" not in groups and genome not in groups:
             errAbort("The file %s does not have expression info for the genome %s. Possible genomes are: %s. "
                      "Choose one of these and and specify it with the option -g" %
                      (matrixFname, genome, groups))
@@ -4326,7 +4327,7 @@ def findDatasetJsons(searchDir, skipDir=None):
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
             #errAbort("dataset %s has no md5" % datasetDesc)
         if not "name" in datasetDesc: # every dataset has to have a name
-            errAbort("Dataset %s must have a 'name' field." % datasetDesc)
+            errAbort("Dataset config %s must have a 'name' field." % fname)
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:

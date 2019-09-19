@@ -1,9 +1,44 @@
-# the following is copied from Seurat3's utilities.R and generics.R
-# it was modified to work with Seurat2. At some point we probably should merge the two code bases.
-# the markers "---" are used to mark the part that is used by the command line tool cbImportSeurat2
+# The markers "---" are used to mark the part that is used by the command line tool cbImportSeurat2
 require(reticulate)
 
 # ---
+#' Write sparse matrix to .tsv.gz file by writing chunks, concating them with the Unix cat command,
+#' then gziping the result. This does not work on Windows, we'd have to use the copy /b command there.
+#'
+#' @param inMat input matrix
+#' @param outFname output file name, has to end with .gz
+#' @param sliceSize=1000, size of each chunk in number of lines.
+#' @examples
+#' \dontrun{
+#' writeSparseMatrix( pbmc_small@data, "exprMatrix.tsv.gz")
+#' }
+#'
+writeSparseMatrix = function (inMat, outFname, sliceSize=1000) { 
+    require(data.table)
+    fnames = c(); 
+    setDTthreads(8);  # otherwise this would use dozens of CPUs on a fat server
+    mat = inMat; 
+    geneCount = nrow(mat); 
+    message("Writing expression matrix to ", outFname); 
+    startIdx = 1; 
+    while (startIdx<geneCount) { 
+        endIdx=min(startIdx+sliceSize-1, geneCount); 
+        matSlice = mat[startIdx:endIdx,]; 
+        denseSlice = as.matrix(matSlice); 
+        dt <- data.table(denseSlice); 
+        dt = cbind(gene=rownames(matSlice), dt); 
+        writeHeader = FALSE; 
+        if (startIdx==1) { 
+            writeHeader = TRUE 
+        }; 
+        sliceFname=paste0("temp", startIdx,".txt"); 
+        fwrite(dt, sep="\t", file=sliceFname, quote = FALSE, col.names = writeHeader); 
+        fnames=append(fnames, sliceFname); startIdx=startIdx+sliceSize}; 
+        message("Concatenating chunks"); 
+        system(paste("cat", paste(fnames, collapse=" "), "| gzip >", outFname, sep=" ")); 
+        unlink(fnames); 
+}
+
 #' Export Seurat object for UCSC cell browser
 #'
 #' @param object Seurat object
@@ -14,6 +49,7 @@ require(reticulate)
 #'                          after the export. Should map metadata
 #'                          column name to export name
 #' @param use.mtx for datasets > 100k cells, this is necessary, as otherwise R will report "problem too big"
+#' @param matrix.slot one of "counts", "scale.data", "data". Defaults to "counts".
 #' @param embeddings vector of embedding names to export
 #' @param markers.file path to file with marker genes
 #' @param cluster.field name of the metadata field containing cell cluster
@@ -37,6 +73,7 @@ ExportToCellbrowser <- function(
   meta.fields = NULL,
   meta.fields.names = NULL,
   embeddings = c("tsne", "pca", "umap"),
+  matrix.slot = "counts",
   markers.file = NULL,
   cluster.field = NULL,
   port = NULL,
@@ -69,7 +106,16 @@ ExportToCellbrowser <- function(
       idents <- object@ident # Idents() in Seurat3
       meta <- object@meta.data
       cellOrder <- object@cell.names
-      counts <- object@raw.data
+      if (matrix.slot=="counts") {
+          counts <- object@raw.data
+      } else if (matrix.slot=="scale.data") {
+          counts <- object@scale.data
+      }
+      else if (matrix.slot=="data") {
+          counts <- object@data
+      } else {
+          error("matrix.slot can only be one of: counts, scale.data, data")
+      }
       genes <- rownames(x = object@data)
       dr <- object@dr
   } else {
@@ -77,7 +123,17 @@ ExportToCellbrowser <- function(
       idents <- Idents(object)
       meta <- object@meta.data
       cellOrder <- colnames(object)
-      counts <- GetAssayData(object = object, slot="counts")
+      if (matrix.slot=="counts") {
+          counts <- GetAssayData(object = object, slot="counts")
+      } else if (matrix.slot=="scale.data") {
+              counts <- GetAssayData(object = object, slot="scale.data")
+      }
+      else if (matrix.slot=="data") {
+              counts <- GetAssayData(object = object)
+      } else {
+          error("matrix.slot can only be one of: counts, scale.data, data")
+      }
+
       dr <- object@reductions
       genes <- rownames(x = object)
   }
@@ -112,25 +168,31 @@ ExportToCellbrowser <- function(
             require(Matrix)
             require(R.utils)
             matrixPath <- file.path(dir, "matrix.mtx")
-            genesPath <- file.path(dir, "genes.tsv")
+            genesPath <- file.path(dir, "features.tsv")
             barcodesPath <- file.path(dir, "barcodes.tsv")
             message("Writing expression matrix to ", matrixPath)
             writeMM(counts, matrixPath)
-            write(rownames(counts), file = genesPath)
+            # easier to load if the genes file has at least columns even though seurat objects
+            # don't have yet explicit geneIds/geneSyms data, we just duplicate whatever the matrix has now
+            write.table(as.data.frame(cbind(rownames(counts), rownames(counts))), file=genesPath, sep="\t", row.names=F, col.names=F, quote=F)
             write(colnames(counts), file = barcodesPath)
             message("Gzipping expression matrix")
             gzip(matrixPath)
             gzip(genesPath)
             gzip(barcodesPath)
       } else {
-          mat = as.matrix(counts)
-          df <- as.data.frame(mat, check.names=FALSE)
-          df <- data.frame(gene=genes, df, check.names = FALSE)
           gzPath <- file.path(dir, "exprMatrix.tsv.gz")
-          z <- gzfile(gzPath, "w")
-          message("Writing expression matrix to ", gzPath)
-          write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
-          close(con = z)
+          if ((ncol(mat)*nrow(mat)>2E9) && is(counts, 'sparseMatrix')) {
+              writeSparseMatrix(counts, gzPath);
+          } else {
+              mat = as.matrix(counts)
+              df <- as.data.frame(mat, check.names=FALSE)
+              df <- data.frame(gene=genes, df, check.names = FALSE)
+              z <- gzfile(gzPath, "w")
+              message("Writing expression matrix to ", gzPath)
+              write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
+              close(con = z)
+          }
       }
   }
 

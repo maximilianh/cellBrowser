@@ -171,7 +171,7 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
         # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
         # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
-        #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))') # log-normalized
+        #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@data))' )# log-normalized
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@scale.data))') #  scaled
 
     # find mito genes, mito-%, and create plots for it
@@ -426,7 +426,13 @@ def cbImportSeurat_parseArgs(showHelp=False):
         help="Cluster field to color on, by default this is the @ident slot of the Seurat object but it can also be any other meta data field of the @meta.data slot")
 
     parser.add_option("", "--markerFile", dest="markerFile", action="store",
-            help="Instead of calculating cluster markers again, use this file. Format: cluster,gene,pVal + any other fields.")
+            help="Instead of calculating cluster markers again, use this file. Format: cluster,gene,pVal + any other fields. Or alternatively the native Seurat cluster markers format, as created by write.table")
+
+    parser.add_option("", "--useMtx", dest="useMtx", action="store_true",
+            help="Write a .mtx.gz file, instead of a tsv.gz file. Necessary for big datasets.")
+
+    parser.add_option("-s", "--matrixSlot", dest="matrixSlot", action="store", default="counts",
+            help="Export this slot of the matrix. Can be 'counts', 'data.scale' or 'data'. Default is %default")
 
     (options, args) = parser.parse_args()
 
@@ -492,16 +498,26 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
     cmds.append("if (class(sobj)!='seurat' && class(sobj)[1]!='Seurat') { stop('The input .rds file does not seem to contain a Seurat object') }")
     skipStr = str(skipMatrix).upper()
     skipMarkerStr = str(skipMarkers).upper()
+
     if isDebugMode():
         cmds.append("debug(ExportToCellbrowser)")
+
     if clusterField is None:
         clusterStr = 'NULL'
     else:
         clusterStr = "'%s'" % clusterField
 
+    useMtx = "FALSE"
+    if options.useMtx:
+        useMtx = "TRUE"
+
+    matrixSlot = "counts"
+    if options.matrixSlot:
+        matrixSlot = options.matrixSlot
+
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE, use.mtx=TRUE)" %
-            (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr))
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE, use.mtx=%s, matrix.slot='%s')" %
+            (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr, useMtx, matrixSlot))
 
     writeRScript(cmds, scriptPath, "cbImportSeurat")
     runRscript(scriptPath, logPath)
