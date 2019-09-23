@@ -485,10 +485,10 @@ var cellbrowser = function() {
                     htmls.push("</p>");
                 }
 
+                htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
+
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
                 htmls.push("/meta.tsv'>meta.tsv</a></p>");
-
-                htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
 
                 htmls.push("<p><b>Dimensionality reduction coordinates:</b><br>");
                 for (let fname of desc.coordFiles)
@@ -619,7 +619,7 @@ var cellbrowser = function() {
 
         let topName = datasetInfo.name.split("/")[0];
         if (datasetInfo.name!=="") {
-            if (datasetInfo.datasets) {
+            if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
                 // if the dataset is a collection
                 htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
                 htmls.push("<br>");

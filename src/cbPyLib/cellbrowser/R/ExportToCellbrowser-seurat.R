@@ -182,7 +182,7 @@ ExportToCellbrowser <- function(
             gzip(barcodesPath)
       } else {
           gzPath <- file.path(dir, "exprMatrix.tsv.gz")
-          if ((ncol(mat)*nrow(mat)>2E9) && is(counts, 'sparseMatrix')) {
+          if ((((ncol(counts)/1000)*(nrow(counts)/1000))>2000) && is(counts, 'sparseMatrix')) {
               writeSparseMatrix(counts, gzPath);
           } else {
               mat = as.matrix(counts)
