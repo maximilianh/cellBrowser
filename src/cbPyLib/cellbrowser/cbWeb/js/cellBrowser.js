@@ -4455,7 +4455,7 @@ var cellbrowser = function() {
     function makePercPalette(palName, n) {
         /* palettes from https://github.com/politiken-journalism/scale-color-perceptual */
         var pal = [];
-        var step = 1/(n-1);
+        var step = 1/n;
 
         var func = null;
         switch (palName) {
@@ -4465,10 +4465,12 @@ var cellbrowser = function() {
             case 'plasma' : func =  scale.color.perceptual.plasma; break;
         }
 
-        for (let x=0; x<=1.0; x+=step) {
-            pal.push(func(x).substr(1));
+        for (let x=0; x<n; x++) {
+            pal.push(func(x*step).substr(1));
         }
 
+        if (pal.length!==n)
+            console.log("palette is too small");
         return pal;
     }
 
