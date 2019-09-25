@@ -436,13 +436,15 @@ def cbBuild_parseArgs(showHelp=False):
 
 def cbUpgrade_parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("usage: %prog [options] outDir - copy all relevant js/css files into outDir, look for datasets in it and create index.html")
+    parser = optparse.OptionParser("usage: %prog [options] outDir - update the list of datasets in the output directory, optionally updating the javascript code")
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
         help="output directory, default can be set through the env. variable CBOUT, current value: %default",
         default=defOutDir)
+    parser.add_option("", "--code", dest="addCode", action="store_true",
+        help="also update the javascript code")
     parser.add_option("", "--dev", dest="devMode", action="store_true",
         help="only for developers: do not add version to js/css links")
 
@@ -3924,13 +3926,13 @@ def rebuildCollections(dataRoot, webRoot, collList):
 
         writeJson(collInfo, collOutFname)
 
-def findRoot(inDir):
+def findRoot(inDir=None):
     " return directory dataRoot defined in config file "
     dataRoot = abspath(expanduser(getConfig("dataRoot")).rstrip("/"))
     if dataRoot is None:
         logging.info("dataRoot is not set in ~/.cellbrowser.conf. Dataset hierarchies are not supported.")
 
-    if not abspath(inDir).startswith(dataRoot):
+    if inDir is not None and not abspath(inDir).startswith(dataRoot):
         logging.info("input directory %s is not located under dataRoot %s. Deactivating hierarchies." % (inDir, dataRoot))
         return None
 
@@ -4013,7 +4015,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
 
-    cbUpgrade(outDir, datasets)
+    cbUpgrade(outDir, doData=False)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
@@ -4395,7 +4397,7 @@ def copyAllFiles(fromDir, subDir, toDir):
     makeDir(outDir)
     logging.debug("Copying all files from %s/%s to %s" % (fromDir, subDir, toDir))
     for filename in glob.glob(join(fromDir, subDir, '*')):
-    # egg-support commented out for now
+    # egg-support commented out for now, eggs are out of fashion
     #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
         if isdir(filename):
             continue
@@ -4411,85 +4413,6 @@ def copyAllFiles(fromDir, subDir, toDir):
         #ofh = open(outFname, "wb")
         #ofh.write(s)
         #ofh.close()
-
-#def writeCollectionFiles(collDir, datasets, collToDatasets, onlyDatasets, outDir):
-#    """ copy over the desc.conf files for all collections and generate md5s for them.
-#    re-write all collection children, too.
-#    """
-#    if len(collToDatasets.keys())==0:
-#        logging.debug("No collections used")
-#        return
-#
-#    if collDir is None:
-#        logging.warn("Collections are mentioned in at least one cellbrowser.conf file but 'collDir' is not defined in ~/.cellbrowser.conf. Not adding collections.")
-#        logging.warn("Collections found: %s" % collToDatasets)
-#        return
-#
-#    collDir = expanduser(collDir)
-#
-#    if not isdir(collDir):
-#        logging.info("directory %s not found. To use collections, please read the documentation on how to set them up." % collDir)
-#        return
-#
-#    # make map from dataset name to dataset info dict
-#    nameToDs = {}
-#    for ds in datasets:
-#        #if (ds["name"] in nameToDs):
-#            #errAbort("dataset name %s already used by %s" % (ds["name"], nameToDs[ds["name"]]))
-#        nameToDs[ds["name"]] = ds
-#
-#    for collName, datasets in iterItems(collToDatasets):
-#        inDir = join(collDir, collName)
-#
-#        collOutDir = join(outDir, collName)
-#        if not isdir(collOutDir):
-#            makeDir(collOutDir)
-#
-#        # make md5 for a collection: based on all datasets and the description files
-#        collMd5s = []
-#        collInfo = OrderedDict() # description of collection, goes into .json file at the end
-#
-#        for key, val in iterItems(nameToDs[collName]):
-#            collInfo[key] = val
-#
-#        foundConf = writeDatasetDesc(inDir, collInfo, collOutDir)
-#        if foundConf:
-#            collMd5s.append(collInfo["descMd5s"]["datasetDesc"])
-#
-#        summFname = join(inDir, "summary.html")
-#        if isfile(summFname):
-#            logging.debug("Copying %s to %s" % (summFname, collOutDir))
-#            #shutil.copy(summFname, collOutDir) # copy() uses chmod
-#            shutil.copyfile(summFname, join(collOutDir, basename(summFname)))
-#            collMd5s.append(md5ForFile(summFname))
-#
-#        for ds in datasets:
-#            collMd5s.append( ds["md5"] )
-#
-#        collMd5 = md5ForList(collMd5s)[:MD5LEN]
-#
-#        summDsList = summarizeDatasets(datasets)
-#        collInfo["datasets"] = summDsList
-#        if collName not in nameToDs:
-#            errAbort("collection %s is used by datasets %s, but there was no cellbrowser.conf found under %s" %
-#                    (collName, [ds["name"] for ds in datasets], inDir))
-#
-#        # copy the full list of linked datasets into every child dataset
-#        # and write these JSON files again
-#        linkedDsList = summarizeDatasets(summDsList, minimal=True)
-#
-#        for dsInfo in summDsList:
-#            dsName = dsInfo["name"]
-#            childInfo = nameToDs[dsName]
-#            childInfo["datasets"] = linkedDsList
-#            childFname = join(outDir, dsName, "dataset.json")
-#            writeJson(childInfo, childFname)
-#
-#        collInfo["md5"] = collMd5
-#        nameToDs[collName]["md5"] = collMd5 # update the md5 in the big list, for the main summary
-#
-#        jsonFname = join(collOutDir, "dataset.json")
-#        writeJson(collInfo, jsonFname)
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -4673,8 +4596,8 @@ def removeHiddenDatasets(datasets):
         newDsList.append(ds)
     return newDsList
 
-def cbMake(outDir, onlyDatasets=None, devMode=False):
-    cbUpgrade(outDir, onlyDatasets, devMode)
+def cbMake(outDir, devMode=False):
+    cbUpgrade(outDir, devMode=devMode)
 
 def makeDatasetListJsons(datasets, outDir):
     " recusively write dataset.json files from datasets to outDir "
@@ -4684,12 +4607,22 @@ def makeDatasetListJsons(datasets, outDir):
         outFname = join(outDir, "dataset.json")
         writeJson(dataset, outFname, ignoreKeys=["children"])
 
-def cbUpgrade(outDir, onlyDatasets=None, devMode=False):
-    " create index.html and datasets.json in outDir. Copy over all other static files "
+def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
+    " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
-    copyStatic(webDir, outDir)
-    makeIndexHtml(webDir, outDir, devMode=devMode)
+
+    if doData:
+        dataRoot = findRoot()
+        if not dataRoot:
+            logging.info("Cannot update dataset list without a dataRoot")
+        else:
+            topConfig = join(dataRoot, "cellbrowser.conf")
+            rebuildCollections(dataRoot, outDir, [topConfig])
+
+    if doCode or devMode:
+        copyStatic(webDir, outDir)
+        makeIndexHtml(webDir, outDir, devMode=devMode)
 
 def cbUpgradeCli():
     " command line interface for copying over the html and js files and recreate index.html "
@@ -4701,7 +4634,7 @@ def cbUpgradeCli():
     if len(args)!=0:
         errAbort("This command does not accept arguments without options. Did you mean: -o <outDir> ? ")
 
-    cbUpgrade(outDir, devMode=options.devMode)
+    cbUpgrade(outDir, doCode=options.addCode, devMode=options.devMode)
 
 def parseGeneLocs(geneType):
     """
