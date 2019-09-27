@@ -297,7 +297,7 @@ function MaxHeat(div, args) {
         var colCount = colStartsSizes.length/2;
         
         var valToCoords = [];
-        for (var i=0; i<maxVal; i++)
+        for (var i=0; i<maxVal+1; i++) // why +1 ?
             valToCoords.push([]);
         
         // convert from rows (array of arrays) to arrays of of coords, one array per color
