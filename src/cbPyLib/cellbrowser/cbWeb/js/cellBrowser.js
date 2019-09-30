@@ -2631,6 +2631,9 @@ var cellbrowser = function() {
        var rendConf = makeRendConf(db.conf, db.conf.sampleCount);
        renderer.initPlot(rendConf);
 
+       if (db.conf.showLabels===false)
+           renderer.setShowLabels(false);
+
        buildLeftSidebar();
        buildToolBar(db.conf.coords, db.conf, metaBarWidth+metaBarMargin, menuBarHeight);
        //activateMode("move");
