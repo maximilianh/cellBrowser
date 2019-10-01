@@ -1,7 +1,7 @@
 Describing datasets
 -------------------
 
-the file ``desc.conf`` is a key-value file, similar to ``cellbrowser.conf``,
+The file ``desc.conf`` is a key-value file, similar to ``cellbrowser.conf``,
 but it describes the dataset.
 
 A sample file can be created with the command ``cbBuild --init``.
