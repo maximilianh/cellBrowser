@@ -532,13 +532,67 @@ function MaxPlot(div, top, left, width, height, args) {
         return pxLabels;
     }
 
+    function constrainVal(x, min, max) {
+        /* if x is not in range min, max, limit to min or max */
+        if (x < min)
+            return min;
+        if (x > max)
+            return max;
+        return x;
+    }
+
+    function scaleLines(lines, zoomRange, winWidth, winHeight) {
+        /* scale an array of (x1, y1, x2, y2), cutting lines at the screen edges */
+        var minX = zoomRange.minX;
+        var maxX = zoomRange.maxX;
+        var minY = zoomRange.minY;
+        var maxY = zoomRange.maxY;
+
+        var spanX = maxX - minX;
+        var spanY = maxY - minY;
+        var xMult = winWidth / spanX;
+        var yMult = winHeight / spanY;
+
+        // transform from data floats to screen pixel coordinates
+        var pxLines = [];
+        for (var lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            var line = lines[lineIdx];
+            var x1 = line[0];
+            var y1 = line[1];
+            var x2 = line[2];
+            var y2 = line[3];
+
+            var startInvis = ((x1 < minX) || (x1 > maxX) || (y1 < minY) || (y1 > maxY));
+            var endInvis = ((x2 < minX) || (x2 > maxX) || (y2 < minY) || (y2 > maxY));
+            
+            // line is entirely hidden
+            if (startInvis && endInvis)
+                continue
+            if (startInvis) {
+                x1 = constrainVal(x1, minX, maxX);
+                y1 = constrainVal(y1, minY, maxY);
+            }
+            if (endInvis) {
+                x2 = constrainVal(x2, minX, maxX);
+                y2 = constrainVal(y2, minY, maxY);
+            }
+
+            var x1Px = Math.round((x1-minX)*xMult);
+            var y1Px = winHeight - Math.round((y1-minY)*yMult);
+            var x2Px = Math.round((x2-minX)*xMult);
+            var y2Px = winHeight - Math.round((y2-minY)*yMult);
+            pxLines.push( [x1Px, y1Px, x2Px, y2Px] );
+        }
+        return pxLines;
+    }
+
     function scaleCoords(coords, borderSize, zoomRange, winWidth, winHeight, annots) {
     /* scale list of [x (float),y (float)] to integer pixels on screen and
      * annots is an array with on-screen annotations in the format (x, y,
      * otherInfo) that is also scaled.  return [array of (x (int), y (int)),
      * scaled annots array]. Take into account the current zoom range.      *
      * Canvas origin is top-left, but usually plotting origin is bottom-left,
-     * so also flip the Y axis.
+     * so also flip the Y axis. sets invisible coords to HIDCOORD
      * */
         console.time("scale");
         var minX = zoomRange.minX;
@@ -638,6 +692,30 @@ function MaxPlot(div, top, left, width, height, args) {
        https://stackoverflow.com/questions/2752349/fast-rectangle-to-rectangle-intersection
 	*/
       return !(r2left > r1right || r2right < r1left || r2top > r1bottom || r2bottom < r1top);
+    }
+
+    function drawLines(ctx, pxLines, width, height) {
+        /* draw lines defined by array with (x1, y1, x2, y2) arrays */
+        ctx.save();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = '#EEEEEE'; 
+        ctx.lineWidth = 2; 
+        ctx.miterLimit =2;
+        ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
+
+        for (var i=0; i < pxLines.length; i++) {
+            var line = pxLines[i];
+            var x1 = line[0];
+            var y1 = line[1];
+            var x2 = line[2];
+            var y2 = line[3];
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+        ctx.restore();
     }
 
     function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
@@ -1006,6 +1084,8 @@ function MaxPlot(div, top, left, width, height, args) {
        self.coords.px = scaleCoords(self.coords.orig, borderMargin, self.port.zoomRange, self.canvas.width, self.canvas.height);
        if (self.coords.labels!==undefined && self.coords.labels!==null)
            self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
+       if (self.coords.lines)
+           self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
     }
 
     this.setTopLeft = function(top, left) {
@@ -1205,6 +1285,12 @@ function MaxPlot(div, top, left, width, height, args) {
 
         if (self.doDrawLabels===true && self.coords.labels!==null) {
             self.coords.labelBbox = drawLabels(self.ctx, self.coords.pxLabels, self.canvas.width, self.canvas.height, zoomFact);
+        }
+
+        if (self.coords.pxLines) {
+            console.time("draw lines");
+            drawLines(self.ctx, self.coords.pxLines, self.canvas.width, self.canvas.height);
+            console.timeEnd("draw lines");
         }
 
         if (self.childPlot)
@@ -1909,6 +1995,13 @@ function MaxPlot(div, top, left, width, height, args) {
             self.childPlot.setLabels(newLabels);
         }
     };
+
+    this.setLines = function(lines) {
+        if (lines===undefined)
+            return;
+        self.coords.lines = lines;
+        self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+    }
 
     this.activateMode = function(modeName) {
     /* switch to one of the mouse drag modes: zoom, select or move */

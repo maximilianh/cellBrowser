@@ -13,9 +13,7 @@ var cellbrowser = function() {
     var db = null; // the cbData object from cbData.js. Loads coords,
                    // annotations and gene expression vectors
 
-    var gDatasetList = null; // array of dataset descriptions (objects)
-
-    var gVersion = "0.3";
+    var gVersion = "0.6";
     var gCurrentCoordName = null; // currently shown coordinates
 
     // object with all information needed to map to the legend colors
@@ -39,6 +37,10 @@ var cellbrowser = function() {
     // -- CONSTANTS
     var gTitle = "UCSC Cell Browser";
     var COL_PREFIX = "col_";
+
+    var gOpenDataset = null; // while navigating the open dataset dialog, this contains the current name
+        // it's a global variable as the dialog is not a class (yet?) and it's the only piece of data
+        // it is a subset of dataset.json , e.g. name, description, cell count, etc.
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a
     // "sample" or a "cell". This will adapt help menus, menus, etc.
@@ -642,7 +644,7 @@ var cellbrowser = function() {
         $("#tabLink1").click();
         $("area").click( function(ev) { 
             var dsName = ev.target.href.split("/").pop();
-            loadDataset(db.conf.name+"/"+dsName, true);
+            loadDataset(gOpenDataset.name+"/"+dsName, true);
             $(".ui-dialog-content").dialog("close");
             ev.preventDefault();
         });
@@ -708,6 +710,7 @@ var cellbrowser = function() {
      * - openDsInfo is the currently open object or a collection. 
      * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
      */
+        gOpenDataset = openDsInfo;
         var title = "Choose Cell Browser Dataset";
         var noteSpace = "2px"; // space from top of dialog to info pane and tabs
         //var datasetList = [];
@@ -888,17 +891,13 @@ var cellbrowser = function() {
         });
 
         if (activeIdx!==null && !onlyInfo) {
-            //$('#tpDatasetButton_'+activeIdx).bsButton("toggle"); // had to rename .button() in .html to bsButton
             if (activeIdx!==0)
                 scroller.scroll($("#tpDatasetButton_"+activeIdx)); // scroll left pane to current button
-            //document.getElementById("tpDatasetButton_"+activeIdx).scrollIntoView();
             $("tpDatasetButton_"+activeIdx).addClass("active");
-            //$('#tpDatasetList').overlayScrollbars().scroll($("#tpDatasetButton_"+activeIdx));
         }
 
 
         // finally, activate the default pane and load its html
-        //$("button.list-group-item").eq(activeIdx).trigger("focus");
         openDatasetLoadPane(openDsInfo);
     }
 
@@ -2162,7 +2161,7 @@ var cellbrowser = function() {
 
        // internal field names cannot contain non-alpha chars, so tolerate user errors here
        // otherwise throw an error
-       if (metaInfo === null) {
+       if (metaInfo === null && fieldName!==undefined) {
            metaInfo = db.findMetaInfo(fieldName.replace(/[^0-9a-z]/gi, ''));
            if (metaInfo === null) {
                alert("The field "+fieldName+" does not exist in the sample/cell annotations. Cannot color on it.");
@@ -2474,8 +2473,11 @@ var cellbrowser = function() {
 
        // labels can be overriden by the user cart
        var labelField = db.conf.labelField;
-       var metaInfo = db.findMetaInfo(labelField);
-       var oldToNew = makeLabelRenames(metaInfo);
+       if (labelField) {
+           var metaInfo = db.findMetaInfo(labelField);
+           var oldToNew = makeLabelRenames(metaInfo);
+        }
+
        var origLabels = [];
        var clusterMids = clusterInfo.labels;
        // old-style files contain just coordinates, no order
@@ -2495,6 +2497,7 @@ var cellbrowser = function() {
        renderer.origLabels = origLabels;
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
+       renderer.setLines(clusterInfo.lines);
    }
 
    function colorByDefaultField(onDone) {
@@ -3856,10 +3859,7 @@ var cellbrowser = function() {
         $(this).blur();
         removeFocus();
 
-        //var datasetIdx = parseInt(params.selected);
-        //var datasetInfo = gDatasetList[datasetIdx];
         var parts = params.selected.split("?");
-        //var md5 = cbUtil.findIdxWhereEq(db.conf.datasets, "name", datasetName).md5;
         var datasetName = parts[0];
         var md5 = parts[1];
         loadDataset(datasetName, true, md5);
@@ -4162,8 +4162,6 @@ var cellbrowser = function() {
 
         $('#tpCollectionCombo').change(onDatasetChange);
         // update the combobox, select the right dataset
-        //var datasetIdx = cbUtil.findIdxWhereEq(gDatasetList, "name", dataset.name);
-        //$("#tpDatasetCombo").val(datasetIdx).trigger("chosen:updated");
         $('#tpLayoutCombo').change(onLayoutChange);
         $('#tpOpenDatasetButton').click(function() { 
             $(this).blur();  // remove focus = tooltip disappears
@@ -4732,9 +4730,24 @@ var cellbrowser = function() {
         return newCoords;
     }
 
+    function countValues(arr) {
+        var counts = {};
+        for (var i = 0; i < arr.length; i++) {
+                counts[arr[i]] = 1 + (counts[arr[i]] || 0);
+        }
+        var countArr = Object.entries(counts);
+        return countArr
+    }
+
     function makeLabelRenames(metaInfo) {
         /* return an obj with old cluster name -> new cluster name */
         var valCounts = metaInfo.valCounts;
+        if (valCounts===undefined) { // 'int' and 'float' types do not have their values counted yet
+            // this doesn't work because the values are not loaded yet, requires moving this call to 
+            // later
+            //metaInfo.valCounts = countValues(metaInfo.arr);
+            alert("cannot label on numeric fields, please use the enumFields option in cellbrowser.conf");
+        }
         var newLabels = metaInfo.ui.shortLabels;
 
         var oldToNew = {};
@@ -4875,9 +4888,6 @@ var cellbrowser = function() {
         //}
         if (key===0) {
             copyToClipboard("#tpMeta_"+metaName);
-            //$("textarea").select();
-            //document.execCommand('copy');
-            //console.log(val);
         }
 
     }
@@ -4961,6 +4971,7 @@ var cellbrowser = function() {
 
             var labelClass = "tpLegendLabel";
             label = label.replace(/_/g, " ").replace(/'/g, "&#39;").trim();
+            longLabel = longLabel.replace(/_/g, " ").trim();
 
             if (likeEmptyString(label)) {
                 labelClass += " tpGrey";
@@ -4974,7 +4985,7 @@ var cellbrowser = function() {
 
             var mouseOver = "";
             // only show the full value on mouse over if the label is long, "" suppresses mouse over
-            if (longLabel)
+            if (longLabel && longLabel!=label)
                 mouseOver = longLabel;
             else {
                 if (label.length > 20)
@@ -5484,6 +5495,11 @@ var cellbrowser = function() {
     function plotHeatmap(clusterMetaInfo, exprVecs, geneSyms) {
         /* Create the heatmap from exprVecs. 
         */
+        if (!geneSyms || geneSyms.length===0) {
+            alert("No quick genes are defined. Heatmaps currently only work on pre-defined gene sets.");
+            return;
+        }
+
         var clusterCount = clusterMetaInfo.valCounts.length;
         
         var clusterNames = [];
@@ -6015,14 +6031,6 @@ var cellbrowser = function() {
 
         var datasetName = getDatasetNameFromUrl()
         // pre-load dataset.json here?
-        
-        //var dsInfo = cbUtil.findIdxWhereEq(gDatasetList, "name", datasetName);
-        //var md5 = null;
-        //if (dsInfo)
-            //md5 = dsInfo.md5; // stay backwards-compatible, tolerate datasets without a global md5
-
-        //menuBarHide("#tpShowAllButton");
-
         menuBarHeight = $('#tpMenuBar').outerHeight(true);
 
         var canvLeft = metaBarWidth+metaBarMargin;

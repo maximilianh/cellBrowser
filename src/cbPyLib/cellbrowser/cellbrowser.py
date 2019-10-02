@@ -1973,6 +1973,27 @@ def parseColors(fname):
         newDict[metaVal] = color
     return newDict
 
+def scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y):
+    if useTwoBytes:
+        x = int(scaleX * (x - minX))
+        y = int(scaleY * (y - minY))
+        if flipY:
+            y = 65535 - y
+    else:
+        if flipY:
+            y = maxY - y
+    return x,y
+
+def scaleCoords(scaleInfo, coords):
+    " scale coords to be between minX-maxX, return as two lists, one with the cellIds, one with the coords "
+    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, flipY = scaleInfo
+    newCoords = {}
+
+    for cellId, x, y in coords:
+        x, y = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y)
+        newCoords[cellId] = (x, y)
+    return newCoords
+
 def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Optionally flip the y coordinates to make it more look like plots in R, for people transitioning from R.
@@ -2017,24 +2038,18 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         else:
             useTwoBytes = False
 
+    scaleX = 1
+    scaleY = 1
     if useTwoBytes:
         scaleX = 65535/(maxX-minX)
         scaleY = 65535/(maxY-minY)
 
-    newCoords = {}
-    for cellId, x, y in coords:
-        if useTwoBytes:
-            x = int(scaleX * (x - minX))
-            y = int(scaleY * (y - minY))
-            if flipY:
-                y = 65535 - y
-        else:
-            if flipY:
-                y = maxY - y
+    scaleInfo = (minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY)
 
-        newCoords[cellId] = (x, y)
+    coordDict= scaleCoords(scaleInfo, coords)
+    #coordDict = dict(zip(cellIds, scaledCoords))
 
-    return newCoords
+    return coordDict, scaleInfo
 
 def sliceRow(row, skipFields):
     " yield all fields, except the ones with an index in skipFields "
@@ -2874,6 +2889,26 @@ def guessGeneIdType(inputObj):
     logging.info("Auto-detected gene IDs type: %s" % (geneType))
     return geneType
 
+def parseLineInfo(inFname, scaleInfo):
+    " parse a tsv or csv file and use the first four columns as x1,y1,x2,y2 for straight lines "
+    coords = []
+    for row in lineFileNextRow(inFname):
+        coords.append( (float(row.x1), float(row.y1), float(row.x2), float(row.y2)) )
+
+    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, flipY = scaleInfo
+
+    #lineStarts = []
+    #lineEnds = []
+    lines = []
+    for x1, y1, x2, y2 in coords:
+        x1, y1 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x1, y1)
+        x2, y2 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x2, y2)
+        #lineStarts.append( (x1, y1) )
+        #lineEnds.append( (x2, y2) )
+        lines.append( (x1, y1, x2, y2) )
+    logging.info("Parsed %s, got %d lines" % (inFname, len(lines)))
+    return lines
+
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
     """ trim a copy of the expression matrix for downloads, also create an indexed
     and compressed version
@@ -2937,7 +2972,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordFname = inCoordInfo["file"]
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
-        coords = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
+        coords, scaleInfo = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -2958,15 +2993,24 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outFnames.append(textOutBase)
         coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
+        clusterInfo = {}
+
         if hasLabels:
             logging.debug("Calculating cluster midpoints for "+coordLabel)
             clusterMids= makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
             clusterOrder = orderClusters(clusterMids, outConf)
-
-            clusterInfo = {}
             clusterInfo["labels"] = clusterMids
             clusterInfo["order"] = clusterOrder
+        else:
+            labelVals = []
 
+        hasLines = False
+        if "lineFile" in inCoordInfo:
+            lineData = parseLineInfo(inCoordInfo["lineFile"], scaleInfo)
+            clusterInfo["lines"] = lineData
+            hasLines = True
+
+        if hasLabels or hasLines:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
             midFh = open(clusterLabelFname, "w")
             json.dump(clusterInfo, midFh, indent=2)
@@ -3068,7 +3112,7 @@ def getFileVersion(fname):
     data["mtime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(getmtime(fname)))
     return data
 
-def checkFieldNames(outConf, fieldNames, validFieldNames):
+def checkFieldNames(outConf, fieldNames, validFieldNames, metaConf, labelField):
     " make sure that all fieldNames in outConf are valid field names. errAbort is not. "
     for fn in fieldNames:
         if fn not in outConf:
@@ -3077,6 +3121,12 @@ def checkFieldNames(outConf, fieldNames, validFieldNames):
         if not outConf[fn] in validFieldNames:
             errAbort("Config statement '%s' contains an invalid field name, '%s'. Valid meta field names are: %s" % \
                 (fn, outConf[fn], ", ".join(validFieldNames)))
+
+    #if labelField!=None:
+        #for fieldConf in metaConf:
+            #if fieldConf["name"]==labelField:
+                #if fieldConf["type"]!=="enum":
+                    #errAbort("labelField column '%s' is not an enum field
 
 def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     """ convert the meta data to binary files. The new meta is re-ordered, so it's in the same
@@ -3109,7 +3159,9 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     fieldConf, validFieldNames = metaToBin(inConf, outConf, finalMetaFname, colorFname, metaDir, enumFields)
     outConf["metaFields"] = fieldConf
 
-    checkFieldNames(outConf, ["violinField", "clusterField", "defColorField", "labelField"], validFieldNames)
+    labelField = outConf.get("labelField")
+    checkFieldNames(outConf, ["violinField", "clusterField", "defColorField", "labelField"], validFieldNames, \
+            fieldConf, labelField)
 
     indexMeta(finalMetaFname, metaIdxFname)
 
@@ -3912,7 +3964,7 @@ def rebuildCollections(dataRoot, webRoot, collList):
         logging.debug("Rebuilding collection %s from %s and subdirs of %s" % (collOutFname, collFname, webCollDir))
 
         # the collections summary comes from the JSON files
-        datasets = findDatasetJsons(webCollDir)
+        datasets = subdirDatasetJsonData(webCollDir)
         collSumm = summarizeDatasets(datasets)
         collInfo["datasets"] = collSumm
 
@@ -3973,6 +4025,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             relPath = relpath(dirname(abspath(inConfFname)), dataRoot)
         else:
             relPath = inConf["name"]
+
         datasetDir = join(outDir, relPath)
         makeDir(datasetDir)
 
@@ -4007,13 +4060,20 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             if "name" in outConf:
                 outConf["name"] = fullPath
 
-            outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
-            outConf["md5"] = calcMd5ForDataset(outConf)
+        outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
+        outConf["md5"] = calcMd5ForDataset(outConf)
 
-            writeConfig(inConf, outConf, datasetDir)
+        writeConfig(inConf, outConf, datasetDir)
 
     if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
+    else:
+        # rebuild the flat list, for legacy installs
+        logging.info("Rebuilding flat list of datasets")
+        datasets = subdirDatasetJsonData(outDir)
+        summInfo = summarizeDatasets(datasets)
+        outFname = join(outDir, "dataset.json")
+        writeJson(summInfo, outFname)
 
     cbUpgrade(outDir, doData=False)
 
@@ -4307,7 +4367,8 @@ def calcMd5ForDataset(datasetDesc):
 
     return md5ForList(md5s)[:MD5LEN]
 
-def findDatasetJsons(searchDir, skipDir=None):
+def subdirDatasetJsonData(searchDir, skipDir=None):
+    " find all dataset.json files under searchDir and return their contents as a list "
     logging.debug("Searching directory %s for datasets" % searchDir)
     datasets = []
     dsNames = defaultdict(list)
