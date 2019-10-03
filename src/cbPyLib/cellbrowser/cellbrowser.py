@@ -421,7 +421,7 @@ def cbBuild_parseArgs(showHelp=False):
     parser.add_option("-r", "--recursive", dest="recursive", action="store_true",
         help="run in all subdirectories of the current directory. Useful when rebuilding a full hierarchy.")
 
-    parser.add_option("", "--redo", dest="redo", action="store",
+    parser.add_option("", "--redo", dest="redo", action="store", default="meta",
             help="do not use cached old data. Can be: 'meta' or 'matrix' (matrix includes meta).")
 
     (options, args) = parser.parse_args()
@@ -2889,13 +2889,13 @@ def guessGeneIdType(inputObj):
     logging.info("Auto-detected gene IDs type: %s" % (geneType))
     return geneType
 
-def parseLineInfo(inFname, scaleInfo):
+def parseLineInfo(inFname, scaleInfo, flipY):
     " parse a tsv or csv file and use the first four columns as x1,y1,x2,y2 for straight lines "
     coords = []
     for row in lineFileNextRow(inFname):
         coords.append( (float(row.x1), float(row.y1), float(row.x2), float(row.y2)) )
 
-    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, flipY = scaleInfo
+    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, _ = scaleInfo
 
     #lineStarts = []
     #lineEnds = []
@@ -3006,7 +3006,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
 
         hasLines = False
         if "lineFile" in inCoordInfo:
-            lineData = parseLineInfo(inCoordInfo["lineFile"], scaleInfo)
+            flipYCoords = inCoordInfo.get("flipY", flipY)
+            lineData = parseLineInfo(inCoordInfo["lineFile"], scaleInfo, flipYCoords)
             clusterInfo["lines"] = lineData
             hasLines = True
 

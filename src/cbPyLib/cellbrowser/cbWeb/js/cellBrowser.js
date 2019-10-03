@@ -368,6 +368,7 @@ var cellbrowser = function() {
         //var datasetName = datasetInfo.name;
         //var md5 = datasetInfo.md5;
         // the UCSC apache serves latin1, so we force it back to utf8
+        gOpenDataset = datasetInfo; // for click handlers in the right panel
         var thumbUrl = cbUtil.joinPaths([datasetInfo.name, "thumb.png"]);
         preloadImage(thumbUrl); // many datasets have thumb.png, so preload it now
 
