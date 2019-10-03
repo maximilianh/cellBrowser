@@ -1938,7 +1938,7 @@ var cellbrowser = function() {
          //htmls.push('<li><a href="#" id="tpOnlySelectedButton">Show only selected</a></li>');
          //htmls.push('<li><a href="#" id="tpFilterButton">Hide selected '+gSampleDesc+'s</a></li>');
          //htmls.push('<li><a href="#" id="tpShowAllButton">Show all '+gSampleDesc+'</a></li>');
-         htmls.push('<li><a href="#" id="tpHideShowLabels">Hide labels<span class="dropmenu-item-content">c l</span></a></li>');
+         htmls.push('<li><a href="#" id="tpHideShowLabels"><span id="tpHideMenuEntry">Hide labels</span><span class="dropmenu-item-content">c l</span></a></li>');
          //htmls.push('<li><hr class="half-rule"></li>');
 
          //htmls.push('<li class="dropdown-submenu"><a tabindex="0" href="#">Transparency</a>');
@@ -2744,13 +2744,13 @@ var cellbrowser = function() {
 
     function onHideShowLabelsClick(ev) {
     /* user clicked the hide labels / show labels menu entry */
-        if ($("#tpHideShowLabels").text()===SHOWLABELSNAME) {
+        if ($("#tpHideMenuEntry").text()===SHOWLABELSNAME) {
             renderer.setShowLabels(true);
-            $("#tpHideShowLabels").text(HIDELABELSNAME);
+            $("#tpHideMenuEntry").text(HIDELABELSNAME);
         }
         else {
             renderer.setShowLabels(false);
-            $("#tpHideShowLabels").text(SHOWLABELSNAME);
+            $("#tpHideMenuEntry").text(SHOWLABELSNAME);
         }
 
         renderer.drawDots();
