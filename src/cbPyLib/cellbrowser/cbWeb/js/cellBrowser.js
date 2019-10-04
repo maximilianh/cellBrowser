@@ -2498,7 +2498,7 @@ var cellbrowser = function() {
        renderer.origLabels = origLabels;
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
-       renderer.setLines(clusterInfo.lines);
+       renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
    }
 
    function colorByDefaultField(onDone) {
@@ -3837,7 +3837,6 @@ var cellbrowser = function() {
         // collections are not real datasets, so ask user which one they want
         db = new CbDbFile(datasetName);
 
-
         var vars;
         if (resetVars)
             vars = {};
@@ -3866,9 +3865,15 @@ var cellbrowser = function() {
         loadDataset(datasetName, true, md5);
     }
 
-    function buildLayoutCombo(htmls, files, id, width, left, top) {
+    function buildLayoutCombo(coordLabel, htmls, files, id, width, left, top) {
         /* files is a list of elements with a shortLabel attribute. Build combobox for them. */
-        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Layout</label>');
+        if (!coordLabel)
+            coordLabel = "Layout";
+
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+top+'px"><label for="'+id+'">');
+        htmls.push(coordLabel);
+        htmls.push("</label>");
+
         var entries = [];
         for (var i = 0; i < files.length; i++) {
             var coordFiles = files[i];
@@ -4117,7 +4122,7 @@ var cellbrowser = function() {
             nextLeft += 80;
         }
 
-        buildLayoutCombo(htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
+        buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
         nextLeft += 215;
 
         var nameParts = dataset.name.split("/");
@@ -4972,7 +4977,8 @@ var cellbrowser = function() {
 
             var labelClass = "tpLegendLabel";
             label = label.replace(/_/g, " ").replace(/'/g, "&#39;").trim();
-            longLabel = longLabel.replace(/_/g, " ").trim();
+            if (longLabel)
+                longLabel = longLabel.replace(/_/g, " ").trim();
 
             if (likeEmptyString(label)) {
                 labelClass += " tpGrey";

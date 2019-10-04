@@ -1984,17 +1984,24 @@ def scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y)
             y = maxY - y
     return x,y
 
-def scaleCoords(scaleInfo, coords):
-    " scale coords to be between minX-maxX, return as two lists, one with the cellIds, one with the coords "
-    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, flipY = scaleInfo
+def scaleCoords(coords, limits):
+    " scale coords to be between minX-maxX, return as a dict cellId -> point "
+    minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY = limits
     newCoords = {}
-
     for cellId, x, y in coords:
         x, y = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y)
         newCoords[cellId] = (x, y)
     return newCoords
 
-def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
+def calcScaleFact(minX, maxX, minY, maxY, useTwoBytes):
+    scaleX = 1
+    scaleY = 1
+    if useTwoBytes:
+        scaleX = 65535/(maxX-minX)
+        scaleY = 65535/(maxY-minY)
+    return scaleX, scaleY
+
+def parseCoordsAsDict(fname, useTwoBytes, flipY):
     """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
     Optionally flip the y coordinates to make it more look like plots in R, for people transitioning from R.
     """
@@ -2038,18 +2045,11 @@ def parseScaleCoordsAsDict(fname, useTwoBytes, flipY):
         else:
             useTwoBytes = False
 
-    scaleX = 1
-    scaleY = 1
-    if useTwoBytes:
-        scaleX = 65535/(maxX-minX)
-        scaleY = 65535/(maxY-minY)
+    scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
+    limits = (minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY)
 
-    scaleInfo = (minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY)
-
-    coordDict= scaleCoords(scaleInfo, coords)
-    #coordDict = dict(zip(cellIds, scaledCoords))
-
-    return coordDict, scaleInfo
+    logging.debug("Coords parsed, limits are: %s" % repr(limits))
+    return coords, limits
 
 def sliceRow(row, skipFields):
     " yield all fields, except the ones with an index in skipFields "
@@ -2889,25 +2889,39 @@ def guessGeneIdType(inputObj):
     logging.info("Auto-detected gene IDs type: %s" % (geneType))
     return geneType
 
-def parseLineInfo(inFname, scaleInfo, flipY):
+def scaleLines(lines, limits, flipY):
+    " scale line points to 0-1.0 or 0-65535 "
+    logging.debug("Scaling lines, flip is %s" % flipY)
+    minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, _ = limits
+    scaledLines = []
+    for x1, y1, x2, y2 in lines:
+        x1, y1 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x1, y1)
+        x2, y2 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x2, y2)
+        scaledLines.append( (x1, y1, x2, y2) )
+    return scaledLines
+
+def parseLineInfo(inFname, limits):
     " parse a tsv or csv file and use the first four columns as x1,y1,x2,y2 for straight lines "
     coords = []
     for row in lineFileNextRow(inFname):
         coords.append( (float(row.x1), float(row.y1), float(row.x2), float(row.y2)) )
 
-    minX, minY, maxX, maxY, scaleX, scaleY, useTwoBytes, _ = scaleInfo
+    minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY = limits
 
-    #lineStarts = []
-    #lineEnds = []
     lines = []
     for x1, y1, x2, y2 in coords:
-        x1, y1 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x1, y1)
-        x2, y2 = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x2, y2)
-        #lineStarts.append( (x1, y1) )
-        #lineEnds.append( (x2, y2) )
+        minX = min(minX, x1, x2)
+        minY = min(minY, y1, y2)
+        maxX = max(maxX, x1, x2)
+        maxY = max(maxY, y1, y2)
+
         lines.append( (x1, y1, x2, y2) )
     logging.info("Parsed %s, got %d lines" % (inFname, len(lines)))
-    return lines
+
+    scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
+    limits = minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY
+    logging.debug("Lines parsed, new limits are: %s" % repr(limits))
+    return lines, limits
 
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
     """ trim a copy of the expression matrix for downloads, also create an indexed
@@ -2957,7 +2971,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     coordFnames = makeAbsDict(inConf, "coords")
 
     flipY = inConf.get("flipY", False)
-    useTwoBytes = inConf.get("useTwoBytes", None)
+    #useTwoBytes = inConf.get("useTwoBytes", None)
+    useTwoBytes = True
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -2967,12 +2982,30 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outConf["labelField"] = clusterLabelField
 
     outFnames = []
-    newCoords = []
+    coordConf = []
+
     for coordIdx, inCoordInfo in enumerate(coordFnames):
         coordFname = inCoordInfo["file"]
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
-        coords, scaleInfo = parseScaleCoordsAsDict(coordFname, useTwoBytes, flipY)
+        # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
+        coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
+
+        hasLines = False
+        # parse lines, updating the max-max ranges
+        if "lineFile" in inCoordInfo:
+            lineCoords, limits = parseLineInfo(inCoordInfo["lineFile"], limits)
+            hasLines = True
+
+        # now that we have the global limits, scale everything
+        coordDict = scaleCoords(coords, limits)
+
+        clusterInfo = {}
+        if hasLines:
+            lineFlipY = inCoordInfo.get("lineFlipY", flipY)
+            lineData = scaleLines(lineCoords, limits, lineFlipY)
+            clusterInfo["lines"] = lineData
+
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -2991,9 +3024,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         textOutBase = cleanName+".coords.tsv.gz"
         textOutName = join(outDir, textOutBase)
         outFnames.append(textOutBase)
-        coordInfo, xVals, yVals = writeCoords(coordLabel, coords, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
+        coordInfo, xVals, yVals = writeCoords(coordLabel, coordDict, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
-        clusterInfo = {}
 
         if hasLabels:
             logging.debug("Calculating cluster midpoints for "+coordLabel)
@@ -3004,12 +3036,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         else:
             labelVals = []
 
-        hasLines = False
-        if "lineFile" in inCoordInfo:
-            flipYCoords = inCoordInfo.get("flipY", flipY)
-            lineData = parseLineInfo(inCoordInfo["lineFile"], scaleInfo, flipYCoords)
-            clusterInfo["lines"] = lineData
-            hasLines = True
 
         if hasLabels or hasLines:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
@@ -3018,9 +3044,9 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             logging.debug("Wrote cluster labels, midpoints and order to %s" % clusterLabelFname)
             addMd5(coordInfo, clusterLabelFname, keyName="labelMd5")
 
-        newCoords.append( coordInfo )
+        coordConf.append( coordInfo )
 
-    outConf["coords"] = newCoords
+    outConf["coords"] = coordConf
     copyConf(inConf, outConf, "labelField")
     copyConf(inConf, outConf, "useTwoBytes")
     return outFnames, labelVals
@@ -3482,7 +3508,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     # a few settings are passed through to the Javascript as they are
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility"]:
+        "unit", "violinField", "visibility", "coordLabel", "lineWidth"]:
         copyConf(inConf, outConf, tag)
 
 

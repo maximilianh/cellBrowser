@@ -694,14 +694,19 @@ function MaxPlot(div, top, left, width, height, args) {
       return !(r2left > r1right || r2right < r1left || r2top > r1bottom || r2bottom < r1top);
     }
 
-    function drawLines(ctx, pxLines, width, height) {
-        /* draw lines defined by array with (x1, y1, x2, y2) arrays */
+    function drawLines(ctx, pxLines, width, height, attrs) {
+        /* draw lines defined by array with (x1, y1, x2, y2) arrays.
+         * color is a CSS name, so usually prefixed by # if a hexcode
+         * width is the width in pixels.
+         * */
         ctx.save();
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = '#EEEEEE'; 
-        ctx.lineWidth = 2; 
-        ctx.miterLimit =2;
-        ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
+        //ctx.globalAlpha = 1.0;
+
+        ctx.strokeStyle = attrs.color || "#AAAAAA"; 
+        ctx.lineWidth = attrs.width || 3; 
+        ctx.globalAlpha = attrs.alpha || 0.5;
+        //ctx.miterLimit =2;
+        //ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
 
         for (var i=0; i < pxLines.length; i++) {
             var line = pxLines[i];
@@ -1289,7 +1294,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         if (self.coords.pxLines) {
             console.time("draw lines");
-            drawLines(self.ctx, self.coords.pxLines, self.canvas.width, self.canvas.height);
+            drawLines(self.ctx, self.coords.pxLines, self.canvas.width, self.canvas.height, self.coords.lineAttrs);
             console.timeEnd("draw lines");
         }
 
@@ -1996,11 +2001,15 @@ function MaxPlot(div, top, left, width, height, args) {
         }
     };
 
-    this.setLines = function(lines) {
+    this.setLines = function(lines, color, width, attrs) {
         if (lines===undefined)
             return;
         self.coords.lines = lines;
         self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+        if (!attrs)
+            self.coords.lineAttrs = {};
+        else
+            self.coords.lineAttrs = attrs;
     }
 
     this.activateMode = function(modeName) {
