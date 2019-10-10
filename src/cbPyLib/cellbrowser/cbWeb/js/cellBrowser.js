@@ -3592,6 +3592,16 @@ var cellbrowser = function() {
 
         var fieldName = targetId.split("_")[1];
 
+        // change style of this field a little
+        var metaSel = "#tpMetaBox_"+fieldName;
+        //var backCol = "#666";
+        //var foreCol = "#FFF";
+        //$(metaSel).css({color: foreCol, backgroundColor: backCol});
+        //$(metaSel).children().css({color: foreCol, backgroundColor: backCol});
+        //$(metaSel).children().children().css({color: foreCol, backgroundColor: backCol});
+        $('.tpMetaBox').removeClass("tpMetaHover");
+        $(metaSel).addClass("tpMetaHover");
+
         var metaInfo = db.findMetaInfo(fieldName);
 
         var htmls = [];
@@ -5168,7 +5178,7 @@ var cellbrowser = function() {
             renderer.childPlot.coordIdx = currCoordIdx; // keep for onActRendChange
 
             $("#tpSplitMenuEntry").text("Unsplit Screen");
-            $("#mpCloseButton").click(onSplitClick);
+            $("#mpCloseButton").click(renderer.unsplit);
         } else {
             // stop the split
             if (!renderer.isMain) {

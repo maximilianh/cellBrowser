@@ -75,6 +75,7 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 #tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px;}
 
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
+.tpMetaHover { color: #FFF; background-color: #666}
 .tpMetaLabel { font-weight: bold; padding-left: 2px}
 .tpMetaLabelGrey { color: #666666}
 .tpMetaMultiVal { font-style: italic; color: gray }
