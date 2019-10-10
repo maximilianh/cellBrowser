@@ -2012,7 +2012,9 @@ var cellbrowser = function() {
        $('#tpMark').click( onMarkClick );
        $('#tpMarkClear').click( onMarkClearClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
-       $('#tpOpenDatasetLink').click( function() { openDatasetDialog(db.conf, db.name); } );
+       $('#tpOpenDatasetLink').click( openCurrentDataset );
+       //$('#tpOpenDatasetLink').click( function() { 
+           //openDatasetDialog(db.conf, db.name); } );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
@@ -4104,6 +4106,17 @@ var cellbrowser = function() {
         return false;
     }
 
+    function openCurrentDataset() { 
+            /* open dataset dialog with current dataset highlighted */
+            $(this).blur();  // remove focus = tooltip disappears
+            var parentNames = db.name.split("/");
+            parentNames.pop();
+            var newPath = cbUtil.joinPaths([parentNames.join("/"), "dataset.json"]);
+            cbUtil.loadJson(newPath, function(parentConf) {
+                openDatasetDialog(parentConf, db.name); 
+            });
+    }
+
     function buildToolBar (coordInfo, dataset, fromLeft, fromTop) {
     /* add the tool bar with icons of tools and add under body to the DOM */
         $("#tpToolBar").remove();
@@ -4173,15 +4186,7 @@ var cellbrowser = function() {
         $('#tpCollectionCombo').change(onDatasetChange);
         // update the combobox, select the right dataset
         $('#tpLayoutCombo').change(onLayoutChange);
-        $('#tpOpenDatasetButton').click(function() { 
-            $(this).blur();  // remove focus = tooltip disappears
-            var parentNames = db.name.split("/");
-            parentNames.pop();
-            var newPath = cbUtil.joinPaths([parentNames.join("/"), "dataset.json"]);
-            cbUtil.loadJson(newPath, function(parentConf) {
-                openDatasetDialog(parentConf, db.name); 
-            });
-        });
+        $('#tpOpenDatasetButton').click(openCurrentDataset);
     }
 
     function metaFieldToLabel(fieldName) {
