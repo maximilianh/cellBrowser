@@ -29,8 +29,7 @@ immediate:
   - get the paga sample datasets?
 
 - optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
-- acronyms
-- split.js
+- hint at splitting
 
 datasets:
 - ciona Nature PMID30069052
@@ -52,5 +51,6 @@ Done:
 - implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
 - menu entry for data set info?
+- acronyms
 - mouse cursor does not change
 - format the cluster names as links and make them clickable to show the markers
