@@ -16,8 +16,11 @@ It's needed for the most basic scanpy features even though it's not an official 
 The command ``pip install scanpy[louvain]`` will make sure that igraph is installed.
 
 We provide a wrapper around Scanpy, named ``cbScanpy``, which runs filtering, PCA,
-nearest-neighbors, clustering, t-SNE, and UMAP. The output of ``cbScanpy`` is formatted
-to be immediately used to build a cell browser with ``cbBuild``. 
+nearest-neighbors, clustering, t-SNE, and UMAP. The individual steps are explained in more detail in 
+the `Scanpy PBMC3k tutorial <https://icb-scanpy-tutorials.readthedocs-hosted.com/en/latest/pbmc3k.html>`_.
+
+The output of ``cbScanpy`` is formatted
+to be directly usable to build a cell browser with ``cbBuild``. 
 
 You can test ``cbScanpy`` yourself using the following set of steps. 
 To process an example dataset, download the 10x pbmc3k expression matrix from our servers::

@@ -1,3 +1,8 @@
 #gtfToTransTab /hive/data/outside/gencode/release_24/gencode.v24.annotation.gtf.gz gencode24
 gtfToTransTab /hive/data/outside/gencode/mouse/m13/gencode.vM13.annotation.gtf.gz gencode-m13
 ../../utils/summarizeGenes mouse
+# version is 21/6/2019
+wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz -O - | zcat | cut -f2,3 > entrez-human.symbols.tsv
+wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Mus_musculus.gene_info.gz -O - | zcat | cut -f2,3 | grep -v ^Gene > entrez-mouse.symbols.tsv
+zcat entrez-human.symbols.tsv.gz | cat - entrez-mouse.symbols.tsv > entrez.symbols.tsv
+cp entrez.symbols.tsv.gz ~/htdocs-cells/downloads/cellbrowserData/genes/

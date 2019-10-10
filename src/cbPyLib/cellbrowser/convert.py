@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
-from .cellbrowser import anndataToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
+from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
 from .cellbrowser import generateHtmls
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -69,6 +69,8 @@ def cbToolCli():
     elif cmd=="metaCat":
         inFnames = args[1:-1]
         outFname = args[-1]
+        if len(inFnames)==1:
+            errAbort("Sorry, need at least three filenames: two input files and one output file")
         metaCat(inFnames, outFname, options)
     else:
         errAbort("Command %s is not a valid command. Valid commands are: %s" % (cmd, ", ".join(cmds)))
@@ -170,6 +172,7 @@ def metaCat(inFnames, outFname, options):
     for fileIdx, fname in enumerate(inFnames):
         logging.info("Reading %s" % fname)
         headers = None
+        rowCount = 0
         for row in lineFileNextRow(fname, headerIsRow=True):
             if headers is None:
                 headers = row[1:]
@@ -178,9 +181,11 @@ def metaCat(inFnames, outFname, options):
                 fieldCounts[fileIdx] = len(headers)
                 continue
 
+            rowCount +=1
             cellId = row[0]
             allIds.add(cellId)
             allRows[cellId][fileIdx] = row[1:]
+        logging.info("Read %d rows" % rowCount)
 
     nonCharRe = re.compile(r'[^a-zA-Z0-9]')
 
@@ -482,6 +487,9 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser.add_option("", "--markerField", dest="markerField", action="store",
             help="name of the marker genes field, default: %default", default="rank_genes_groups")
 
+    parser.add_option("", "--clusterField", dest="clusterField", action="store",
+            help="if no marker genes are present, use this field to calculate them", default="louvain")
+
     parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same directory")
@@ -513,11 +521,12 @@ def cbImportScanpyCli():
         datasetName = basename(outDir.rstrip("/"))
 
     markerField = options.markerField
+    clusterField = options.clusterField
 
     import anndata
     ad = anndata.read_h5ad(inFname)
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
-            markerField=markerField)
+            markerField=markerField, clusterField=clusterField)
     generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:
