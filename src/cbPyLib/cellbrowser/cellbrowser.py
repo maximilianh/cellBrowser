@@ -657,7 +657,7 @@ def parseOneColumn(fname, colName):
                 colIdx = row.index(colName)
                 continue
             except ValueError:
-                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again." % (repr(colName), fname))
+                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. Possible row names: %s" % (repr(colName), fname, row))
 
         vals.append(row[colIdx])
     return vals
@@ -4095,7 +4095,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
     else:
-        # rebuild the flat list, for legacy installs
+        # rebuild the flat list, for legacy installs not using dataset hierarchies
         logging.info("Rebuilding flat list of datasets")
         datasets = subdirDatasetJsonData(outDir)
         summInfo = summarizeDatasets(datasets)
@@ -4400,8 +4400,6 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
     datasets = []
     dsNames = defaultdict(list)
     for subDir in os.listdir(searchDir):
-        #if isdir(join(searchDir, subDir)):
-            #continue
         subPath = join(searchDir, subDir)
         if subPath==skipDir:
             logging.debug("Skipping directory %s" % subPath)
@@ -4415,9 +4413,8 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         # we need at least a name, an md5 and a shortLabel
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
-            #errAbort("dataset %s has no md5" % datasetDesc)
-        if not "name" in datasetDesc: # every dataset has to have a name
-            errAbort("Dataset config %s must have a 'name' field." % fname)
+        #if not "name" in datasetDesc: # every dataset has to have a name
+            #errAbort("Dataset config %s must have a 'name' field." % fname)
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -4958,8 +4955,8 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
         pipeLog("Computing percentage of mitochondrial genes")
         mito_genes = [name for name in adata.var_names if name.startswith('MT.') or name.startswith('MT-')]
-        if len(mito_genes)>30:
-            errAbort("Strange expression matrix - more than 30 mitochondrial genes?")
+        if len(mito_genes)>50:
+            errAbort("Strange expression matrix - more than 50 mitochondrial genes?")
         if len(mito_genes)==0:
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]

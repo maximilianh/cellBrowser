@@ -619,6 +619,10 @@ var cellbrowser = function() {
             htmls.push("<br>");
         }
 
+        if (desc.shepherd) {
+            htmls.push("<b>Data import by: </b> "+desc.shepherd);
+            htmls.push("<br>");
+        }
 
         let topName = datasetInfo.name.split("/")[0];
         if (datasetInfo.name!=="") {
@@ -730,7 +734,7 @@ var cellbrowser = function() {
             let dsCount = datasetList.length;
             title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
             noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
-                "Double-click or click 'Open' below. To move between datasets later in the cell browser, " +
+                "Double-click or click 'Open' below.<br>To move between datasets later in the cell browser, " +
                 "use the 'Collection' dropdown. </p>");
 
             changeUrl({"ds":openDsInfo.name});
@@ -755,7 +759,7 @@ var cellbrowser = function() {
                 backLinks.push("<span class='tpBackLink link' data-open-dataset='"+parName+"' data-sel-dataset='"+childName+"'>"+parLabel+"</span>");
             }
             noteLines.push(backLinks.join("&nbsp;&gt;&nbsp;"));
-            noteSpace = "4em"; // TODO: redesign dialog to not have hard-coded spacing
+            noteSpace = "5em"; // TODO: redesign dialog to not have hard-coded spacing
         }
 
         if (onlyInfo)
