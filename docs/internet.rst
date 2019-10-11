@@ -10,14 +10,11 @@ server. The cell browser should be able to be deployed on almost any web server,
 
 * One provided by your university (often through a public_html directory in your home directory)
 * Github.io provides free hosting for 1 GB of webspace and it is fast enough, see https://sansomlab.github.io/
-* You can also use commercial cloud providers, such as:
-  * Amazon S3
-  * Google Cloud Storage
-  * Microsoft Azure
+* You can also use commercial cloud providers, such as Amazon S3, Google Cloud Storage, Microsoft Azure, though they will need a credit card.
 
 Please consider also sending the output files to cells@ucsc.edu, 
-we are happy to add it to our public `Cell Browser <cells.ucsc.edu>`_ website.
-You can choose your dataset prefix, and then can add myDataset.cells.ucsc.edu to your manuscript.
+we are more than happy to add it to our public `Cell Browser <cells.ucsc.edu>`_ website.
+You can choose a dataset prefix, and then can add myDataset.cells.ucsc.edu to your manuscript.
 Unfortunately, online backup solutions such as Dropbox, Box.com, iCloud, OneDrive or Google
 Drive will not work; they are intentionally designed to not be usable as web servers.
 
