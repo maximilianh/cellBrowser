@@ -2848,9 +2848,9 @@ var cellbrowser = function() {
 
         htmls.push("</div>"); // tpSidebarHeader
 
-        htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em; font-weight: bold'>");
-                    htmls.push("<div id='tpLegendContent'>");
-                    htmls.push("</div>"); // content
+        htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em'>");
+        htmls.push("<div id='tpLegendContent'>");
+        htmls.push("</div>"); // content
         htmls.push("</div>"); // bar
         $(document.body).append(htmls.join(""));
 
