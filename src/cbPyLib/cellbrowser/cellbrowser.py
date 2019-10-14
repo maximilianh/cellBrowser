@@ -4658,6 +4658,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
 
     ofh.write('</head>\n')
     ofh.write('<body>\n')
+    ofh.write('<div id="font-loader">.é</div>\n')
     #ofh.write('<div id="tpWait">Please wait. Cell Browser is loading...</div>\n')
     ofh.write('</body>\n')
     ofh.write('<script>\n')

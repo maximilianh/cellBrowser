@@ -729,18 +729,17 @@ function MaxPlot(div, top, left, width, height, args) {
 
         console.time("labels");
         ctx.save();
-        ctx.font = "bold "+gTextSize+"px Sans-serif"
+        ctx.font = "" + gTextSize + "px 'Source Sans Pro'"
         ctx.globalAlpha = 1.0;
 
-        ctx.strokeStyle = '#EEEEEE'; 
-        ctx.lineWidth = 5; 
-        ctx.miterLimit =2;
-        ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
+        ctx.lineWidth = 3;
+        ctx.miterLimit = 2;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
         ctx.textBaseline = "top";
 
-        ctx.shadowBlur=6;
-        ctx.shadowColor="white";
-        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        // ctx.shadowBlur=6;
+        // ctx.shadowColor="white";
+        // ctx.fillStyle = "rgba(0,0,0,0.8)";
         ctx.textAlign = "left";
 
         var addMargin = 1; // how many pixels to extend the bbox around the text, make clicking easier
