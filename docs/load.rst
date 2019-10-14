@@ -21,7 +21,7 @@ Seurat
 Run these commands if you have downloaded the file as above::
 
     require(Seurat)
-    require(data.tables)
+    require(data.table)
     mat <- fread("zcat < exprMatrix.tsv.gz")
     # or: mat <- read.table(gzfile("exprMatrix.tsv.gz"), header = T)
     meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
@@ -29,7 +29,7 @@ Run these commands if you have downloaded the file as above::
 
 Or without downloading them first::
 
-    require(data.tables)
+    require(data.table)
     mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
     meta <- data.frame(fread("https://cells.ucsc.edu/adultPancreas/meta.tsv"), row.names=1)
     so <- CreateSeuratObject(counts = mat, project = "cellBrowserImport", meta.data=meta)
