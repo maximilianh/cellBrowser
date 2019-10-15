@@ -7,11 +7,14 @@ something if we are missing one below.)
 
 First, download the expression matrix and the meta data, usually in a Unix terminal::
 
+    mkdir quakePancreas
+    cd quakePancreas
     wget https://cells.ucsc.edu/quakePancreas/exprMatrix.tsv.gz
     wget https://cells.ucsc.edu/quakePancreas/meta.tsv
 
 Replace "quakePancreas" above with the dataset name of interest, it is shown in
-the URL when you open a dataset after "ds=" or in the download instructions.
+the URL when you open a dataset after "ds=" or in the download instructions or on the dataset
+page as the "CellBrowser dataset identifier".
 
 Then open your favorite tool (e.g. RStudio or Jupyter) and follow the instructions below.
 
@@ -22,18 +25,18 @@ Run these commands if you have downloaded the file as above::
 
     require(Seurat)
     require(data.table)
+    setwd("quakePancreas")
     mat <- fread("zcat < exprMatrix.tsv.gz")
-    # or: mat <- read.table(gzfile("exprMatrix.tsv.gz"), header = T)
     meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
-    so <- CreateSeuratObject(counts = mat, project = "cellBrowserImport", meta.data=meta)
+    genes = mat[,1][[1]]
+    genes = gsub(".+[|]", "", genes)
+    mat = data.frame(mat[,-1], row.names=genes)
+    so <- CreateSeuratObject(counts = mat, project = "quakePancreas", meta.data=meta)
 
-Or without downloading them first::
+Or you can download directly into R, without wget, by replacing the fread commands with these::
 
-    require(data.table)
-    mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
-    meta <- data.frame(fread("https://cells.ucsc.edu/adultPancreas/meta.tsv"), row.names=1)
-    so <- CreateSeuratObject(counts = mat, project = "cellBrowserImport", meta.data=meta)
-
+    mat <- fread("curl https://cells.ucsc.edu/quakePancreas/exprMatrix.tsv.gz | zcat")
+    meta <- data.frame(fread("https://cells.ucsc.edu/quakePancreas/meta.tsv"), row.names=1)
 
 Scanpy
 ^^^^^^
