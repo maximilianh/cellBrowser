@@ -27,6 +27,7 @@ cells.ucsc.edu, other groups have setup their own cell browsers:
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
 * The Seurat3Wizard, demo at http://nasqar.abudhabi.nyu.edu/SeuratV3Wizard, builds a cell browser as its last step
+* Sansom Lab, Oxford, https://sansomlab.github.io
 
 Additional availability
 -----------------------

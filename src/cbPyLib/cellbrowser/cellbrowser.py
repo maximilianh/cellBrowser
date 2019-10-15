@@ -657,7 +657,7 @@ def parseOneColumn(fname, colName):
                 colIdx = row.index(colName)
                 continue
             except ValueError:
-                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again." % (repr(colName), fname))
+                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. Possible row names: %s" % (repr(colName), fname, row))
 
         vals.append(row[colIdx])
     return vals
@@ -966,7 +966,7 @@ def itemsInOrder(valDict, keyOrder):
 
     return ret
 
-def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
+def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
     """ given a list of strings, determine if they're all int, float or
     strings. Return fieldMeta, as dict, and a new valList, with the correct python type
     - 'type' can be: 'int', 'float', 'enum' or 'uniqueString'
@@ -1009,28 +1009,14 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
         logging.warn("Field %s contains only a single value" % fieldMeta["name"])
 
 
-    if intCount+unknownCount==len(valList) and not forceEnum:
-        # field is an integer
-        #newVals = floatToIntList(newVals)
-        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "int")
-        #assert(min(newVals) > -2**32) # please contact us if you need very big numbers
-        #assert(max(newVals) < 2**32)  # please contact us if you need very big numbers
-        #minVal = min(newVals)
-        #maxVal = max(newVals)
-        #if minVal > -2**16 and maxVal < 2**16:
-            #fieldMeta["arrType"] = "int32"
-            #fieldMeta["_fmt"] = "<l" # signed long, 4 bytes
-        #elif minVal >= 1 and maxVal < 2**32:
-            #fieldMeta["arrType"] = "uint32" # unsigned long, 4 bytes
-            #fieldMeta["_fmt"] = "<L"
-
+    if intCount+unknownCount==len(valList) and not forceType:
         # JS supports only 32bit signed ints so we store integers as floats
         newVals = [float(x) for x in newVals]
         fieldMeta["arrType"] = "float32"
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "int"
 
-    elif floatCount+unknownCount==len(valList) and not forceEnum:
+    elif floatCount+unknownCount==len(valList) and not forceType:
         # field is a floating point number: convert to decile index
         newVals = [float(x) for x in newVals]
         #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
@@ -1038,7 +1024,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceEnum, enumOrder):
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "float"
 
-    elif len(valCounts)==len(valList) and not forceEnum:
+    elif (len(valCounts)==len(valList) and not forceType) or forceType=="unique":
         # field is a unique string
         fieldMeta["type"] = "uniqueString"
         maxLen = max([len(x) for x in valList])
@@ -1182,12 +1168,18 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         logging.debug("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
-        forceEnum = (fieldName in sanEnumFields)
+        forceType = None
+        if (fieldName in sanEnumFields):
+            forceType = "enum"
+
         # very dumb heuristic to recognize fields that should not be treated as numbers but as enums
         # res.0.6 is the default field name for Seurat clustering. Field header sanitizing changes it to
         # res_0_6 which is not optimal, but namedtuple doesn't allow dots in names
         if "luster" in fieldName or "ouvain" in fieldName or (fieldName.startswith("res_") and "_" in fieldName):
-            forceEnum=True
+            forceType="enum"
+
+        if colIdx==0:
+            forceType = "unique"
 
         cleanFieldName = cleanString(fieldName)
         binName = join(outDir, cleanFieldName+".bin")
@@ -1196,7 +1188,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         fieldMeta["name"] = cleanFieldName
         fieldMeta["label"] = fieldName
 
-        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceEnum, enumOrderList)
+        fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceType, enumOrderList)
 
         fieldType = fieldMeta["type"]
 
@@ -1843,8 +1835,8 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         geneCount += 1
 
         symCounts[sym]+=1
-        if symCounts[sym] > 800:
-            errAbort("The gene symbol %s appears more than 800 times in the expression matrix. "
+        if symCounts[sym] > 1000:
+            errAbort("The gene symbol %s appears more than 1000 times in the expression matrix. "
                     "Are you sure that the matrix is in the right format? Each gene should be on a row. "
                     "The gene ID must be in the first column and "
                     "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % sym)
@@ -3360,8 +3352,17 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitely
     metaSampleNames = []
-    for line in gzip.open(sampleNameFname, "r"):
-        metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
+    if isfile(sampleNameFname):
+        for line in gzip.open(sampleNameFname, "r"):
+            metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
+    else:
+        oldMetaFname = join(datasetDir, "meta.tsv")
+        headDone = False
+        for line in open(oldMetaFname, "r"):
+            if not headDone:
+                headDone = True
+                continue
+            metaSampleNames.append(splitOnce(line, "\t")[0])
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
     matrixSampleNames = readHeaders(outMatrixFname)[1:]
@@ -4098,7 +4099,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
     else:
-        # rebuild the flat list, for legacy installs
+        # rebuild the flat list, for legacy installs not using dataset hierarchies
         logging.info("Rebuilding flat list of datasets")
         datasets = subdirDatasetJsonData(outDir)
         summInfo = summarizeDatasets(datasets)
@@ -4403,8 +4404,6 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
     datasets = []
     dsNames = defaultdict(list)
     for subDir in os.listdir(searchDir):
-        #if isdir(join(searchDir, subDir)):
-            #continue
         subPath = join(searchDir, subDir)
         if subPath==skipDir:
             logging.debug("Skipping directory %s" % subPath)
@@ -4418,9 +4417,8 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         # we need at least a name, an md5 and a shortLabel
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
-            #errAbort("dataset %s has no md5" % datasetDesc)
-        if not "name" in datasetDesc: # every dataset has to have a name
-            errAbort("Dataset config %s must have a 'name' field." % fname)
+        #if not "name" in datasetDesc: # every dataset has to have a name
+            #errAbort("Dataset config %s must have a 'name' field." % fname)
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -4961,8 +4959,8 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
         pipeLog("Computing percentage of mitochondrial genes")
         mito_genes = [name for name in adata.var_names if name.startswith('MT.') or name.startswith('MT-')]
-        if len(mito_genes)>30:
-            errAbort("Strange expression matrix - more than 30 mitochondrial genes?")
+        if len(mito_genes)>50:
+            errAbort("Strange expression matrix - more than 50 mitochondrial genes?")
         if len(mito_genes)==0:
             gencodeMitos = readMitos(geneIdType)
             mito_genes = [name for name in adata.var_names if name.split('.')[0] in gencodeMitos]
