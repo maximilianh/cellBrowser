@@ -17,6 +17,7 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
 #tpLegendHeader { background-color:#eee; color: #777 }
+#tpLegendTitle { font-weight: bold }
 #tpLegendCol1 { padding-left: 2px}
 #tpLegendCol2 { float: right; padding-right: 2px}
 .tpLegendSelect { outline: 2px solid black }
