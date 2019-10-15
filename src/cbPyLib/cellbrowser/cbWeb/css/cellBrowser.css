@@ -271,25 +271,24 @@ th[role=columnheader]:not(.no-sort):hover:after {
 }
 
 #tpOpenDialogTabs > ul > li  {
-                //  !important here is the right choice. cannot use ID, cannot get specificty high enough with classes
-                // Read: https://css-tricks.com/when-using-important-is-the-right-choice/
-                border: 1px solid #D7D7D7 !important; 
-                border-radius: 4px !important ;
-                font-size: 14px !important; 
-                font-weight: bold !important;
-                line-height: 120% !important; 
+        /*  !important here is the right choice. cannot use ID, cannot get specificty high enough with classes
+        // Read: https://css-tricks.com/when-using-important-is-the-right-choice/ */
+        border: 1px solid #D7D7D7 !important; 
+        border-radius: 4px !important ;
+        font-size: 14px !important; 
+        font-weight: bold !important;
+        line-height: 120% !important; 
 }
 
-.tpDatasetTab.ui-tabs-anchor,
-{ 
-                //  !important here is the right choice. cannot use ID, cannot get specificty high enough with classes
-                // Read: https://css-tricks.com/when-using-important-is-the-right-choice/
-                overflow:hidden !important; 
-                padding: 5px !important; 
-        }
+.tpDatasetTab.ui-tabs-anchor{ 
+        /*  !important here is the right choice. cannot use ID, cannot get specificty high enough with classes
+        // Read: https://css-tricks.com/when-using-important-is-the-right-choice/ */
+        overflow:hidden !important; 
+        padding: 5px !important; 
+}
 
 
-// obscure bugfix: https://stackoverflow.com/questions/31584544/jquery-ui-dialog-on-resizing-shrinks-the-content-of-the-dialog
+/* obscure bugfix: https://stackoverflow.com/questions/31584544/jquery-ui-dialog-on-resizing-shrinks-the-content-of-the-dialog */
 .ui-dialog, .ui-dialog-content {
     box-sizing: content-box;
 }
