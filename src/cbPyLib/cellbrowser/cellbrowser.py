@@ -4007,9 +4007,12 @@ def rebuildCollections(dataRoot, webRoot, collList):
 
 def findRoot(inDir=None):
     " return directory dataRoot defined in config file "
-    dataRoot = abspath(expanduser(getConfig("dataRoot")).rstrip("/"))
+    dataRoot = getConfig("dataRoot")
     if dataRoot is None:
         logging.info("dataRoot is not set in ~/.cellbrowser.conf. Dataset hierarchies are not supported.")
+        return None
+
+    dataRoot = abspath(expanduser(dataRoot).rstrip("/"))
 
     if inDir is not None and not abspath(inDir).startswith(dataRoot):
         logging.info("input directory %s is not located under dataRoot %s. Deactivating hierarchies." % (inDir, dataRoot))
