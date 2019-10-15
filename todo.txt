@@ -1,4 +1,7 @@
-Change "cells" to "samples" for treehouse
+- Change "cells" to "samples" for treehouse
+- convert the heatmap to a dotplot
+- add an error message when no quickgenes were defined and the user clicks the heatmap
+
 
 Wed Jul 17 16:04:27 PDT 2019
 - Tom: need custom genes / my genes
