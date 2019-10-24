@@ -201,11 +201,11 @@ function MaxPlot(div, top, left, width, height, args) {
         clearCanvas(self.ctx, self.canvas.width, self.canvas.height);
     };
 
-    this.setPos = function(left, top) {
+    //this.setPos = function(left, top) {
        /* position the canvas on the page */
-       self.div.style.left = left+"px";
-       self.div.style.top = top+"px";
-    };
+       //self.div.style.left = left+"px";
+       //self.div.style.top = top+"px";
+    //};
 
     this.setTitle = function (text) {
         self.title = text;
@@ -1096,7 +1096,7 @@ function MaxPlot(div, top, left, width, height, args) {
     this.setTopLeft = function(top, left) {
         /* set top and left position in pixels of the canvas */
         self.top = top;
-        self.left = left;
+        self.left = left; // keep an integer version of these numbers
         self.div.style.top = top+"px";
         self.div.style.left = left+"px";
 
@@ -1109,9 +1109,10 @@ function MaxPlot(div, top, left, width, height, args) {
        self.div.style.height = height+"px";
 
        if (self.childPlot) {
-           width = width /2;
-           self.childPlot.left = self.left+width;
-           self.childPlot.canvas.style.left = self.childPlot.left+"px";
+           width = width/2;
+           //self.childPlot.left = self.left+width;
+           //self.childPlot.canvas.style.left = self.childPlot.left+"px";
+           self.childPlot.setPos(null, self.left+width);
            self.childPlot.setSize(width, height, true);
        }
 
@@ -1123,8 +1124,11 @@ function MaxPlot(div, top, left, width, height, args) {
        self.canvas.style.width = width+"px";
        self.width = width;
        self.height = height;
-
+       //let canvHeight = height - gStatusHeight;
+       
        let canvHeight = height - gStatusHeight;
+       self.canvas.height = canvHeight;
+       self.canvas.width = width;
        self.canvas.style.height = canvHeight+"px";
        self.zoomDiv.style.top = (height-gZoomFromBottom)+"px";
        self.zoomDiv.style.left = (gZoomFromLeft)+"px";
@@ -1137,6 +1141,18 @@ function MaxPlot(div, top, left, width, height, args) {
 
     }
 
+    this.setPos = function(top, left) {
+       /* position canvas. Does not affect child  */
+       if (top) {
+          self.top = top;
+          self.div.style.top = top+"px";
+       }
+       if (left) {
+          self.left = left;
+          self.div.style.left = left+"px";
+       }
+    }
+
     this.setSize = function(width, height, doRedraw) {
        /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
        if (width===null)
@@ -1144,10 +1160,6 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.quickResize(width, height);
 
-       let canvHeight = height - gStatusHeight;
-       self.canvas.height = canvHeight;
-       self.canvas.width = width;
-       
        self.scaleData();
        //clearCanvas(self.ctx, width, height);
        if (doRedraw===undefined || doRedraw===true)

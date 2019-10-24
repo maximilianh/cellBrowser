@@ -132,8 +132,8 @@ function MaxHeat(div, args) {
 
     }
 
-    function onMouseMove(ev) {
-        /* mouse hover functionality */
+    function evToRowCol(ev) {
+        /* given a click or hover event, return [rowName, colName] */
         var rect = ev.target.getBoundingClientRect();
         var x = ev.clientX - rect.left; //x position within the canvas.
         var y = ev.clientY - rect.top;  //y position within the canvas.
@@ -153,6 +153,23 @@ function MaxHeat(div, args) {
         else
             rowName = self.rowLabels[self.rowOrder[rowIdx]];
         //console.log("mouse over coords:", x, y, rowIdx, colIdx);
+        return [rowName, colName];
+    }
+
+    function onClick(ev) {
+        /* call self.click(rowName, colName) */
+        let rowAndCol = evToRowCol(ev);
+        let rowName = rowAndCol[0];
+        let colName = rowAndCol[1];
+        if (self.onClick)
+            self.onClick(rowName, colName);
+    }
+
+    function onMouseMove(ev) {
+        /* mouse hover functionality */
+        let rowAndCol = evToRowCol(ev);
+        let rowName = rowAndCol[0];
+        let colName = rowAndCol[1];
         
         var value = null;
 
@@ -189,6 +206,7 @@ function MaxHeat(div, args) {
         self.onCellHover = null; // called on cell hover, arg: rowIdx, colIdx, ev. 
         // all other object variables are added by the "initPlot(args)" function below
         self.canvas.addEventListener("mousemove", onMouseMove);
+        self.canvas.addEventListener("click", onClick);
     };
 
     this.initPlot = function(args) {
