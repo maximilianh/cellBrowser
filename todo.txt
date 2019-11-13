@@ -1,3 +1,7 @@
+- add checkboxes to legend
+- 
+- make the horizontal bar between tsne and heatmap look like the bar in Google Slides, with "..." in the middle
+- make super long labels shorter by adding "..." in the middle
 - Change "cells" to "samples" for treehouse
 - convert the heatmap to a dotplot
 - add an error message when no quickgenes were defined and the user clicks the heatmap
