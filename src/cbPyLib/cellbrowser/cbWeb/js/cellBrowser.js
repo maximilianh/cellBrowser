@@ -465,7 +465,7 @@ var cellbrowser = function() {
 
     function buildDownloadsPane(datasetInfo, desc) {
         var htmls = [];
-        if (datasetInfo.name==="") {
+        if (datasetInfo.name==="") { // the top-level desc page has no methods/downloads, it's just a dataset list
             $( "#pane3" ).hide();
             $( "#tabLink3" ).hide();
         } else {
@@ -473,6 +473,9 @@ var cellbrowser = function() {
                 htmls.push("To download the data for datasets in this collection: open the collection, "); 
                 htmls.push("select a dataset in the list to the left, and navigate to the 'Data Download' tab. ");
                 htmls.push("This information can also be accessed while viewing a dataset by clicking the 'Info' button.");
+            } else if (desc.hideDownload===true) {
+                htmls.push("The downloads section has been deactivated by the authors."); 
+                htmls.push("Please contact the dataset authors to get access.");
             } else {
                 htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
                 htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
@@ -491,7 +494,10 @@ var cellbrowser = function() {
                 htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
 
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
-                htmls.push("/meta.tsv'>meta.tsv</a></p>");
+                htmls.push("/meta.tsv'>meta.tsv</a>");
+                if (desc.metaNote)
+                    htmls.push("<br>"+desc.metaNote);
+                htmls.push("</p>");
 
                 htmls.push("<p><b>Dimensionality reduction coordinates:</b><br>");
                 for (let fname of desc.coordFiles)

@@ -3424,13 +3424,15 @@ def metaHasChanged(datasetDir, metaOutFname):
         return True
 
     oldData = readJson(oldJsonFname)
-    oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
-
-    newMd5 = md5ForFile(metaOutFname)
-
-    if oldMd5 != newMd5[:len(oldMd5)]:
-        logging.debug("%s has a different md5 now, rebuilding meta data" % metaOutFname)
+    if not "outMeta" in oldData["fileVersions"]:
         return True
+    else:
+        oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
+        newMd5 = md5ForFile(metaOutFname)
+
+        if oldMd5 != newMd5[:len(oldMd5)]:
+            logging.debug("%s has a different md5 now, rebuilding meta data" % metaOutFname)
+            return True
 
     logging.info("%s has the same md5 as in %s, no need to rebuild meta data" % (metaOutFname, oldJsonFname))
     return False
@@ -3509,7 +3511,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     # a few settings are passed through to the Javascript as they are
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility", "coordLabel", "lineWidth"]:
+        "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload"]:
         copyConf(inConf, outConf, tag)
 
 
@@ -4555,6 +4557,10 @@ def summarizeDatasets(datasets):
     #allMd5s = []
     dsList = []
     for ds in datasets:
+        if ds.get("visibility")=="hide" or ds.get("hideDataset") in [True, "True", "true", 1, "1"]:
+            logging.debug("Hiding dataset %s" % ds["name"])
+            continue
+
         summDs = {
             "shortLabel" : ds["shortLabel"],
             "name" : ds["name"],
@@ -4674,27 +4680,27 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
 
     #datasetLabels = [x["name"] for x in dsList]
     logging.info("Wrote %s (devMode: %s)" % (newFname, devMode))
-
-def removeHiddenDatasets(datasets):
-    """ visibility="hidden" removes datasets from the list, e.g. during paper review """
-    newDsList = []
-    for ds in datasets:
-        if ds.get("visibility")=="hide":
-            logging.debug("Dataset %s is set to hide, skipping" % ds["name"])
-            continue
-        newDsList.append(ds)
-    return newDsList
+#
+#def removeHiddenDatasets(datasets):
+#    """ visibility="hidden" removes datasets from the list, e.g. during paper review """
+#    newDsList = []
+#    for ds in datasets:
+#        if ds.get("visibility")=="hide":
+#            logging.debug("Dataset %s is set to hide, skipping" % ds["name"])
+#            continue
+#        newDsList.append(ds)
+#    return newDsList
 
 def cbMake(outDir, devMode=False):
     cbUpgrade(outDir, devMode=devMode)
 
-def makeDatasetListJsons(datasets, outDir):
-    " recusively write dataset.json files from datasets to outDir "
-    for dataset in datasets:
-        if "children" in dataset:
-            makeDatasetListJsons(dataset["children"], join(outDir, dataset["name"]))
-        outFname = join(outDir, "dataset.json")
-        writeJson(dataset, outFname, ignoreKeys=["children"])
+#def makeDatasetListJsons(datasets, outDir):
+#    " recusively write dataset.json files from datasets to outDir "
+#    for dataset in datasets:
+#        if "children" in dataset:
+#            makeDatasetListJsons(dataset["children"], join(outDir, dataset["name"]))
+#        outFname = join(outDir, "dataset.json")
+#        writeJson(dataset, outFname, ignoreKeys=["children"])
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
     " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
