@@ -333,7 +333,7 @@ def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
     conf["inDir"] = dirname(fname)
 
     if "name" in conf and ignoreName:
-        logging.warn("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
+        logging.info("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
 
     if (not "name" in conf and addName) or ignoreName:
         name = basename(dirname(abspath(fname)))
@@ -4051,7 +4051,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         dataRoot = findRoot(inConfFname)
         if dataRoot:
             if "name" in inConf:
-                logging.warn("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
+                logging.info("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
             logging.debug("Deriving dataset name from path")
             inConf["name"] = basename(dirname(abspath(inConfFname)))
 
@@ -4109,6 +4109,11 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         writeJson(summInfo, outFname)
 
     cbUpgrade(outDir, doData=False)
+
+    outIndexFname = join(outDir, "index.html")
+    if not isfile(outIndexFname):
+        logging.info("%s does not exist: running cbUpgrade now to make sure there is an index.html" % outIndexFname)
+        cbUpgrade(outDir, doData=False, doCode=True)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
@@ -4704,6 +4709,7 @@ def cbMake(outDir, devMode=False):
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
     " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
+    logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
 

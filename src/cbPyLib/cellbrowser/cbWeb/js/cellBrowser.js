@@ -736,7 +736,7 @@ var cellbrowser = function() {
         var noteLines = [];
 
         // if this is a collection, not a dataset, change descriptive text in dialog
-        if (datasetList) {
+        if (datasetList && gOpenDataset.name!=="") {
             let dsCount = datasetList.length;
             title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
             noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
@@ -1343,6 +1343,24 @@ var cellbrowser = function() {
         return true;
     }
 
+    function saveQueryList(queryList) {
+        var queryStr = JSURL.stringify(queryList);
+        changeUrl({'select':queryStr});
+        localStorage.setItem(db.name+"|select", queryStr);
+    }
+
+    function selectByQueryList(queryList) {
+        /* select cells defined by query list, save to local storage and URL and redraw */
+            findCellsMatchingQueryList(queryList, function(cellIds) {
+                if (cellIds.length===0) {
+                    alert("No matching "+gSampleDesc+"s.");
+                } else {
+                    renderer.selectSet(cellIds);
+                    saveQueryList(queryList);
+                }
+            });
+    }
+
     function onFindCellsClick() {
     /* Edit - Find cells */
 
@@ -1364,20 +1382,9 @@ var cellbrowser = function() {
                 text:"OK", 
                 click: function() {
                     var queryList = readSelectForm();
-
-                    findCellsMatchingQueryList(queryList, function(cellIds) {
-                        if (cellIds.length===0) {
-                            alert("No matching "+gSampleDesc+"s.");
-                        } else {
-                            renderer.selectSet(cellIds);
-                            //changeUrl({'select':JSON.stringify(queryList)});
-                            var queryStr = JSURL.stringify(queryList);
-                            changeUrl({'select':queryStr});
-                            localStorage.setItem(db.name+"|select", queryStr);
-                            renderer.drawDots();
-                            $("#tpDialog").dialog("close");
-                        }
-                    });
+                    selectByQueryList(queryList);
+                    $("#tpDialog").dialog("close");
+                    renderer.drawDots();
                 }
             }
         ];
@@ -4838,25 +4845,8 @@ var cellbrowser = function() {
         if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
             // user clicked the same entry as before: 
             gLegend.lastClicked = null;
-            //if (gLegend.type!=="meta") {
-                // clear the selection
                 $('#tpLegend_'+legendId).removeClass('tpLegendSelect');
                 renderer.selectClear();
-                //menuBarHide("#tpFilterButton");
-                //menuBarHide("#tpOnlySelectedButton");
-            //} else {
-                //var labelSel = '#tpLegendLabel_'+legendId;
-                //var labelEl = $(labelSel);
-                //labelEl.attr("contenteditable", "true");
-                //labelEl.focus();
-                //document.execCommand('selectAll', false, null);
-                //labelEl.keydown(function(e) {
-                    //if (e.keyCode !== 13)
-                        //return;
-                    //saveLabel();
-                //});
-                //labelEl.focusout( function() { saveLabel(); });
-            //}
         }
         else {
             // clear the old selection
@@ -4871,6 +4861,12 @@ var cellbrowser = function() {
             $('#tpLegend_'+legendId).addClass('tpLegendSelect');
             gLegend.lastClicked=legendId;
             clearSelectionState();
+            if (gLegend.type==="meta" && gLegend.metaInfo.type==="enum") {
+                let fieldName = gLegend.metaInfo.name;
+                let fieldVal = gLegend.metaInfo.valCounts[colorIndex][0];
+                let queryList = [{"m":fieldName, "eq":fieldVal}];
+                saveQueryList(queryList);
+            }
         }
         renderer.drawDots();
     }
@@ -5513,6 +5509,13 @@ var cellbrowser = function() {
         return geneAvgs;
     }
 
+    function onHeatCellClick(geneName, clusterName) {
+        /* color by gene and select all cells in cluster */
+        loadGeneAndColor(geneName);
+        // clusterName?
+        selectByColor
+    }
+
     function onHeatCellHover(rowIdx, colIdx, rowName, colName, value, ev) {
         /* user hovers over a cell on the heatmap */
         let htmls = [];
@@ -5567,6 +5570,7 @@ var cellbrowser = function() {
         heatmap.loadData(geneSyms, clusterNames, geneAvgs, colors);
         heatmap.draw();
         heatmap.onCellHover = onHeatCellHover;
+        heatmap.onClick = onHeatCellClick;
         db.heatmap = heatmap;
     }
 
@@ -5609,6 +5613,13 @@ var cellbrowser = function() {
             changeUrl({'heat':null});
         }
         else {
+            if (!db.conf.quickGenes) {
+                alert("No quick genes defined for this dataset. Heatmaps currently only work if "+
+                    "a list of dataset-specific genes is defined. " +
+                    "Add a statement quickGenesFile to cellbrowser.conf and put a few gene symbols "+
+                    "into the file, one per line.");
+                return;
+            }
             db.loadGeneSetExpr(onGenesDone);
             metaInfo = getClusterFieldInfo();
             db.loadMetaVec(metaInfo, onClusterMetaDone, onProgress);
@@ -5962,7 +5973,7 @@ var cellbrowser = function() {
     }
 
     function addStateVar(varName, varVal) {
-        /* add a CGI variable from the URL */
+        /* add a CGI variable to the URL */
         var o = {};
         o[varName] = varVal;
         changeUrl(o);
