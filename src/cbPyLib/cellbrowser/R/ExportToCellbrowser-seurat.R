@@ -325,7 +325,7 @@ geneIdType="auto"
 # file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
 # quickGenesFile=quickGenes.csv
 clusterField="%s"
-labelField="%2$s"
+labelField="%s"
 enumFields=%s
 %s
 coords=%s'
@@ -344,6 +344,7 @@ coords=%s'
     config,
     dataset.name,
     matrixOutPath,
+    cluster.field,
     cluster.field,
     enum.string,
     markers.string,
