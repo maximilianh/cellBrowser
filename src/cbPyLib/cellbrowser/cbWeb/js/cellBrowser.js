@@ -5275,6 +5275,9 @@ var cellbrowser = function() {
 
     function clearMetaAndGene() {
         /* called when user hovers over nothing - clear the meta and gene field field info, hide the tooltip */
+        if (db===null) // users moved the mouse while the db is still loading
+            return;
+
         $('#tpMeta_custom').html("");
 
         var fieldCount = db.getMetaFields();

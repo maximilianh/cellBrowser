@@ -1,6 +1,6 @@
 # a wrapper around the R library Seurat
 
-import logging, optparse, sys, glob, os, datetime
+import logging, optparse, sys, glob, os, datetime, shutil
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
@@ -524,6 +524,9 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
     if not isfile(metaPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
+    rdsOutPath = join(outDir, "seurat.rds")
+    logging.info("Copying %s to %s" % (rdsPath, rdsOutPath))
+    shutil.copyfile(rdsPath, rdsOutPath)
     #cbConfPath = join(outDir, "cellbrowser.conf")
     #coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
     #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})

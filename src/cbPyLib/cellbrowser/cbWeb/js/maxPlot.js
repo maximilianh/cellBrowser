@@ -748,7 +748,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
-            if (coord===null) { // outside of view range
+            if (coord===null) { // outside of view range, push a null to avoid messing up the order of bboxArr
                 bboxArr.push( null );
                 continue;
             }
@@ -868,7 +868,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
            // only draw outline for big circles
            ctxOff.lineWidth=1.0;
-           if (radius>6) {
+           if (radius>5) {
                var strokeCol = "#"+shadeColor(colors[i], 0.9);
                ctxOff.strokeStyle=strokeCol;
 
@@ -1640,6 +1640,9 @@ function MaxPlot(div, top, left, width, height, args) {
             return null;
         var labelCoords = self.coords.labels;
         var boxes = self.coords.labelBbox;
+
+        if (boxes==null) // no cluster labels
+            return null;
 
         if (labelCoords.length!==clusterLabels.length)
             alert("internal error maxPLot.js: coordinates of labels are different from clusterLabels");
