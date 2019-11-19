@@ -473,7 +473,7 @@ var cellbrowser = function() {
                 htmls.push("To download the data for datasets in this collection: open the collection, "); 
                 htmls.push("select a dataset in the list to the left, and navigate to the 'Data Download' tab. ");
                 htmls.push("This information can also be accessed while viewing a dataset by clicking the 'Info' button.");
-            } else if (desc.hideDownload===true) {
+            } else if (desc.hideDownload===true || desc.hideDownload=="True" || desc.hideDownload=="true") {
                 htmls.push("The downloads section has been deactivated by the authors."); 
                 htmls.push("Please contact the dataset authors to get access.");
             } else {

@@ -133,6 +133,12 @@ ExportToCellbrowser <- function(
       } else {
           error("matrix.slot can only be one of: counts, scale.data, data")
       }
+      if (dim(counts)[1]==0) { 
+          stop(paste0("The Seurat data slot '", matrix.slot, "' contains no data.",
+                     "Please select the correct slot where the matrix is stored, possible ",
+                     "values are 'counts', 'scale.data' or 'data'. To select a slot, ",
+                   "use the option 'matrix.slot' from R or the cbImportSeurat option -s from the command line."))
+      }
 
       dr <- object@reductions
       genes <- rownames(x = object)
