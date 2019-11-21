@@ -2017,6 +2017,8 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     warn1Done = False
     warn2Done = False
     for row in lineFileNextRow(fname, noHeaders=True):
+        if row[1]=="x" or row[2]=="y":
+            continue
         if (len(row)<3):
             if not warn1Done:
                 errAbort("file %s needs to have at least three columns" % fname)
