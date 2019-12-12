@@ -2017,7 +2017,7 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     warn1Done = False
     warn2Done = False
     for row in lineFileNextRow(fname, noHeaders=True):
-        if row[1]=="x" or row[2]=="y":
+        if row[1]=="x" or row[2]=="y" or row[1]=="tsne1" or row[0].startswith("cell"):
             continue
         if (len(row)<3):
             if not warn1Done:
@@ -2641,10 +2641,12 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     # copy over the raw matrix file, usually this is a zip or gzip file
     if "rawMatrixFile" in summInfo:
         rawInPath = join(inDir, summInfo["rawMatrixFile"])
-        rawOutPath = join(datasetDir, summInfo["rawMatrixFile"])
+        rawOutPath = join(datasetDir, basename(summInfo["rawMatrixFile"]))
         if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
             logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
             shutil.copyfile(rawInPath, rawOutPath)
+        else:
+            logging.info("Not copying %s again, already in output directory" % rawInPath)
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
@@ -5323,7 +5325,7 @@ def cbScanpyCli():
 
     if options.init:
         copyPkgFile("sampleConfig/scanpy.conf")
-        sys.exit(1)
+        sys.exit(0)
 
     try:
         logging.info("Loading Scanpy libraries")
