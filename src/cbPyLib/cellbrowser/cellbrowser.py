@@ -19,22 +19,22 @@ from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, ge
 from time import gmtime, strftime
 
 try:
-    # python2
-    from urlparse import urljoin
-    from urllib2 import urlopen
-except:
     # python3
     from urllib.parse import urljoin
     from urllib.request import urlopen
+except ImportError:
+    # python2
+    from urlparse import urljoin
+    from urllib2 import urlopen
 
 try:
     # python2.7+
-    from collections import defaultdict
-    from collections import Counter
-except:
-    # python2.6 has no defaultdict or Counter yet
-    from backport_collections import defaultdict # error? -> pip2 install backport-collections
-    from backport_collections import Counter # error? -> pip2 install backport-collections
+    from collections import defaultdict, Counter
+    from collections.abc import Mapping
+except ImportError:
+    # python2.6 has no collections.abc, defaultdict or Counter yet
+    from backport_collections import defaultdict, Counter # error? -> pip2 install backport-collections
+    from collections import Mapping
 
 # We do not require numpy but numpy is around 30-40% faster in serializing arrays
 # So use it if it's present
@@ -1643,7 +1643,7 @@ def digitize_np(arr, matType):
     """
 
     # meta data comes in as a list
-    if not type(arr) is np.ndarray:
+    if not isinstance(arr, np.ndarray):
         arr = np.array(arr)
 
     if matType=="int":
@@ -3698,7 +3698,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
 
 def makeDictDefaults(inVar, defaults):
     " convert inVar to dict if necessary, defaulting to our default labels "
-    if type(inVar) is dict:
+    if isinstance(inVar, Mapping):
         return inVar
 
     d = {}
