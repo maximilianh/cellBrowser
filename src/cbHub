@@ -4,5 +4,4 @@ import sys
 from os.path import join, dirname
 sys.path.append( join(dirname(__file__), "cbPyLib") )
 import cellbrowser.hubmaker
-print cellbrowser.hubmaker.__file__
 cellbrowser.hubmaker.cbHubCli()

@@ -41,4 +41,5 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
    cellbrowser_conf.rst
    dataDesc.rst
    collections.rst
+   load.rst
    requirements

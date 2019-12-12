@@ -201,11 +201,11 @@ function MaxPlot(div, top, left, width, height, args) {
         clearCanvas(self.ctx, self.canvas.width, self.canvas.height);
     };
 
-    this.setPos = function(left, top) {
+    //this.setPos = function(left, top) {
        /* position the canvas on the page */
-       self.div.style.left = left+"px";
-       self.div.style.top = top+"px";
-    };
+       //self.div.style.left = left+"px";
+       //self.div.style.top = top+"px";
+    //};
 
     this.setTitle = function (text) {
         self.title = text;
@@ -360,22 +360,6 @@ function MaxPlot(div, top, left, width, height, args) {
     function addCloseButton(top, left) {
         /* add close button and sync checkbox */
         var div = document.createElement('div');
-        div.style.cursor = "default";
-        div.style.left = left+"px";
-        div.style.top = top+"px";
-        div.style.display = "block";
-        div.style.position = "absolute";
-        div.style.fontSize = gTitleSize;
-        div.style.padding = "3px";
-        div.style.borderRadius = "3px";
-        div.style.border = "1px solid #c5c5c5";
-        div.style.backgroundColor = "#f6f6f6";
-        div.style.color = "#454545";
-        div.id = 'mpCloseButton';
-        div.textContent = "Close";
-        self.div.appendChild(div);
-
-        div = document.createElement('div');
         div.style.cursor = "default";
         div.style.left = left+"px";
         div.style.top = top+"px";
@@ -548,13 +532,67 @@ function MaxPlot(div, top, left, width, height, args) {
         return pxLabels;
     }
 
+    function constrainVal(x, min, max) {
+        /* if x is not in range min, max, limit to min or max */
+        if (x < min)
+            return min;
+        if (x > max)
+            return max;
+        return x;
+    }
+
+    function scaleLines(lines, zoomRange, winWidth, winHeight) {
+        /* scale an array of (x1, y1, x2, y2), cutting lines at the screen edges */
+        var minX = zoomRange.minX;
+        var maxX = zoomRange.maxX;
+        var minY = zoomRange.minY;
+        var maxY = zoomRange.maxY;
+
+        var spanX = maxX - minX;
+        var spanY = maxY - minY;
+        var xMult = winWidth / spanX;
+        var yMult = winHeight / spanY;
+
+        // transform from data floats to screen pixel coordinates
+        var pxLines = [];
+        for (var lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            var line = lines[lineIdx];
+            var x1 = line[0];
+            var y1 = line[1];
+            var x2 = line[2];
+            var y2 = line[3];
+
+            var startInvis = ((x1 < minX) || (x1 > maxX) || (y1 < minY) || (y1 > maxY));
+            var endInvis = ((x2 < minX) || (x2 > maxX) || (y2 < minY) || (y2 > maxY));
+            
+            // line is entirely hidden
+            if (startInvis && endInvis)
+                continue
+            if (startInvis) {
+                x1 = constrainVal(x1, minX, maxX);
+                y1 = constrainVal(y1, minY, maxY);
+            }
+            if (endInvis) {
+                x2 = constrainVal(x2, minX, maxX);
+                y2 = constrainVal(y2, minY, maxY);
+            }
+
+            var x1Px = Math.round((x1-minX)*xMult);
+            var y1Px = winHeight - Math.round((y1-minY)*yMult);
+            var x2Px = Math.round((x2-minX)*xMult);
+            var y2Px = winHeight - Math.round((y2-minY)*yMult);
+            pxLines.push( [x1Px, y1Px, x2Px, y2Px] );
+        }
+        return pxLines;
+    }
+
     function scaleCoords(coords, borderSize, zoomRange, winWidth, winHeight, annots) {
     /* scale list of [x (float),y (float)] to integer pixels on screen and
      * annots is an array with on-screen annotations in the format (x, y,
      * otherInfo) that is also scaled.  return [array of (x (int), y (int)),
      * scaled annots array]. Take into account the current zoom range.      *
      * Canvas origin is top-left, but usually plotting origin is bottom-left,
-     * so also flip the Y axis.
+     * so also flip the Y axis. sets invisible coords to HIDCOORD
      * */
         console.time("scale");
         var minX = zoomRange.minX;
@@ -656,6 +694,35 @@ function MaxPlot(div, top, left, width, height, args) {
       return !(r2left > r1right || r2right < r1left || r2top > r1bottom || r2bottom < r1top);
     }
 
+    function drawLines(ctx, pxLines, width, height, attrs) {
+        /* draw lines defined by array with (x1, y1, x2, y2) arrays.
+         * color is a CSS name, so usually prefixed by # if a hexcode
+         * width is the width in pixels.
+         * */
+        ctx.save();
+        //ctx.globalAlpha = 1.0;
+
+        ctx.strokeStyle = attrs.color || "#AAAAAA"; 
+        ctx.lineWidth = attrs.width || 3; 
+        ctx.globalAlpha = attrs.alpha || 0.5;
+        //ctx.miterLimit =2;
+        //ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
+
+        for (var i=0; i < pxLines.length; i++) {
+            var line = pxLines[i];
+            var x1 = line[0];
+            var y1 = line[1];
+            var x2 = line[2];
+            var y2 = line[3];
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
     function drawLabels(ctx, labelCoords, winWidth, winHeight, zoomFact) {
         /* given an array of [x, y, text], draw the text. returns bounding
          * boxes as array of [x1, y1, x2, y2]  */
@@ -681,7 +748,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
         for (var i=0; i < labelCoords.length; i++) {
             var coord = labelCoords[i];
-            if (coord===null) { // outside of view range
+            if (coord===null) { // outside of view range, push a null to avoid messing up the order of bboxArr
                 bboxArr.push( null );
                 continue;
             }
@@ -801,7 +868,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
            // only draw outline for big circles
            ctxOff.lineWidth=1.0;
-           if (radius>6) {
+           if (radius>5) {
                var strokeCol = "#"+shadeColor(colors[i], 0.9);
                ctxOff.strokeStyle=strokeCol;
 
@@ -1022,12 +1089,14 @@ function MaxPlot(div, top, left, width, height, args) {
        self.coords.px = scaleCoords(self.coords.orig, borderMargin, self.port.zoomRange, self.canvas.width, self.canvas.height);
        if (self.coords.labels!==undefined && self.coords.labels!==null)
            self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
+       if (self.coords.lines)
+           self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
     }
 
     this.setTopLeft = function(top, left) {
         /* set top and left position in pixels of the canvas */
         self.top = top;
-        self.left = left;
+        self.left = left; // keep an integer version of these numbers
         self.div.style.top = top+"px";
         self.div.style.left = left+"px";
 
@@ -1040,9 +1109,10 @@ function MaxPlot(div, top, left, width, height, args) {
        self.div.style.height = height+"px";
 
        if (self.childPlot) {
-           width = width /2;
-           self.childPlot.left = self.left+width;
-           self.childPlot.canvas.style.left = self.childPlot.left+"px";
+           width = width/2;
+           //self.childPlot.left = self.left+width;
+           //self.childPlot.canvas.style.left = self.childPlot.left+"px";
+           self.childPlot.setPos(null, self.left+width);
            self.childPlot.setSize(width, height, true);
        }
 
@@ -1054,8 +1124,11 @@ function MaxPlot(div, top, left, width, height, args) {
        self.canvas.style.width = width+"px";
        self.width = width;
        self.height = height;
-
+       //let canvHeight = height - gStatusHeight;
+       
        let canvHeight = height - gStatusHeight;
+       self.canvas.height = canvHeight;
+       self.canvas.width = width;
        self.canvas.style.height = canvHeight+"px";
        self.zoomDiv.style.top = (height-gZoomFromBottom)+"px";
        self.zoomDiv.style.left = (gZoomFromLeft)+"px";
@@ -1068,6 +1141,18 @@ function MaxPlot(div, top, left, width, height, args) {
 
     }
 
+    this.setPos = function(top, left) {
+       /* position canvas. Does not affect child  */
+       if (top) {
+          self.top = top;
+          self.div.style.top = top+"px";
+       }
+       if (left) {
+          self.left = left;
+          self.div.style.left = left+"px";
+       }
+    }
+
     this.setSize = function(width, height, doRedraw) {
        /* resize canvas on the page re-scale the data and re-draw, unless doRedraw is false */
        if (width===null)
@@ -1075,10 +1160,6 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.quickResize(width, height);
 
-       let canvHeight = height - gStatusHeight;
-       self.canvas.height = canvHeight;
-       self.canvas.width = width;
-       
        self.scaleData();
        //clearCanvas(self.ctx, width, height);
        if (doRedraw===undefined || doRedraw===true)
@@ -1221,6 +1302,12 @@ function MaxPlot(div, top, left, width, height, args) {
 
         if (self.doDrawLabels===true && self.coords.labels!==null) {
             self.coords.labelBbox = drawLabels(self.ctx, self.coords.pxLabels, self.canvas.width, self.canvas.height, zoomFact);
+        }
+
+        if (self.coords.pxLines) {
+            console.time("draw lines");
+            drawLines(self.ctx, self.coords.pxLines, self.canvas.width, self.canvas.height, self.coords.lineAttrs);
+            console.timeEnd("draw lines");
         }
 
         if (self.childPlot)
@@ -1553,6 +1640,9 @@ function MaxPlot(div, top, left, width, height, args) {
             return null;
         var labelCoords = self.coords.labels;
         var boxes = self.coords.labelBbox;
+
+        if (boxes==null) // no cluster labels
+            return null;
 
         if (labelCoords.length!==clusterLabels.length)
             alert("internal error maxPLot.js: coordinates of labels are different from clusterLabels");
@@ -1926,6 +2016,17 @@ function MaxPlot(div, top, left, width, height, args) {
         }
     };
 
+    this.setLines = function(lines, color, width, attrs) {
+        if (lines===undefined)
+            return;
+        self.coords.lines = lines;
+        self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+        if (!attrs)
+            self.coords.lineAttrs = {};
+        else
+            self.coords.lineAttrs = attrs;
+    }
+
     this.activateMode = function(modeName) {
     /* switch to one of the mouse drag modes: zoom, select or move */
         if (modeName==="zoom")
@@ -2029,8 +2130,8 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.onNoLabelHover = self.onNoLabelHover;
         plot2.onActiveChange = self.onActiveChange;
 
-        var closeButton = gebi('mpCloseButton');
-        closeButton.addEventListener('click', self.unsplit);
+        //var closeButton = gebi('mpCloseButton');
+        //closeButton.addEventListener('click', self.unsplit);
 
         plot2.drawDots();
 

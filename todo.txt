@@ -1,17 +1,33 @@
-URGENT:
+- add checkboxes to legend
+- 
+- make the horizontal bar between tsne and heatmap look like the bar in Google Slides, with "..." in the middle
+- make super long labels shorter by adding "..." in the middle
+- Change "cells" to "samples" for treehouse
+- convert the heatmap to a dotplot
+- add an error message when no quickgenes were defined and the user clicks the heatmap
+
+
+Wed Jul 17 16:04:27 PDT 2019
+- Tom: need custom genes / my genes
+- Tom: change size and transparency
+
+Mon Jul  8 10:52:43 PDT 2019
+- Jim: "Open" for collections should show collection, not dataset
+
+urgent:
 - colors are not saved anymore!
-- mouse cursor does not change
+
 - intro page upon first start, make tutorial less intrusive
 - system to show notes at the top, and never show these again.
 
 immediate:
 - remove forceAtlas2 for big datasets in cbScanpy
-- format the cluster names as links and make them clickable to show the markers
 
 - make browsers:
   - Dana Peer
-  - Tara
-  - Scheuermann
+  - Tara?
+  - Scheuermann?
+  - SRA
 
 - when downloading the image, add the legend
 
@@ -20,8 +36,7 @@ immediate:
   - get the paga sample datasets?
 
 - optimize for firefox: pre-render text onto separate canvas, remove strokeText/fillText
-- acronyms
-- split.js
+- hint at splitting
 
 datasets:
 - ciona Nature PMID30069052
@@ -43,3 +58,6 @@ Done:
 - implement mouse overs for label: clear that they're clickable + show acronyms
 - sub-datasets
 - menu entry for data set info?
+- acronyms
+- mouse cursor does not change
+- format the cluster names as links and make them clickable to show the markers

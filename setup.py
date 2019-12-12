@@ -1,8 +1,8 @@
 import setuptools
 import versioneer
 
-with open("pypi/README.md", "r") as fh:
-    long_description = fh.read()
+#with open("pypi/README.md", "r") as fh:
+    #long_description = fh.read()
 
 setuptools.setup(
     name="cellbrowser",
@@ -14,8 +14,8 @@ setuptools.setup(
     author_email="max@soe.ucsc.edu",
     url="https://github.com/maximilianh/cellBrowser",
     description="UCSC Cellbrowser, an interactive browser for single cell data. Includes converters and basic pipelines for text files, Seurat, Scanpy and Cellranger.",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
+    #long_description=long_description,
+    #long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib/"),
     package_dir={'':'src/cbPyLib/'},   # tell distutils packages are under src
     include_package_data=True,  # use MANIFEST.in for non-python files
@@ -33,7 +33,7 @@ setuptools.setup(
         'cbGuessGencode = cellbrowser.guessgenes:cbGuessGencodeCli',
         'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli',
         'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',
-        'cbImportSeurat2 = cellbrowser.seurat:cbImportSeurat2Cli',
+        'cbImportSeurat = cellbrowser.seurat:cbImportSeuratCli',
         'cbImportCellranger = cellbrowser.convert:cbCellrangerCli'
     ]
     },
