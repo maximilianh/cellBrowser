@@ -3547,6 +3547,7 @@ def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
     fname = join(outDir, fileBase)
 
     existNames = getObsmKeys(anndata)
+
     altName1 = "X_"+fieldName
     altName2 = "X_draw_graph_"+fieldName
     if fieldName not in existNames:
