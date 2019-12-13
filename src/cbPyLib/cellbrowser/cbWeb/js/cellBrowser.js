@@ -4968,7 +4968,6 @@ var cellbrowser = function() {
 
     function onLegendApplyLimitsClick(ev) {
         /* user clicked the apply button: apply limits to the plot and redraw */
-        var 
         makeLegendExpr(gLegend.geneSym, gLegend.titleHover, binInfo, exprArr, decArr);
     }
 
@@ -4983,6 +4982,25 @@ var cellbrowser = function() {
         renderer.drawDots();
         ev.stopPropagation();
     }
+
+    function buildMinMaxPart(htmls) {
+        /* create the min/max and apply/reset buttons */
+        htmls.push("<div>");
+        htmls.push("<table style='margin: 4px; margin-top: 6px'>");
+        htmls.push("<tr>");
+        htmls.push("<td><label for='exprMin'>Min:</label></td>");
+        htmls.push("<td><input name='exprMin' size='8' type='text'></td>");
+        htmls.push("<td rowspan=2><button id='tpExprLimitButton' style='border-radius: 4px; margin-left: 4px' class='ui-button'>Apply</button></td>");
+        htmls.push("</tr>");
+
+        htmls.push("<tr>");
+        htmls.push("<td><label for='exprMax'>Max:</label></td>");
+        htmls.push("<td><input name='exprMax' size='8' type='text'></td>");
+        htmls.push("</tr>");
+        htmls.push("</table>");
+        htmls.push("</div>");
+    }
+
 
     function buildLegendBar(sortBy) {
     /* draws current legend as specified by gLegend.rows
@@ -5070,20 +5088,7 @@ var cellbrowser = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
 
-        htmls.push("<div>");
-        htmls.push("<table style='margin: 4px; margin-top: 6px'>");
-        htmls.push("<tr>");
-        htmls.push("<td><label for='exprMin'>Min:</label></td>");
-        htmls.push("<td><input name='exprMin' size='8' type='text'></td>");
-        htmls.push("<td rowspan=2><button id='tpExprLimitButton' style='border-radius: 4px; margin-left: 4px' class='ui-button'>Apply</button></td>");
-        htmls.push("</tr>");
-
-        htmls.push("<tr>");
-        htmls.push("<td><label for='exprMax'>Max:</label></td>");
-        htmls.push("<td><input name='exprMax' size='8' type='text'></td>");
-        htmls.push("</tr>");
-        htmls.push("</table>");
-        htmls.push("</div>");
+        //buildMinMaxPart(htmls);
 
         // add the div where the violin plot will later be shown
         htmls.push("<div id='tpViolin'>");
