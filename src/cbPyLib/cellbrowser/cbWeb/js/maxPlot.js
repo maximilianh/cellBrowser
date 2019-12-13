@@ -1549,6 +1549,31 @@ function MaxPlot(div, top, left, width, height, args) {
         self._selUpdate();
     };
 
+    this.unselectByColor = function(colIdx) {
+        /* remove all cells with a given color from the selection */
+        var colArr = self.col.arr;
+        var selCells = self.selCells;
+
+        // make set of all cells to remove
+        var removeCells = new Set();
+        for (var i = 0; i < colArr.length; i++) {
+            if (colArr[i]===colIdx)
+                removeCells.add(i);
+        }
+
+        // copy selection, skipping cells that should be removed
+        var newSel = [];
+        for (var i = 0; i < selCells.length; i++) {
+            var selId = selCells[i];
+            if (!removeCells.has(selId))
+                newSel.push(selId); // XX  duplicates ?
+        }
+
+        self.selCells = newSel;
+        console.log(removeCells.length+" cells removed from selection, by color");
+        self._selUpdate();
+    };
+
     this.selectInRect = function(x1, y1, x2, y2) {
         /* find all cells within a rectangle and add them to the selection. */
         var minX = Math.min(x1, x2);

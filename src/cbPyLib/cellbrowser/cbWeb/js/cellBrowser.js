@@ -4842,6 +4842,8 @@ var cellbrowser = function() {
         }
 
         var legendId = parseInt(ev.target.id.split("_")[1]);
+        var colorIndex = gLegend.rows[legendId].intKey;
+
         if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
             // user clicked the same entry as before: 
             gLegend.lastClicked = null;
@@ -4854,7 +4856,7 @@ var cellbrowser = function() {
                 renderer.selectClear();
                 $('.tpLegend').removeClass('tpLegendSelect');
             }
-            var colorIndex = gLegend.rows[legendId].intKey;
+            $("#tpLegendCheckbox_"+colorIndex).prop("checked", true);
             renderer.selectByColor(colorIndex);
             //menuBarShow("#tpFilterButton");
             //menuBarShow("#tpOnlySelectedButton");
@@ -4941,13 +4943,45 @@ var cellbrowser = function() {
     function setLegendHeaders(type) {
     /* set the headers of the right-hand legend */
         if (type==="category") {
-            $('#tpLegendCol1').html('Name<span class="caret"></span>');
-            $('#tpLegendCol2').html('Frequency<span class="caret"></span>');
+            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span><span class="tpLegendHover" title="click to sort by name"> Name<span class="caret"></span></span>');
+            $('#tpLegendCol2').html('<span class="tpLegendHover" title="click to sort by frequency"> Frequency<span class="caret"></span></span>');
         }
         else {
-            $('#tpLegendCol1').html('Range');
+            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span> Range<span');
             $('#tpLegendCol2').html('Frequency');
         }
+        activateTooltip("#tpLegendClear");
+        activateTooltip(".tpLegendHover");
+    }
+
+    function onLegendClearClick(ev) { 
+        /* unselect all checkboxes in the legend and clear the selection */ 
+        renderer.selectClear();
+        renderer.drawDots();
+
+        var cboxes = document.getElementsByClassName("tpLegendCheckbox");
+        for (var i=0; i < cboxes.length; i++) {
+            cboxes[i].checked = false;
+        }
+        ev.stopPropagation();
+    }
+
+    function onLegendApplyLimitsClick(ev) {
+        /* user clicked the apply button: apply limits to the plot and redraw */
+        var 
+        makeLegendExpr(gLegend.geneSym, gLegend.titleHover, binInfo, exprArr, decArr);
+    }
+
+    function onLegendCheckboxClick(ev) { 
+        /* user clicked the small checkboxes in the legend */
+        //alert(ev);
+        var valIdx = parseInt(ev.target.getAttribute("data-value-index"));
+        if ($(this).is(':checked'))
+            renderer.selectByColor(valIdx);
+        else
+            renderer.unselectByColor(valIdx);
+        renderer.drawDots();
+        ev.stopPropagation();
     }
 
     function buildLegendBar(sortBy) {
@@ -4976,10 +5010,6 @@ var cellbrowser = function() {
             sum += count;
         }
 
-        //var acronyms = db.conf.acronyms;
-        //if (acronyms===undefined)
-            //croacronyms = {};
-
         for (i = 0; i < rows.length; i++) {
             var row = rows[i];
             var colorHex = row.color; // manual color
@@ -5003,7 +5033,6 @@ var cellbrowser = function() {
 
             if (likeEmptyString(label)) {
                 labelClass += " tpGrey";
-                //colorHex = cNullColor;
             }
             if (label==="") {
                 label = "(empty)";
@@ -5023,6 +5052,8 @@ var cellbrowser = function() {
             var classStr = "tpLegend";
             var line = "<div id='tpLegend_" +valueIndex+ "' class='" +classStr+ "'>";
             htmls.push(line);
+            htmls.push("<input class='tpLegendCheckbox' data-value-index='"+valueIndex+"' "+
+                "id='tpLegendCheckbox_"+valueIndex+"' type='checkbox'>");
             htmls.push("<input class='tpColorPicker' id='tpLegendColorPicker_"+i+"' />");
 
             htmls.push("<span class='"+labelClass+"' id='tpLegendLabel_"+i+"' data-placement='auto top' title='"+mouseOver+"'>");
@@ -5039,6 +5070,21 @@ var cellbrowser = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
 
+        htmls.push("<div>");
+        htmls.push("<table style='margin: 4px; margin-top: 6px'>");
+        htmls.push("<tr>");
+        htmls.push("<td><label for='exprMin'>Min:</label></td>");
+        htmls.push("<td><input name='exprMin' size='8' type='text'></td>");
+        htmls.push("<td rowspan=2><button id='tpExprLimitButton' style='border-radius: 4px; margin-left: 4px' class='ui-button'>Apply</button></td>");
+        htmls.push("</tr>");
+
+        htmls.push("<tr>");
+        htmls.push("<td><label for='exprMax'>Max:</label></td>");
+        htmls.push("<td><input name='exprMax' size='8' type='text'></td>");
+        htmls.push("</tr>");
+        htmls.push("</table>");
+        htmls.push("</div>");
+
         // add the div where the violin plot will later be shown
         htmls.push("<div id='tpViolin'>");
         htmls.push("<canvas style='height:200px; padding-top: 10px; padding-bottom:30px' id='tpViolinCanvas'></canvas>");
@@ -5050,8 +5096,12 @@ var cellbrowser = function() {
 
         activateTooltip("#tpResetColors");
         activateTooltip("#tpSortBy");
+
         $("#tpLegendCol1").click( onSortByClick );
         $("#tpLegendCol2").click( onSortByClick );
+        $(".tpLegendCheckbox").click( onLegendCheckboxClick );
+        $("#tpLegendClear").click( onLegendClearClick );
+        $("#tpExprLimitButton").click( onLegendApplyLimitsClick );
 
         $('.tpLegend').click( onLegendLabelClick );
         //$('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
