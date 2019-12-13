@@ -279,11 +279,13 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     cmds.append('print("Running t-SNE")')
     #cmds.append("sobj <- RunTSNE(object = sobj, dims.use = 1:pcCount, do.fast = TRUE)")
     # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
+    perplexity = str(conf.get("perplexity", 30))
+
     if isSeurat3:
-        cmds.append("sobj <- RunTSNE(sobj)")
+        cmds.append("sobj <- RunTSNE(sobj, perplexity=%s)" % perplexity)
         cmds.append("sobj <- RunUMAP(sobj)")
     else:
-        cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE)")
+        cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE, perplexity=%s)" % perplexity)
         cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)

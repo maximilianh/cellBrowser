@@ -18,12 +18,13 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
 #tpLegendHeader { background-color:#eee; color: #777 }
 #tpLegendTitle { font-weight: bold }
-#tpLegendCol1 { padding-left: 2px}
+#tpLegendCol1 { padding-left: 1px}
 #tpLegendCol2 { float: right; padding-right: 2px}
 .tpLegendSelect { outline: 2px solid black }
 .tpLegendLabel { display:inline; user-select: none; }
 /*.tpLegendCount { display:inline-block; position: absolute; right: 4px; color: #888} */
 .tpLegendCount { display:inline-block; float: right; color: #888} 
+.tpLegend .tpLegendCheckbox { margin-right: 2px; margin-top: 2px}
 .tpGrey { color: #bbb }
 
 .ui-helper-reset { font-size: 12px}
