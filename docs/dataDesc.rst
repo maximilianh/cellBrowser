@@ -47,7 +47,7 @@ The following tags contain accession IDs and will be translated to links:
 - ``sra_study``: NCBI SRA SRPxxxx accession
 - ``doi``: DOI of paper fulltext
 - ``dbgap``: NCBI dbGaP accession, starts with phs
-- ``bioproject``: NCBI Bioproject accession, a 4-9 digit number, without the PRJNA prefix
+- ``bioproject``: NCBI Bioproject accession, PRJNAxxxx. Can be included with or without the PRJNA prefix.
 
 The following tags contain just text:
 
