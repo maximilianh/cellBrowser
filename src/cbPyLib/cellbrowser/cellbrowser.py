@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime, keyword
+import hashlib, timeit, datetime, keyword, itertools
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -611,17 +611,24 @@ def textFileRows(inFile):
     for row in rowReader:
         yield row
 
-def lineFileNextRow(inFile, headerIsRow=False):
+def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
     """
     parses tab-sep file with headers in first line
     yields collection.namedtuples
     strips "#"-prefix from header line
     Can parse csv files with quotes.
+    headerIsRow: if True, yield the header itself just like any other row
+    noHeaders: file has no headers, construct pseudo-headers "col0", "col1", etc
     """
 
     ifh = textFileRows(inFile)
-    headers = nextEl(ifh)
-
+    if noHeaders:
+        row1 = nextEl(ifh)
+        savedLines = [row1]
+        headers = ["col"+str(i) for i in range(0, len(row1))]
+    else:
+        savedLines = []
+        headers = nextEl(ifh)
 
     if headerIsRow:
         yield headers
@@ -629,7 +636,7 @@ def lineFileNextRow(inFile, headerIsRow=False):
     headers = sanitizeHeaders(headers)
     Record = namedtuple('tsvCsvRec', headers)
 
-    for fields in ifh:
+    for fields in itertools.chain(savedLines, ifh):
         if fields[0].startswith("#"):
             continue
 
@@ -2009,7 +2016,9 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     # parse and find the max values
     warn1Done = False
     warn2Done = False
-    for row in lineFileNextRow(fname):
+    for row in lineFileNextRow(fname, noHeaders=True):
+        if row[1]=="x" or row[2]=="y" or row[1]=="tsne1" or row[0].startswith("cell"):
+            continue
         if (len(row)<3):
             if not warn1Done:
                 errAbort("file %s needs to have at least three columns" % fname)
@@ -2632,10 +2641,12 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     # copy over the raw matrix file, usually this is a zip or gzip file
     if "rawMatrixFile" in summInfo:
         rawInPath = join(inDir, summInfo["rawMatrixFile"])
-        rawOutPath = join(datasetDir, summInfo["rawMatrixFile"])
+        rawOutPath = join(datasetDir, basename(summInfo["rawMatrixFile"]))
         if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
             logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
             shutil.copyfile(rawInPath, rawOutPath)
+        else:
+            logging.info("Not copying %s again, already in output directory" % rawInPath)
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
@@ -3115,13 +3126,27 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
-def readQuickGenes(inConf, geneToSym, outConf):
+def readQuickGenes(inConf, geneToSym, outDir, outConf):
+    " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
+
+        matrixJsonFname = join(outDir, "exprMatrix.json")
+        validGenes = set(readJson(matrixJsonFname))
+
         fname = getAbsPath(inConf, "quickGenesFile")
         quickGenes = parseGeneInfo(geneToSym, fname)
-        outConf["quickGenes"] = quickGenes
-        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
+
+        validQuickGenes = []
+        for quickGeneInfo in quickGenes:
+            sym = quickGeneInfo[0]
+            if sym not in validGenes:
+                logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
+            else:
+                validQuickGenes.append(quickGeneInfo)
+
+        outConf["quickGenes"] = validQuickGenes
+        logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
 
 def getFileVersion(fname):
     data = {}
@@ -3464,7 +3489,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     outMetaFname = join(datasetDir, "meta.tsv")
 
-    # try not to recreate files that have been created before, as this is quite slow (=Python)
+    # try not to recreate files that have been created before, as it is all quite slow (=Python)
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
     doMeta = metaHasChanged(datasetDir, outMetaFname)
 
@@ -3506,7 +3531,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     convertMarkers(inConf, outConf, geneToSym, clusterLabels, datasetDir)
 
-    readQuickGenes(inConf, geneToSym, outConf)
+    readQuickGenes(inConf, geneToSym, datasetDir, outConf)
 
     # a few settings are passed through to the Javascript as they are
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
@@ -5300,7 +5325,7 @@ def cbScanpyCli():
 
     if options.init:
         copyPkgFile("sampleConfig/scanpy.conf")
-        sys.exit(1)
+        sys.exit(0)
 
     try:
         logging.info("Loading Scanpy libraries")
@@ -5417,6 +5442,7 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
 
     mat, genes, barcodes = open10xMtxForRows(mtxFname, geneFname, barcodeFname)
 
+    tmpFname = outFname+".tmp"
     # could not find a cross-python way to open ofh for np.savetxt
     # see https://github.com/maximilianh/cellBrowser/issues/73 and numpy ticket referenced therein
     if isPy3:
