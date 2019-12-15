@@ -4127,9 +4127,12 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         rebuildCollections(dataRoot, outDir, todoConfigs)
     else:
         # rebuild the flat list, for legacy installs not using dataset hierarchies
-        logging.info("Rebuilding flat list of datasets")
+        logging.info("Rebuilding flat list of datasets, without hierarchies")
         datasets = subdirDatasetJsonData(outDir)
+        collInfo = {}
+        collInfo["name"] = ""
         summInfo = summarizeDatasets(datasets)
+        collInfo["datasets"] = summInfo
         outFname = join(outDir, "dataset.json")
         writeJson(summInfo, outFname)
 
