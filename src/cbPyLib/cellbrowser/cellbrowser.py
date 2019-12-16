@@ -28,9 +28,15 @@ except ImportError:
     from urllib2 import urlopen
 
 try:
+    # > python3.3
+    from collections.abc import Mapping
+except:
+    # < python 3.3
+    from collections import Mapping
+
+try:
     # python2.7+
     from collections import defaultdict, Counter
-    from collections.abc import Mapping
 except ImportError:
     # python2.6 has no collections.abc, defaultdict or Counter yet
     from backport_collections import defaultdict, Counter # error? -> pip2 install backport-collections
@@ -443,6 +449,8 @@ def cbUpgrade_parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
         help="output directory, default can be set through the env. variable CBOUT, current value: %default",
         default=defOutDir)
+    parser.add_option("-p", "--port", dest="port", type="int", action="store",
+        help="after upgrade, start HTTP server bound to port and serve <outDir>")
     parser.add_option("", "--code", dest="addCode", action="store_true",
         help="also update the javascript code")
     parser.add_option("", "--dev", dest="devMode", action="store_true",
@@ -3866,9 +3874,10 @@ def writeJson(data, outFname, ignoreKeys=None):
         #str_ = json.dumps(data, indent=2, sort_keys=True,separators=(',', ': '), ensure_ascii=False)
         if isPy3:
             str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False)
+            outfile.write(str_)
         else:
             str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
-        outfile.write(str_)
+            outfile.write(unicode(str_))
 
     if ignoreKeys:
         data.update(ignoredData)
@@ -4107,7 +4116,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
 
         # find all parent cellbrowser.conf-files
         if dataRoot is None:
-            logging.info("dataRoot not set in ~/.cellbrowser.conf, not rebuilding hierarchy")
+            logging.info("dataRoot not set in ~/.cellbrowser.conf, no need to rebuild hierarchy")
             dataRoot = None
         else:
             if not "fileVersions" in outConf:
@@ -4130,12 +4139,21 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         # rebuild the flat list, for legacy installs not using dataset hierarchies
         logging.info("Rebuilding flat list of datasets, without hierarchies")
         datasets = subdirDatasetJsonData(outDir)
+
         collInfo = {}
         collInfo["name"] = ""
+        collInfo["shortLabel"] = "All Datasets"
+        collInfo["abstract"] = """This is a local Cell Browser installation, without dataset hierarchies.
+            Please select a dataset from the list on the left.<p>
+            <p>
+            See the documentation on <a target=_blank href="https://cellbrowser.readthedocs.io/collections.html">
+            dataset hierarchies</a>.
+
+        """
         summInfo = summarizeDatasets(datasets)
         collInfo["datasets"] = summInfo
         outFname = join(outDir, "dataset.json")
-        writeJson(summInfo, outFname)
+        writeJson(collInfo, outFname)
 
     cbUpgrade(outDir, doData=False)
 
@@ -4736,7 +4754,7 @@ def cbMake(outDir, devMode=False):
 #        outFname = join(outDir, "dataset.json")
 #        writeJson(dataset, outFname, ignoreKeys=["children"])
 
-def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
+def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
     " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
     logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
@@ -4745,7 +4763,7 @@ def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
     if doData:
         dataRoot = findRoot()
         if not dataRoot:
-            logging.info("Cannot update dataset list without a dataRoot")
+            logging.info("Not using dataset hierarchies: no need to rebuild dataset list")
         else:
             topConfig = join(dataRoot, "cellbrowser.conf")
             rebuildCollections(dataRoot, outDir, [topConfig])
@@ -4753,6 +4771,10 @@ def cbUpgrade(outDir, doData=True, doCode=False, devMode=False):
     if doCode or devMode:
         copyStatic(webDir, outDir)
         makeIndexHtml(webDir, outDir, devMode=devMode)
+
+    if port:
+        print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
+        startHttpServer(outDir, int(port))
 
 def cbUpgradeCli():
     " command line interface for copying over the html and js files and recreate index.html "
@@ -4764,7 +4786,7 @@ def cbUpgradeCli():
     if len(args)!=0:
         errAbort("This command does not accept arguments without options. Did you mean: -o <outDir> ? ")
 
-    cbUpgrade(outDir, doCode=options.addCode, devMode=options.devMode)
+    cbUpgrade(outDir, doCode=options.addCode, devMode=options.devMode, port=options.port)
 
 def parseGeneLocs(geneType):
     """

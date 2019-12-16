@@ -402,7 +402,17 @@ var cellbrowser = function() {
               });
         }
         else {
-          $( "#pane1" ).html("This dataset does not seem to have a desc.conf file. Please read https://cellbrowser.readthedocs.io/dataDesc.html or run 'cbBuild --init' to create one");
+          var message = "This dataset does not seem to have a desc.conf file. Please "+
+              "read https://cellbrowser.readthedocs.io/dataDesc.html or run 'cbBuild --init' to create one";
+          if (datasetInfo.abstract)
+              // the top-level non-hierarchy dataset.conf has a message in it. Use it here, as a fallback.
+              message = datasetInfo.abstract;
+              
+          $( "#pane1" ).html(message);
+          $( "#pane2" ).hide();
+          $( "#tabLink2" ).hide();
+          $( "#pane3" ).hide();
+          $( "#tabLink3" ).hide();
         }
         $("#tpOpenDialogTabs").tabs("refresh").tabs("option", "active", 0);
     }
@@ -545,6 +555,11 @@ var cellbrowser = function() {
         }
     }
 
+    function pageAtUcsc() {
+        // return true if current page is at ucsc.edu 
+        return (window.location.hostname.endsWith("ucsc.edu"));
+    }
+
     function datasetDescToHtml(datasetInfo, desc) {
         /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
         if (!desc) // http errors call this with undefined
@@ -578,6 +593,13 @@ var cellbrowser = function() {
         if (desc.abstract) {
             htmls.push("<p>");
             htmls.push(desc.abstract);
+            htmls.push("</p>");
+        }
+        else {
+            // the top-level hardcoded dataset for non-hierarchy mode has the abstract in the
+            // dataset config. It's a lot easier this way, so just pull it in here.
+            htmls.push("<p>");
+            htmls.push(datasetInfo.abstract);
             htmls.push("</p>");
         }
 
@@ -631,7 +653,7 @@ var cellbrowser = function() {
         }
 
         let topName = datasetInfo.name.split("/")[0];
-        if (datasetInfo.name!=="") {
+        if (datasetInfo.name!=="" && pageAtUcsc()) {
             if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
                 // if the dataset is a collection
                 htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
@@ -775,7 +797,8 @@ var cellbrowser = function() {
                 shortLabel:"Overview", 
                 name:openDsInfo.name, 
                 hasFiles:openDsInfo.hasFiles,
-                isSummary:true
+                isSummary:true,
+                abstract:openDsInfo.abstract
             });
         }
 
@@ -896,7 +919,7 @@ var cellbrowser = function() {
         $(".list-group-item").focus( function (event) {
             selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
             // bootstrap has a bug where the blue selection frame is hidden by neighboring buttons
-            // we're working around this here by bumping up the current z-index.
+            // Working around this here by bumping up the current z-index.
             $("button.list-group-item").css("z-index", "0");
             $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
         });
