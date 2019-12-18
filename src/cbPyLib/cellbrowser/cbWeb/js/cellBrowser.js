@@ -1518,6 +1518,8 @@ var cellbrowser = function() {
         if (db.cart===undefined)
             db.cart = {};
         var userMeta = db.cart;
+        if (userMeta===null)
+            alert("the 'cart' argument in the URL is invalid. Please remove cart=xxxx from the URL and reload");
         var metaFields = db.conf.metaFields;
 
         for (var metaIdx = 0; metaIdx < metaFields.length; metaIdx++) {
@@ -2942,7 +2944,7 @@ var cellbrowser = function() {
 
     function legendUpdateLabels(fieldName) {
         /* re-copy the labels into the legend rows */
-        // format of rows is: defColor, currColor, label, count, valueIndex, uniqueKey
+        // rows have attributes like these: defColor, currColor, label, count, valueIndex, uniqueKey
         var shortLabels = db.findMetaInfo(fieldName).ui.shortLabels;
         var rows = gLegend.rows;
         for (var i = 0; i < rows.length; i++) {
@@ -2953,12 +2955,32 @@ var cellbrowser = function() {
         }
     }
 
-    function legendChangePaletteAndRebuild(palName) {
+    function legendRemoveManualColors(gLegend) {
+        /* remove all manually defined colors from the legend */
+        // reset the legend object
+        legendSetColors(gLegend, null, "color");
+
+        // reset the URL and local storage settings
+        var rows = gLegend.rows;
+        var urlChanges = {};
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var urlVar = COL_PREFIX+row.strKey;
+            localStorage.removeItem(urlVar);
+            urlChanges[urlVar] = null;
+
+        }
+        changeUrl(urlChanges);
+    }
+
+    function legendChangePaletteAndRebuild(palName, resetManual) {
         /* change the legend color palette and put it into the URL */
         var success = legendSetPalette(gLegend, palName);
         if (success) {
-            if (palName==="default")
+            if (palName==="default") {
+                legendRemoveManualColors(gLegend);
                 changeUrl({"pal":null});
+            }
             else
                 changeUrl({"pal":palName});
             buildLegendBar();
@@ -2967,11 +2989,18 @@ var cellbrowser = function() {
         }
     }
 
-    function legendSetColors(legend, colors) {
+    function legendSetColors(legend, colors, keyName) {
+        /* set the colors for all legend rows, keyName can be "color" or "defColor", depending on 
+         * whether the current row color or the row default color should be changed. 
+         * colors can also be null to reset all values to null. */
+        if (!keyName)
+            keyName = "color";
         var rows = legend.rows;
         for (let i = 0; i < rows.length; i++) {
-            //rows[i][1] = colors[i];
-            rows[i].color = colors[i];
+            var colorVal = null;
+            if (colors)
+                colorVal = colors[i];
+            rows[i][keyName] = colorVal;
         }
     }
 
@@ -3006,7 +3035,7 @@ var cellbrowser = function() {
             return false;
         }
 
-        legendSetColors(legend, pal);
+        legendSetColors(legend, pal, "defColor");
         legend.palName = palName;
 
         // update the dropdown menu
@@ -3579,7 +3608,8 @@ var cellbrowser = function() {
         }
 
         if (metaInfo.diffValCount > MAXCOLORCOUNT) {
-            warn("This field has "+metaInfo.diffValCount+" different values. Coloring on a field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
+            warn("This field has "+metaInfo.diffValCount+" different values. Coloring on a "+
+                "field that has more than "+MAXCOLORCOUNT+" different values is not supported.");
             return null;
         }
 
@@ -3626,19 +3656,23 @@ var cellbrowser = function() {
             let valIdx = legRowInfo[2]; // index of the original field in fieldInfo
             //let valIdx = legRowInfo.intKey;
             var label = shortLabels[valIdx];
+
             var desc  = null;
             if (longLabels)
                 desc  = longLabels[valIdx];
+
+            // first use the default palette, then try to get from URL
             var count = legRowInfo[1];
             var uniqueKey = label;
+            if (uniqueKey==="")
+                uniqueKey = "_EMPTY_";
 
             if (likeEmptyString(label))
                 color = cNullColor;
             // override any color with the color specified in the current URL
-            var savKey = COL_PREFIX+label;
+            var savKey = COL_PREFIX+uniqueKey;
             var color = getFromUrl(savKey, null);
 
-            // [ colorHexStr, defaultColorHexStr, label, count, internalKey, uniqueKey ]
             rows.push( { 
                 "color": color, 
                 "defColor": null, 
@@ -4899,23 +4933,6 @@ var cellbrowser = function() {
         renderer.drawDots();
     }
 
-    function legendResetColors () {
-    /* reset all manual colors in legend to defaults */
-        var rows = gLegend.rows;
-        if (rows===undefined)
-            return;
-        for (var i = 0; i < rows.length; i++) {
-            //var colorHex = rows[i][0];
-            //var defColor = rows[i][1];
-            var colorHex = rows[i].color;
-            var defColor = rows[i].defColor;
-            gLegend.rows[i].color = null;
-            var saveKey = rows[i].intKey;
-            // also clear localStorage
-            localStorage.removeItem(saveKey);
-        }
-    }
-
     function onSortByClick (ev) {
     /* flip the current legend sorting */
         var sortBy = null;
@@ -5016,12 +5033,13 @@ var cellbrowser = function() {
         htmls.push("<tr>");
         htmls.push("<td><label for='exprMin'>Min:</label></td>");
         htmls.push("<td><input name='exprMin' size='8' type='text'></td>");
-        htmls.push("<td rowspan=2><button id='tpExprLimitButton' style='border-radius: 4px; margin-left: 4px' class='ui-button'>Apply</button></td>");
+        htmls.push("<td><button id='tpExprLimitApply' style='border-radius: 4px; margin-left: 4px; padding: 3px 6px 3px 6px' class='ui-button'>Apply</button></td>");
         htmls.push("</tr>");
 
         htmls.push("<tr>");
         htmls.push("<td><label for='exprMax'>Max:</label></td>");
         htmls.push("<td><input name='exprMax' size='8' type='text'></td>");
+        htmls.push("<td><button id='tpExprLimitClear' style='border-radius: 4px; margin-left: 4px; padding: 3px 6px 3px 6px' class='ui-button'>Clear</button></td>");
         htmls.push("</tr>");
         htmls.push("</table>");
         htmls.push("</div>");
@@ -5114,7 +5132,8 @@ var cellbrowser = function() {
             //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
 
-        //buildMinMaxPart(htmls);
+        //if (gLegend.type=="expr")
+            //buildMinMaxPart(htmls);
 
         // add the div where the violin plot will later be shown
         htmls.push("<div id='tpViolin'>");
@@ -5132,7 +5151,7 @@ var cellbrowser = function() {
         $("#tpLegendCol2").click( onSortByClick );
         $(".tpLegendCheckbox").click( onLegendCheckboxClick );
         $("#tpLegendClear").click( onLegendClearClick );
-        $("#tpExprLimitButton").click( onLegendApplyLimitsClick );
+        $("#tpExprLimitApply").click( onLegendApplyLimitsClick );
 
         $('.tpLegend').click( onLegendLabelClick );
         //$('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
@@ -5183,6 +5202,8 @@ var cellbrowser = function() {
         var oldColorHex = clickedRow.color;
         var defColorHex = clickedRow.defColor;
         var valueKey = clickedRow.strKey;
+        if (valueKey==="")
+            valueKey="_EMPTY_";
 
         /* jshint validthis: true */
         var newCol = $(this).spectrum('get');
@@ -5195,7 +5216,7 @@ var cellbrowser = function() {
         clickedRow.color = newColHex;
 
         // save color to cart if necessary
-        saveToUrl(valueKey, newColHex, defColorHex);
+        saveToUrl(COL_PREFIX+valueKey, newColHex, defColorHex);
 
         var colors = legendGetColors(gLegend.rows);
         renderer.setColors(colors);
@@ -5999,6 +6020,7 @@ var cellbrowser = function() {
                     current[part] = digitTest.test(parts[j+1]) || parts[j+1] === "[]" ? [] : {};
                 }
                 current = current[part];
+
             }
             var lastPart = parts[parts.length - 1];
             if(lastPart === "[]"){
@@ -6029,9 +6051,10 @@ var cellbrowser = function() {
        // overwrite everthing that we got
        for (var key in vars) {
            var val = vars[key];
-           if (val===null || val in urlVars)
-               delete urlVars[key];
-           else
+           if (val===null) {
+               if (key in urlVars) 
+                   delete urlVars[key];
+            } else
                urlVars[key] = val;
        }
 
@@ -6047,6 +6070,14 @@ var cellbrowser = function() {
                "But please contact us at cells@ucsc.edu and tell us about the error. Thanks!");
         else
            history.pushState({}, dsName, baseUrl+"?"+argStr);
+    }
+
+    function delVars(varNames) {
+        /* remove a CGI variable from the URL */
+        var o = {};
+        for (var varName of varNames)
+            o[varName] = null;
+        changeUrl(o);
     }
 
     function delState(varName) {
