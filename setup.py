@@ -14,8 +14,16 @@ setuptools.setup(
     author_email="max@soe.ucsc.edu",
     url="https://github.com/maximilianh/cellBrowser",
     description="UCSC Cellbrowser, an interactive browser for single cell data. Includes converters and basic pipelines for text files, Seurat, Scanpy and Cellranger.",
-    #long_description=long_description,
-    #long_description_content_type="text/markdown",
+    long_description="""The UCSC Cell Browser is an interactive browser for
+    single cell data, like mRNA or ATAC-seq data. You can display
+    dimensionality reductions, navigate them with the mouse or the cursor keys,
+    select cells, color by genes or meta annotations and make many other
+    changes. The main site runs at https://cells.ucsc.edu, but using this
+    package you can also convert data yourself and build a Cell Browser HTML
+    directory that can be served through any University webserver. You can try
+    the Cell Browser at https://cells.ucsc.edu or read about how to convert
+    data with this package on https://cellbrowser.rtfd.org."""
+    long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib/"),
     package_dir={'':'src/cbPyLib/'},   # tell distutils packages are under src
     include_package_data=True,  # use MANIFEST.in for non-python files
