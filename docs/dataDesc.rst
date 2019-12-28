@@ -27,7 +27,7 @@ you can use text like ``<section>some subtitle</section>`` to split the text int
 
 These tags contain a file name:
 
-- ``image``: usually a 400px-wide thumbnail of the dimensionality reduction. You can use a command like ``convert graphical_abstract.png -sampling-factor 4:2:0 -strip -quality 85 -interlace JPEG -colorspace sRGB thumb.jpg`` to create ``thumb.jpg``, a version of the image with a lower resolution that loads faster.
+- ``image``: usually a 400px-wide thumbnail of the dimensionality reduction. You can use a command like ``convert graphical_abstract.png -sampling-factor 4:2:0 -strip -resize 400 -quality 85 -interlace JPEG -colorspace sRGB thumb.jpg`` to create ``thumb.jpg``, a version of the image only 400 pixels wide that loads faster.
 - ``rawMatrixFile``: the file name of the raw unprocessed matrix. Usually a .zip or .gz file. Also see ``rawMatrixNote``.
 
 The following tags can contain URLs and optionally, separated with a space, a label for the link. If you do 

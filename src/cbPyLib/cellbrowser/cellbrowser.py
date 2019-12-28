@@ -1197,7 +1197,6 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
             forceType = "unique"
 
         cleanFieldName = cleanString(fieldName)
-        binName = join(outDir, cleanFieldName+".bin")
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -1215,18 +1214,21 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         packFmt = fieldMeta["_fmt"]
 
-        # write the binary file
-        binFh = open(binName, "wb")
-        if fieldMeta["type"]!="uniqueString":
+        binName = join(outDir, cleanFieldName+".bin")
+        if fieldMeta["type"]=="uniqueString":
+            # unique strings are simply written as-is
+            logging.debug("writing as normal strings to %s" % binName)
+            textFh = openFile(binName, "w")
+            for x in col:
+                textFh.write("%s\n" % x)
+            textFh.close()
+        else:
+            # default case: write data as binary file
+            logging.debug("writing as binary data to %s" % binName)
+            binFh = open(binName, "wb")
             for x in binVals:
                 binFh.write(struct.pack(packFmt, x))
-        else:
-            for x in col:
-                if isPy3:
-                    binFh.write(bytes("%s\n" % x, encoding="ascii"))
-                else:
-                    binFh.write("%s\n" % x)
-        binFh.close()
+            binFh.close()
 
         runGzip(binName)
         zippedName = binName+".gz"
@@ -2025,7 +2027,8 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     warn1Done = False
     warn2Done = False
     for row in lineFileNextRow(fname, noHeaders=True):
-        if row[1]=="x" or row[2]=="y" or row[1]=="tsne1" or row[0].startswith("cell"):
+        # simply skip the headers: assume that headers never start with a number
+        if not row[1][0].isdigit() or not row[2][0].isdigit():
             continue
         if (len(row)<3):
             if not warn1Done:
@@ -2112,11 +2115,11 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         logging.warn("%d sample names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
         logging.warn("These samples will be removed from the meta data")
         matrixSampleNames = [x for x in matrixSampleNames if x in meta]
-        mustFilterMatrix = True
 
     if len(metaNotMatrix)!=0:
         logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
         logging.warn("These samples will be removed from the expression matrix")
+        mustFilterMatrix = True
 
     # filter the meta data file
     logging.info("Data contains %d samples/cells" % len(matrixSampleNames))
@@ -3338,6 +3341,27 @@ def md5ForFile(fname, isSmall=False):
         md5 = md5WithPython(fname)
     return md5
 
+def readOldSampleNames(datasetDir, lastConf):
+    """ reads the old cell identifiers from the dataset directory """
+    # this obscure command gets file with the the cell identifiers in the dataset directory "
+    sampleNameFname = join(datasetDir, "metaFields", lastConf["metaFields"][0]["name"]+".bin.gz")
+    logging.debug("Reading meta sample names from %s" % sampleNameFname)
+
+    # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitly
+    metaSampleNames = []
+    if isfile(sampleNameFname):
+        for line in openFile(sampleNameFname):
+            metaSampleNames.append(line)
+    else:
+        oldMetaFname = join(datasetDir, "meta.tsv")
+        headDone = False
+        for line in open(oldMetaFname, "r"):
+            if not headDone:
+                headDone = True
+                continue
+            metaSampleNames.append(splitOnce(line, "\t")[0])
+    return metaSampleNames
+
 def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf):
     """ compare filesize stored in datasetDir/cellbrowser.json.bak with file
     size of inMatrixFname and also compare the sample names with the sample names in
@@ -3379,23 +3403,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
-    # this obscure command gets file with the the cell identifiers in the dataset directory
-    sampleNameFname = join(datasetDir, "metaFields", lastConf["metaFields"][0]["name"]+".bin.gz")
-    logging.debug("Reading meta sample names from %s" % sampleNameFname)
-
-    # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitely
-    metaSampleNames = []
-    if isfile(sampleNameFname):
-        for line in gzip.open(sampleNameFname, "r"):
-            metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
-    else:
-        oldMetaFname = join(datasetDir, "meta.tsv")
-        headDone = False
-        for line in open(oldMetaFname, "r"):
-            if not headDone:
-                headDone = True
-                continue
-            metaSampleNames.append(splitOnce(line, "\t")[0])
+    metaSampleNames = readOldSampleNames(datasetDir, lastConf)
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
     matrixSampleNames = readHeaders(outMatrixFname)[1:]
@@ -3458,6 +3466,7 @@ def metaHasChanged(datasetDir, metaOutFname):
 
     oldData = readJson(oldJsonFname)
     if not "outMeta" in oldData["fileVersions"]:
+        logging.debug("Old config file has no meta data MD5, re-converting meta data")
         return True
     else:
         oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
@@ -3979,6 +3988,10 @@ def findParentConfigs(inFname, dataRoot, currentName):
         fnameList.append(confFname)
         logging.debug("Found parent config at %s" % confFname)
         if confFname not in confCache:
+            if not isfile(confFname):
+                errAbort("The file %(confFname)s does not exist. It is a parent description of %(inFname)s. "\
+                        "Since you are using dataset hierarchies, every child dataset has parent directories, "\
+                        "and they all require a cellbrowser.conf with at least a shortLabel." % locals())
             c = loadConfig(confFname, ignoreName=True)
             if path==dataRoot:
                 c["name"] = ""
@@ -4086,7 +4099,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         dataRoot = findRoot(inConfFname)
         if dataRoot:
             if "name" in inConf:
-                logging.info("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
+                logging.debug("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
             logging.debug("Deriving dataset name from path")
             inConf["name"] = basename(dirname(abspath(inConfFname)))
 

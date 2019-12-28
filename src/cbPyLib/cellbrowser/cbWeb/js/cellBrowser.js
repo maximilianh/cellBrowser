@@ -1104,14 +1104,16 @@ var cellbrowser = function() {
             // this is a gene query
             findCellsUpdateRowType(rowIdx, rowType);
             selectizeSetValue("#tpSelectGeneCombo_"+rowIdx, query["g"]);
+            $("#tpSelectValue_"+rowIdx).val(query[op]);
         } else {
             // it's a meta query
             rowType = "meta";
             findCellsUpdateRowType(rowIdx, rowType);
             findCellsUpdateMetaCombo(rowIdx, metaInfo.index);
+            var enumIdx = findMetaValIndex(metaInfo, query[op]);
+            $("#tpSelectMetaValueEnum_"+rowIdx).val(enumIdx);
         }
         $("#tpSelectOperator_"+rowIdx).val(op);
-        $("#tpSelectValue_"+rowIdx).val(query[op]);
 
         $('#tpSelectMetaCombo_'+rowIdx).change(function(ev) {
             // when the user changes the meta field, update the list of meta field values in the dropdown
@@ -4104,7 +4106,7 @@ var cellbrowser = function() {
             else
                 fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
 
-            if (geneSym!==undefined)
+            if (geneSym)
                 fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
 
             return fullUrl;
