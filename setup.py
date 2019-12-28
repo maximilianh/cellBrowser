@@ -22,7 +22,7 @@ setuptools.setup(
     package you can also convert data yourself and build a Cell Browser HTML
     directory that can be served through any University webserver. You can try
     the Cell Browser at https://cells.ucsc.edu or read about how to convert
-    data with this package on https://cellbrowser.rtfd.org."""
+    data with this package on https://cellbrowser.rtfd.org.""",
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib/"),
     package_dir={'':'src/cbPyLib/'},   # tell distutils packages are under src
