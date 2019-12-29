@@ -396,15 +396,16 @@ function CbDbFile(url) {
         if ((self.allMeta!==undefined) && (metaInfo.name in self.allMeta)) {
             console.log("Found in uncompressed cache");
             onDone(self.allMeta[metaInfo.name], metaInfo, otherInfo);
+            return;
         }
-
-        if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
+        else if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
             console.log("Found in compressed cache");
             onMetaDone(self.metaCache[metaInfo.name], metaInfo);
+            return;
         }
-
         else {
             self._startMetaLoad(metaInfo, null, onMetaDone, onProgress, metaInfo);
+            return;
         }
     };
 
