@@ -2,6 +2,6 @@
 # create a track hub from an expression matrix
 import sys
 from os.path import join, dirname
-sys.path.append( join(dirname(__file__), "cbPyLib") )
+sys.path.insert(0,  join(dirname(__file__), "cbPyLib") )
 import cellbrowser.hubmaker
 cellbrowser.hubmaker.cbHubCli()
