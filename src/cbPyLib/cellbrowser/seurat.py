@@ -276,7 +276,6 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
         cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
         cmds.append("PrintFindClustersParams(object = sobj)")
 
-
     cmds.append('print("Running t-SNE")')
     #cmds.append("sobj <- RunTSNE(object = sobj, dims.use = 1:pcCount, do.fast = TRUE)")
     # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
@@ -284,7 +283,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
 
     if isSeurat3:
         cmds.append("sobj <- RunTSNE(sobj, perplexity=%s)" % perplexity)
-        cmds.append("sobj <- RunUMAP(sobj)")
+        cmds.append("sobj <- RunUMAP(sobj, dims=1:%s)" % str(pcCountConfig))
     else:
         cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE, perplexity=%s)" % perplexity)
         cmds.append("TSNEPlot(object = sobj, doLabel=T)")
