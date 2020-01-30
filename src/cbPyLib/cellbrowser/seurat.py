@@ -80,7 +80,7 @@ def getSeuratVersion():
         logging.debug("version is %s", verStr)
         return verStr
 
-def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
+def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
     " write the seurat R script to a file "
     checkRVersion()
 
@@ -108,6 +108,7 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
     cmds.append('print("Seurat: Reading data")')
     cmds.append('print("Loading input data matrix")')
+    readExportScript(cmds) # add the ExportToCellbrowser function to cmds
 
     writeMatrix = False
     if isfile(inData):
@@ -300,34 +301,15 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
         cmds.append('    all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
 
     cmds.append('}')
-    cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
 
     cmds.append('print("Saving .rds to %s")' % rdsPath)
     cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
-    # export the data to tsvs
-    if isSeurat3:
-        #cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        #cmds.append('umap12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        pass
+    cmds.append("message('Exporting Seurat data object to cbBuild directory %s')" % outDir)
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, all.meta=TRUE, use.mtx=T, matrix.slot='%s')" %
+            (outDir, datasetName, markerPath, clusterStr, False, skipMarkerStr, useMtx, "counts"))
 
-    else:
-        cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        cmds.append('clusters <- FetchData(sobj,c("ident"))')
-        cmds.append('PrintCalcParams(sobj, calculation = "RunPCA")')
-        cmds.append('PrintCalcParams(sobj, calculation = "RunTSNE")')
-
-    cmds.append('colnames(clusters) <- c("cellId\tCluster")')
-    cmds.append('write.table(tsne12, "%s", quote=FALSE, sep="\t", col.names=NA)' % tsnePath)
-    cmds.append('write.table(clusters, "%s", quote=FALSE, sep="\t")' % clusterPath)
-    # marker file is the flag file for successful operation
-
-
-    ofh = open(scriptPath, "w")
-    for c in cmds:
-        ofh.write(c+"\n")
-    ofh.close()
-    logging.info("Wrote R code to %s" % scriptPath)
+    writeRScript(cmds, scriptPath, "cbSeurat")
 
 def cbSeurat2Cli():
     " stay backwards compatible "
@@ -375,7 +357,7 @@ def cbSeuratCli():
         confArgs["exprMatrix"] = inMatrix
         matrixPath = None
 
-    writeSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
+    writeCbSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
@@ -467,6 +449,7 @@ def writeRScript(cmds, scriptPath, madeBy):
         ofh.write(c)
         ofh.write("\n")
     ofh.close()
+    logging.info("Wrote R script to %s" % scriptPath)
 
 def cbImportSeurat(rdsPath, outDir, datasetName, options):
     " convert Seurat 2 or 3 .rds file to tab-sep directory for cellbrowser "
