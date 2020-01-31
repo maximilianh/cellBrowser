@@ -1259,12 +1259,18 @@ def iterLineOffsets(ifh):
 
 def findMtxFiles(fname):
     " given the name of a .mtx.gz or directory name, find the .mtx.gz, genes/features and barcode files " 
+    logging.debug("Finding mtx/features/barcode filenames for mtx file %s" % fname)
     if isdir(fname):
         matDir = fname
+        mtxFname = join(matDir, "matrix.mtx.gz")
     else:
         matDir = dirname(fname)
 
     mtxFname = join(matDir, "matrix.mtx.gz")
+    if not isfile(mtxFname):
+        errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
+                "Please rename the file, adapt cellbrowser.conf and rerun the command.")
+
     genesFname = join(matDir, "genes.tsv.gz")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
         genesFname = join(matDir, "features.tsv.gz")
@@ -2026,10 +2032,8 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     # parse and find the max values
     warn1Done = False
     warn2Done = False
+    headDone = False
     for row in lineFileNextRow(fname, noHeaders=True):
-        # simply skip the headers: assume that headers never start with a number
-        if not row[1][0].isdigit() or not row[2][0].isdigit():
-            continue
         if (len(row)<3):
             if not warn1Done:
                 errAbort("file %s needs to have at least three columns" % fname)
@@ -2039,8 +2043,15 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
                 logging.warn("file %s has more than three columns. Everything beyond column 3 will be ignored" % fname)
                 warn2Done = True
         cellId = row[0]
-        x = float(row[1])
-        y = float(row[2])
+        try:
+            x = float(row[1])
+            y = float(row[2])
+        except:
+            if headDone:
+                logging.warn("file %s: cannot parse x,y coords, skipping line %s" % (fname, row))
+            headDone = True
+            continue
+
         coords.append( (cellId, x, y) )
 
         # special values (12345,12345) mean "unknown cellId"
@@ -2118,7 +2129,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
 
     if len(metaNotMatrix)!=0:
         logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
-        logging.warn("These samples will be removed from the expression matrix")
+        logging.warn("These samples will be removed from the expression matrix. The matrix will need to be filtered.")
         mustFilterMatrix = True
 
     # filter the meta data file
@@ -3351,7 +3362,7 @@ def readOldSampleNames(datasetDir, lastConf):
     metaSampleNames = []
     if isfile(sampleNameFname):
         for line in openFile(sampleNameFname):
-            metaSampleNames.append(line)
+            metaSampleNames.append(line.rstrip("\n"))
     else:
         oldMetaFname = join(datasetDir, "meta.tsv")
         headDone = False
@@ -3369,7 +3380,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     """
     logging.info("Determining if %s needs to be created" % outMatrixFname)
     if not isfile(outMatrixFname):
-        logging.info("%s does not exist." % outMatrixFname)
+        logging.info("%s does not exist. Must build matrix now." % outMatrixFname)
         return True
 
     confName = join(datasetDir, "dataset.json")
@@ -3406,10 +3417,15 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     metaSampleNames = readOldSampleNames(datasetDir, lastConf)
 
     outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
-    matrixSampleNames = readHeaders(outMatrixFname)[1:]
-    assert(matrixSampleNames!=0)
 
-    if metaSampleNames!=matrixSampleNames:
+    if isfile(outMatrixFname):
+        matrixSampleNames = readHeaders(outMatrixFname)[1:]
+        assert(matrixSampleNames!=0)
+    else:
+        outFeatsName = join(datasetDir, "features.tsv.gz")
+        matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
+
+    if set(metaSampleNames)!=set(matrixSampleNames):
         logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
         return True
 
@@ -5437,7 +5453,7 @@ def open10xMtxForRows(mtxFname, geneFname, barcodeFname):
     import scipy.io
 
     genes, barcodes = readGenesBarcodes(geneFname, barcodeFname)
-    logging.info("Loading expression matrix...")
+    logging.info("Loading expression matrix from %s..." % mtxFname)
     mat = scipy.io.mmread(mtxFname)
 
     logging.info("Dimensions of matrix: %d , %d" % mat.shape)

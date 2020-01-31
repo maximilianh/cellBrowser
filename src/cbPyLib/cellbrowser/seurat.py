@@ -80,7 +80,8 @@ def getSeuratVersion():
         logging.debug("version is %s", verStr)
         return verStr
 
-def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
+def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
+        datasetName, outDir):
     " write the seurat R script to a file "
     checkRVersion()
 
@@ -151,24 +152,24 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('sobj') # print size of the matrix
 
     # export the matrix as a proper .tsv.gz
-    if matrixPath:
-        cmds.append('print("Writing expression matrix to %s")' % matrixPath)
-        if isdir(matrixPath):
-            matrixDir = matrixPath
-            mtxFname = join(matrixDir, "matrix.mtx.gz")
-            geneFname = join(matrixDir, "genes.tsv")
-            barcodeFname = join(matrixDir, "barcodes.tsv")
-            cmds.append("writeMM(mat, '%s')" % mtxFname)
-            cmds.append('write(rownames(mat), file = "%s")' % geneFname)
-            cmds.append('write(colnames(mat), file = "%s")' % barcodeFname)
-            # annoyingly, writeMM doesn't support connections
-            cmds.append("gzip('%s')" % matrixPath)
-            cmds.append("gzip('%s')" % geneFname)
-            cmds.append("gzip('%s')" % barcodeFname)
-        else:
-            cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
-            cmds.append('z <- gzfile("%s")' % matrixPath)
-            cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
+    #if matrixPath:
+    #    cmds.append('print("Writing expression matrix to %s")' % matrixPath)
+    #    if isdir(matrixPath):
+    #        matrixDir = matrixPath
+    #        mtxFname = join(matrixDir, "matrix.mtx.gz")
+    #        geneFname = join(matrixDir, "genes.tsv")
+    #        barcodeFname = join(matrixDir, "barcodes.tsv")
+    #        cmds.append("writeMM(mat, '%s')" % mtxFname)
+    #        cmds.append('write(rownames(mat), file = "%s")' % geneFname)
+    #        cmds.append('write(colnames(mat), file = "%s")' % barcodeFname)
+    #        # annoyingly, writeMM doesn't support connections
+    #        cmds.append("gzip('%s')" % matrixPath)
+    #        cmds.append("gzip('%s')" % geneFname)
+    #        cmds.append("gzip('%s')" % barcodeFname)
+    #    else:
+    #        cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+    #        cmds.append('z <- gzfile("%s")' % matrixPath)
+    #        cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
         # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
         # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
@@ -185,7 +186,8 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
         cmds.append('sobj <- AddMetaData(object = sobj, metadata = percent.mito, col.name = "percent.mito")')
 
     if isSeurat3:
-        cmds.append('VlnPlot(object = sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), nCol = 3)')
+        #cmds.append('VlnPlot(object = sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), nCol = 3)')
+        pass
         #cmds.append('plot1 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt")')
         #cmds.append('plot2 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")')
         #cmds.append('CombinePlots(plots = list(plot1, plot2))')
@@ -270,7 +272,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('print("Finding clusters with resolution %f")' % louvainRes)
     #cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", dims.use = 1:pcCount, resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
     if isSeurat3:
-        cmds.append('sobj <- FindNeighbors(sobj)')
+        cmds.append('sobj <- FindNeighbors(sobj, dims=%d)' % (min(10, pcCountConfig)))
         cmds.append('sobj <- FindClusters(sobj, resolution = %f)' % louvainRes)
     else:
         cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
@@ -281,32 +283,36 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
     perplexity = str(conf.get("perplexity", 30))
 
+    doUmap = conf.get("doUmap", False)
     if isSeurat3:
         cmds.append("sobj <- RunTSNE(sobj, perplexity=%s)" % perplexity)
-        cmds.append("sobj <- RunUMAP(sobj, dims=1:%s)" % str(pcCountConfig))
+        if doUmap:
+            cmds.append("sobj <- RunUMAP(sobj, dims=1:%s)" % str(pcCountConfig))
     else:
         cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE, perplexity=%s)" % perplexity)
         cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)
+    #cmds.append('print("Finding markers")')
+    #cmds.append('if (!is.null(sobj@misc["markers"])) {')
+    #cmds.append('   all.markers <- sobj@misc["markers"]')
+    #cmds.append('} else {')
     cmds.append('print("Finding markers")')
-    cmds.append('if (!is.null(sobj@misc["markers"])) {')
-    cmds.append('   all.markers <- sobj@misc["markers"]')
-    cmds.append('} else {')
     if isSeurat3:
-        cmds.append('    all.markers <- FindAllMarkers(object = sobj)')
-        cmds.append('    sobj@misc["markers"] <- all.markers')
-    else:
-        cmds.append('    all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
+        cmds.append('all.markers <- FindAllMarkers(object = sobj)')
+        cmds.append('sobj@misc[["markers"]] <- all.markers')
+    #else:
+        #cmds.append('all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
+        #cmds.append('write.table(all.markers, "%s")' % markerPath)
 
-    cmds.append('}')
+    #cmds.append('}')
 
     cmds.append('print("Saving .rds to %s")' % rdsPath)
     cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
     cmds.append("message('Exporting Seurat data object to cbBuild directory %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, all.meta=TRUE, use.mtx=T, matrix.slot='%s')" %
-            (outDir, datasetName, markerPath, clusterStr, False, skipMarkerStr, useMtx, "counts"))
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', all.meta=TRUE, use.mtx=T, matrix.slot='%s')" %
+            (outDir, datasetName, "counts"))
 
     writeRScript(cmds, scriptPath, "cbSeurat")
 
@@ -356,7 +362,8 @@ def cbSeuratCli():
         confArgs["exprMatrix"] = inMatrix
         matrixPath = None
 
-    writeCbSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
+    writeCbSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
+            datasetName, outDir)
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
