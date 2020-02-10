@@ -376,14 +376,17 @@ function CbDbFile(url) {
         function onMetaDone(comprBytes, metaInfo) {
             self.metaCache[metaInfo.name] = comprBytes; 
             var ArrType = cbUtil.makeType(metaInfo.arrType);
-            var bytes = null;
-            try {
-                bytes = pako.ungzip(comprBytes);
-            }
-            catch(err) {
-                alert("Error when decompressing a file. This has to do with your Apache config or your "
-                         " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
-            }
+
+            var bytes = comprBytes; // some Apache/InternetBrowser combinations silently uncompress
+            if (comprBytes[0]==0x1f && comprBytes[1]==0x8b)
+                try {
+                    bytes = pako.ungzip(comprBytes);
+                }
+                catch(err) {
+                    alert("Error when decompressing a file. This has to do with your Apache config or your "
+                             " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
+                }
+
             var buffer = bytes.buffer;
             var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
