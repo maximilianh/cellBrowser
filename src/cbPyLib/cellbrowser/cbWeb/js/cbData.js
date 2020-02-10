@@ -376,7 +376,14 @@ function CbDbFile(url) {
         function onMetaDone(comprBytes, metaInfo) {
             self.metaCache[metaInfo.name] = comprBytes; 
             var ArrType = cbUtil.makeType(metaInfo.arrType);
-            var bytes = pako.ungzip(comprBytes);
+            var bytes = null;
+            try {
+                bytes = pako.ungzip(comprBytes);
+            }
+            catch(err) {
+                alert("Error when decompressing a file. This has to do with your Apache config or your "
+                         " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
+            }
             var buffer = bytes.buffer;
             var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
