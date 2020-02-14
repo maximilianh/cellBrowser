@@ -378,9 +378,9 @@ function CbDbFile(url) {
             var ArrType = cbUtil.makeType(metaInfo.arrType);
 
             var bytes = comprBytes; // some Apache/InternetBrowser combinations silently uncompress
-            var comprView = new Uint16Array(comprBytes);
+            var comprView = new Uint8Array(comprBytes);
             // magic bytes of gzip are 1f, 8b, and we assume little endianess
-            if (comprView[0]===0x8b1f) {
+            if (comprView[0]===0x1f && comprView[1]===0x8b) {
                 try {
                     bytes = pako.ungzip(comprBytes);
                 }
