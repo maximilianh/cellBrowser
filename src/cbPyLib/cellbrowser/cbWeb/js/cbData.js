@@ -378,14 +378,17 @@ function CbDbFile(url) {
             var ArrType = cbUtil.makeType(metaInfo.arrType);
 
             var bytes = comprBytes; // some Apache/InternetBrowser combinations silently uncompress
-            if (comprBytes[0]==0x1f && comprBytes[1]==0x8b)
+            var comprView = new Uint16Array(comprBytes);
+            // magic bytes of gzip are 1f, 8b, and we assume little endianess
+            if (comprView[0]===0x8b1f) {
                 try {
                     bytes = pako.ungzip(comprBytes);
                 }
                 catch(err) {
-                    alert("Error when decompressing a file. This has to do with your Apache config or your "
+                    alert("Error when decompressing a file. This has to do with your Apache config or your "+
                              " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
                 }
+            }
 
             var buffer = bytes.buffer;
             var arr = new ArrType(buffer);
