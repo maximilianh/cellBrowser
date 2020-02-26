@@ -560,9 +560,9 @@ def sanitizeHeaders(headers):
         headers[0]="rowName"
 
     if "" in headers:
-        logging.error("Found empty cells in header line of %s" % inFile)
+        logging.error("Found empty cells in a file header line.")
         logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to remove empty trailing columns.")
-        assert(False)
+        errAbort("abort")
 
     # Python does not accept headers that start with a digit
     filtHeads = []
@@ -585,8 +585,8 @@ def csvReader(fh):
     try:
         for row in reader:
             yield row
-    except (csv.Error, e):
-        sys.exit('file %s, line %d: %s' % (filename, reader.line_num, e))
+    except csv.Error as e:
+        sys.exit('file %s, line %d: %s' % (fh.name, reader.line_num, e))
 
 def tsvReader(fh):
     " yield rows from input file object "
@@ -644,7 +644,9 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
     headers = sanitizeHeaders(headers)
     Record = namedtuple('tsvCsvRec', headers)
 
+    lineCount = 0
     for fields in itertools.chain(savedLines, ifh):
+        lineCount += 1
         if fields[0].startswith("#"):
             continue
 
@@ -652,11 +654,11 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
             rec = Record(*fields)
         except Exception as msg:
             logging.error("Exception occurred while parsing line, %s" % msg)
-            logging.error("Filename %s" % fh.name)
-            logging.error("Line was: %s" % line)
+            logging.error("Filename %s" % inFile)
+            logging.error("Fields are: %s" % fields)
             logging.error("Does number of fields match headers?")
             logging.error("Headers are: %s" % headers)
-            raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
+            raise Exception("header count: %d != field count: %d wrong field count in line %d" % (len(headers), len(fields), lineCount))
         yield rec
 
 def parseOneColumn(fname, colName):
@@ -1082,7 +1084,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 
         if fieldMeta["arrType"].endswith("32"):
             errAbort("Meta field %s has more than 32k different values and makes little sense to keep. "
-                "Please or remove the field from the meta data table or contact us, cells@ucsc.edu.", fieldMeta["name"])
+                "Please or remove the field from the meta data table or contact us, cells@ucsc.edu."% fieldMeta["name"])
 
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
         newVals = [valToInt[x] for x in valList] #
@@ -3902,7 +3904,7 @@ def writeJson(data, outFname, ignoreKeys=None):
             outfile.write(str_)
         else:
             str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
-            outfile.write(unicode(str_))
+            outfile.write(unicode(str_)) # pylint: disable=E0602
 
     if ignoreKeys:
         data.update(ignoredData)
@@ -3964,21 +3966,6 @@ def startHttpServer(outDir, port):
 def cbBuild(confFnames, outDir, port=None):
     " stay compatible with old name "
     build(confFnames, outDir, port)
-
-def findCollConfig(childConfFname, collName):
-    " find the cellbrowser.conf given a collName and an input directory "
-    #collBaseDir = getConfig("collDir")
-    #collFname = join(collBaseDir, collName, "cellbrowser.conf")
-    #if isfile(collFname):
-        #logging.debug("collection found at via collDir config statement, %s" % collFname)
-        #return collFname
-
-    parentFname = join(dirname(dirname(abspath(childConfFname))), "cellbrowser.conf")
-    if isfile(parentFname):
-        logging.debug("collection found at parent dir %s" % parentFname)
-        return parentFname
-
-    errAbort("could not find config for collection %s: neither %s, not %s exists" % (collName, collFname, parentFname))
 
 # make sure we don't parse a conf file twice
 confCache = {}
@@ -5071,10 +5058,6 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
             obsFields = list(adata.obs.columns.values)
             if "n_genes" in obsFields: # n_counts is always there
                 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
-                #fig1 = sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
-
-                #if "n_counts" in obsFields:
-                    #fig2 = sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
 
             adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
 
@@ -5109,11 +5092,6 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         minMean = conf["varMinMean"]
         maxMean = conf["varMaxMean"]
         minDisp = conf["varMinDisp"]
-        #pipeLog('Finding highly variable genes: min_mean=%f, max_mean=%f, min_disp=%f' % (minMean, maxMean, minDisp))
-        #filter_result = sc.pp.filter_genes_dispersion(adata.X, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
-        #sc.pl.filter_genes_dispersion(filter_result)
-        #adata = adata[:, filter_result.gene_subset]
-        #pipeLog('Number of variable genes identified: %d' % sum(filter_result.gene_subset))
         pipeLog('Finding highly variable genes')
         sc.pp.highly_variable_genes(adata, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
         sc.pl.highly_variable_genes(adata)
@@ -5134,16 +5112,21 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         pipeLog('Scaling data, max_value=%d' % maxValue)
         sc.pp.scale(adata, max_value=maxValue)
 
-    allPcCount = 100
-    pipeLog('Performing initial PCA, number of PCs: %d' % allPcCount)
-    sc.tl.pca(adata, n_comps=allPcCount)
+    pcCount = conf["pcCount"]
+
+    if pcCount=="auto":
+        firstPcCount = 100
+    else:
+        firstPcCount = pcCount
+
+    pipeLog('Performing initial PCA, number of PCs: %d' % firstPcCount)
+    sc.tl.pca(adata, n_comps=firstPcCount)
     #Multiply by -1 to compare with Seurat
     #adata.obsm['X_pca'] *= -1
     #Plot of pca variance ratio to see if formula matches visual determination of pc_nb to use
     sc.pl.pca_variance_ratio(adata, log=True)
 
     #Computing number of PCs to be used in clustering
-    pcCount = conf["pcCount"]
     if pcCount == "auto":
         pipeLog("Estimating number of useful PCs based on Shekar et al, Cell 2016")
         pipeLog("PC weight cutoff used is (sqrt(# of Genes/# of cells) + 1)^2")
@@ -5321,8 +5304,12 @@ This dataset was created by a generic Scanpy pipeline run through cbScanpy.
 
     # always overwrite the parameters
     if algParams:
-        algParams = list(algParams.items())
-        c["algParams"] = algParams
+        params = {}
+        # the version param in scanpy suddenly is not a string anymore
+        # make absolutely sure that we have no non-strings in this dict
+        for key, val in algParams.items():
+            params[str(key)] = str(val)
+        c["algParams"] = params
 
     writePyConf(c, outFname)
 
