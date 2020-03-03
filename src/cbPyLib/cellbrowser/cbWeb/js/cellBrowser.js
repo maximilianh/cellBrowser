@@ -3924,6 +3924,10 @@ var cellbrowser = function() {
          * there. If it's opened via a URL, the variables must stay. */
 
         // collections are not real datasets, so ask user which one they want
+        if (db!==null && db.heatmap)
+            removeHeatmap();
+        removeSplit();
+
         db = new CbDbFile(datasetName);
 
         var vars;
@@ -4207,12 +4211,12 @@ var cellbrowser = function() {
         var htmls = [];
 
         htmls.push("<div id='tpToolBar' style='position:absolute;left:"+fromLeft+"px;top:"+fromTop+"px'>");
-        htmls.push('<button title="More info about this dataset: abstract, methods, download, etc." id="tpButtonInfo" type="button" class="ui-button tpIconButton" data-placement="bottom">Info</button>');
+        htmls.push('<button title="More info about this dataset: abstract, methods, data download, etc." id="tpButtonInfo" type="button" class="ui-button tpIconButton" data-placement="bottom">Info &amp; Download</button>');
 
         if (!getVar("suppressOpenButton", false))
             htmls.push('<button id="tpOpenDatasetButton" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Open another dataset" data-placement="bottom">Open...</button>');
 
-        var nextLeft = 140;
+        var nextLeft = 220;
         if (db.conf.hubUrl!==undefined) {
             htmls.push('<a target=_blank href="#" id="tpOpenGenome" class="gradientBackground ui-button ui-widget ui-corner-all" style="margin-left: 10px; margin-top:3px; height: 24px; border-radius:3px; padding-top:3px" title="Show sequencing read coverage and gene expression on UCSC Genome Browser" data-placement="bottom">Genome Browser</a>');
             nextLeft += 155;
@@ -4290,6 +4294,12 @@ var cellbrowser = function() {
             var metaInfo = metaFields[i];
             var fieldLabel = metaInfo.label;
             fieldLabel = fieldLabel.replace(/_/g, " ");
+            var fieldMouseOver = null;
+            if (fieldLabel.indexOf("|")!==-1) {
+                var arr = fieldLabel.split("|");
+                fieldLabel = arr[1];
+                fieldMouseOver = arr[0];
+            }
 
             // fields without binning and with too many unique values are greyed out
             var isGrey = (metaInfo.diffValCount>MAXCOLORCOUNT && metaInfo.binMethod===undefined);
@@ -4301,12 +4311,11 @@ var cellbrowser = function() {
                 addClass=" tpMetaLabelGrey";
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
+            else if (fieldMouseOver)
+                addTitle=" title='"+fieldMouseOver+"'";
 
             let divId;
-            //if (field.isCustom===true)
-              //  divId = "tpMetaLabel_custom"+i;
-            //else
-                divId = "tpMetaLabel_"+metaInfo.name;
+            divId = "tpMetaLabel_"+metaInfo.name;
 
             htmls.push("<div id='"+divId+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldLabel+"</div>");
 
@@ -5553,6 +5562,20 @@ var cellbrowser = function() {
         buildLegendBar();
     }
 
+    function removeSplit(renderer) {
+        /* stop split screen mode */
+        if (!renderer)
+            return;
+        if (!renderer.childPlot && !renderer.parentPlot)
+            return;
+        if (!renderer.isMain) {
+            // make sure the left renderer is the active one
+            renderer.childPlot.activatePlot();
+        }
+        renderer.unsplit();
+        $("#tpSplitMenuEntry").text("Split Screen");
+    }
+
     function onSplitClick() {
         /* user clicked on View > Split Screen */
         if (!renderer.childPlot && !renderer.parentPlot) {
@@ -5574,13 +5597,7 @@ var cellbrowser = function() {
             //$("#mpCloseButton").click(onSplitClick);
 
         } else {
-            // stop the split
-            if (!renderer.isMain) {
-                // make sure the left renderer is the active one
-                renderer.childPlot.activatePlot();
-            }
-            renderer.unsplit();
-            $("#tpSplitMenuEntry").text("Split Screen");
+            removeSplit(renderer);
         }
         renderer.drawDots();
     }
@@ -5682,6 +5699,14 @@ var cellbrowser = function() {
     }
 
  
+    function removeHeatmap() {
+        /* remove the heatmap */
+        let heatHeight = db.heatmap.height;
+        document.getElementById("tpHeat").remove();
+        delete db.heatmap;
+        renderer.setSize(renderer.getWidth(), renderer.height+heatHeight, true);
+        changeUrl({'heat':null});
+    }
 
     function onHeatClick() {
         // TODO: rewrite this one day with promises...
@@ -5712,12 +5737,7 @@ var cellbrowser = function() {
 
         /* user clicked on View > Heatmap */
         if (db && db.heatmap) {
-            // remove the heatmap
-            let heatHeight = db.heatmap.height;
-            document.getElementById("tpHeat").remove();
-            delete db.heatmap;
-            renderer.setSize(renderer.getWidth(), renderer.height+heatHeight, true);
-            changeUrl({'heat':null});
+            removeHeatmap();
         }
         else {
             if (!db.conf.quickGenes) {

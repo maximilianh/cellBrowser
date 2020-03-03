@@ -41,7 +41,7 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 .ui-menu-item { font-size:13px }
 .ui-menu .ui-menu-item-wrapper { padding: 1px 1em 1px .4em; }
 .ui-tooltip { font-size: 13px }
-#tpButtonInfo { height: 24px; top: 1px; margin-right: 8px; width: 40px; border-radius: 4px }
+#tpButtonInfo { height: 24px; top: 1px; margin-right: 8px; width: 120px; border-radius: 4px }
 .tpDialogInput { margin-left: 12px; margin-top: 5px; margin-bottom: 12px; }
 
 .tpIconButton { padding: 1px 2px 1px 2px; border-radius: 0; height:28px; width: 28px; cursor: default}
