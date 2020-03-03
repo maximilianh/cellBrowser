@@ -2341,6 +2341,9 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     return matIter.getMatType()
 
 def convIdToSym(geneToSym, geneId, printWarning=True):
+    if "|" in geneId:
+        return geneId.split("|")[1]
+
     if geneToSym is None:
         return geneId
     else:
