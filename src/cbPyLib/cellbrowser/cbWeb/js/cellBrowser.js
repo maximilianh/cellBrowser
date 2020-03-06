@@ -47,7 +47,7 @@ var cellbrowser = function() {
     var gSampleDesc = "cell";
 
     // width of left meta bar in pixels
-    var metaBarWidth = 200;
+    var metaBarWidth = 250;
     // margin between left meta bar and drawing canvas
     var metaBarMargin = 0;
     // width of legend, pixels
@@ -86,7 +86,7 @@ var cellbrowser = function() {
 
     var HIDELABELSNAME = "Hide labels";
     var SHOWLABELSNAME = "Show labels";
-    var METABOXTITLE   = "Cell Annotations";
+    var METABOXTITLE   = "By Annotation";
 
     // maximum number of distinct values that one can color on
     const MAXCOLORCOUNT = 500;
@@ -2090,7 +2090,7 @@ var cellbrowser = function() {
 
     }
 
-    function resizeDivs() {
+    function resizeDivs(skipRenderer) {
        /* resize all divs and the renderer to current window size */
        var rendererLeft = metaBarWidth+metaBarMargin;
        var rendererHeight  = window.innerHeight - menuBarHeight - toolBarHeight;
@@ -2116,7 +2116,8 @@ var cellbrowser = function() {
        $("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
-       renderer.setSize(rendererWidth, rendererHeight, true);
+       if (skipRenderer!==true)
+           renderer.setSize(rendererWidth, rendererHeight, true);
        
     }
 
@@ -3895,6 +3896,20 @@ var cellbrowser = function() {
 
     function onConfigLoaded(datasetName) { 
             // this is a collection if it does not have any field information
+
+            if (db.conf.sampleDesc)
+                gSampleDesc = db.conf.sampleDesc;
+            else
+                gSampleDesc = "cell";
+
+            if (db.conf.metaBarWidth)
+                metaBarWidth = db.conf.metaBarWidth;
+            else
+                metaBarWidth = 250;
+
+            renderer.setPos(null, metaBarWidth+metaBarMargin);
+            resizeDivs(true);
+
             if (!db.conf.metaFields) {
                 showCollectionDialog(datasetName);
                 return;
@@ -4297,8 +4312,8 @@ var cellbrowser = function() {
             var fieldMouseOver = null;
             if (fieldLabel.indexOf("|")!==-1) {
                 var arr = fieldLabel.split("|");
-                fieldLabel = arr[1];
-                fieldMouseOver = arr[0];
+                fieldLabel = arr[0];
+                fieldMouseOver = arr[1];
             }
 
             // fields without binning and with too many unique values are greyed out
@@ -4311,13 +4326,14 @@ var cellbrowser = function() {
                 addClass=" tpMetaLabelGrey";
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
-            else if (fieldMouseOver)
-                addTitle=" title='"+fieldMouseOver+"'";
 
-            let divId;
-            divId = "tpMetaLabel_"+metaInfo.name;
+            let divId = "tpMetaLabel_"+metaInfo.name;
 
-            htmls.push("<div id='"+divId+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldLabel+"</div>");
+            htmls.push("<div id='"+divId+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldLabel);
+            if (fieldMouseOver)
+                htmls.push('<i title="'+fieldMouseOver+'" '+
+                ' class="material-icons tpMetaLabelHelp" style="float:right;font-size:16px">help_outline</i>');
+            htmls.push("</div>");
 
             var styleAdd="";
             if (metaInfo.opt!==undefined) {
@@ -4342,6 +4358,7 @@ var cellbrowser = function() {
     }
 
     function connectMetaPanel() {
+        activateTooltip(".tpMetaLabelHelp");
         $(".tpMetaLabel").click( onMetaClick );
         $(".tpMetaValue").click( onMetaClick );
         $(".tpMetaValue").mouseover( onMetaMouseOver );
@@ -4382,13 +4399,13 @@ var cellbrowser = function() {
         htmls.push("<div id='tpMetaTip' style='display:none'></div>");
         htmls.push("<div id='tpLeftSidebar' style='position:absolute;left:0px;top:"+menuBarHeight+"px;width:"+metaBarWidth+"px'>");
 
-        htmls.push("<div class='tpSidebarHeader'>Color Control</div>");
+        htmls.push("<div class='tpSidebarHeader'>Color By</div>");
 
         // a bar with the tabs
         htmls.push("<div id='tpLeftTabs'>");
         htmls.push("<ul>");
-        htmls.push("<li><a href='#tpAnnotTab'>Cell Annotations</a></li>");
-        htmls.push("<li><a href='#tpGeneTab'>Genes</a></li>");
+        htmls.push("<li><a href='#tpAnnotTab'>Annotation</a></li>");
+        htmls.push("<li><a href='#tpGeneTab'>Gene</a></li>");
         htmls.push("</ul>");
 
         htmls.push("<div id='tpAnnotTab'>");
@@ -5071,8 +5088,12 @@ var cellbrowser = function() {
         var colors = [];
         var rows = gLegend.rows;
 
-        htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+gLegend.title+"</span>");
-        htmls.push('<div class="tpHint">Click below to select '+gSampleDesc+'s</small></div>');
+        var legTitle = gLegend.title;
+        if (legTitle.indexOf("|")!=-1)
+            legTitle = legTitle.split("|")[0];
+
+        htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+legTitle+"</span>");
+        htmls.push('<div class="tpHint">Check boxes below to select '+gSampleDesc+'s</small></div>');
         htmls.push("</div>"); // title
         htmls.push('<div id="tpLegendHeader"><span id="tpLegendCol1"></span><span id="tpLegendCol2"></span></div>');
 

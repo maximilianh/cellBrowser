@@ -234,9 +234,9 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
             headers.append("_geneLists")
             yield headers
         sym = row[1]
-        if "|" in sym: # marker gene lists can carry geneId|symbol, strip the symbol in this case and use our mappings
+        if "|" in sym: # marker gene lists can carry geneId|symbol, strip the symbol in this case and re-convert below
             sym = sym.split("|")[0]
-        if "." in sym: # Ensembl version identifier
+        if "." in sym: # remove Ensembl version identifier
             sym = sym.split(".")[0]
 
         # convert gene IDs to symbols

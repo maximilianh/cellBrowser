@@ -1198,7 +1198,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = cleanString(fieldName)
+        cleanFieldName = cleanString(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -1871,7 +1871,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
         # filter the row down to the meta-samples
-        if idxList:
+        if idxList is not None:
             if numpyLoaded:
                 exprArr = exprArr[idxList]
             else:
@@ -3572,9 +3572,10 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     readQuickGenes(inConf, geneToSym, datasetDir, outConf)
 
     # a few settings are passed through to the Javascript as they are
-    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
+    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload"]:
+        "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
+        "metaBarWidth"]:
         copyConf(inConf, outConf, tag)
 
 
