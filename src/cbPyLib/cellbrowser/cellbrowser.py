@@ -4887,7 +4887,7 @@ def addMetaToAnnData(adata, fname):
     commonIds = ids1.intersection(ids2)
     logging.info("Meta data from %s has %d cell identifiers in common with anndata" % (fname, len(commonIds)))
     if len(commonIds)==0:
-        errAbort("Vales in first column in file %s does not seem to match the cell IDs from the expression matrix" % fname)
+        errAbort("Values in first column in file %s does not seem to match the cell IDs from the expression matrix" % fname)
 
     df3 = df1.join(df2, how="left")
     logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
