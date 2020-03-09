@@ -4880,7 +4880,9 @@ def addMetaToAnnData(adata, fname):
     logging.info("Adding meta data from %s to anndata object" % fname)
     import pandas as pd
     df1 = adata.obs
-    df2 = pd.read_csv(fname, sep="\t", index_col=0)
+
+    metaSep = "\t"
+    df2 = pd.read_csv(fname, sep=None, index_col=0)
 
     ids1 = set(df1.index)
     ids2 = set(df2.index)
