@@ -339,7 +339,7 @@ def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
     conf["inDir"] = dirname(fname)
 
     if "name" in conf and ignoreName:
-        logging.info("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
+        logging.debug("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
 
     if (not "name" in conf and addName) or ignoreName:
         name = basename(dirname(abspath(fname)))
@@ -674,7 +674,7 @@ def parseOneColumn(fname, colName):
                 colIdx = row.index(colName)
                 continue
             except ValueError:
-                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. Possible row names: %s" % (repr(colName), fname, row))
+                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. It can also happen if you reference a field in cellbrowser.conf that has been excluded from the meta data because it only has a single value. Possible row names: %s" % (repr(colName), fname, row))
 
         vals.append(row[colIdx])
     return vals
@@ -4491,8 +4491,6 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         # we need at least a name, an md5 and a shortLabel
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
-        #if not "name" in datasetDesc: # every dataset has to have a name
-            #errAbort("Dataset config %s must have a 'name' field." % fname)
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:

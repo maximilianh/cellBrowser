@@ -2188,13 +2188,14 @@ var cellbrowser = function() {
        if (doneLoad===undefined)
            doneLoad = function() { renderer.drawDots(); };
         
-       if (fieldName===null) {
+       if (fieldName===null || fieldName===undefined) {
            // obscure hacky option: you can set the default color field to "None"
            // so there is no coloring at all on startup
            renderer.setColors(["black"]);
            var cellCount = db.conf.sampleCount;
            renderer.setColorArr(new Uint8Array(cellCount));
            gLegend.rows = [];
+           gLegend.title = "Nothing selected";
            gLegend.rows.push( { 
                    color:"000000", defColor:null, label:"No Value", 
                    count:cellCount, intKey:0, strKey:null
@@ -2520,33 +2521,34 @@ var cellbrowser = function() {
        if (newRadius)
            opts["radius"] = newRadius;
 
-       // labels can be overriden by the user cart
+       // label text can be overriden by the user cart
        var labelField = db.conf.labelField;
        if (labelField) {
            var metaInfo = db.findMetaInfo(labelField);
            var oldToNew = makeLabelRenames(metaInfo);
         }
 
-       var origLabels = [];
-       var clusterMids = clusterInfo.labels;
-       // old-style files contain just coordinates, no order
-       if (clusterMids===undefined)
-           clusterMids = clusterInfo;
+       if (clusterInfo) {
+           var origLabels = [];
+           var clusterMids = clusterInfo.labels;
+           // old-style files contain just coordinates, no order
+           if (clusterMids===undefined)
+               clusterMids = clusterInfo;
 
-       for (var i = 0; i < clusterMids.length; i++) {
-           var labelInfo = clusterMids[i];
-           var oldName = labelInfo[2];
-           origLabels.push(oldName);
-           var newName = oldToNew[oldName];
-           labelInfo[2] = newName;
-       }
+           for (var i = 0; i < clusterMids.length; i++) {
+               var labelInfo = clusterMids[i];
+               var oldName = labelInfo[2];
+               origLabels.push(oldName);
+               var newName = oldToNew[oldName];
+               labelInfo[2] = newName;
+           }
+           renderer.origLabels = origLabels;
+           db.clusterOrder = clusterInfo.order;
 
-       db.clusterOrder = clusterInfo.order;
-
-       renderer.origLabels = origLabels;
+           renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
+        }
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
-       renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
    }
 
    function colorByDefaultField(onDone) {
@@ -3844,6 +3846,7 @@ var cellbrowser = function() {
     }
 
     function loadCoordSet(coordIdx) {
+        /* load coordinates and color by meta data */
         var newRadius = db.conf.coords[coordIdx].radius;
         var colorOnMetaField = db.conf.coords[coordIdx].colorOnMeta;
         
