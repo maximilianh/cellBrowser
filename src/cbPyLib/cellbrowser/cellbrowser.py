@@ -661,6 +661,19 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
             raise Exception("header count: %d != field count: %d wrong field count in line %d" % (len(headers), len(fields), lineCount))
         yield rec
 
+def parseMetaDesc(inConf):
+    " parse two-row tsv file with meta field descriptions "
+    if "metaDesc" not in inConf:
+        return None
+
+    metaDesc = {}
+    for row in textFileRows(inConf["metaDesc"]):
+        if len(row)<2:
+            logging.warning("row '%s' in metaDesc file does not have two fields" % row)
+            continue
+        metaDesc[row[0]] = row[1]
+    return metaDesc
+    
 def parseOneColumn(fname, colName):
     " return a single column from a tsv as a list, without the header "
     vals = []
@@ -671,6 +684,7 @@ def parseOneColumn(fname, colName):
     for row in textFileRows(fname):
         if colIdx is None:
             try:
+                row = [x.split("|")[0] for x in row]
                 colIdx = row.index(colName)
                 continue
             except ValueError:
@@ -683,9 +697,12 @@ def parseIntoColumns(fname):
     " parse tab sep file vertically, return as a list of (headerName, list of values) "
     ifh = open(fname)
     sep = "\t"
+
     headers = ifh.readline().rstrip("\r\n").split(sep)
     if headers[0]=="":
         headers[0]="cell_id" # some tolerance, for R
+    headers = [h.split("|")[0] for h in headers]
+
     for i, h in enumerate(headers):
         if h=="":
             errAbort("Header '%s' of column %d is empty. Please fix the meta data file and give every column a name" %
@@ -1155,6 +1172,16 @@ def addLongLabels(acronyms, fieldMeta):
 
     return fieldMeta
 
+def addDesc(fieldDescs, fieldMeta):
+    " add a 'desc' attribute to the meta info "
+    if fieldDescs is None or fieldMeta["label"] not in fieldDescs:
+        return fieldMeta
+
+    desc = fieldDescs[fieldMeta["label"]]
+    if desc!="":
+        fieldMeta["desc"] = desc
+    return fieldMeta
+
 def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     """ convert meta table to binary files. outputs fields.json and one binary file per field.
     adds names of metadata fields to outConf and returns outConf
@@ -1166,6 +1193,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     colors = parseColors(colorFname)
     acronyms = readAcronyms(inConf, outConf)
+    metaDescs = parseMetaDesc(inConf)
     enumOrder = inConf.get("enumOrder")
 
     # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
@@ -1202,7 +1230,12 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
-        fieldMeta["label"] = fieldName
+
+        nameParts = fieldName.split("|")
+        fieldMeta["label"] = nameParts[0]
+
+        if len(nameParts)>1:
+            fieldMeta["desc"] = fieldName
 
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceType, enumOrderList)
 
@@ -1210,6 +1243,8 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         if fieldType=="enum":
             fieldMeta = addLongLabels(acronyms, fieldMeta)
+
+        fieldMeta = addDesc(metaDescs, fieldMeta)
 
         if "metaOpt" in inConf and fieldName in inConf["metaOpt"]:
             fieldMeta["opt"] = inConf["metaOpt"][fieldName]
