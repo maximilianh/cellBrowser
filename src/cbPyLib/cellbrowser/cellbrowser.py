@@ -2152,7 +2152,8 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         sys.exit(1)
 
     if len(mat.intersection(meta))==0:
-        logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row?")
+        print(matrixSampleNames)
+        logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row? Example Meta ID: %s, Example matrix ID: %s" % (list(sorted(metaSampleNames))[0], list(sorted(matrixSampleNames))[0]))
         sys.exit(1)
 
     metaNotMatrix = meta - mat
@@ -2855,13 +2856,15 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 
 def readHeaders(fname):
     " return headers of a file "
-    logging.info("Reading headers of file %s" % fname)
+    logging.info("Reading headers from file %s" % fname)
     ifh = openFile(fname, "rtU")
     line1 = ifh.readline().rstrip("\r\n")
     sep = sepForFile(fname)
     row = line1.split(sep)
-    row = [x.rstrip('"').lstrip('"') for x in row]
+    row = [x.rstrip('"').lstrip('"') for x in row] # Excel sometimes adds quotes
     logging.debug("Found %d fields, e.g. %s" % (len(row), row[:3]))
+    if len(row)==0:
+        errAbort("Could not read headers from file %s" % fname)
     return row
 
 def parseGeneInfo(geneToSym, fname):
@@ -3460,7 +3463,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     if isfile(outMatrixFname):
         matrixSampleNames = readHeaders(outMatrixFname)[1:]
-        assert(matrixSampleNames!=0)
+        assert(len(matrixSampleNames)!=0)
     else:
         outFeatsName = join(datasetDir, "features.tsv.gz")
         matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
@@ -4118,6 +4121,9 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     if outDir=="" or outDir==None:
         outDir = defOutDir
     outDir = expanduser(outDir)
+
+    if not isdir(outDir):
+        errAbort("The directory %s does not exist. Please run 'mkdir %s' and re-run cbBuild" % (outDir, outDir))
 
     setDebug(doDebug)
     if type(confFnames)==type(""):
@@ -4879,7 +4885,7 @@ def excepthook(type, value, traceback):
 def checkLayouts(conf):
     """ it's very easy to get the layout names wrong: check them and handle the special value 'all' """
     if "doLayouts" not in conf:
-        return ["tsne", "umap", "drl"]
+        return ["tsne", "drl", "umap"]
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
@@ -5431,6 +5437,9 @@ def cbScanpyCli():
 
     if copyMatrix and not matrixFname.endswith(".gz"):
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
+    if copyMatrix and matrixFname.endswith(".csv.gz"):
+        errAbort("If you use the --copyMatrix option, the input matrix cannot be a .csv.gz file. Please convert to .tsv.gz")
+
 
     makeDir(outDir)
 

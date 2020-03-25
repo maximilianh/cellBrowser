@@ -44,13 +44,13 @@ writeSparseMatrix = function (inMat, outFname, sliceSize=1000) {
 #' @param object Seurat object
 #' @param dir output directory path
 #' @param dataset.name name of the dataset
-#' @param meta.fields vector of metadata fields to export
+#' @param meta.fields vector of metadata fields to export. By default all are exported.
 #' @param meta.fields.names list that defines metadata field names
 #'                          after the export. Should map metadata
-#'                          column name to export name
+#'                          column name to export field name
 #' @param use.mtx for datasets > 100k cells, this is necessary, as otherwise R will report "problem too big"
 #' @param matrix.slot one of "counts", "scale.data", "data". Defaults to "counts".
-#' @param embeddings vector of embedding names to export
+#' @param embeddings vector of embedding names to export. By default all are exported.
 #' @param markers.file path to file with marker genes
 #' @param cluster.field name of the metadata field containing cell cluster
 #' @param cb.dir in which dir to create UCSC cell browser content root
@@ -72,7 +72,7 @@ ExportToCellbrowser <- function(
   dataset.name,
   meta.fields = NULL,
   meta.fields.names = NULL,
-  embeddings = c("tsne", "pca", "umap"),
+  embeddings = NULL,
   matrix.slot = "counts",
   markers.file = NULL,
   cluster.field = NULL,
@@ -203,6 +203,10 @@ ExportToCellbrowser <- function(
   }
 
   # Export cell embeddings
+  if (is.null(embeddings)) {
+      embeddings = names(dr)
+  }
+
   embeddings.conf <- c()
   for (embedding in embeddings) {
     emb <- dr[[embedding]]

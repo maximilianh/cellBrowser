@@ -424,7 +424,8 @@ var cellbrowser = function() {
         "sra" : "NCBI Short Read Archive",
         "pmid" : "PubMed Abstract",
         "pmcid" : "PubMed Fulltext",
-        "sra_study" : "NCBI SRA Study",
+        "sra_study" : "NCBI Short-Read Archive",
+        "ega_study" : "European Genotype-Phenot. Archive",
         "bioproject" : "NCBI Bioproject",
         "dbgap" : "NCBI DbGaP",
         "biorxiv_url" : "BioRxiv preprint",
@@ -437,6 +438,7 @@ var cellbrowser = function() {
         "geo_series" : "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=",
         "sra_study" : "https://trace.ncbi.nlm.nih.gov/Traces/sra/?study=",
         "bioproject" : "https://www.ncbi.nlm.nih.gov/bioproject/",
+        "ega_study" : "https://ega-archive.org/studies/",
         "pmid" : "https://www.ncbi.nlm.nih.gov/pubmed/",
         "pmcid" : "https://www.ncbi.nlm.nih.gov/pmc/articles/",
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
@@ -538,6 +540,9 @@ var cellbrowser = function() {
         if (desc.algParams) {
             htmls.push("<p><b>Algorithm parameters: </b>");
             let algParams = desc.algParams;
+            if (algParams instanceof Object)
+                algParams = Object.entries(algParams);
+
             for (let i=0; i<algParams.length; i++) {
                 let key = algParams[i][0];
                 let val = algParams[i][1];
@@ -4312,15 +4317,10 @@ var cellbrowser = function() {
             var metaInfo = metaFields[i];
             var fieldLabel = metaInfo.label;
             fieldLabel = fieldLabel.replace(/_/g, " ");
-            var fieldMouseOver = null;
-            if (fieldLabel.indexOf("|")!==-1) {
-                var arr = fieldLabel.split("|");
-                fieldLabel = arr[0];
-                fieldMouseOver = arr[1];
-            }
+            var fieldMouseOver = metaInfo.desc;
 
             // fields without binning and with too many unique values are greyed out
-            var isGrey = (metaInfo.diffValCount>MAXCOLORCOUNT && metaInfo.binMethod===undefined);
+            var isGrey = (metaInfo==="enum" && metaInfo.diffValCount>MAXCOLORCOUNT && metaInfo.binMethod===undefined);
 
             var addClass = "";
             var addTitle="";
@@ -5092,8 +5092,8 @@ var cellbrowser = function() {
         var rows = gLegend.rows;
 
         var legTitle = gLegend.title;
-        if (legTitle.indexOf("|")!=-1)
-            legTitle = legTitle.split("|")[0];
+        //if (legTitle.indexOf("|")!=-1)
+            //legTitle = legTitle.split("|")[0];
 
         htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+legTitle+"</span>");
         htmls.push('<div class="tpHint">Check boxes below to select '+gSampleDesc+'s</small></div>');
