@@ -72,6 +72,9 @@ def cbToolCli():
         inFnames = args[1:-1]
         outFname = args[-1]
 
+        if len(inFnames)==0:
+            errAbort("You must provide at least two filenames: one input filename and one output filename")
+
         if len(inFnames)==1 and isfile(outFname):
             errAbort("You provided only one input file and the output file already exists. To avoid "
             "accidentally overwriting a file, please either remove the output file or provide at least "

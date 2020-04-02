@@ -308,11 +308,17 @@ function CbDbFile(url) {
                 onDone(binData, meta, labelMids);
         }
 
+        if (self.conf.coords.length===0 || self.conf.coords===undefined) {
+            alert("There are no coordinates defined in the dataset.json config file. Please add at least one coordinates file to cellbrowser.conf and run cbBuild again with the same html output directory.")
+            return;
+        }
+
         var coordInfo = self.conf.coords[coordIdx];
         if (coordInfo===null) {
            alert("Could not find coordinates with name "+this.coordName);
            return;
         }
+
         var binUrl = cbUtil.joinPaths([self.url, "coords", coordInfo.name, "coords.bin"]);
         if (coordInfo.md5)
             binUrl += "?"+coordInfo.md5

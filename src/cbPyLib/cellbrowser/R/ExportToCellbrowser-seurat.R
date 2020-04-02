@@ -39,6 +39,24 @@ writeSparseMatrix = function (inMat, outFname, sliceSize=1000) {
         unlink(fnames); 
 }
 
+#' Return the correct matrix object from a Seurat object
+#'
+#' @param object Seurat object
+#' @param matrix.slot the name of the slot
+#'
+findMatrix = function( object, matrix.slot ) {
+      if (matrix.slot=="counts") {
+          counts <- GetAssayData(object = object, slot="counts")
+      } else if (matrix.slot=="scale.data") {
+              counts <- GetAssayData(object = object, slot="scale.data")
+      }
+      else if (matrix.slot=="data") {
+              counts <- GetAssayData(object = object)
+      } else {
+          error("matrix.slot can only be one of: counts, scale.data, data")
+      }
+}
+
 #' Export Seurat object for UCSC cell browser
 #'
 #' @param object Seurat object
@@ -123,25 +141,26 @@ ExportToCellbrowser <- function(
       idents <- Idents(object)
       meta <- object@meta.data
       cellOrder <- colnames(object)
-      if (matrix.slot=="counts") {
-          counts <- GetAssayData(object = object, slot="counts")
-      } else if (matrix.slot=="scale.data") {
-              counts <- GetAssayData(object = object, slot="scale.data")
-      }
-      else if (matrix.slot=="data") {
-              counts <- GetAssayData(object = object)
-      } else {
-          error("matrix.slot can only be one of: counts, scale.data, data")
-      }
+      counts <- findMatrix(object, matrix.slot)
       if (dim(counts)[1]==0) { 
-          stop(paste0("The Seurat data slot '", matrix.slot, "' contains no data.",
+          message(paste0("The Seurat data slot '", matrix.slot, "' contains no data. Trying default assay."))
+          defAssay = DefaultAssay(object)
+          assay = GetAssay(object, defAssay)
+          message(paste0("Default assay is ", defAssay))
+          counts <- findMatrix(assay, matrix.slot)
+          genes <- rownames(counts)
+
+          if (dim(counts)[1]==0) { 
+              stop("Could not find an expression matrix",
                      "Please select the correct slot where the matrix is stored, possible ",
                      "values are 'counts', 'scale.data' or 'data'. To select a slot, ",
-                   "use the option 'matrix.slot' from R or the cbImportSeurat option -s from the command line."))
+                   "use the option 'matrix.slot' from R or the cbImportSeurat option -s from the command line.")
+          }
       }
-
+      else {
+          genes <- rownames(x = object)
+      }
       dr <- object@reductions
-      genes <- rownames(x = object)
   }
 
   if (is.null(cluster.field)) {
@@ -205,6 +224,7 @@ ExportToCellbrowser <- function(
   # Export cell embeddings
   if (is.null(embeddings)) {
       embeddings = names(dr)
+      message("Using all embeddings contained in the Seurat object: ", embeddings)
   }
 
   embeddings.conf <- c()
@@ -333,7 +353,7 @@ meta="meta.tsv"
 # possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
 geneIdType="auto"
 # file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
-# quickGenesFile=quickGenes.csv
+# quickGenesFile="quickGenes.csv"
 clusterField="%s"
 labelField="%s"
 enumFields=%s

@@ -1,7 +1,7 @@
 # a wrapper around the R library Seurat
 
 import logging, optparse, sys, glob, os, datetime, shutil
-from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
+from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser, splitext
 
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
 from .cellbrowser import setDebug, build, isDebugMode, generateHtmls, runCommand
@@ -81,7 +81,7 @@ def getSeuratVersion():
         return verStr
 
 def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
-        datasetName, outDir):
+        datasetName, outDir, threadCount):
     " write the seurat R script to a file "
     checkRVersion()
 
@@ -107,6 +107,10 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('print("Seurat: Reading data")')
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
+    if threadCount > 0:
+        cmds.append('print("Using %d cores")")' % threadCount)
+        cmds.append("library(future)")
+        cmds.append('plan(strategy = "multicore", workers = %d)' % threadCount)
     cmds.append('print("Seurat: Reading data")')
     cmds.append('print("Loading input data matrix")')
     readExportScript(cmds) # add the ExportToCellbrowser function to cmds
@@ -337,6 +341,7 @@ def cbSeuratCli():
     outDir = options.outDir
     inConfFname = options.confFname
     datasetName = options.name
+    threadCount = options.threadCount
 
     makeDir(outDir)
 
@@ -359,7 +364,7 @@ def cbSeuratCli():
         matrixPath = None
 
     writeCbSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
-            datasetName, outDir)
+            datasetName, outDir, threadCount)
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
@@ -393,7 +398,7 @@ def cbImportSeurat_parseArgs(showHelp=False):
         help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
 
     parser.add_option("-f", "--inFormat", dest="inFormat", action="store", 
-            help="the format of the input file. Either 'rds' or 'rdata'. Default %default", default="rds")
+            help="the format of the input file. Either 'rds' or 'rdata'. Default %default. If input filename ends with .rdata or .robj, defaults to rdata.", default="rds")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -406,6 +411,9 @@ def cbImportSeurat_parseArgs(showHelp=False):
             default = False,
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same outDir directory")
+
+    parser.add_option("", "--threads", dest="threadCount", action="store", type="int", default=0,
+            help="activate multiprocess strategy, default thread count is 0, which uses no multithreading")
 
     parser.add_option("-m", "--skipMarkers", dest="skipMarkers", action="store_true",
             default = False,
@@ -457,7 +465,7 @@ def writeRScript(cmds, scriptPath, madeBy):
     logging.info("Wrote R script to %s" % scriptPath)
 
 def cbImportSeurat(inFname, outDir, datasetName, options):
-    " convert Seurat 2 or 3 .rds file to tab-sep directory for cellbrowser "
+    " convert Seurat 2 or 3 .rds/.rdata file to tab-sep directory for cellbrowser "
     logging.info("inFname: %s, outDir: %s, datasetName: %s" % (inFname, outDir, datasetName))
 
     makeDir(outDir)
@@ -484,7 +492,8 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
 
     cmds = readExportScript(cmds)
 
-    if inFname.lower().endswith(".robj"):
+    inExt = splitext(inFname.lower())[1]
+    if inExt in [".robj", ".rdata"]:
         inFormat="rdata"
 
     if inFormat=="rds":
@@ -528,8 +537,8 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
         rdsOutPath = join(outDir, "seurat.rds")
         logging.info("Copying %s to %s" % (inFname, rdsOutPath))
         shutil.copyfile(inFname, rdsOutPath)
-    #cbConfPath = join(outDir, "cellbrowser.conf")
-    #coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
+
+    cbConfPath = join(outDir, "cellbrowser.conf")
     #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
     generateHtmls(datasetName, outDir)

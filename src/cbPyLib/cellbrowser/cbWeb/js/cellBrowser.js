@@ -503,6 +503,17 @@ var cellbrowser = function() {
                     htmls.push("</p>");
                 }
 
+                if (datasetInfo.supplFiles) {
+                    let supplFiles = datasetInfo.supplFiles;
+                    for (let suppFile of supplFiles) {
+                        let label = suppFile.label;
+                        let fname = suppFile.file;
+                        htmls.push("<p><b>"+label+":</b> <a href='"+datasetInfo.name);
+                        htmls.push("/"+fname+"'>"+fname+"</a>");
+                        htmls.push("</p>");
+                    }
+                }
+
                 htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
 
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
@@ -743,20 +754,79 @@ var cellbrowser = function() {
         return selIdx;
     }
 
+    function getBodyParts(datasets) {
+        /* return list of body_parts given a dataset array */
+        var bpObj = {};
+        for (let i=0; i < datasets.length; i++) {
+            let ds = datasets[i];
+            if (ds.body_parts===undefined)
+                continue
+            for (let bp of ds.body_parts)
+                bpObj[bp] = true;
+        }
+
+        let bodyParts = keys(bpObj);
+        bodyParts.sort();
+        return bodyParts;
+    }
+
+    function filterDatasets(datasetList, onlyBps) {
+        /* keep only datasets with a a body_tag in filtNames */
+        if (onlyBps.length===0)
+            return datasetList;
+
+        let newList = [];
+        for (let ds of datasetList) {
+            let bps = ds.body_parts;
+            if (bps===undefined)
+                continue;
+            let found = false;
+            for (let bp of onlyBps) {
+                if (bps.indexOf(bp)!==-1) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                newList.push(ds);
+        }
+        return newList;
+    }
+
     function openDatasetDialog(openDsInfo, selName) {
     /* build dataset open dialog, 
      * - datasetList is the list of all datasets to show on the left, null to hide list
      * - openDsInfo is the currently open object or a collection. 
      * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
      */
-        gOpenDataset = openDsInfo;
+
+        var datasetList = [];
+        var listGroupHeight = 0;
+        var leftPaneWidth = 400;
         var title = "Choose Cell Browser Dataset";
-        var noteSpace = "2px"; // space from top of dialog to info pane and tabs
+        var noteSpace = "3em"; // space from top of dialog to info pane and tabs
+
+        function onBodyChange(ev) {
+            /* called when user changes body part list */
+            let filtNames = $("#tpBodyCombo").val();
+            // change the URL
+            let filtArg = filtNames.join("_");
+            changeUrl({"bp":filtArg});
+            // update the left-side panel
+            let htmls = [];
+            let filtList = filterDatasets(datasetList, filtNames);
+            activeIdx = buildListPanel(filtList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
+            let htmlStr = htmls.join("");
+            $("#tpDatasetList").replaceWith(htmlStr);
+        }
+
+        gOpenDataset = openDsInfo;
         //var datasetList = [];
         var activeIdx = 0;
         var onlyInfo = false;
 
-        var datasetList = openDsInfo.datasets;
+        datasetList = openDsInfo.datasets;
+        var shownDatasets = cloneObj(datasetList);
 
         if (datasetList===undefined)
             onlyInfo = true;
@@ -772,6 +842,19 @@ var cellbrowser = function() {
                 "use the 'Collection' dropdown. </p>");
 
             changeUrl({"ds":openDsInfo.name});
+        }
+        if (openDsInfo.parents === undefined) {
+            //noteLines.push("<span>Filter:</span>");
+            noteLines.push("<span style='margin-right:5px'>Only tissue:</span>");
+            let bodyParts = getBodyParts(openDsInfo.datasets);
+
+            let filtList = [];
+            let selPar = getVar("bp");
+            if (selPar && selPar!=="")
+                filtList = selPar.split("_");
+
+            buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select body parts...", 200, {multi:true});
+            shownDatasets = filterDatasets(datasetList, filtList);
         }
 
         // create links to the parents of the dataset
@@ -799,7 +882,7 @@ var cellbrowser = function() {
         if (onlyInfo)
             title = "Dataset Information";
         else {
-            datasetList.unshift( {
+            shownDatasets.unshift( {
                 shortLabel:"Overview", 
                 name:openDsInfo.name, 
                 hasFiles:openDsInfo.hasFiles,
@@ -810,9 +893,8 @@ var cellbrowser = function() {
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
-        var leftPaneWidth = 400;
         var tabsWidth = winWidth - leftPaneWidth - 70;
-        var listGroupHeight = winHeight - 100;
+        listGroupHeight = winHeight - 100;
 
         var htmls = ["<div style='line-height: 1.1em'>"];
         htmls.push(noteLines.join(""));
@@ -821,7 +903,7 @@ var cellbrowser = function() {
         if (onlyInfo)
             leftPaneWidth = 0;
         else
-            activeIdx = buildListPanel(datasetList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
+            activeIdx = buildListPanel(shownDatasets, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
 
         htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; position:absolute; left: " + (leftPaneWidth + 20) + "px; top: "+noteSpace+"; border: 0'>");
         htmls.push("<div id='tpOpenDialogTabs' style='border: 0'>");
@@ -867,6 +949,8 @@ var cellbrowser = function() {
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, buttons: buttons});
 
         $("#tpOpenDialogTabs").tabs();
+        activateCombobox("tpBodyCombo", 200);
+        $("#tpBodyCombo").change( onBodyChange );
 
         $('.tpBackLink').click( function(ev) {
             let openDatasetName = $(ev.target).attr('data-open-dataset');
@@ -881,7 +965,7 @@ var cellbrowser = function() {
         // little inline function
         function openCollOrDataset(selDatasetIdx) {
             /* click handler, opens either a collection or a dataset */
-            var dsInfo = datasetList[selDatasetIdx];
+            var dsInfo = shownDatasets[selDatasetIdx];
             var datasetName = dsInfo.name;
             if (dsInfo.isCollection)
                 showCollectionDialog(datasetName);
@@ -903,7 +987,7 @@ var cellbrowser = function() {
             selDatasetIdx = parseInt($(ev.target).data('datasetid')); // index of clicked dataset
             $(".list-group-item").removeClass("active");
             $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in index.html
-            var datasetInfo = datasetList[selDatasetIdx];
+            var datasetInfo = shownDatasets[selDatasetIdx];
             openDatasetLoadPane(datasetInfo);
         });
 
@@ -2864,6 +2948,8 @@ var cellbrowser = function() {
     function onColorPaletteClick(ev) {
         /* called when users clicks a color palette */
         var palName = ev.target.getAttribute("data-palette");
+        if (palName==="default")
+            legendSetColors(gLegend, null) // reset the colors
         legendChangePaletteAndRebuild(palName);
         renderer.drawDots();
     }
@@ -3151,7 +3237,6 @@ var cellbrowser = function() {
         activateTooltip("#tpGeneSym");
 
         var legendRows = makeLegendRowsNumeric(binInfo);
-        var colors = legendGetColors(legendRows);
 
         gLegend = {};
         gLegend.type = "expr";
@@ -3163,6 +3248,8 @@ var cellbrowser = function() {
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
         legendSetPalette(gLegend, "default");
+
+        var colors = legendGetColors(legendRows);
         return colors;
     }
 
@@ -3837,15 +3924,40 @@ var cellbrowser = function() {
         $('#tpMetaTip').show();
     }
 
-    function buildComboBox(htmls, id, entries, selIdx, placeholder, width) {
-    /* make html for a combo box and add lines to htmls list */
-        htmls.push('<select style=width:"'+width+'px" id="'+id+'" data-placeholder="'+placeholder+'" class="tpCombo">');
+    function buildComboBox(htmls, id, entries, selIdx, placeholder, width, opts) {
+    /* make html for a combo box and add lines to htmls list.
+     * selIdx is an array of values if opt.multi exists, otherwise it's an int or 'undefined' if none. */
+
+        let addStr = "";
+        if (opts.multi)
+            addStr= " multiple";
+
+        htmls.push('<select style=width:"'+width+'px" id="'+id+'"'+addStr+' data-placeholder="'+placeholder+'" class="tpCombo">');
         for (var i = 0; i < entries.length; i++) {
             var isSelStr = "";
             var entry = entries[i];
-            if ((selIdx!==undefined && i===selIdx))
+
+            // entries can be either key-val or just values
+            var name, label;
+            if (Array.isArray(entry)) {
+                name = entry[0];
+                label = entry[1];
+            } else {
+                name = label = entry;
+            }
+
+            // determine if element is selected
+            let isSel = false;
+            if (opts.multi) {
+                if (selIdx.indexOf(i)!==-1 || selIdx.indexOf(name)!==-1)
+                    isSel = true;
+            } else if ((selIdx!==undefined && i===selIdx))
+                isSel = true;
+
+            if (isSel)
                 isSelStr = " selected";
-            htmls.push('<option value="'+entry[0]+'"'+isSelStr+'>'+entry[1]+'</option>');
+
+            htmls.push('<option value="'+name+'"'+isSelStr+'>'+label+'</option>');
         }
         htmls.push('</select>');
     }
@@ -4618,7 +4730,7 @@ var cellbrowser = function() {
             pal = makeHslPalette(0.0, n);
         else {
             if (n===2)
-                pal = ["FF0000","0000FF"];
+                pal = ["ADD8E6","FF0000"];
             else {
                 var realPalName = palName.replace("tol-sq-blue", "tol-sq");
                 pal = palette(realPalName, n);
@@ -4811,14 +4923,6 @@ var cellbrowser = function() {
         ret.isSortedByName = isSortedByName;
         // pallette should be a gradient for data types where this makes sense
         return ret;
-    }
-
-    function assignColors(fieldIdx, countList, doReset) {
-    /* given an array of (count, value), assign a color to every value.
-     Returns an dict of value : (color as integer, color as hex string without #)
-     Will check if user has a manually defined color for this field before and use it, if present.
-     If doReset is true, will delete of manual definitions.
-     */
     }
 
     function plotSelection(coords) {
@@ -6097,7 +6201,7 @@ var cellbrowser = function() {
        // overwrite everthing that we got
        for (var key in vars) {
            var val = vars[key];
-           if (val===null) {
+           if (val===null || val==="") {
                if (key in urlVars) 
                    delete urlVars[key];
             } else
