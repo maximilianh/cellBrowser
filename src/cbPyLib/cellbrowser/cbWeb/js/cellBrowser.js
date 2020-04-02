@@ -721,7 +721,12 @@ var cellbrowser = function() {
                 selIdx = i;
             }
 
-            var line = "<a id='tpDatasetButton_"+i+"' role='button' class='list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+            var bodyPartStr = "";
+            if (dataset.body_parts) {
+                bodyPartStr=" data-body-parts='"+(dataset.body_parts.join("|"))+"' ";
+            }
+
+            var line = "<a id='tpDatasetButton_"+i+"' "+bodyPartStr+"role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
             if (!dataset.isSummary)
@@ -770,27 +775,39 @@ var cellbrowser = function() {
         return bodyParts;
     }
 
-    function filterDatasets(datasetList, onlyBps) {
+    function filterDatasetsDom(onlyBps) {
         /* keep only datasets with a a body_tag in filtNames */
-        if (onlyBps.length===0)
-            return datasetList;
 
-        let newList = [];
-        for (let ds of datasetList) {
-            let bps = ds.body_parts;
-            if (bps===undefined)
-                continue;
+        let elList = $(".tpListItem");
+        for (let el of elList) {
+            let bpStr = el.getAttribute("data-body-parts");
             let found = false;
-            for (let bp of onlyBps) {
-                if (bps.indexOf(bp)!==-1) {
+            if (bpStr) {
+                let bps = bpStr.split("|");
+                if (onlyBps.length===0)
                     found = true;
-                    break;
+                else {
+                    if (bps.indexOf("summary")!==-1) { // never filter the summary
+                        found = true;
+                    }
+                    //if (bps.indexOf("all")!==-1) { // always match datasets with "all"
+                        //found = true;
+                    //}
+                    else 
+                        for (let bp of onlyBps) {
+                            if (bps.indexOf(bp)!==-1) {
+                                found = true;
+                                break;
+                            }
+                        }
                 }
             }
+
             if (found)
-                newList.push(ds);
+                el.style.display="";
+            else
+                el.style.display="none";
         }
-        return newList;
     }
 
     function openDatasetDialog(openDsInfo, selName) {
@@ -806,27 +823,70 @@ var cellbrowser = function() {
         var title = "Choose Cell Browser Dataset";
         var noteSpace = "3em"; // space from top of dialog to info pane and tabs
 
+        // inline functions
+        function openCollOrDataset(selDatasetIdx) {
+            /* click handler, opens either a collection or a dataset */
+            var dsInfo = datasetList[selDatasetIdx];
+            var datasetName = dsInfo.name;
+            if (dsInfo.isCollection)
+                showCollectionDialog(datasetName);
+            else
+                loadDataset(datasetName, true, dsInfo.md5);
+            $(".ui-dialog-content").dialog("close");
+            changeUrl({"bp":null});
+        }
+
+        function connectOpenPane(selDatasetIdx, datasetList) {
+            /* set all the click handlers for the left open dataset pane */
+            $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
+            $("button.list-group-item").keypress(function(e) {
+                // load the current dataset when the user presses Return
+                if (e.which === '13') {
+                    openCollOrDataset(selDatasetIdx);
+                }
+            });
+            $(".list-group-item").click( function (ev) {
+                selDatasetIdx = parseInt($(ev.target).data('datasetid')); // index of clicked dataset
+                $(".list-group-item").removeClass("active");
+                $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in index.html
+                var datasetInfo = datasetList[selDatasetIdx];
+                openDatasetLoadPane(datasetInfo);
+            });
+            $(".list-group-item").dblclick( function(ev) {
+                selDatasetIdx = parseInt($(this).data('datasetid'));
+                openCollOrDataset(selDatasetIdx);
+            });
+            $(".load-dataset").click( function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                selDatasetIdx = parseInt($(this).parents('.list-group-item').data('datasetid'));
+                openCollOrDataset(selDatasetIdx);
+                return false;
+            });
+            $(".list-group-item").focus( function (event) {
+                selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
+                // bootstrap has a bug where the blue selection frame is hidden by neighboring buttons
+                // Working around this here by bumping up the current z-index.
+                $("button.list-group-item").css("z-index", "0");
+                $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
+            });
+        }
+        // -- end inline functions
+
         function onBodyChange(ev) {
             /* called when user changes body part list */
             let filtNames = $("#tpBodyCombo").val();
             // change the URL
             let filtArg = filtNames.join("_");
             changeUrl({"bp":filtArg});
-            // update the left-side panel
-            let htmls = [];
-            let filtList = filterDatasets(datasetList, filtNames);
-            activeIdx = buildListPanel(filtList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
-            let htmlStr = htmls.join("");
-            $("#tpDatasetList").replaceWith(htmlStr);
+            filterDatasetsDom(filtNames);
         }
 
         gOpenDataset = openDsInfo;
-        //var datasetList = [];
         var activeIdx = 0;
         var onlyInfo = false;
 
         datasetList = openDsInfo.datasets;
-        var shownDatasets = cloneObj(datasetList);
 
         if (datasetList===undefined)
             onlyInfo = true;
@@ -843,18 +903,18 @@ var cellbrowser = function() {
 
             changeUrl({"ds":openDsInfo.name});
         }
+
+        let filtList = [];
         if (openDsInfo.parents === undefined) {
             //noteLines.push("<span>Filter:</span>");
-            noteLines.push("<span style='margin-right:5px'>Only tissue:</span>");
+            noteLines.push("<span style='margin-right:5px'>Filter datasets by tissue:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
 
-            let filtList = [];
-            let selPar = getVar("bp");
+            let selPar = getVarSafe("bp");
             if (selPar && selPar!=="")
                 filtList = selPar.split("_");
 
             buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select body parts...", 200, {multi:true});
-            shownDatasets = filterDatasets(datasetList, filtList);
         }
 
         // create links to the parents of the dataset
@@ -882,10 +942,11 @@ var cellbrowser = function() {
         if (onlyInfo)
             title = "Dataset Information";
         else {
-            shownDatasets.unshift( {
+            datasetList.unshift( {
                 shortLabel:"Overview", 
                 name:openDsInfo.name, 
                 hasFiles:openDsInfo.hasFiles,
+                body_parts:["summary"],
                 isSummary:true,
                 abstract:openDsInfo.abstract
             });
@@ -903,7 +964,7 @@ var cellbrowser = function() {
         if (onlyInfo)
             leftPaneWidth = 0;
         else
-            activeIdx = buildListPanel(shownDatasets, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
+            activeIdx = buildListPanel(datasetList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
 
         htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; position:absolute; left: " + (leftPaneWidth + 20) + "px; top: "+noteSpace+"; border: 0'>");
         htmls.push("<div id='tpOpenDialogTabs' style='border: 0'>");
@@ -958,61 +1019,13 @@ var cellbrowser = function() {
             loadCollectionInfo(openDatasetName, function(newCollInfo) {
                 openDatasetDialog(newCollInfo, selDatasetName);
             });
+            changeUrl({"ds":openDatasetName});
         });
 
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
 
-        // little inline function
-        function openCollOrDataset(selDatasetIdx) {
-            /* click handler, opens either a collection or a dataset */
-            var dsInfo = shownDatasets[selDatasetIdx];
-            var datasetName = dsInfo.name;
-            if (dsInfo.isCollection)
-                showCollectionDialog(datasetName);
-            else
-                loadDataset(datasetName, true, dsInfo.md5);
-            $(".ui-dialog-content").dialog("close");
-        }
-        // inline function end
-
-        $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000"); // fix up first overlap
-        $("button.list-group-item").keypress(function(e) {
-            // load the current dataset when the user presses Return
-            if (e.which === '13') {
-                openCollOrDataset(selDatasetIdx);
-            }
-        });
-
-        $(".list-group-item").click( function (ev) {
-            selDatasetIdx = parseInt($(ev.target).data('datasetid')); // index of clicked dataset
-            $(".list-group-item").removeClass("active");
-            $('#tpDatasetButton_'+selDatasetIdx).bsButton("toggle"); // had to rename .button() in index.html
-            var datasetInfo = shownDatasets[selDatasetIdx];
-            openDatasetLoadPane(datasetInfo);
-        });
-
-        $(".list-group-item").dblclick( function(ev) {
-            selDatasetIdx = parseInt($(this).data('datasetid'));
-            openCollOrDataset(selDatasetIdx);
-        });
-
-        $(".load-dataset").click( function (ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            selDatasetIdx = parseInt($(this).parents('.list-group-item').data('datasetid'));
-            openCollOrDataset(selDatasetIdx);
-            return false;
-        });
 
         $("#tabLink1").tab("show");
-
-        $(".list-group-item").focus( function (event) {
-            selDatasetIdx = parseInt($(event.target).data('datasetid')); // index of clicked dataset
-            // bootstrap has a bug where the blue selection frame is hidden by neighboring buttons
-            // Working around this here by bumping up the current z-index.
-            $("button.list-group-item").css("z-index", "0");
-            $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
-        });
 
         if (activeIdx!==null && !onlyInfo) {
             if (activeIdx!==0)
@@ -1020,7 +1033,9 @@ var cellbrowser = function() {
             $("tpDatasetButton_"+activeIdx).addClass("active");
         }
 
-
+        if (getVarSafe("ds")===undefined) // only filter on the top level
+            filterDatasetsDom(filtList);
+        connectOpenPane(selDatasetIdx, datasetList);
         // finally, activate the default pane and load its html
         openDatasetLoadPane(openDsInfo);
     }
@@ -3929,7 +3944,7 @@ var cellbrowser = function() {
      * selIdx is an array of values if opt.multi exists, otherwise it's an int or 'undefined' if none. */
 
         let addStr = "";
-        if (opts.multi)
+        if (opts && opts.multi)
             addStr= " multiple";
 
         htmls.push('<select style=width:"'+width+'px" id="'+id+'"'+addStr+' data-placeholder="'+placeholder+'" class="tpCombo">');
@@ -3948,7 +3963,7 @@ var cellbrowser = function() {
 
             // determine if element is selected
             let isSel = false;
-            if (opts.multi) {
+            if (opts && opts.multi) {
                 if (selIdx.indexOf(i)!==-1 || selIdx.indexOf(name)!==-1)
                     isSel = true;
             } else if ((selIdx!==undefined && i===selIdx))
@@ -5071,13 +5086,14 @@ var cellbrowser = function() {
     function onSortByClick (ev) {
     /* flip the current legend sorting */
         var sortBy = null;
-        if (ev.target.id.endsWith("Col1")) // column 1 is the Name
+        if (ev.target.parentElement.id.endsWith("Col1")) // column 1 is the Name
             sortBy = "name"
         else
             sortBy = "freq";
 
         saveToUrl("s_"+gLegend.metaInfo.name,sortBy, gLegend.defaultSortBy);
         legendSort(sortBy);
+        $(".tooltip").hide();
         buildLegendBar();
     }
 
@@ -6255,6 +6271,13 @@ var cellbrowser = function() {
            return defVal;
        else
            return varDict[name];
+    }
+
+    function getVarSafe(name, defVal) {
+        let val = getVar(name, defVal);
+        if (val)
+            val = val.replace(/\W/g, '');
+        return val;
     }
 
     function pushZoomState(zoomRange) {
