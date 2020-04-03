@@ -248,8 +248,12 @@ def metaCat(inFnames, outFname, options):
         logging.info("Removing these fields: %s" % delFields)
 
 
-    tmpFname = outFname+".tmp"
-    ofh = openFile(tmpFname, "w")
+    if outFname=="stdout" or outFname=="/dev/stdout":
+        ofh = sys.stdout
+    else:
+        tmpFname = outFname+".tmp"
+        ofh = openFile(tmpFname, "w")
+
     allHeaders = reorderFields(allHeaders, firstFieldIdx, delFieldIdx)
     ofh.write("\t".join(allHeaders))
     ofh.write("\n")
@@ -267,7 +271,8 @@ def metaCat(inFnames, outFname, options):
         ofh.write("\n")
 
     ofh.close()
-    os.rename(tmpFname, outFname)
+    if ofh!=sys.stdout:
+        os.rename(tmpFname, outFname)
     logging.info("Output field order is: %s" % allHeaders)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 

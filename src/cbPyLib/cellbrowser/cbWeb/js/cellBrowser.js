@@ -204,7 +204,12 @@ var cellbrowser = function() {
         return s[0].toUpperCase() + s.slice(1);
     }
 
-    
+    function cleanString(s) {
+        /* make sure that string only contains normal characters. Good when printing something that may contain
+         * dangerous */
+        return s.replace(/[^0-9a-zA-Z _-]/g, '');
+    }
+
     function findMetaValIndex(metaInfo, value) {
         /* return the index of the value of an enum meta field */
         var valCounts = metaInfo.valCounts;
@@ -250,11 +255,15 @@ var cellbrowser = function() {
     function getFromUrl(key, defaultValue) {
     /* get a value from localStorage or the current URL or return the default if not defined in either place.
      * The URL overrides localStorage. */
-        var val = localStorage.getItem(key);
-        if (val===null && defaultValue!==undefined)
-            val = defaultValue;
-        val = getVar(key, val);
-        return val;
+        var val = getVar(key);
+        if (val!==undefined)
+            return val;
+
+        val = localStorage.getItem(key);
+        if (val===null)
+            return defaultValue
+        else
+            return val;
     }
 
 
@@ -449,12 +458,17 @@ var cellbrowser = function() {
         "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
     }
 
-    function htmlAddLink(htmls, desc, key) {
-        /* add a link to html on a new line. if desc[key] includes a space, the part after it is the link name. */
+    function htmlAddLink(htmls, desc, key, linkLabel) {
+        /* add a link to html on a new line. if desc[key] includes a space, the part after it is the link label. */
         if (!desc[key])
             return;
 
-        let label = descLabels[key];
+        let label = "Link";
+        if (linkLabel)
+            label = linkLabel;
+        else
+            label = descLabels[key];
+
         htmls.push("<b>");
         htmls.push(label);
         htmls.push(": </b>");
@@ -486,7 +500,7 @@ var cellbrowser = function() {
             if (desc.coordFiles===undefined) {
                 htmls.push("To download the data for datasets in this collection: open the collection, "); 
                 htmls.push("select a dataset in the list to the left, and navigate to the 'Data Download' tab. ");
-                htmls.push("This information can also be accessed while viewing a dataset by clicking the 'Info' button.");
+                htmls.push("This information can also be accessed while viewing a dataset by clicking the 'Info &amp; Downloads' button.");
             } else if (desc.hideDownload===true || desc.hideDownload=="True" || desc.hideDownload=="true") {
                 htmls.push("The downloads section has been deactivated by the authors."); 
                 htmls.push("Please contact the dataset authors to get access.");
@@ -653,6 +667,11 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "doi");
         htmlAddLink(htmls, desc, "arrayexpress");
         htmlAddLink(htmls, desc, "ena_project");
+
+        if (desc.urls) {
+            for (let key of keys(desc.urls))
+                htmlAddLink(htmls, desc.urls, key, key);
+        }
 
         if (desc.submitter) {
             htmls.push("<b>Submitted by: </b> "+desc.submitter);
@@ -3735,9 +3754,16 @@ var cellbrowser = function() {
         for (var valIdx=0; valIdx < metaCounts.length; valIdx++)
             metaCounts[valIdx].push(valIdx);
 
-        var oldSortBy = getFromUrl("SORT", legend.metaInfo.name);
+        var oldSortBy = getFromUrl("SORT");
         if (sortBy===undefined && oldSortBy!==undefined)
             sortBy = oldSortBy;
+        if (sortBy===undefined && db.conf.sortBy)
+            sortBy = db.conf.sortBy[metaInfo.label];
+
+        if (sortBy!=="freq" && sortBy!=="name") {
+            alert("sortBy is '"+cleanString(sortBy)+' but it can only be "freq" or "name"');
+            sortBy = undefined;
+        }
 
         var fieldName = metaInfo.label;
 
@@ -3748,6 +3774,8 @@ var cellbrowser = function() {
             if (fieldName.indexOf("luster") || fieldName.indexOf("ouvain") || fieldName.indexOf("res."))
                 sortBy = "count";
             else if (metaInfo.type==="float" || metaInfo.type==="int")
+                sortBy = "name";
+            else if (metaCounts.length > 60) // very long lists are easier to grasp when sorted by name
                 sortBy = "name";
             else
                 sortBy = "count";
@@ -5199,9 +5227,8 @@ var cellbrowser = function() {
     }
 
 
-    function buildLegendBar(sortBy) {
+    function buildLegendBar() {
     /* draws current legend as specified by gLegend.rows
-     * sortBy can be "name" or "count" or "undefined" (=auto-detect)
      * */
         if (gLegend.rows===undefined)
             return;

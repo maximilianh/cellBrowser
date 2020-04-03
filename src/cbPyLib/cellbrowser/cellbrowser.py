@@ -2186,7 +2186,6 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     tmpFname = fixedMetaFname+".tmp"
     ofh = open(tmpFname, "w")
     metaToRow = {}
-    #sep = sepForFile(metaFname)
     fieldValues = defaultdict(set)
     headers = None
     for row in textFileRows(metaFname):
@@ -3625,7 +3624,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts"]:
+        "metaBarWidth", "supplFiles", "body_parts", "sortBy"]:
         copyConf(inConf, outConf, tag)
 
 
