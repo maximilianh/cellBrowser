@@ -207,6 +207,8 @@ var cellbrowser = function() {
     function cleanString(s) {
         /* make sure that string only contains normal characters. Good when printing something that may contain
          * dangerous */
+        if (s===undefined)
+            return undefined;
         return s.replace(/[^0-9a-zA-Z _-]/g, '');
     }
 
@@ -3760,7 +3762,7 @@ var cellbrowser = function() {
         if (sortBy===undefined && db.conf.sortBy)
             sortBy = db.conf.sortBy[metaInfo.label];
 
-        if (sortBy!=="freq" && sortBy!=="name") {
+        if (sortBy!==undefined && sortBy!=="freq" && sortBy!=="name") {
             alert("sortBy is '"+cleanString(sortBy)+' but it can only be "freq" or "name"');
             sortBy = undefined;
         }
@@ -3771,12 +3773,11 @@ var cellbrowser = function() {
         // even if they are numbers
         if (sortBy===undefined) {
             // should cluster fields be sorted by their name
-            if (fieldName.indexOf("luster") || fieldName.indexOf("ouvain") || fieldName.indexOf("res."))
+            if (metaInfo.type==="float" || metaInfo.type==="int" || (metaCounts.length > 60))
+                // long lists are easier to grasp if they're sorted by name
+                sortBy = "name";
+            else if (fieldName.indexOf("luster") || fieldName.indexOf("ouvain") || fieldName.indexOf("res."))
                 sortBy = "count";
-            else if (metaInfo.type==="float" || metaInfo.type==="int")
-                sortBy = "name";
-            else if (metaCounts.length > 60) // very long lists are easier to grasp when sorted by name
-                sortBy = "name";
             else
                 sortBy = "count";
         }
