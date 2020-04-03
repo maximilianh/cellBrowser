@@ -41,6 +41,8 @@ var cellbrowser = function() {
     var gOpenDataset = null; // while navigating the open dataset dialog, this contains the current name
         // it's a global variable as the dialog is not a class (yet?) and it's the only piece of data
         // it is a subset of dataset.json , e.g. name, description, cell count, etc.
+    //var gOpenFilter = null; // this contains the current top-level filter of the open dataset dialog.
+        // it's an object with keys: "body_part"
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a
     // "sample" or a "cell". This will adapt help menus, menus, etc.
@@ -833,7 +835,7 @@ var cellbrowser = function() {
             else
                 loadDataset(datasetName, true, dsInfo.md5);
             $(".ui-dialog-content").dialog("close");
-            changeUrl({"bp":null});
+            //changeUrl({"bp":null});
         }
 
         function connectOpenPane(selDatasetIdx, datasetList) {
@@ -873,7 +875,7 @@ var cellbrowser = function() {
         }
         // -- end inline functions
 
-        function onBodyChange(ev) {
+        function onBodyPartChange(ev) {
             /* called when user changes body part list */
             let filtNames = $("#tpBodyCombo").val();
             // change the URL
@@ -907,14 +909,14 @@ var cellbrowser = function() {
         let filtList = [];
         if (openDsInfo.parents === undefined) {
             //noteLines.push("<span>Filter:</span>");
-            noteLines.push("<span style='margin-right:5px'>Filter datasets by tissue:</span>");
+            noteLines.push("<span style='margin-right:5px'>Filter datasets by organ:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
 
             let selPar = getVarSafe("bp");
             if (selPar && selPar!=="")
                 filtList = selPar.split("_");
 
-            buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select body parts...", 200, {multi:true});
+            buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select organs...", 200, {multi:true});
         }
 
         // create links to the parents of the dataset
@@ -1011,7 +1013,7 @@ var cellbrowser = function() {
 
         $("#tpOpenDialogTabs").tabs();
         activateCombobox("tpBodyCombo", 200);
-        $("#tpBodyCombo").change( onBodyChange );
+        $("#tpBodyCombo").change( onBodyPartChange );
 
         $('.tpBackLink').click( function(ev) {
             let openDatasetName = $(ev.target).attr('data-open-dataset');
