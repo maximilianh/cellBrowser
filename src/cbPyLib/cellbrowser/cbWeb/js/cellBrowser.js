@@ -746,10 +746,10 @@ var cellbrowser = function() {
 
             var bodyPartStr = "";
             if (dataset.body_parts) {
-                bodyPartStr=" data-body-parts='"+(dataset.body_parts.join("|"))+"' ";
+                bodyPartStr = dataset.body_parts.join("|");
             }
 
-            var line = "<a id='tpDatasetButton_"+i+"' "+bodyPartStr+"role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+            var line = "<a id='tpDatasetButton_"+i+"' data-body-parts='"+bodyPartStr+"' role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
             if (!dataset.isSummary)
@@ -805,26 +805,30 @@ var cellbrowser = function() {
         for (let el of elList) {
             let bpStr = el.getAttribute("data-body-parts");
             let found = false;
-            if (bpStr) {
-                let bps = bpStr.split("|");
-                if (onlyBps.length===0)
-                    found = true;
-                else {
-                    if (bps.indexOf("summary")!==-1) { // never filter the summary
+            if (!onlyBps || onlyBps.length==0)
+                // if no filtering is specified just show everything
+                found = true;
+            else
+                if (bpStr && bpStr!=="") {
+                    let bps = bpStr.split("|");
+                    if (onlyBps.length===0)
                         found = true;
-                    }
-                    //if (bps.indexOf("all")!==-1) { // always match datasets with "all"
-                        //found = true;
-                    //}
-                    else 
-                        for (let bp of onlyBps) {
-                            if (bps.indexOf(bp)!==-1) {
-                                found = true;
-                                break;
-                            }
+                    else {
+                        if (bps.indexOf("summary")!==-1) { // never filter the summary
+                            found = true;
                         }
+                        //if (bps.indexOf("all")!==-1) { // always match datasets with "all"
+                            //found = true;
+                        //}
+                        else 
+                            for (let bp of onlyBps) {
+                                if (bps.indexOf(bp)!==-1) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                    }
                 }
-            }
 
             if (found)
                 el.style.display="";
