@@ -2720,6 +2720,17 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         else:
             logging.info("Not copying %s again, already in output directory" % rawInPath)
 
+    # copy over any other supplemental files
+    if "supplFiles" in summInfo:
+        for sf in summInfo["supplFiles"]:
+            rawInPath = join(inDir, sf["file"])
+            rawOutPath = join(datasetDir, basename(sf["file"]))
+            if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+                logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+                shutil.copyfile(rawInPath, rawOutPath)
+            else:
+                logging.info("Not copying %s again, already in output directory" % rawInPath)
+
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
 
