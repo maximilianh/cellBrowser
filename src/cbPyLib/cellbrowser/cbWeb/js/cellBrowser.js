@@ -521,18 +521,7 @@ var cellbrowser = function() {
                     htmls.push("</p>");
                 }
 
-                if (datasetInfo.supplFiles) {
-                    let supplFiles = datasetInfo.supplFiles;
-                    for (let suppFile of supplFiles) {
-                        let label = suppFile.label;
-                        let fname = suppFile.file;
-                        htmls.push("<p><b>"+label+":</b> <a href='"+datasetInfo.name);
-                        htmls.push("/"+fname+"'>"+fname+"</a>");
-                        htmls.push("</p>");
-                    }
-                }
-
-                htmls.push("<p><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Load these files into Seurat or Scanpy?</a></p>");
+                htmls.push("<p><i><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Help: Load matrix/meta into Seurat or Scanpy</a></i></p>");
 
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
                 htmls.push("/meta.tsv'>meta.tsv</a>");
@@ -544,6 +533,17 @@ var cellbrowser = function() {
                 for (let fname of desc.coordFiles)
                     htmls.push("<a target=_blank href='"+datasetInfo.name+"/"+fname+"'>"+fname+"</a><br>");
                 htmls.push("</p>");
+
+                if (desc.supplFiles) {
+                    let supplFiles = desc.supplFiles;
+                    for (let suppFile of supplFiles) {
+                        let label = suppFile.label;
+                        let fname = suppFile.file;
+                        htmls.push("<p><b>"+label+":</b> <a href='"+datasetInfo.name);
+                        htmls.push("/"+fname+"'>"+fname+"</a>");
+                        htmls.push("</p>");
+                    }
+                }
 
                 htmls.push("<p><b>Dataset description</b>: ");
                 htmls.push("<a target=_blank href='"+datasetInfo.name+"/desc.json'>desc.json</a></p>");
