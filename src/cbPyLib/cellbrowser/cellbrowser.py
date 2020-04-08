@@ -1519,7 +1519,7 @@ class MatrixTsvReader:
                         symbol = gene
 
                     if symbol.isdigit():
-                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix." % (lineNo, symbol))
+                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (lineNo, symbol))
 
             if symbol in doneGenes:
                 logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence with original geneId" % (lineNo, gene, symbol))
@@ -3312,6 +3312,14 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
 
     geneIdTable = getStaticFile(join("genes", geneIdType+".symbols.tsv.gz"))
     geneToSym = readGeneToSym(geneIdTable)
+
+    if geneIdType=="entrez" and len(geneToSym)<100000:
+        logging.warn("You are using entrez gene IDs. Note that the default mapping table only works for human. "\
+                "To get the big mapping table for all NCBI organisms, please run this command: "\
+                "wget https://ftp.ncbi.nih.gov/gene/DATA/gene_info.gz -O - | zcat | cut -f2,3 | gzip -c > %s" % \
+                geneIdTable)
+
+
     return geneToSym
 
 def readMitos(idType):
