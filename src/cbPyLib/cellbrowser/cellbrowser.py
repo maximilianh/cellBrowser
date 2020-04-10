@@ -4158,7 +4158,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     outDir = expanduser(outDir)
 
     if not isdir(outDir):
-        errAbort("The directory %s does not exist. Please run 'mkdir %s' and re-run cbBuild" % (outDir, outDir))
+        logging.warn("The directory %s does not exist. Making a new directory now." % (outDir))
 
     setDebug(doDebug)
     if type(confFnames)==type(""):
