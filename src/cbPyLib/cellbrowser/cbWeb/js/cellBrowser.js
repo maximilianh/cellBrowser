@@ -41,8 +41,6 @@ var cellbrowser = function() {
     var gOpenDataset = null; // while navigating the open dataset dialog, this contains the current name
         // it's a global variable as the dialog is not a class (yet?) and it's the only piece of data
         // it is a subset of dataset.json , e.g. name, description, cell count, etc.
-    //var gOpenFilter = null; // this contains the current top-level filter of the open dataset dialog.
-        // it's an object with keys: "body_part"
 
     // depending on the type of data, single cell or bulk RNA-seq, we call a circle a
     // "sample" or a "cell". This will adapt help menus, menus, etc.
@@ -898,7 +896,6 @@ var cellbrowser = function() {
                 $("button.list-group-item").eq(selDatasetIdx).css("z-index", "1000");
             });
         }
-        // -- end inline functions
 
         function onBodyPartChange(ev) {
             /* called when user changes body part list */
@@ -908,6 +905,8 @@ var cellbrowser = function() {
             changeUrl({"bp":filtArg});
             filterDatasetsDom(filtNames);
         }
+
+        // -- end inline functions
 
         gOpenDataset = openDsInfo;
         var activeIdx = 0;
@@ -931,17 +930,21 @@ var cellbrowser = function() {
             changeUrl({"ds":openDsInfo.name});
         }
 
+        let doFaceting = false;
         let filtList = [];
         if (openDsInfo.parents === undefined) {
             //noteLines.push("<span>Filter:</span>");
             noteLines.push("<span style='margin-right:5px'>Filter datasets by organ:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
+            if (bodyParts.length!==0) {
+                doFaceting = true;
+                // some mirrors don't use the "body_parts" statement and don't need the faceting
+                let selPar = getVarSafe("bp");
+                if (selPar && selPar!=="")
+                    filtList = selPar.split("_");
 
-            let selPar = getVarSafe("bp");
-            if (selPar && selPar!=="")
-                filtList = selPar.split("_");
-
-            buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select organs...", 200, {multi:true});
+                buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select organs...", 200, {multi:true});
+            }
         }
 
         // create links to the parents of the dataset
@@ -1037,8 +1040,11 @@ var cellbrowser = function() {
         showDialogBox(htmls, title, {width: winWidth, height:winHeight, buttons: buttons});
 
         $("#tpOpenDialogTabs").tabs();
-        activateCombobox("tpBodyCombo", 200);
-        $("#tpBodyCombo").change( onBodyPartChange );
+
+        if (doFaceting) {
+            activateCombobox("tpBodyCombo", 200);
+            $("#tpBodyCombo").change( onBodyPartChange );
+        }
 
         $('.tpBackLink').click( function(ev) {
             let openDatasetName = $(ev.target).attr('data-open-dataset');
