@@ -934,9 +934,9 @@ var cellbrowser = function() {
         let filtList = [];
         if (openDsInfo.parents === undefined) {
             //noteLines.push("<span>Filter:</span>");
-            noteLines.push("<span style='margin-right:5px'>Filter datasets by organ:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
             if (bodyParts.length!==0) {
+                noteLines.push("<span style='margin-right:5px'>Filter datasets by organ:</span>");
                 doFaceting = true;
                 // some mirrors don't use the "body_parts" statement and don't need the faceting
                 let selPar = getVarSafe("bp");
