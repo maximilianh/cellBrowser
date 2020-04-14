@@ -3769,8 +3769,8 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
         if "gene_ids" in var:
             geneIdObj = var["gene_ids"]
-            geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
-            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+            geneIdAndSyms = list(zip(geneIdObj.values, geneIdObj.index))
+            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
         elif "gene_symbols" in var:
             geneIdObj = var['gene_symbols']
             geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
