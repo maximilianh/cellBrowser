@@ -3881,6 +3881,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
             "create the cluster annotation and write the h5ad file then." % markerField)
         addMarkers = False
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
+        if "columns" in dir(adata.obs) and not clusterField in adata.obs.columns:
+            errAbort("Could not find field '%s' in the scanpy object. To make a cell browser, you should have a "
+                    " field like 'cluster' or "
+                    "'celltype' or 'louvain' in your object. The available fields are: %s ."
+                    "Re-run the import and specify the field that contains cell-type-like annotations with the "
+                    "option --clusterField from the command line or clusterField='xxx' from Jupyter. "
+                    "If you have a use case where this field should not be required, please contact us. "
+                    % (clusterField, repr(adata.obs.columns)))
+
         adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
