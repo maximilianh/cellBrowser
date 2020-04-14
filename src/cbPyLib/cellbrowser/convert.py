@@ -33,6 +33,8 @@ def cbToolCli_parseArgs(showHelp=False):
         help="try to fix R's mangling of various special chars to '.' in the cell IDs")
     parser.add_option("", "--first", dest="first", action="store",
         help="only for metaCat: names of fields to order first, comma-sep, e.g. disease,age. Not cellId, that's always the first field")
+    parser.add_option("", "--del", dest="delFields", action="store",
+        help="only for metaCat: names of fields to remove")
 
 
     (options, args) = parser.parse_args()
@@ -69,8 +71,19 @@ def cbToolCli():
     elif cmd=="metaCat":
         inFnames = args[1:-1]
         outFname = args[-1]
-        if len(inFnames)==1:
-            errAbort("Sorry, need at least three filenames: two input files and one output file")
+
+        if len(inFnames)==0:
+            errAbort("You must provide at least two filenames: one input filename and one output filename")
+
+        if len(inFnames)==1 and isfile(outFname):
+            errAbort("You provided only one input file and the output file already exists. To avoid "
+            "accidentally overwriting a file, please either remove the output file or provide at least "
+            "three filenames: two input files and one output file. The second input file can be 'none', "
+            "which will suppress this error message.")
+
+        if len(inFnames)==2 and inFnames[1]=="none":
+            inFnames.pop()
+
         metaCat(inFnames, outFname, options)
     else:
         errAbort("Command %s is not a valid command. Valid commands are: %s" % (cmd, ", ".join(cmds)))
@@ -145,7 +158,7 @@ def matCat(inFnames, outFname):
     moveOrGzip(tmpFname, outFname)
     logging.info("Wrote %d lines (not counting header)" % lineCount)
 
-def reorderFields(row, firstFields):
+def reorderFields(row, firstFields, skipFields):
     " reorder the row to have firstFields first "
     #logging.debug("Reordering row to have %s fields first" % firstFields)
     newRow = [row[0]]
@@ -153,7 +166,7 @@ def reorderFields(row, firstFields):
         newRow.append(row[idx])
 
     for i in range(1, len(row)):
-        if i not in firstFields:
+        if i not in firstFields and i not in skipFields:
             newRow.append(row[i])
 
     return newRow
@@ -168,6 +181,10 @@ def metaCat(inFnames, outFname, options):
     firstFields = []
     if options.first!="" and options.first is not None:
         firstFields = options.first.split(",")
+
+    delFields = []
+    if options.delFields!="" and options.delFields is not None:
+        delFields = options.delFields.split(",")
 
     for fileIdx, fname in enumerate(inFnames):
         logging.info("Reading %s" % fname)
@@ -213,12 +230,31 @@ def metaCat(inFnames, outFname, options):
         try:
             idx = allHeaders.index(h)
         except ValueError:
-            errAbort("Field %s specified on command line is not in the meta data file" % repr(h))
+            errAbort("Field %s specified on command line --first is not in the meta data file" % repr(h))
         firstFieldIdx.append(idx)
 
-    tmpFname = outFname+".tmp"
-    ofh = openFile(tmpFname, "w")
-    allHeaders = reorderFields(allHeaders, firstFieldIdx)
+    # and those of fields we will skip
+    delFieldIdx = []
+    for h in delFields:
+        try:
+            idx = allHeaders.index(h)
+        except ValueError:
+            errAbort("Field %s specified on command line with --del is not in the meta data file" % repr(h))
+        delFieldIdx.append(idx)
+
+    if len(firstFields)!=0:
+        logging.info("Putting these fields first: %s" % firstFields)
+    if len(delFields)!=0:
+        logging.info("Removing these fields: %s" % delFields)
+
+
+    if outFname=="stdout" or outFname=="/dev/stdout":
+        ofh = sys.stdout
+    else:
+        tmpFname = outFname+".tmp"
+        ofh = openFile(tmpFname, "w")
+
+    allHeaders = reorderFields(allHeaders, firstFieldIdx, delFieldIdx)
     ofh.write("\t".join(allHeaders))
     ofh.write("\n")
 
@@ -230,12 +266,13 @@ def metaCat(inFnames, outFname, options):
             else:
                 row.extend([""]*fieldCounts[fileIdx])
 
-        row = reorderFields(row, firstFieldIdx)
+        row = reorderFields(row, firstFieldIdx, delFieldIdx)
         ofh.write("\t".join(row))
         ofh.write("\n")
 
     ofh.close()
-    os.rename(tmpFname, outFname)
+    if ofh!=sys.stdout:
+        os.rename(tmpFname, outFname)
     logging.info("Output field order is: %s" % allHeaders)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 

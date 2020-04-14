@@ -3,6 +3,6 @@ import sys
 from os.path import join, dirname
 
 import sys
-sys.path.append( join(dirname(__file__), "cbPyLib") )
+sys.path.insert(0,  join(dirname(__file__), "cbPyLib") )
 from cellbrowser import download
 download.cbGetCli()

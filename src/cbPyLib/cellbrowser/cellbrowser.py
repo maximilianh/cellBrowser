@@ -88,7 +88,7 @@ FLOATNAN = float('-inf') # NaN and sorting does not work. we want NaN always to 
 # must match the same value in cellBrowser.js
 INTNAN = -2**16
 
-# how many md5 characters to keep in version identifiers. We load all files using their md5 to address
+# how many md5 characters to keep in version identifiers. We load all files using their md5 to get around
 # internet browser caching
 MD5LEN = 10
 
@@ -116,8 +116,10 @@ coordLabels = {
     "phate" : "PHATE"
 }
 
+# default layouts if you specify "all" in scanpy.conf
 recommendedLayouts = ["fa", "fr", "kk", "drl", "tsne", "umap", "pagaFa", "phate"]
 
+# give some meta fields better names
 metaLabels = {
     "louvain" : "Louvain Cluster",
     "percent_mito" : "Percent Mitochond.",
@@ -339,7 +341,7 @@ def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
     conf["inDir"] = dirname(fname)
 
     if "name" in conf and ignoreName:
-        logging.info("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
+        logging.debug("%s: 'name' entry in cellbrowser.conf is ignored" % fname)
 
     if (not "name" in conf and addName) or ignoreName:
         name = basename(dirname(abspath(fname)))
@@ -480,7 +482,7 @@ def cbScanpy_parseArgs():
             help="output directory")
 
     parser.add_option("-n", "--name", dest="name", action="store",
-            help="internal name of dataset in cell browser. No spaces or special characters.")
+            help="internal name of dataset in cell browser. No spaces or special characters. default: name of output directory (-o)")
 
     parser.add_option("", "--init", dest="init", action="store_true",
             help="copy sample scanpy.conf to current directory")
@@ -521,8 +523,8 @@ def cbScanpy_parseArgs():
         doctest.testmod()
         sys.exit(0)
 
-    if (options.exprMatrix is None or options.outDir is None or options.name is None) and not options.init:
-        print("Please specify at least the expression matrix (-e), the output directory (-o) and a name (-n)")
+    if (options.exprMatrix is None or options.outDir is None) and not options.init:
+        print("Please specify at least the expression matrix (-e) and the output directory (-o)")
         parser.print_help()
         exit(1)
 
@@ -560,9 +562,9 @@ def sanitizeHeaders(headers):
         headers[0]="rowName"
 
     if "" in headers:
-        logging.error("Found empty cells in header line of %s" % inFile)
+        logging.error("Found empty cells in a file header line.")
         logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to remove empty trailing columns.")
-        assert(False)
+        errAbort("abort")
 
     # Python does not accept headers that start with a digit
     filtHeads = []
@@ -585,8 +587,8 @@ def csvReader(fh):
     try:
         for row in reader:
             yield row
-    except (csv.Error, e):
-        sys.exit('file %s, line %d: %s' % (filename, reader.line_num, e))
+    except csv.Error as e:
+        sys.exit('file %s, line %d: %s' % (fh.name, reader.line_num, e))
 
 def tsvReader(fh):
     " yield rows from input file object "
@@ -644,7 +646,9 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
     headers = sanitizeHeaders(headers)
     Record = namedtuple('tsvCsvRec', headers)
 
+    lineCount = 0
     for fields in itertools.chain(savedLines, ifh):
+        lineCount += 1
         if fields[0].startswith("#"):
             continue
 
@@ -652,13 +656,26 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
             rec = Record(*fields)
         except Exception as msg:
             logging.error("Exception occurred while parsing line, %s" % msg)
-            logging.error("Filename %s" % fh.name)
-            logging.error("Line was: %s" % line)
+            logging.error("Filename %s" % inFile)
+            logging.error("Fields are: %s" % fields)
             logging.error("Does number of fields match headers?")
             logging.error("Headers are: %s" % headers)
-            raise Exception("header count: %d != field count: %d wrong field count in line %s" % (len(headers), len(fields), line))
+            raise Exception("header count: %d != field count: %d wrong field count in line %d" % (len(headers), len(fields), lineCount))
         yield rec
 
+def parseMetaDesc(inConf):
+    " parse two-row tsv file with meta field descriptions "
+    if "metaDesc" not in inConf:
+        return None
+
+    metaDesc = {}
+    for row in textFileRows(inConf["metaDesc"]):
+        if len(row)<2:
+            logging.warning("row '%s' in metaDesc file does not have two fields" % row)
+            continue
+        metaDesc[row[0]] = row[1]
+    return metaDesc
+    
 def parseOneColumn(fname, colName):
     " return a single column from a tsv as a list, without the header "
     vals = []
@@ -669,10 +686,11 @@ def parseOneColumn(fname, colName):
     for row in textFileRows(fname):
         if colIdx is None:
             try:
+                row = [x.split("|")[0] for x in row]
                 colIdx = row.index(colName)
                 continue
             except ValueError:
-                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. Possible row names: %s" % (repr(colName), fname, row))
+                raise Exception("There is no column %s in the file %s. This may have to do with special characters in the column name. Try not to use special characters in column names, fix meta.tsv and cellbrowser.conf and try again. It can also happen if you reference a field in cellbrowser.conf that has been excluded from the meta data because it only has a single value. Possible row names: %s" % (repr(colName), fname, row))
 
         vals.append(row[colIdx])
     return vals
@@ -681,9 +699,12 @@ def parseIntoColumns(fname):
     " parse tab sep file vertically, return as a list of (headerName, list of values) "
     ifh = open(fname)
     sep = "\t"
+
     headers = ifh.readline().rstrip("\r\n").split(sep)
     if headers[0]=="":
         headers[0]="cell_id" # some tolerance, for R
+    headers = [h.split("|")[0] for h in headers]
+
     for i, h in enumerate(headers):
         if h=="":
             errAbort("Header '%s' of column %d is empty. Please fix the meta data file and give every column a name" %
@@ -1082,7 +1103,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 
         if fieldMeta["arrType"].endswith("32"):
             errAbort("Meta field %s has more than 32k different values and makes little sense to keep. "
-                "Please or remove the field from the meta data table or contact us, cells@ucsc.edu.", fieldMeta["name"])
+                "Please or remove the field from the meta data table or contact us, cells@ucsc.edu."% fieldMeta["name"])
 
         valToInt = dict([(y[0],x) for (x,y) in enumerate(valCounts)]) # dict with value -> index in valCounts
         newVals = [valToInt[x] for x in valList] #
@@ -1153,6 +1174,16 @@ def addLongLabels(acronyms, fieldMeta):
 
     return fieldMeta
 
+def addDesc(fieldDescs, fieldMeta):
+    " add a 'desc' attribute to the meta info "
+    if fieldDescs is None or fieldMeta["label"] not in fieldDescs:
+        return fieldMeta
+
+    desc = fieldDescs[fieldMeta["label"]]
+    if desc!="":
+        fieldMeta["desc"] = desc
+    return fieldMeta
+
 def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     """ convert meta table to binary files. outputs fields.json and one binary file per field.
     adds names of metadata fields to outConf and returns outConf
@@ -1164,6 +1195,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
     colors = parseColors(colorFname)
     acronyms = readAcronyms(inConf, outConf)
+    metaDescs = parseMetaDesc(inConf)
     enumOrder = inConf.get("enumOrder")
 
     # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
@@ -1196,12 +1228,16 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = cleanString(fieldName)
-        binName = join(outDir, cleanFieldName+".bin")
+        cleanFieldName = cleanString(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
-        fieldMeta["label"] = fieldName
+
+        nameParts = fieldName.split("|")
+        fieldMeta["label"] = nameParts[0]
+
+        if len(nameParts)>1:
+            fieldMeta["desc"] = fieldName
 
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceType, enumOrderList)
 
@@ -1210,23 +1246,28 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if fieldType=="enum":
             fieldMeta = addLongLabels(acronyms, fieldMeta)
 
+        fieldMeta = addDesc(metaDescs, fieldMeta)
+
         if "metaOpt" in inConf and fieldName in inConf["metaOpt"]:
             fieldMeta["opt"] = inConf["metaOpt"][fieldName]
 
         packFmt = fieldMeta["_fmt"]
 
-        # write the binary file
-        binFh = open(binName, "wb")
-        if fieldMeta["type"]!="uniqueString":
+        binName = join(outDir, cleanFieldName+".bin")
+        if fieldMeta["type"]=="uniqueString":
+            # unique strings are simply written as-is
+            logging.debug("writing as normal strings to %s" % binName)
+            textFh = openFile(binName, "w")
+            for x in col:
+                textFh.write("%s\n" % x)
+            textFh.close()
+        else:
+            # default case: write data as binary file
+            logging.debug("writing as binary data to %s" % binName)
+            binFh = open(binName, "wb")
             for x in binVals:
                 binFh.write(struct.pack(packFmt, x))
-        else:
-            for x in col:
-                if isPy3:
-                    binFh.write(bytes("%s\n" % x, encoding="ascii"))
-                else:
-                    binFh.write("%s\n" % x)
-        binFh.close()
+            binFh.close()
 
         runGzip(binName)
         zippedName = binName+".gz"
@@ -1257,12 +1298,18 @@ def iterLineOffsets(ifh):
 
 def findMtxFiles(fname):
     " given the name of a .mtx.gz or directory name, find the .mtx.gz, genes/features and barcode files " 
+    logging.debug("Finding mtx/features/barcode filenames for mtx file %s" % fname)
     if isdir(fname):
         matDir = fname
+        mtxFname = join(matDir, "matrix.mtx.gz")
     else:
         matDir = dirname(fname)
 
     mtxFname = join(matDir, "matrix.mtx.gz")
+    if not isfile(mtxFname):
+        errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
+                "Please rename the file, adapt cellbrowser.conf and rerun the command.")
+
     genesFname = join(matDir, "genes.tsv.gz")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
         genesFname = join(matDir, "features.tsv.gz")
@@ -1472,7 +1519,7 @@ class MatrixTsvReader:
                         symbol = gene
 
                     if symbol.isdigit():
-                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix." % (lineNo, symbol))
+                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (lineNo, symbol))
 
             if symbol in doneGenes:
                 logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence with original geneId" % (lineNo, gene, symbol))
@@ -1861,7 +1908,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
         # filter the row down to the meta-samples
-        if idxList:
+        if idxList is not None:
             if numpyLoaded:
                 exprArr = exprArr[idxList]
             else:
@@ -1909,8 +1956,15 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
 def sepForFile(fname):
     if fname.endswith(".csv") or fname.endswith(".csv.gz") or fname.endswith(".csv.Z"):
         sep = ","
-    else:
+    elif ".tsv" in fname or ".tab" in fname:
         sep = "\t"
+    else:
+        ifh = openFile(fname)
+        line1 = ifh.readline()
+        if "\t" in line1:
+            sep = "\t"
+        else:
+            sep = ","
     logging.debug("Separator for %s is %s" %  (fname, repr(sep)))
     return sep
 
@@ -2024,9 +2078,8 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
     # parse and find the max values
     warn1Done = False
     warn2Done = False
+    headDone = False
     for row in lineFileNextRow(fname, noHeaders=True):
-        if row[1]=="x" or row[2]=="y" or row[1]=="tsne1" or row[0].startswith("cell"):
-            continue
         if (len(row)<3):
             if not warn1Done:
                 errAbort("file %s needs to have at least three columns" % fname)
@@ -2036,8 +2089,15 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
                 logging.warn("file %s has more than three columns. Everything beyond column 3 will be ignored" % fname)
                 warn2Done = True
         cellId = row[0]
-        x = float(row[1])
-        y = float(row[2])
+        try:
+            x = float(row[1])
+            y = float(row[2])
+        except:
+            if headDone:
+                logging.warn("file %s: cannot parse x,y coords, skipping line %s" % (fname, row))
+            headDone = True
+            continue
+
         coords.append( (cellId, x, y) )
 
         # special values (12345,12345) mean "unknown cellId"
@@ -2101,7 +2161,8 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         sys.exit(1)
 
     if len(mat.intersection(meta))==0:
-        logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row?")
+        print(matrixSampleNames)
+        logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row? Example Meta ID: %s, Example matrix ID: %s" % (list(sorted(metaSampleNames))[0], list(sorted(matrixSampleNames))[0]))
         sys.exit(1)
 
     metaNotMatrix = meta - mat
@@ -2112,11 +2173,11 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         logging.warn("%d sample names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
         logging.warn("These samples will be removed from the meta data")
         matrixSampleNames = [x for x in matrixSampleNames if x in meta]
-        mustFilterMatrix = True
 
     if len(metaNotMatrix)!=0:
         logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
-        logging.warn("These samples will be removed from the expression matrix")
+        logging.warn("These samples will be removed from the expression matrix. The matrix will need to be filtered.")
+        mustFilterMatrix = True
 
     # filter the meta data file
     logging.info("Data contains %d samples/cells" % len(matrixSampleNames))
@@ -2125,7 +2186,6 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     tmpFname = fixedMetaFname+".tmp"
     ofh = open(tmpFname, "w")
     metaToRow = {}
-    #sep = sepForFile(metaFname)
     fieldValues = defaultdict(set)
     headers = None
     for row in textFileRows(metaFname):
@@ -2325,6 +2385,9 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     return matIter.getMatType()
 
 def convIdToSym(geneToSym, geneId, printWarning=True):
+    if "|" in geneId:
+        return geneId.split("|")[1]
+
     if geneToSym is None:
         return geneId
     else:
@@ -2353,7 +2416,8 @@ def nonAlphaToUnderscores(name):
     " for tab-sep tables: replace nonalpha chars with  underscores "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
-    newName = re.sub("[^a-zA-Z0-9_]","_", name)
+    newName = name.replace("%","perc")
+    newName = re.sub("[^a-zA-Z0-9_]","_", newName)
     newName = re.sub("^_","", newName)  # remove _ prefix
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     return newName
@@ -2529,11 +2593,11 @@ def syncFiles(inFnames, outDir):
 
 def copyDatasetHtmls(inDir, outConf, datasetDir):
     " copy dataset description html files to output directory. Add md5s to outConf. "
-    filesToCopy = []
+    filesToCopy = ["summary.html", "methods.html", "downloads.html", "thumb.png", "protocol.pdf", "desc.conf"]
 
     outConf["descMd5s"] = {}
 
-    for fileBase in ["summary.html", "methods.html", "downloads.html", "thumb.png", "protocol.pdf", "desc.conf"]:
+    for fileBase in filesToCopy:
         inFname = makeAbs(inDir, fileBase)
         if not isfile(inFname):
             logging.debug("%s does not exist" % inFname)
@@ -2655,6 +2719,17 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
             shutil.copyfile(rawInPath, rawOutPath)
         else:
             logging.info("Not copying %s again, already in output directory" % rawInPath)
+
+    # copy over any other supplemental files
+    if "supplFiles" in summInfo:
+        for sf in summInfo["supplFiles"]:
+            rawInPath = join(inDir, sf["file"])
+            rawOutPath = join(datasetDir, basename(sf["file"]))
+            if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+                logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+                shutil.copyfile(rawInPath, rawOutPath)
+            else:
+                logging.info("Not copying %s again, already in output directory" % rawInPath)
 
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
@@ -2801,13 +2876,15 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 
 def readHeaders(fname):
     " return headers of a file "
-    logging.info("Reading headers of file %s" % fname)
+    logging.info("Reading headers from file %s" % fname)
     ifh = openFile(fname, "rtU")
     line1 = ifh.readline().rstrip("\r\n")
     sep = sepForFile(fname)
     row = line1.split(sep)
-    row = [x.rstrip('"').lstrip('"') for x in row]
+    row = [x.rstrip('"').lstrip('"') for x in row] # Excel sometimes adds quotes
     logging.debug("Found %d fields, e.g. %s" % (len(row), row[:3]))
+    if len(row)==0:
+        errAbort("Could not read headers from file %s" % fname)
     return row
 
 def parseGeneInfo(geneToSym, fname):
@@ -2836,7 +2913,7 @@ def parseGeneInfo(geneToSym, fname):
         if validSyms is not None and sym not in validSyms:
             sym = geneToSym.get(sym)
             if sym is None:
-                logging.error("'%s' is not a valid gene gene symbol, skipping it" % sym)
+                logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
                 continue
 
         info = [sym]
@@ -3148,6 +3225,8 @@ def readQuickGenes(inConf, geneToSym, outDir, outConf):
         validQuickGenes = []
         for quickGeneInfo in quickGenes:
             sym = quickGeneInfo[0]
+            if "|" in sym:
+                sym = sym.split("|")[1]
             if sym not in validGenes:
                 logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
             else:
@@ -3233,6 +3312,14 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
 
     geneIdTable = getStaticFile(join("genes", geneIdType+".symbols.tsv.gz"))
     geneToSym = readGeneToSym(geneIdTable)
+
+    if geneIdType=="entrez" and len(geneToSym)<100000:
+        logging.warn("You are using entrez gene IDs. Note that the default mapping table only works for human. "\
+                "To get the big mapping table for all NCBI organisms, please run this command: "\
+                "wget https://ftp.ncbi.nih.gov/gene/DATA/gene_info.gz -O - | zcat | cut -f2,3 | gzip -c > %s" % \
+                geneIdTable)
+
+
     return geneToSym
 
 def readMitos(idType):
@@ -3338,6 +3425,27 @@ def md5ForFile(fname, isSmall=False):
         md5 = md5WithPython(fname)
     return md5
 
+def readOldSampleNames(datasetDir, lastConf):
+    """ reads the old cell identifiers from the dataset directory """
+    # this obscure command gets file with the the cell identifiers in the dataset directory "
+    sampleNameFname = join(datasetDir, "metaFields", lastConf["metaFields"][0]["name"]+".bin.gz")
+    logging.debug("Reading meta sample names from %s" % sampleNameFname)
+
+    # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitly
+    metaSampleNames = []
+    if isfile(sampleNameFname):
+        for line in openFile(sampleNameFname):
+            metaSampleNames.append(line.rstrip("\n"))
+    else:
+        oldMetaFname = join(datasetDir, "meta.tsv")
+        headDone = False
+        for line in open(oldMetaFname, "r"):
+            if not headDone:
+                headDone = True
+                continue
+            metaSampleNames.append(splitOnce(line, "\t")[0])
+    return metaSampleNames
+
 def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf):
     """ compare filesize stored in datasetDir/cellbrowser.json.bak with file
     size of inMatrixFname and also compare the sample names with the sample names in
@@ -3345,7 +3453,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     """
     logging.info("Determining if %s needs to be created" % outMatrixFname)
     if not isfile(outMatrixFname):
-        logging.info("%s does not exist." % outMatrixFname)
+        logging.info("%s does not exist. Must build matrix now." % outMatrixFname)
         return True
 
     confName = join(datasetDir, "dataset.json")
@@ -3379,29 +3487,18 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outConf["fileVersions"]["outMatrix"] = lastConf["fileVersions"]["outMatrix"]
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
-    # this obscure command gets file with the the cell identifiers in the dataset directory
-    sampleNameFname = join(datasetDir, "metaFields", lastConf["metaFields"][0]["name"]+".bin.gz")
-    logging.debug("Reading meta sample names from %s" % sampleNameFname)
+    metaSampleNames = readOldSampleNames(datasetDir, lastConf)
 
-    # python3's gzip has 'text mode' but python2 doesn't have that so decode explicitely
-    metaSampleNames = []
-    if isfile(sampleNameFname):
-        for line in gzip.open(sampleNameFname, "r"):
-            metaSampleNames.append(line.decode("utf8").rstrip("\n\r"))
+    #outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
+
+    if isfile(outMatrixFname):
+        matrixSampleNames = readMatrixSampleNames(outMatrixFname)
+        assert(len(matrixSampleNames)!=0)
     else:
-        oldMetaFname = join(datasetDir, "meta.tsv")
-        headDone = False
-        for line in open(oldMetaFname, "r"):
-            if not headDone:
-                headDone = True
-                continue
-            metaSampleNames.append(splitOnce(line, "\t")[0])
+        outFeatsName = join(datasetDir, "features.tsv.gz")
+        matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
 
-    outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
-    matrixSampleNames = readHeaders(outMatrixFname)[1:]
-    assert(matrixSampleNames!=0)
-
-    if metaSampleNames!=matrixSampleNames:
+    if set(metaSampleNames)!=set(matrixSampleNames):
         logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
         return True
 
@@ -3458,6 +3555,7 @@ def metaHasChanged(datasetDir, metaOutFname):
 
     oldData = readJson(oldJsonFname)
     if not "outMeta" in oldData["fileVersions"]:
+        logging.debug("Old config file has no meta data MD5, re-converting meta data")
         return True
     else:
         oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
@@ -3542,40 +3640,40 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     readQuickGenes(inConf, geneToSym, datasetDir, outConf)
 
     # a few settings are passed through to the Javascript as they are
-    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags",
+    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
-        "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload"]:
+        "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
+        "metaBarWidth", "supplFiles", "body_parts", "sortBy"]:
         copyConf(inConf, outConf, tag)
 
 
-def writeAnndataCoords(anndata, fieldName, outDir, filePrefix, fullName, desc):
-    " write embedding coordinates from anndata object to outDir, the new filename is <prefix>_coords.tsv "
+def writeAnndataCoords(anndata, coordFields, outDir, desc):
+    " write all embedding coordinates from anndata object to outDir, the new filename is <coordName>_coords.tsv "
     import pandas as pd
-    fileBase = filePrefix+"_coords.tsv"
-    fname = join(outDir, fileBase)
 
-    existNames = getObsmKeys(anndata)
+    if coordFields=="all" or coordFields is None:
+        coordFields = getObsmKeys(anndata)
 
-    altName1 = "X_"+fieldName
-    altName2 = "X_draw_graph_"+fieldName
-    if fieldName not in existNames:
-        if altName1 in existNames:
-            fieldName = altName1
-        elif altName2 in existNames:
-            fieldName = altName2
-        else:
-            logging.debug('Couldnt find coordinates for %s, tried keys %s, %s and %s' % (fullName, fieldName, altName1, altName2))
-            return
+    for fieldName in coordFields:
+        # examples:
+        # X_draw_graph_tsne - old versions
+        # X_tsne - newer versions
+        # also seen in the wild: X_Compartment_tSNE
+        coordName = fieldName.replace("X_draw_graph_","").replace("X_","")
+        fullName = coordLabels.get(coordName, coordName)
 
-    logging.info("Writing %s coords to %s" % (fullName, fname))
-    coordDf=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
+        fileBase = coordName+"_coords.tsv"
+        fname = join(outDir, fileBase)
 
-    # why they usually only have (x,y), some objects have more than 2 dimensions
-    if len(coordDf.columns)==2:
-        coordDf.columns=['x','y']
+        logging.info("Writing %s coords to %s" % (fullName, fname))
+        coordDf=pd.DataFrame(anndata.obsm[fieldName],index=anndata.obs.index)
 
-    coordDf.to_csv(fname,sep='\t')
-    desc.append( {'file':fileBase, 'shortLabel': fullName} )
+        # why they usually only have (x,y), some objects like PCA have more than 2 dimensions
+        if len(coordDf.columns)==2:
+            coordDf.columns=['x','y']
+
+        coordDf.to_csv(fname,sep='\t')
+        desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     for c in name:
@@ -3601,7 +3699,7 @@ defColorField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
-#quickGenesFile='quickGenes.csv'
+#quickGenesFile='quickGenes.tsv'
 #alpha=0.3
 #radius=2
 """ % locals()
@@ -3661,6 +3759,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         # manual writing row-by-row should save quite a bit of memory
         logging.info("Writing gene-by-gene, without using pandas")
         ofh = open(tmpFname, "w")
+
         sampleNames = ad.obs.index.tolist()
         ofh.write("gene\t")
         ofh.write("\t".join(sampleNames))
@@ -3720,7 +3819,7 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
 
-    # single-cell clusters crash rank_genes, so remove their cells
+    # cell clusters with a cell count = 1 crash rank_genes, so remove their cells
     clusterCellCounts = list(adata.obs.groupby([clusterField]).apply(len).iteritems())
     filterOutClusters = [cluster for (cluster,count) in clusterCellCounts if count==1]
     if len(filterOutClusters)!=0:
@@ -3743,6 +3842,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     :param anndata: Scanpy AnnData object where information are stored
     :param path : Path to folder where to save data (tsv tables)
     :param clusterField: name of cluster field, used for labeling and default coloring, default is 'louvain'
+    :param coordFields: list of obsm coordinates to export, default is all
     :param metaFields: list of metadata names (string) to export
     from the AnnData object (other than 'louvain' to also save (eg: batches, ...)).
     This can also be a dict of name -> label, if you want to have more human-readable names.
@@ -3767,14 +3867,9 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         matFname = join(path, 'exprMatrix.tsv.gz')
         anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
 
-    if coordFields=="all" or coordFields is None:
-        coordFields = coordLabels
-    coordsFields = makeDictDefaults(coordFields, coordLabels)
-
     coordDescs = []
 
-    for layoutCode, layoutName in coordFields.items():
-        writeAnndataCoords(adata, layoutCode, path, layoutCode, layoutName, coordDescs)
+    writeAnndataCoords(adata, coordFields, path, coordDescs)
 
     if len(coordDescs)==0:
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
@@ -3782,8 +3877,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     ##Check for cluster markers
     if markerField not in adata.uns:
         logging.warn("Couldnt find list of cluster marker genes in the h5ad file in adata.uns with the key '%s'. "
-        "In the future, from Python, try running sc.tl.rank_genes_groups(adata) to "
-        "create the cluster annotation and keep it in the object." % markerField)
+            "In the future, from Python, try running sc.tl.rank_genes_groups(adata) to "
+            "create the cluster annotation and write the h5ad file then." % markerField)
         addMarkers = False
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
         adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
@@ -3877,7 +3972,7 @@ def writeJson(data, outFname, ignoreKeys=None):
             outfile.write(str_)
         else:
             str_ = json.dumps(data, indent=2, separators=(',', ': '), ensure_ascii=False, encoding="utf8")
-            outfile.write(unicode(str_))
+            outfile.write(unicode(str_)) # pylint: disable=E0602
 
     if ignoreKeys:
         data.update(ignoredData)
@@ -3940,21 +4035,6 @@ def cbBuild(confFnames, outDir, port=None):
     " stay compatible with old name "
     build(confFnames, outDir, port)
 
-def findCollConfig(childConfFname, collName):
-    " find the cellbrowser.conf given a collName and an input directory "
-    #collBaseDir = getConfig("collDir")
-    #collFname = join(collBaseDir, collName, "cellbrowser.conf")
-    #if isfile(collFname):
-        #logging.debug("collection found at via collDir config statement, %s" % collFname)
-        #return collFname
-
-    parentFname = join(dirname(dirname(abspath(childConfFname))), "cellbrowser.conf")
-    if isfile(parentFname):
-        logging.debug("collection found at parent dir %s" % parentFname)
-        return parentFname
-
-    errAbort("could not find config for collection %s: neither %s, not %s exists" % (collName, collFname, parentFname))
-
 # make sure we don't parse a conf file twice
 confCache = {}
 
@@ -3979,6 +4059,10 @@ def findParentConfigs(inFname, dataRoot, currentName):
         fnameList.append(confFname)
         logging.debug("Found parent config at %s" % confFname)
         if confFname not in confCache:
+            if not isfile(confFname):
+                errAbort("The file %(confFname)s does not exist. It is a parent description of %(inFname)s. "\
+                        "Since you are using dataset hierarchies, every child dataset has parent directories, "\
+                        "and they all require a cellbrowser.conf with at least a shortLabel." % locals())
             c = loadConfig(confFname, ignoreName=True)
             if path==dataRoot:
                 c["name"] = ""
@@ -4058,11 +4142,23 @@ def findRoot(inDir=None):
 
     return dataRoot
 
+def resolveOutDir(outDir):
+    """ user can define mapping e.g. {"alpha" : "/usr/local/apache/htdocs-cells"} in ~/.cellbrowser.conf """
+    confDirs = getConfig("outDirs")
+    if outDir in confDirs:
+        outDir = confDirs[outDir]
+    return outDir
+
 def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None):
     " build browser from config files confFnames into directory outDir and serve on port "
+    outDir = resolveOutDir(outDir)
+
     if outDir=="" or outDir==None:
         outDir = defOutDir
     outDir = expanduser(outDir)
+
+    if not isdir(outDir):
+        errAbort("The directory %s does not exist. Please run 'mkdir %s' and re-run cbBuild" % (outDir, outDir))
 
     setDebug(doDebug)
     if type(confFnames)==type(""):
@@ -4086,7 +4182,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         dataRoot = findRoot(inConfFname)
         if dataRoot:
             if "name" in inConf:
-                logging.info("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
+                logging.debug("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
             logging.debug("Deriving dataset name from path")
             inConf["name"] = basename(dirname(abspath(inConfFname)))
 
@@ -4302,7 +4398,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     if matrixFname.endswith(".mtx.gz"):
         errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
 
-    if matrixFname.endswith(".mtx"):
+    if matrixFname.endswith(".h5ad"):
+        adata = sc.read(matrixFname, cache=False)
+
+    elif matrixFname.endswith(".mtx"):
         import pandas as pd
         logging.info("Loading expression matrix: mtx format")
         adata = sc.read(matrixFname, cache=False).T
@@ -4331,10 +4430,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         adata = sc.read_10x_h5(matrixFname, genome=genome)
 
     else:
-        logging.info("Loading expression matrix: scanpy-supported format, like h5ad, loom, tab-separated, etc.")
+        logging.info("Loading expression matrix: scanpy-supported format, like loom, tab-separated, etc.")
         adata = sc.read(matrixFname, first_column_names=True)
         if not samplesOnRows:
-            logging.debug("Scanpy defaults to samples on lines, so transposing the expression matrix")
+            logging.info("Scanpy defaults to samples on lines, so transposing the expression matrix, use --samplesOnRows to change this")
             adata = adata.T
 
     return adata
@@ -4471,8 +4570,6 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         # we need at least a name, an md5 and a shortLabel
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
-        #if not "name" in datasetDesc: # every dataset has to have a name
-            #errAbort("Dataset config %s must have a 'name' field." % fname)
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -4613,12 +4710,26 @@ def summarizeDatasets(datasets):
             logging.debug("Hiding dataset %s" % ds["name"])
             continue
 
+        # these must always be present
         summDs = {
             "shortLabel" : ds["shortLabel"],
             "name" : ds["name"],
             "md5" : ds["md5"]
         }
 
+        # these are copied if they are present
+        #copyTags = ["body_parts"]
+        #for t in copyTags:
+            #if t in ds:
+                #summDs[t] = ds[t]
+
+        # these are copied and checked for the correct type
+        for optListTag in ["tags", "hasFiles", "body_parts"]:
+            if optListTag in ds:
+                assert(type(ds[optListTag])==type([])) # has to be a list
+                summDs[optListTag] = ds[optListTag]
+
+        # these are generated
         if "sampleCount" in ds:
             summDs["sampleCount"] = ds["sampleCount"]
         else:
@@ -4637,15 +4748,6 @@ def summarizeDatasets(datasets):
                 summDs["datasetCount"] = dsCount
             if collCount!=0:
                 summDs["collectionCount"] = collCount
-
-        for optListTag in ["tags", "hasFiles"]:
-            if optListTag in ds:
-                assert(type(ds[optListTag])==type([])) # has to be a list
-                summDs[optListTag] = ds[optListTag]
-
-            #for optTag in ["visibility"]:
-                #if optTag in ds:
-                    #summDs[optTag] = ds[optTag]
 
         dsList.append(summDs)
 
@@ -4760,6 +4862,8 @@ def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
 
+    outDir = resolveOutDir(outDir)
+
     if doData:
         dataRoot = findRoot()
         if not dataRoot:
@@ -4826,7 +4930,7 @@ def excepthook(type, value, traceback):
 def checkLayouts(conf):
     """ it's very easy to get the layout names wrong: check them and handle the special value 'all' """
     if "doLayouts" not in conf:
-        return ["tsne", "umap", "drl"]
+        return ["tsne", "drl", "umap"]
 
     doLayouts = conf["doLayouts"]
     if doLayouts=="all":
@@ -4860,18 +4964,26 @@ def addMetaToAnnData(adata, fname):
     logging.info("Adding meta data from %s to anndata object" % fname)
     import pandas as pd
     df1 = adata.obs
-    df2 = pd.read_csv(fname, sep="\t", index_col=0)
+
+    sep = sepForFile(fname)
+    df2 = pd.read_csv(fname, sep=sep, index_col=0)
 
     ids1 = set(df1.index)
     ids2 = set(df2.index)
     commonIds = ids1.intersection(ids2)
     logging.info("Meta data from %s has %d cell identifiers in common with anndata" % (fname, len(commonIds)))
     if len(commonIds)==0:
-        errAbort("Vales in first column in file %s does not seem to match the cell IDs from the expression matrix" % fname)
+        l1 = list(sorted(ids1))
+        l2 = list(sorted(ids2))
+        errAbort("Values in first column in file %s does not seem to match the cell IDs from the expression matrix. Examples: expression matrix: %s, meta data: %s" % (fname, l1[:3], l2[:3]))
 
-    df3 = df1.join(df2, how="left")
-    logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
-    adata.obs = df3
+    try:
+        df3 = df1.join(df2, how="left")
+        adata.obs = df3
+        logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
+    except ValueError:
+        logging.warn("Could not merge h5ad and meta data, skipping h5ad meta and using only provided meta. Most likly this happens when the field names in the h5ad and the meta file overlap")
+        adata.obs = df2
 
     #if len(adata.obs)!=len(df):
         #errAbort("The number of cells in the expression matrix does not match the number of lines in '%s'" % fname)
@@ -5042,10 +5154,6 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
             obsFields = list(adata.obs.columns.values)
             if "n_genes" in obsFields: # n_counts is always there
                 sc.pl.violin(adata, ['n_genes', 'n_counts', 'percent_mito'], jitter=0.4, multi_panel=True)
-                #fig1 = sc.pl.scatter(adata, x='n_counts', y='n_genes', save="_gene_count")
-
-                #if "n_counts" in obsFields:
-                    #fig2 = sc.pl.scatter(adata, x='n_counts', y='percent_mito', save="_percent_mito")
 
             adata = adata[adata.obs['percent_mito'] < thrsh_mito, :]
 
@@ -5080,11 +5188,6 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         minMean = conf["varMinMean"]
         maxMean = conf["varMaxMean"]
         minDisp = conf["varMinDisp"]
-        #pipeLog('Finding highly variable genes: min_mean=%f, max_mean=%f, min_disp=%f' % (minMean, maxMean, minDisp))
-        #filter_result = sc.pp.filter_genes_dispersion(adata.X, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
-        #sc.pl.filter_genes_dispersion(filter_result)
-        #adata = adata[:, filter_result.gene_subset]
-        #pipeLog('Number of variable genes identified: %d' % sum(filter_result.gene_subset))
         pipeLog('Finding highly variable genes')
         sc.pp.highly_variable_genes(adata, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
         sc.pl.highly_variable_genes(adata)
@@ -5105,16 +5208,21 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         pipeLog('Scaling data, max_value=%d' % maxValue)
         sc.pp.scale(adata, max_value=maxValue)
 
-    allPcCount = 100
-    pipeLog('Performing initial PCA, number of PCs: %d' % allPcCount)
-    sc.tl.pca(adata, n_comps=allPcCount)
+    pcCount = conf["pcCount"]
+
+    if pcCount=="auto":
+        firstPcCount = 100
+    else:
+        firstPcCount = pcCount
+
+    pipeLog('Performing initial PCA, number of PCs: %d' % firstPcCount)
+    sc.tl.pca(adata, n_comps=firstPcCount)
     #Multiply by -1 to compare with Seurat
     #adata.obsm['X_pca'] *= -1
     #Plot of pca variance ratio to see if formula matches visual determination of pc_nb to use
     sc.pl.pca_variance_ratio(adata, log=True)
 
     #Computing number of PCs to be used in clustering
-    pcCount = conf["pcCount"]
     if pcCount == "auto":
         pipeLog("Estimating number of useful PCs based on Shekar et al, Cell 2016")
         pipeLog("PC weight cutoff used is (sqrt(# of Genes/# of cells) + 1)^2")
@@ -5292,8 +5400,12 @@ This dataset was created by a generic Scanpy pipeline run through cbScanpy.
 
     # always overwrite the parameters
     if algParams:
-        algParams = list(algParams.items())
-        c["algParams"] = algParams
+        params = {}
+        # the version param in scanpy suddenly is not a string anymore
+        # make absolutely sure that we have no non-strings in this dict
+        for key, val in algParams.items():
+            params[str(key)] = str(val)
+        c["algParams"] = params
 
     writePyConf(c, outFname)
 
@@ -5372,10 +5484,17 @@ def cbScanpyCli():
     skipMatrix = options.skipMatrix
     datasetName=options.name
 
+    if datasetName is None:
+        datasetName = basename(dirname(abspath(outDir)))
+        logging.info("no dataset name provided, using '%s' as dataset name" % datasetName)
+
     checkDsName(datasetName)
 
     if copyMatrix and not matrixFname.endswith(".gz"):
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
+    if copyMatrix and matrixFname.endswith(".csv.gz"):
+        errAbort("If you use the --copyMatrix option, the input matrix cannot be a .csv.gz file. Please convert to .tsv.gz")
+
 
     makeDir(outDir)
 
@@ -5424,7 +5543,7 @@ def open10xMtxForRows(mtxFname, geneFname, barcodeFname):
     import scipy.io
 
     genes, barcodes = readGenesBarcodes(geneFname, barcodeFname)
-    logging.info("Loading expression matrix...")
+    logging.info("Loading expression matrix from %s..." % mtxFname)
     mat = scipy.io.mmread(mtxFname)
 
     logging.info("Dimensions of matrix: %d , %d" % mat.shape)

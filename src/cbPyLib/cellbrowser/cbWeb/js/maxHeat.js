@@ -434,10 +434,20 @@ function MaxHeat(div, args) {
     this.optimalLeaf = function () {
         /* order rows and columns with the optimalLeaf algorithm */
         console.time("heatmap optimal leaf ordering");
-        let orderFunc = reorder.optimal_leaf_order();
-        self.rowOrder = orderFunc(self.rows);
-        let cols = reorder.transpose(self.rows);
-        self.colOrder = orderFunc(cols);
+         if (self.rows.length == 1) { // if there's just one row, fudge the ordering
+            self.rowOrder = [0];
+            let colCount = self.rows[0].length;
+            self.colOrder = [];
+            for (var colIdx=0; colIdx < colCount; colIdx++) {
+                self.colOrder[colIdx] = colIdx;
+            }
+        } else {
+            let orderFunc = reorder.optimal_leaf_order();
+            self.rowOrder = orderFunc(self.rows);
+            let cols = reorder.transpose(self.rows);
+            self.colOrder = orderFunc(cols);
+        }
+
         console.timeEnd("heatmap optimal leaf ordering");
     };
 

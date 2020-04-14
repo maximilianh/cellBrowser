@@ -1,7 +1,7 @@
 # a wrapper around the R library Seurat
 
 import logging, optparse, sys, glob, os, datetime, shutil
-from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
+from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser, splitext
 
 from .cellbrowser import copyPkgFile, writeCellbrowserConf, pipeLog, makeDir, maybeLoadConfig, errAbort, popen
 from .cellbrowser import setDebug, build, isDebugMode, generateHtmls, runCommand
@@ -80,7 +80,8 @@ def getSeuratVersion():
         logging.debug("version is %s", verStr)
         return verStr
 
-def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath):
+def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
+        datasetName, outDir, threadCount):
     " write the seurat R script to a file "
     checkRVersion()
 
@@ -106,8 +107,13 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     cmds.append('print("Seurat: Reading data")')
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
+    if threadCount > 0:
+        cmds.append('print("Using %d cores")")' % threadCount)
+        cmds.append("library(future)")
+        cmds.append('plan(strategy = "multicore", workers = %d)' % threadCount)
     cmds.append('print("Seurat: Reading data")')
     cmds.append('print("Loading input data matrix")')
+    readExportScript(cmds) # add the ExportToCellbrowser function to cmds
 
     writeMatrix = False
     if isfile(inData):
@@ -150,24 +156,24 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     cmds.append('sobj') # print size of the matrix
 
     # export the matrix as a proper .tsv.gz
-    if matrixPath:
-        cmds.append('print("Writing expression matrix to %s")' % matrixPath)
-        if isdir(matrixPath):
-            matrixDir = matrixPath
-            mtxFname = join(matrixDir, "matrix.mtx.gz")
-            geneFname = join(matrixDir, "genes.tsv")
-            barcodeFname = join(matrixDir, "barcodes.tsv")
-            cmds.append("writeMM(mat, '%s')" % mtxFname)
-            cmds.append('write(rownames(mat), file = "%s")' % geneFname)
-            cmds.append('write(colnames(mat), file = "%s")' % barcodeFname)
-            # annoyingly, writeMM doesn't support connections
-            cmds.append("gzip('%s')" % matrixPath)
-            cmds.append("gzip('%s')" % geneFname)
-            cmds.append("gzip('%s')" % barcodeFname)
-        else:
-            cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
-            cmds.append('z <- gzfile("%s")' % matrixPath)
-            cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
+    #if matrixPath:
+    #    cmds.append('print("Writing expression matrix to %s")' % matrixPath)
+    #    if isdir(matrixPath):
+    #        matrixDir = matrixPath
+    #        mtxFname = join(matrixDir, "matrix.mtx.gz")
+    #        geneFname = join(matrixDir, "genes.tsv")
+    #        barcodeFname = join(matrixDir, "barcodes.tsv")
+    #        cmds.append("writeMM(mat, '%s')" % mtxFname)
+    #        cmds.append('write(rownames(mat), file = "%s")' % geneFname)
+    #        cmds.append('write(colnames(mat), file = "%s")' % barcodeFname)
+    #        # annoyingly, writeMM doesn't support connections
+    #        cmds.append("gzip('%s')" % matrixPath)
+    #        cmds.append("gzip('%s')" % geneFname)
+    #        cmds.append("gzip('%s')" % barcodeFname)
+    #    else:
+    #        cmds.append('dataFrame <- as.data.frame(as.matrix(mat))')
+    #        cmds.append('z <- gzfile("%s")' % matrixPath)
+    #        cmds.append("write.table(dataFrame, z, quote=FALSE, sep='\t', eol='\n', col.names=NA, row.names=TRUE)")
         # we MUST USE the raw matrix, so we use the mat object, not sobj, because otherwise
         # some of our markers won't even be in the final matrix. Very strange. Ask Andrew?
         #cmds.append('dataFrame <- as.data.frame(as.matrix(sobj@raw.data))') # raw counts, really not filtered?
@@ -184,7 +190,8 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
         cmds.append('sobj <- AddMetaData(object = sobj, metadata = percent.mito, col.name = "percent.mito")')
 
     if isSeurat3:
-        cmds.append('VlnPlot(object = sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), nCol = 3)')
+        #cmds.append('VlnPlot(object = sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), nCol = 3)')
+        pass
         #cmds.append('plot1 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt")')
         #cmds.append('plot2 <- FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")')
         #cmds.append('CombinePlots(plots = list(plot1, plot2))')
@@ -269,65 +276,45 @@ def writeSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath, 
     cmds.append('print("Finding clusters with resolution %f")' % louvainRes)
     #cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", dims.use = 1:pcCount, resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
     if isSeurat3:
-        cmds.append('sobj <- FindNeighbors(sobj)')
+        cmds.append('sobj <- FindNeighbors(sobj, dims=%d)' % (min(10, pcCountConfig)))
         cmds.append('sobj <- FindClusters(sobj, resolution = %f)' % louvainRes)
     else:
         cmds.append('sobj <- FindClusters(object = sobj, reduction.type = "pca", resolution = %f, print.output = 0, save.SNN = TRUE)' % (louvainRes))
         cmds.append("PrintFindClustersParams(object = sobj)")
-
 
     cmds.append('print("Running t-SNE")')
     #cmds.append("sobj <- RunTSNE(object = sobj, dims.use = 1:pcCount, do.fast = TRUE)")
     # "duplicate" = samples with identicals PC coordinates, more likely with big datasets
     perplexity = str(conf.get("perplexity", 30))
 
+    doUmap = conf.get("doUmap", False)
     if isSeurat3:
         cmds.append("sobj <- RunTSNE(sobj, perplexity=%s)" % perplexity)
-        cmds.append("sobj <- RunUMAP(sobj)")
+        if doUmap:
+            cmds.append("sobj <- RunUMAP(sobj, dims=1:%s)" % str(pcCountConfig))
     else:
         cmds.append("sobj <- RunTSNE(object = sobj, do.fast = TRUE, check_duplicates=FALSE, perplexity=%s)" % perplexity)
         cmds.append("TSNEPlot(object = sobj, doLabel=T)")
 
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)
+    #cmds.append('print("Finding markers")')
+    #cmds.append('if (!is.null(sobj@misc["markers"])) {')
+    #cmds.append('   all.markers <- sobj@misc["markers"]')
+    #cmds.append('} else {')
     cmds.append('print("Finding markers")')
-    cmds.append('if (!is.null(sobj@misc["markers"])) {')
-    cmds.append('   all.markers <- sobj@misc["markers"]')
-    cmds.append('} else {')
     if isSeurat3:
-        cmds.append('    all.markers <- FindAllMarkers(object = sobj)')
-        cmds.append('    sobj@misc["markers"] <- all.markers')
-    else:
-        cmds.append('    all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
-
-    cmds.append('}')
-    cmds.append('write.table(all.markers, "%s", quote=FALSE, sep="\t", col.names=NA)' % markerPath)
+        cmds.append('all.markers <- FindAllMarkers(object = sobj)')
+        cmds.append('sobj@misc[["markers"]] <- all.markers')
+        #cmds.append('all.markers <- FindAllMarkers(object = sobj, min.pct = %f, only.pos=TRUE, thresh.use=0.25)' % minMarkerPerc)
 
     cmds.append('print("Saving .rds to %s")' % rdsPath)
     cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
-    # export the data to tsvs
-    if isSeurat3:
-        #cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        #cmds.append('umap12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        pass
+    cmds.append("message('Exporting Seurat data object to cbBuild directory %s')" % outDir)
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', all.meta=TRUE, use.mtx=T, matrix.slot='%s')" %
+            (outDir, datasetName, "counts"))
 
-    else:
-        cmds.append('tsne12 <- FetchData(sobj, c("tSNE_1", "tSNE_2"))')
-        cmds.append('clusters <- FetchData(sobj,c("ident"))')
-        cmds.append('PrintCalcParams(sobj, calculation = "RunPCA")')
-        cmds.append('PrintCalcParams(sobj, calculation = "RunTSNE")')
-
-    cmds.append('colnames(clusters) <- c("cellId\tCluster")')
-    cmds.append('write.table(tsne12, "%s", quote=FALSE, sep="\t", col.names=NA)' % tsnePath)
-    cmds.append('write.table(clusters, "%s", quote=FALSE, sep="\t")' % clusterPath)
-    # marker file is the flag file for successful operation
-
-
-    ofh = open(scriptPath, "w")
-    for c in cmds:
-        ofh.write(c+"\n")
-    ofh.close()
-    logging.info("Wrote R code to %s" % scriptPath)
+    writeRScript(cmds, scriptPath, "cbSeurat")
 
 def cbSeurat2Cli():
     " stay backwards compatible "
@@ -354,6 +341,7 @@ def cbSeuratCli():
     outDir = options.outDir
     inConfFname = options.confFname
     datasetName = options.name
+    threadCount = options.threadCount
 
     makeDir(outDir)
 
@@ -375,7 +363,8 @@ def cbSeuratCli():
         confArgs["exprMatrix"] = inMatrix
         matrixPath = None
 
-    writeSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath)
+    writeCbSeuratScript(inConf, inMatrix, tsnePath, clusterPath, markerPath, rdsPath, matrixPath, scriptPath,
+            datasetName, outDir, threadCount)
     runRscript(scriptPath, logPath)
 
     if not isfile(markerPath):
@@ -399,14 +388,17 @@ def cbImportSeurat_parseArgs(showHelp=False):
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages. Also activates debug() in the generated R script.")
 
-    parser.add_option("-i", "--inRds", dest="inRds", action="store",
-        help="input .rds file. Required parameter")
+    parser.add_option("-i", "--in", dest="inFname", action="store",
+        help="input file. Required parameter")
 
     parser.add_option("-o", "--outDir", dest="outDir", action="store",
         help="Output directory. Required parameter")
 
     parser.add_option("-n", "--name", dest="datasetName", action="store",
         help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
+
+    parser.add_option("-f", "--inFormat", dest="inFormat", action="store", 
+            help="the format of the input file. Either 'rds' or 'rdata'. Default %default. If input filename ends with .rdata or .robj, defaults to rdata.", default="rds")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -419,6 +411,9 @@ def cbImportSeurat_parseArgs(showHelp=False):
             default = False,
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same outDir directory")
+
+    parser.add_option("", "--threads", dest="threadCount", action="store", type="int", default=0,
+            help="activate multiprocess strategy, default thread count is 0, which uses no multithreading")
 
     parser.add_option("-m", "--skipMarkers", dest="skipMarkers", action="store_true",
             default = False,
@@ -467,16 +462,18 @@ def writeRScript(cmds, scriptPath, madeBy):
         ofh.write(c)
         ofh.write("\n")
     ofh.close()
+    logging.info("Wrote R script to %s" % scriptPath)
 
-def cbImportSeurat(rdsPath, outDir, datasetName, options):
-    " convert Seurat 2 or 3 .rds file to tab-sep directory for cellbrowser "
-    logging.info("inFname: %s, outDir: %s, datasetName: %s" % (rdsPath, outDir, datasetName))
+def cbImportSeurat(inFname, outDir, datasetName, options):
+    " convert Seurat 2 or 3 .rds/.rdata file to tab-sep directory for cellbrowser "
+    logging.info("inFname: %s, outDir: %s, datasetName: %s" % (inFname, outDir, datasetName))
 
     makeDir(outDir)
 
     skipMatrix = options.skipMatrix
     skipMarkers = options.skipMarkers
     clusterField = options.clusterField
+    inFormat = options.inFormat
     markerFile = options.markerFile
     if markerFile is None:
         markerFileStr = "NULL"
@@ -495,8 +492,18 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
 
     cmds = readExportScript(cmds)
 
-    cmds.append("message('Reading %s')" % rdsPath)
-    cmds.append("sobj <- readRDS(file='%s')" % rdsPath)
+    inExt = splitext(inFname.lower())[1]
+    if inExt in [".robj", ".rdata"]:
+        inFormat="rdata"
+
+    if inFormat=="rds":
+        cmds.append("message('Reading %s as .rds file')" % inFname)
+        cmds.append("sobj <- readRDS(file='%s')" % inFname)
+    else:
+        cmds.append("message('Reading %s as .RData file, using first object as Seurat object')" % inFname)
+        cmds.append("names <- load('%s')" % inFname)
+        cmds.append("sobj <- get(names[1])")
+
     cmds.append("if (class(sobj)!='seurat' && class(sobj)[1]!='Seurat') { stop('The input .rds file does not seem to contain a Seurat object') }")
     skipStr = str(skipMatrix).upper()
     skipMarkerStr = str(skipMarkers).upper()
@@ -526,11 +533,12 @@ def cbImportSeurat(rdsPath, outDir, datasetName, options):
     if not isfile(metaPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
-    rdsOutPath = join(outDir, "seurat.rds")
-    logging.info("Copying %s to %s" % (rdsPath, rdsOutPath))
-    shutil.copyfile(rdsPath, rdsOutPath)
-    #cbConfPath = join(outDir, "cellbrowser.conf")
-    #coords = [{'shortLabel':'t-SNE', 'file':'tsne.coords.tsv'}]
+    if inFormat=="rds":
+        rdsOutPath = join(outDir, "seurat.rds")
+        logging.info("Copying %s to %s" % (inFname, rdsOutPath))
+        shutil.copyfile(inFname, rdsOutPath)
+
+    cbConfPath = join(outDir, "cellbrowser.conf")
     #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
     generateHtmls(datasetName, outDir)
@@ -539,7 +547,7 @@ def cbImportSeuratCli():
     " convert .rds to directory "
     args, options = cbImportSeurat_parseArgs()
 
-    inFname = options.inRds
+    inFname = options.inFname
     outDir = options.outDir
     if None in [inFname, outDir]:
         cbImportSeurat_parseArgs(showHelp=True)

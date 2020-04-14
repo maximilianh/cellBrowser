@@ -308,11 +308,17 @@ function CbDbFile(url) {
                 onDone(binData, meta, labelMids);
         }
 
+        if (self.conf.coords.length===0 || self.conf.coords===undefined) {
+            alert("There are no coordinates defined in the dataset.json config file. Please add at least one coordinates file to cellbrowser.conf and run cbBuild again with the same html output directory.")
+            return;
+        }
+
         var coordInfo = self.conf.coords[coordIdx];
         if (coordInfo===null) {
            alert("Could not find coordinates with name "+this.coordName);
            return;
         }
+
         var binUrl = cbUtil.joinPaths([self.url, "coords", coordInfo.name, "coords.bin"]);
         if (coordInfo.md5)
             binUrl += "?"+coordInfo.md5
@@ -376,7 +382,20 @@ function CbDbFile(url) {
         function onMetaDone(comprBytes, metaInfo) {
             self.metaCache[metaInfo.name] = comprBytes; 
             var ArrType = cbUtil.makeType(metaInfo.arrType);
-            var bytes = pako.ungzip(comprBytes);
+
+            var bytes = comprBytes; // some Apache/InternetBrowser combinations silently uncompress
+            var comprView = new Uint8Array(comprBytes);
+            // magic bytes of gzip are 1f, 8b, and we assume little endianess
+            if (comprView[0]===0x1f && comprView[1]===0x8b) {
+                try {
+                    bytes = pako.ungzip(comprBytes);
+                }
+                catch(err) {
+                    alert("Error when decompressing a file. This has to do with your Apache config or your "+
+                             " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
+                }
+            }
+
             var buffer = bytes.buffer;
             var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
@@ -396,15 +415,16 @@ function CbDbFile(url) {
         if ((self.allMeta!==undefined) && (metaInfo.name in self.allMeta)) {
             console.log("Found in uncompressed cache");
             onDone(self.allMeta[metaInfo.name], metaInfo, otherInfo);
+            return;
         }
-
-        if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
+        else if ((self.metaCache!==undefined) && (metaInfo.name in self.metaCache)) {
             console.log("Found in compressed cache");
             onMetaDone(self.metaCache[metaInfo.name], metaInfo);
+            return;
         }
-
         else {
             self._startMetaLoad(metaInfo, null, onMetaDone, onProgress, metaInfo);
+            return;
         }
     };
 

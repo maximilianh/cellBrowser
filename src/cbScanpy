@@ -5,7 +5,7 @@
 # everything as tab-sep files
 from os.path import join, dirname
 import sys
-sys.path.append( join(dirname(__file__), "cbPyLib") )
+sys.path.insert(0,  join(dirname(__file__), "cbPyLib") )
 from cellbrowser import cellbrowser
 
 cellbrowser.cbScanpyCli()
