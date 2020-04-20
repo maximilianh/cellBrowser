@@ -3769,8 +3769,8 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
         if "gene_ids" in var:
             geneIdObj = var["gene_ids"]
-            geneIdAndSyms = zip(geneIdObj.values, geneIdObj.index)
-            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+            geneIdAndSyms = list(zip(geneIdObj.values, geneIdObj.index))
+            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
         elif "gene_symbols" in var:
             geneIdObj = var['gene_symbols']
             geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
@@ -3881,6 +3881,26 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
             "create the cluster annotation and write the h5ad file then." % markerField)
         addMarkers = False
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
+        if "columns" in dir(adata.obs): # in older scanpy objects obs is not a pandas dataframe
+            if clusterField not in adata.obs.columns:
+                tryFields = ["CellType", "cell_type", "Celltypes", "Cell_type", "celltype", "annotated_cell_identity.text"]
+                logging.info("Cluster field '%s' not in adata.obs, trying %s" % (clusterField, tryFields))
+                foundField = None
+                for fieldName in tryFields:
+                    if fieldName in adata.obs.columns:
+                        logging.info("Found field '%s', using it as the cell cluster field." % fieldName)
+                        foundField = fieldName
+                if foundField is None:
+                    errAbort("Could not find field '%s' in the scanpy object. To make a cell browser, you should have a "
+                    " field like 'cluster' or "
+                    "'celltype' or 'louvain' in your object. The available fields are: %s ."
+                    "Re-run the import and specify the field that contains cell-type-like annotations with the "
+                    "option --clusterField from the command line or clusterField='xxx' from Jupyter. "
+                    "If you have a use case where this field should not be required, please contact us. "
+                    % (clusterField, repr(adata.obs.columns)))
+
+                clusterField = foundField
+
         adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
@@ -4158,7 +4178,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     outDir = expanduser(outDir)
 
     if not isdir(outDir):
-        errAbort("The directory %s does not exist. Please run 'mkdir %s' and re-run cbBuild" % (outDir, outDir))
+        logging.warn("The directory %s does not exist. Making a new directory now." % (outDir))
 
     setDebug(doDebug)
     if type(confFnames)==type(""):

@@ -25,6 +25,9 @@ def parseArgs():
     parser.add_option("-c", "--confFname", dest="confFname", action="store", default="seurat.conf", 
             help="config file from which settings are read, default is %default")
 
+    parser.add_option("", "--threadCount", dest="threadCount", action="store", type="int",
+            help="Number of threads to use via the future library. Default is not use multithreading, so there is no requirement for future library")
+
     #parser.add_option("-s", "--samplesOnRows", dest="samplesOnRows", action="store_true",
             #help="when reading the expression matrix from a text file, assume that samples are on lines (default behavior is one-gene-per-line, one-sample-per-column)")
 
@@ -107,7 +110,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('print("Seurat: Reading data")')
     cmds.append("library(methods)")
     cmds.append("suppressWarnings(suppressMessages(library(Seurat)))")
-    if threadCount > 0:
+    if threadCount!=None and threadCount > 0:
         cmds.append('print("Using %d cores")")' % threadCount)
         cmds.append("library(future)")
         cmds.append('plan(strategy = "multicore", workers = %d)' % threadCount)
