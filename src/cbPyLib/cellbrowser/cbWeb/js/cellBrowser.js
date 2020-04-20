@@ -2151,7 +2151,7 @@ var cellbrowser = function() {
          htmls.push('<li class="dropdown">');
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">Tools</a>');
          htmls.push('<ul class="dropdown-menu">');
-         htmls.push('<li><a href="#" id="tpRenameClusters">Rename clusters...<span class="dropmenu-item-content"></span></a></li>');
+         //htmls.push('<li><a href="#" id="tpRenameClusters">Rename clusters...<span class="dropmenu-item-content"></span></a></li>');
          htmls.push('<li><a href="#" id="tpCustomAnnots">Remove all custom annotations<span class="dropmenu-item-content"></span></a></li>');
          //htmls.push('<li><a href="#" id="tpCluster">Run clustering...<span class="dropmenu-item-content"></span></a></li>');
          htmls.push('</ul>'); // Tools dropdown-menu
@@ -2660,10 +2660,10 @@ var cellbrowser = function() {
 
        // label text can be overriden by the user cart
        var labelField = db.conf.labelField;
-       if (labelField) {
-           var metaInfo = db.findMetaInfo(labelField);
-           var oldToNew = makeLabelRenames(metaInfo);
-        }
+       //if (labelField) {
+           //var metaInfo = db.findMetaInfo(labelField);
+           //var oldToNew = makeLabelRenames(metaInfo);
+        //}
 
        if (clusterInfo) {
            var origLabels = [];
@@ -2676,7 +2676,8 @@ var cellbrowser = function() {
                var labelInfo = clusterMids[i];
                var oldName = labelInfo[2];
                origLabels.push(oldName);
-               var newName = oldToNew[oldName];
+               //var newName = oldToNew[oldName];
+               var newName = oldName; // XXX
                labelInfo[2] = newName;
            }
            renderer.origLabels = origLabels;
@@ -5079,48 +5080,48 @@ var cellbrowser = function() {
     function onLegendLabelClick(ev) {
     /* called when user clicks on legend entry. */
 
-        function saveLabel() {
-            /* save the current labelEl text to the cart and update everything */
-            $(".tooltip").remove(); // not sure why tooltips won't disappear here
-            labelEl.removeAttr("contenteditable");
-            var newLabel = labelEl.text(); // = strip the rich text tags possibly added through copy/paste
-            var metaInfo = gLegend.metaInfo;
-            cartFieldArrayUpdate(db, metaInfo, "shortLabels", legendId, newLabel);
-            legendUpdateLabels(gLegend.metaInfo.name);
-            rendererUpdateLabels(metaInfo);
-            buildLegendBar();
-            renderer.drawDots();
-        }
+        //function saveLabel() {
+            ///* save the current labelEl text to the cart and update everything */
+            //$(".tooltip").remove(); // not sure why tooltips won't disappear here
+            //labelEl.removeAttr("contenteditable");
+            //var newLabel = labelEl.text(); // = strip the rich text tags possibly added through copy/paste
+            //var metaInfo = gLegend.metaInfo;
+            //cartFieldArrayUpdate(db, metaInfo, "shortLabels", legendId, newLabel);
+            //legendUpdateLabels(gLegend.metaInfo.name);
+            //rendererUpdateLabels(metaInfo);
+            //buildLegendBar();
+            //renderer.drawDots();
+        //}
 
         var legendId = parseInt(ev.target.id.split("_")[1]);
         var colorIndex = gLegend.rows[legendId].intKey;
 
-        if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
+        //if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
             // user clicked the same entry as before: 
-            gLegend.lastClicked = null;
-                $('#tpLegend_'+legendId).removeClass('tpLegendSelect');
-                renderer.selectClear();
-        }
-        else {
+            //gLegend.lastClicked = null;
+                //$('#tpLegend_'+legendId).removeClass('tpLegendSelect');
+                //renderer.selectClear();
+        //}
+        //else {
             // clear the old selection
-            if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey) {
-                renderer.selectClear();
-                $('.tpLegend').removeClass('tpLegendSelect');
-            }
+            //if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey) {
+                //renderer.selectClear();
+                //$('.tpLegend').removeClass('tpLegendSelect');
+            //}
             $("#tpLegendCheckbox_"+colorIndex).prop("checked", true);
             renderer.selectByColor(colorIndex);
             //menuBarShow("#tpFilterButton");
             //menuBarShow("#tpOnlySelectedButton");
-            $('#tpLegend_'+legendId).addClass('tpLegendSelect');
-            gLegend.lastClicked=legendId;
+            //$('#tpLegend_'+legendId).addClass('tpLegendSelect');
+            //gLegend.lastClicked=legendId;
             clearSelectionState();
-            if (gLegend.type==="meta" && gLegend.metaInfo.type==="enum") {
-                let fieldName = gLegend.metaInfo.name;
-                let fieldVal = gLegend.metaInfo.valCounts[colorIndex][0];
-                let queryList = [{"m":fieldName, "eq":fieldVal}];
-                saveQueryList(queryList);
-            }
-        }
+            //if (gLegend.type==="meta" && gLegend.metaInfo.type==="enum") {
+                //let fieldName = gLegend.metaInfo.name;
+                //let fieldVal = gLegend.metaInfo.valCounts[colorIndex][0];
+                //let queryList = [{"m":fieldName, "eq":fieldVal}];
+                //saveQueryList(queryList);
+            //}
+        //}
         renderer.drawDots();
     }
 
