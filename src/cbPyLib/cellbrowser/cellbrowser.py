@@ -1116,10 +1116,10 @@ def writeNum(col, packFmt, ofh):
     " write a list of numbers to a binary file "
 
 def cleanString(s):
-    " returns only alphanum characters in string s "
+    " returns only characters in string s that can be used for a file name "
     newS = []
     for c in s:
-        if c.isalnum():
+        if c.isalnum() or c in "-_+":
             newS.append(c)
     return "".join(newS)
 
@@ -3883,7 +3883,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
         if "columns" in dir(adata.obs): # in older scanpy objects obs is not a pandas dataframe
             if clusterField not in adata.obs.columns:
-                tryFields = ["CellType", "cell_type", "Celltypes", "Cell_type", "celltype", "annotated_cell_identity.text"]
+                tryFields = ["CellType", "cell_type", "Celltypes", "Cell_type", "celltype", "annotated_cell_identity.text", "BroadCellType"]
                 logging.info("Cluster field '%s' not in adata.obs, trying %s" % (clusterField, tryFields))
                 foundField = None
                 for fieldName in tryFields:
