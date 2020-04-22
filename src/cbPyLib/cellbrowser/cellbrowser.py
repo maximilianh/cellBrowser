@@ -17,6 +17,7 @@ from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 from time import gmtime, strftime
+import csv
 
 try:
     # python3
@@ -2462,10 +2463,10 @@ def parseMarkerTable(filename, geneToSym):
     otherHeaders = headers[otherStart:otherEnd]
     logging.debug("Other headers: %s" % otherHeaders)
 
+    reader = csv.reader(ifh, delimiter=sep, quotechar='"')
     data = defaultdict(list)
     otherColumns = defaultdict(list)
-    for line in ifh:
-        row = line.rstrip("\r\n").split(sep)
+    for row in reader:
         clusterName = row[clusterIdx]
         geneId = row[geneIdx]
         scoreVal = float(row[scoreIdx])
