@@ -2403,9 +2403,13 @@ def to_camel_case(snake_str):
     return components[0] + ''.join(x.title() for x in components[1:])
 
 def sanitizeName(name):
-    " remove all nonalpha chars, allow underscores "
+    " remove all nonalpha chars, allow underscores, special treatment for %, + and - "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
+    # some characters are actually pretty common and there we have seen fields where the only 
+    # difference are these characters
+    # if this continues to be aproblem, maybe append the MD5 of a raw field name to the sanitized name
+    name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
         logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
