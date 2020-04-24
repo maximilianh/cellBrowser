@@ -1115,14 +1115,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 def writeNum(col, packFmt, ofh):
     " write a list of numbers to a binary file "
 
-def cleanString(s):
-    " returns only characters in string s that can be used for a file name "
-    newS = []
-    for c in s:
-        if c.isalnum() or c in "-_+":
-            newS.append(c)
-    return "".join(newS)
-
 def moveOrGzip(inFname, outFname):
     " if outFname has .gz, runGzip, otherwise just move file over "
     if outFname.endswith(".gz"):
@@ -1228,7 +1220,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = cleanString(fieldName.split("|")[0])
+        cleanFieldName = sanitizeName(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -2420,7 +2412,7 @@ def nonAlphaToUnderscores(name):
     " for tab-sep tables: replace nonalpha chars with  underscores "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
-    newName = name.replace("%","perc")
+    newName = newName.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = re.sub("[^a-zA-Z0-9_]","_", newName)
     newName = re.sub("^_","", newName)  # remove _ prefix
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
