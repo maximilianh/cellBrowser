@@ -2411,7 +2411,6 @@ def sanitizeName(name):
 def nonAlphaToUnderscores(name):
     " for tab-sep tables: replace nonalpha chars with  underscores "
     assert(name!=None)
-    #newName = to_camel_case(name.replace(" ", "_"))
     newName = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = re.sub("[^a-zA-Z0-9_]","_", newName)
     newName = re.sub("^_","", newName)  # remove _ prefix
