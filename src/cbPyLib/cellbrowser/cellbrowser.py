@@ -4158,8 +4158,9 @@ def findRoot(inDir=None):
 def resolveOutDir(outDir):
     """ user can define mapping e.g. {"alpha" : "/usr/local/apache/htdocs-cells"} in ~/.cellbrowser.conf """
     confDirs = getConfig("outDirs")
-    if outDir in confDirs:
-        outDir = confDirs[outDir]
+    if confDirs:
+        if outDir in confDirs:
+            outDir = confDirs[outDir]
     return outDir
 
 def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None):
