@@ -355,8 +355,8 @@ function CbDbFile(url) {
     this.fieldNameToIndex = function(fieldName) {
         /* given a meta field name, return its meta table index or null */
         var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
-        //if (idx===undefined)
-            //idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "shortLabel", fieldName);
+        if (idx===null)
+            idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "label", fieldName);
         return idx;
     };
 

@@ -2683,10 +2683,13 @@ var cellbrowser = function() {
            renderer.origLabels = origLabels;
            db.clusterOrder = clusterInfo.order;
 
-           renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
         }
 
+       opts["lines"] = clusterInfo.lines;
+       opts["lineWidth"] = db.conf.lineWidth;
+
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
+       //renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
    }
 
    function colorByDefaultField(onDone) {
@@ -2711,15 +2714,15 @@ var cellbrowser = function() {
        if (colorType==="meta") {
            colorByMetaField(colorBy, onDone);
            // update the meta field combo box
-           var fieldIdx  = db.fieldNameToIndex(onlyAlphaNum(colorBy));
+           var fieldIdx  = db.fieldNameToIndex(colorBy);
            if (fieldIdx===null) {
-               alert("Default coloring is configured to be on field "+fieldName+
+               alert("Default coloring is configured to be on field "+colorBy+
                     " but cannot find a field with this name, using field 1 instead.");
                fieldIdx = 1;
            }
 
            $('#tpMetaCombo').val(fieldIdx).trigger('chosen:updated');
-           $('#tpMetaBox_'+db.getMetaFields()[fieldIdx].name).addClass('tpMetaSelect');
+           $('#tpMetaBox_'+fieldIdx).addClass('tpMetaSelect');
        }
        else {
            loadGeneAndColor(colorBy, onDone);
@@ -3851,10 +3854,11 @@ var cellbrowser = function() {
         if (legend===null)
             return;
 
+        var metaIdx = db.fieldNameToIndex(metaInfo.name);
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('.tpMetaValue').removeClass('tpMetaValueSelect');
-        $('#tpMetaBox_'+metaInfo.name).addClass('tpMetaSelect');
-        $('#tpMeta_'+metaInfo.name).addClass('tpMetaValueSelect');
+        $('#tpMetaBox_'+metaIdx).addClass('tpMetaSelect');
+        $('#tpMeta_'+metaIdx).addClass('tpMetaValueSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
         $('#tpLegendTitle').text(legend.metaInfo.label.replace(/_/g, " "));
 
@@ -3863,10 +3867,10 @@ var cellbrowser = function() {
 
     function onMetaClick (event) {
     /* called when user clicks a meta data field or label */
-        var fieldName = event.target.id.split("_")[1];
+        var fieldName = event.target.dataset.fieldName;
         if (isNaN(fieldName)) {
             // try up one level in the DOM tree
-            fieldName = event.target.parentElement.id.split("_")[1];
+            fieldName = event.target.dataset.fieldName;
         }
         colorByMetaField(fieldName);
     }
@@ -3932,6 +3936,17 @@ var cellbrowser = function() {
         return htmls;
     }
 
+    function metaInfoFromElement(el) {
+        /* get the metaInfo object given a DOM element  */
+        if (target.dataset.fieldName==="")
+            target = el.parentNode;
+        if (target.dataset.fieldName==="")
+            target = el.parentNode;
+        var fieldName = el.dataset.fieldName;
+        var metaInfo = db.findMetaInfo(fieldName);
+        return metaInfo;
+    }
+
     function onMetaMouseOver (event) {
     /* called when user hovers over meta element: shows the histogram of selected cells */
         var metaHist = db.metaHist;
@@ -3940,16 +3955,12 @@ var cellbrowser = function() {
 
         // mouseover over spans or divs will not find the id, so look at their parent, which is the main DIV
         var target = event.target;
-        if (target.id==="")
-            target = event.target.parentNode;
-        if (target.id==="")
-            target = event.target.parentNode;
-        var targetId = target.id;
 
-        var fieldName = targetId.split("_")[1];
+        var metaInfo = metaInfoFromElement(target);
+        var fieldName = metaInfo.name;
 
         // change style of this field a little
-        var metaSel = "#tpMetaBox_"+fieldName;
+        var metaSel = "#tpMetaBox_"+fieldIdx;
         //var backCol = "#666";
         //var foreCol = "#FFF";
         //$(metaSel).css({color: foreCol, backgroundColor: backCol});
@@ -3957,8 +3968,6 @@ var cellbrowser = function() {
         //$(metaSel).children().children().css({color: foreCol, backgroundColor: backCol});
         $('.tpMetaBox').removeClass("tpMetaHover");
         $(metaSel).addClass("tpMetaHover");
-
-        var metaInfo = db.findMetaInfo(fieldName);
 
         var htmls = [];
 
@@ -4493,13 +4502,13 @@ var cellbrowser = function() {
 
             var addClass = "";
             var addTitle="";
-            htmls.push("<div class='tpMetaBox' id='tpMetaBox_"+metaInfo.name+"'>");
+            htmls.push("<div class='tpMetaBox' data-field-name='"+metaInfo.name+"' id='tpMetaBox_"+i+"'>");
             if (isGrey) {
                 addClass=" tpMetaLabelGrey";
                 addTitle=" title='This field contains too many different values. You cannot click it to color on it.'";
             }
 
-            let divId = "tpMetaLabel_"+metaInfo.name;
+            let divId = "tpMetaLabel_"+i;
 
             htmls.push("<div id='"+divId+"' class='tpMetaLabel"+addClass+"'"+addTitle+">"+fieldLabel);
             if (fieldMouseOver)
@@ -4515,7 +4524,7 @@ var cellbrowser = function() {
             }
 
             htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px"+styleAdd+
-                "' id='tpMeta_"+metaInfo.name+"'>&nbsp;</div>");
+                "' data-field-name='"+metaInfo.name+"'>&nbsp;</div>");
             htmls.push("</div>"); // tpMetaBox
         }
         htmls.push("<div style='background-color:white; float:right' id='tpMetaNote' style='display:none; height:1em'></div>");
@@ -5612,7 +5621,7 @@ var cellbrowser = function() {
             let metaIdx = i + customCount;
             let metaInfo = fieldInfos[metaIdx];
 
-            let rowDiv = $('#tpMeta_'+metaInfo.name);
+            let rowDiv = $('#tpMeta_'+i);
             if (fieldValue.startsWith("http") && fieldValue.endsWith(".png")) {
                 rowDiv.css('height', "40px");
                 rowDiv.html("<img src='"+fieldValue+"'></img>");

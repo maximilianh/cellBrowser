@@ -1190,11 +1190,11 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     metaDescs = parseMetaDesc(inConf)
     enumOrder = inConf.get("enumOrder")
 
-    # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
+    # the user inputs the enum fields in cellbrowser.conf as their real names, but internally, unfortunately
     # we have to strip special chars so fix the user's field names to our format
     sanEnumFields = []
     if enumFields is not None:
-        sanEnumFields = [nonAlphaToUnderscores(n) for n in enumFields]
+        sanEnumFields = [sanitizeName(n) for n in enumFields]
 
     fieldInfo = []
     validFieldNames = set()
@@ -2395,7 +2395,7 @@ def to_camel_case(snake_str):
     return components[0] + ''.join(x.title() for x in components[1:])
 
 def sanitizeName(name):
-    " remove all nonalpha chars, allow underscores, special treatment for %, + and - "
+    " remove all nonalpha chars, allow underscores, special treatment for %, + and -. Makes a valid file name. "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
     # some characters are actually pretty common and there we have seen fields where the only 
@@ -2409,7 +2409,7 @@ def sanitizeName(name):
     return newName
 
 def nonAlphaToUnderscores(name):
-    " for tab-sep tables: replace nonalpha chars with  underscores "
+    " for tab-sep tables: replace nonalpha chars with  underscores. Makes a valid name for namedtuple.  "
     assert(name!=None)
     newName = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = re.sub("[^a-zA-Z0-9_]","_", newName)
@@ -2925,7 +2925,7 @@ def readSampleNames(fname):
     sampleNames = []
     i = 1
     doneNames = set()
-    for row in lineFileNextRow(fname):
+    for row in lineFileNextRow(fname, noHeaders=True):
         metaName = row[0]
         if metaName=="":
             errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
@@ -2999,11 +2999,11 @@ def parseLineInfo(inFname, limits):
         maxY = max(maxY, y1, y2)
 
         lines.append( (x1, y1, x2, y2) )
-    logging.info("Parsed %s, got %d lines" % (inFname, len(lines)))
+    logging.info("Read lines from %s, got %d lines" % (inFname, len(lines)))
 
     scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
     limits = minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY
-    logging.debug("Lines parsed, new limits are: %s" % repr(limits))
+    logging.debug("Lines read, new limits are: %s" % repr(limits))
     return lines, limits
 
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
@@ -3083,12 +3083,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         # now that we have the global limits, scale everything
         coordDict = scaleCoords(coords, limits)
 
-        clusterInfo = {}
-        if hasLines:
-            lineFlipY = inCoordInfo.get("lineFlipY", flipY)
-            lineData = scaleLines(lineCoords, limits, lineFlipY)
-            clusterInfo["lines"] = lineData
-
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -3109,7 +3103,11 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outFnames.append(textOutBase)
         coordInfo, xVals, yVals = writeCoords(coordLabel, coordDict, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
-
+        clusterInfo = {}
+        if hasLines:
+            lineFlipY = inCoordInfo.get("lineFlipY", flipY)
+            lineData = scaleLines(lineCoords, limits, lineFlipY)
+            clusterInfo["lines"] = lineData
         if hasLabels:
             logging.debug("Calculating cluster midpoints for "+coordLabel)
             clusterMids= makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
@@ -3120,7 +3118,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             labelVals = []
 
 
-        if hasLabels or hasLines:
+        if hasLabels:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
             midFh = open(clusterLabelFname, "w")
             json.dump(clusterInfo, midFh, indent=2)
@@ -5582,8 +5580,8 @@ def open10xMtxForRows(mtxFname, geneFname, barcodeFname):
 
     #print(mat.shape[0])
     #print(len(genes))
-    assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count
-    assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
+    assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count. Does the genes file have a strange header?
+    assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count. Does the barcodes file have a strange header line?
 
     return mat, genes, barcodes
 
