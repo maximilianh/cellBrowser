@@ -13,7 +13,7 @@ var cellbrowser = function() {
     var db = null; // the cbData object from cbData.js. Loads coords,
                    // annotations and gene expression vectors
 
-    var gVersion = "0.6";
+    var gVersion = "$VERSION$"; // cellbrowser.py:copyStatic will replace this with the pip version or git release
     var gCurrentCoordName = null; // currently shown coordinates
 
     // object with all information needed to map to the legend colors
