@@ -690,19 +690,20 @@ var cellbrowser = function() {
         }
 
         let topName = datasetInfo.name.split("/")[0];
-        if (datasetInfo.name!=="" && pageAtUcsc()) {
-            if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
-                // if the dataset is a collection
-                htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
-                htmls.push("<br>");
+        if (pageAtUcsc) {
+            if (datasetInfo.name!=="" && ) {
+                if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
+                    // if the dataset is a collection
+                    htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
+                    htmls.push("<br>");
+                }
+                else {
+                    htmls.push("<b>Direct link to this plot for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
+                    htmls.push("<br>");
+                }
             }
-            else {
-                htmls.push("<b>Direct link to this plot for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
-                htmls.push("<br>");
-                htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+"</small></p>");
-            }
-
         }
+        htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+"</small></p>");
 
         $( "#pane1" ).html(htmls.join(""));
 
