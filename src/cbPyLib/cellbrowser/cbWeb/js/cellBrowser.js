@@ -691,7 +691,7 @@ var cellbrowser = function() {
 
         let topName = datasetInfo.name.split("/")[0];
         if (pageAtUcsc) {
-            if (datasetInfo.name!=="" && ) {
+            if (datasetInfo.name!=="") {
                 if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
                     // if the dataset is a collection
                     htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
