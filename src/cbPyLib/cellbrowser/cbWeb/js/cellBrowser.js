@@ -690,7 +690,7 @@ var cellbrowser = function() {
         }
 
         let topName = datasetInfo.name.split("/")[0];
-        if (pageAtUcsc) {
+        if (pageAtUcsc()) {
             if (datasetInfo.name!=="") {
                 if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
                     // if the dataset is a collection
