@@ -227,7 +227,7 @@ ExportToCellbrowser <- function(
       message("Using all embeddings contained in the Seurat object: ", embeddings)
   }
 
-  embeddings.conf <- c()
+  embedNames = c()
   for (embedding in embeddings) {
     emb <- dr[[embedding]]
     if (is.null(emb)) {
@@ -248,12 +248,22 @@ ExportToCellbrowser <- function(
     )
     message("Writing embeddings to ", fname)
     write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
-    conf <- sprintf(
-      '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
-      embedding
-    )
-    embeddings.conf <- c(embeddings.conf, conf)
+    embedNames = append(embedNames, embedding)
   }
+
+  # by default, the embeddings are sorted in the object by order of creation (pca, tsne, umap).
+  # But that is usually the opposite of what users want, they want the last embedding to appear first
+  # in the UI, so reverse the order here
+  embedNames = sort(embedNames, decreasing=T)
+  embeddings.conf <- c()
+  for (embedName in embedNames) {
+      conf <- sprintf(
+        '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
+        embedName
+      )
+      embeddings.conf <- c(embeddings.conf, conf)
+   }
+
 
   # Export metadata
   df <- data.frame(row.names = cellOrder, check.names=FALSE)
