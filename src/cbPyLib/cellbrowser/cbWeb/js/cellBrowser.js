@@ -1107,6 +1107,8 @@ var cellbrowser = function() {
         renderer.selectClear();
         renderer.selectVisible();
         renderer.drawDots();
+
+        $(".tpLegendCheckbox").prop("checked", true);
     }
 
     function onSelectNoneClick() {
@@ -1114,6 +1116,8 @@ var cellbrowser = function() {
         clearSelectionState();
         renderer.selectClear();
         renderer.drawDots();
+
+        $(".tpLegendCheckbox").prop("checked", false);
     }
 
     function onSelectInvertClick() {
@@ -1121,6 +1125,10 @@ var cellbrowser = function() {
         clearSelectionState();
         renderer.selectInvert();
         renderer.drawDots();
+
+        $(".tpLegendCheckbox").each(function() {
+            $(this).prop("checked", !$(this).prop("checked"));
+        });
     }
 
     function buildOneComboboxRow(htmls, comboWidth, rowIdx, queryExpr) {
@@ -5217,6 +5225,7 @@ var cellbrowser = function() {
             renderer.unselectByColor(valIdx);
         renderer.drawDots();
         ev.stopPropagation();
+        $(this).blur();
     }
 
     function buildMinMaxPart(htmls) {
