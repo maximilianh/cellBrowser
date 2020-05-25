@@ -932,7 +932,7 @@ var cellbrowser = function() {
 
         let doFaceting = false;
         let filtList = [];
-        if (openDsInfo.parents === undefined) {
+        if (openDsInfo.parents === undefined && openDsInfo.datasets !== undefined) {
             //noteLines.push("<span>Filter:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
             if (bodyParts.length!==0) {
@@ -1055,7 +1055,9 @@ var cellbrowser = function() {
             changeUrl({"ds":openDatasetName});
         });
 
+        var focused = document.activeElement;
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
+        $(focused).focus();
 
 
         $("#tabLink1").tab("show");
