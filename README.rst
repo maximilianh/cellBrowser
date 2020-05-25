@@ -18,8 +18,8 @@ If you want us to add a single cell dataset to the website http://cells.ucsc.edu
 please contact us at cells@ucsc.edu. We are happy to add any dataset.
 
 This is a viewer for a static, precomputed layout. If you're looking for an interative layout, where you can 
-move the cells around and run algorithsm interactively, try Chan-Zuckerberg's own cellxgene or Spring.
-Another viewer is `Scope <http://scope.aertslab.org/>`_.
+move the cells around and run some algorithms interactively, try Chan-Zuckerberg's own cellxgene or Spring.
+A website with both datasets and some analysis is `Scope <http://scope.aertslab.org/>`_.
 
 Apart from labs at UCSC, UCSF and Gladstone who host their data at
 cells.ucsc.edu, other groups have setup their own cell browsers:
