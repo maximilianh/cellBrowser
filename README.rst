@@ -21,8 +21,7 @@ This is a viewer for a static, precomputed layout. If you're looking for an inte
 move the cells around and run some algorithms interactively, try Chan-Zuckerberg's own cellxgene or Spring.
 A website with both datasets and some analysis is `Scope <http://scope.aertslab.org/>`_.
 
-Apart from labs at UCSC, UCSF and Gladstone who host their data at
-cells.ucsc.edu, other groups have setup their own cell browsers:
+Many labs host their data at cells.ucsc.edu by sending it to us, but some groups have setup their own cell browsers:
 
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
@@ -39,8 +38,8 @@ Additional availability
 * Galaxy: there is a Galaxy tool for UCSC CellBrowser, which can be installed on any Galaxy instance via its `Galaxy Toolshed entry <https://toolshed.g2.bx.psu.edu/view/ebi-gxa/ucsc_cell_browser>`_ or it can be directly used by users at the `Human Cell Atlas Galaxy instance <https://humancellatlas.usegalaxy.eu/root?tool_id=toolshed.g2.bx.psu.edu/repos/ebi-gxa/ucsc_cell_browser/ucsc_cell_browser>`_ or as part of the example workflows, such as the `Human Cell Atlas / Scanpy CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/humancellatlas-scanpy-cellbrowser>`_ or the `EBI Single Cell Expression Atlas / Scanpy / CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/atlas-scanpy-cellbrowser-imported-from-uploaded-file>`_
 
 
-Funded by the California Institute of Regenerative Medicine and the
-Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/.
+This project was funded by the California Institute of Regenerative Medicine and the
+Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/. It is funded right now through a supplement to the NHGRI Genome Browser grant.
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
