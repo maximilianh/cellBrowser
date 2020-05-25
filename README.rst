@@ -31,15 +31,14 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 Additional availability
 -----------------------
 
-* The preferred installation is via pip https://pypi.org/project/cellbrowser/0.4.12/, see https://cellbrowser.readthedocs.io
+* The preferred installation is via pip https://pypi.org/project/cellbrowser/, for documentation see https://cellbrowser.readthedocs.io
 * Bioconda: this tool is available to install via `bioconda <https://bioconda.github.io/recipes/ucsc-cell-browser/README.html>`_. Note that the conda release is usually a bit outdated relative to the pip release, so use pip if possible. If you cannot use pip, please contact us. 
 * Biocontainers: there is a biocontainer automatically generated from the bioconda package available `here <https://quay.io/repository/biocontainers/ucsc-cell-browser>`_
 * The Seurat3Wizard, demo at http://nasqar.abudhabi.nyu.edu/SeuratV3Wizard, builds a cell browser as its last step
 * Galaxy: there is a Galaxy tool for UCSC CellBrowser, which can be installed on any Galaxy instance via its `Galaxy Toolshed entry <https://toolshed.g2.bx.psu.edu/view/ebi-gxa/ucsc_cell_browser>`_ or it can be directly used by users at the `Human Cell Atlas Galaxy instance <https://humancellatlas.usegalaxy.eu/root?tool_id=toolshed.g2.bx.psu.edu/repos/ebi-gxa/ucsc_cell_browser/ucsc_cell_browser>`_ or as part of the example workflows, such as the `Human Cell Atlas / Scanpy CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/humancellatlas-scanpy-cellbrowser>`_ or the `EBI Single Cell Expression Atlas / Scanpy / CellBrowser workflow <https://humancellatlas.usegalaxy.eu/u/pmoreno/w/atlas-scanpy-cellbrowser-imported-from-uploaded-file>`_
 
-
 This project was funded by the California Institute of Regenerative Medicine and the
-Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/. It is funded right now through a supplement to the NHGRI Genome Browser grant.
+Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/. In 2020, it is funded through a supplement to the NHGRI Genome Browser grant.
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
