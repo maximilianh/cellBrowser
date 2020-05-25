@@ -2422,14 +2422,16 @@ def parseMarkerTable(filename, geneToSym):
     logging.debug("Reading cluster markers from %s" % (filename))
     ifh = openFile(filename)
 
+    # why does Seurat have so many different ways of writing a dataframe to a text file ??
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
     seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
     seuratLine4 = "Gene\tp-value\tlog2(FoldChange)\tpct.1\tpct.2\tadjusted p-value\tCluster"
+    seuratLine5 = 'p_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     headerLine = ifh.readline().rstrip("\r\n")
 
     sep = sepForFile(filename)
-    if headerLine == seuratLine or headerLine == seuratLine2 or headerLine == seuratLine3:
+    if headerLine in [seuratLine, seuratLine2, seuratLine4, seuratLine5]:
         logging.debug("Cluster marker file %s was recognized to be in Seurat format" % filename)
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
@@ -4585,6 +4587,10 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
 
+        if not "name" in datasetDesc:
+            errAbort("The file dataset.json for the subdirectory %s is not valid. Please rebuild it, then "
+                    "come back here and retry the cbBuild command" % subDir)
+
         dsName = datasetDesc["name"]
         if dsName in dsNames:
             errAbort("Duplicate name: %s appears in these directories: %s and %s" % \
@@ -4645,28 +4651,32 @@ def findDatasets(outDir):
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
-def copyAllFiles(fromDir, subDir, toDir):
+def copyAllFiles(fromDir, subDir, toDir, ext=None):
     " copy all files in fromDir/subDir to toDir/subDir "
     outDir = join(toDir, subDir)
     makeDir(outDir)
     logging.debug("Copying all files from %s/%s to %s" % (fromDir, subDir, toDir))
     for filename in glob.glob(join(fromDir, subDir, '*')):
-    # egg-support commented out for now, eggs are out of fashion
-    #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
         if isdir(filename):
             continue
-        #fullPath = join(fromDir, subDir, filename)
+        if ext and not filename.endswith(ext):
+            continue
         fullPath = filename
-        #logging.debug("Copying %s to %s" % (fullPath, outDir))
-        # copy uses chmod() which we don't want
-        #shutil.copy(filename, outDir)
         dstPath = join(outDir, basename(filename))
         shutil.copyfile(fullPath, dstPath)
-        #s = pkg_resources.resource_string(__name__, filename)
-        #outFname = join(outDir, filename)
-        #ofh = open(outFname, "wb")
-        #ofh.write(s)
-        #ofh.close()
+
+def copyAndReplace(inFname, outDir):
+    " copy file, replacing $VERSION and $GENEFILES "
+    try:
+        from ._version import get_versions
+        versionStr = get_versions()['version']
+    except:
+        versionStr = "versioneerPackageNotInstalled"
+
+    data = open(inFname).read()
+    data = data.replace("$VERSION$", versionStr)
+
+    getStaticFile
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -4678,6 +4688,9 @@ def copyStatic(baseDir, outDir):
     copyAllFiles(baseDir, "ext", outDir)
     copyAllFiles(baseDir, "js", outDir)
     copyAllFiles(baseDir, "css", outDir)
+    copyAllFiles(baseDir, "genes", outDir, ext=".json.gz")
+
+    copyAndReplace(join(baseDir, "js", "cellbrowser.js"), join(outDir, "js"))
 
 def writeVersionedLink(ofh, mask, webDir, relFname, addVersion=True):
     " write sprintf-formatted mask to ofh, but add ?md5 to jsFname first. Goal is to force cache reload in browser. "
@@ -4748,6 +4761,9 @@ def summarizeDatasets(datasets):
             summDs["sampleCount"] = ds["sampleCount"]
         else:
             summDs["isCollection"] = True
+            if not "datasets" in ds:
+                errAbort("The dataset %s has a dataset.json file that looks invalide. Please rebuild that dataset. "
+                        "Then go back to the current directory and retry the same command. " % ds["name"])
             children = ds["datasets"]
 
             collCount = 0
@@ -5709,9 +5725,7 @@ def generateDownloads(datasetName, outDir):
 
 def generateHtmls(datasetName, outDir):
     " generate desc.conf in outDir, if it doesn't exist "
-    #copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
     generateDataDesc(datasetName, outDir, {})
-    #generateDownloads(datasetName, outDir)
 
 if __name__=="__main__":
     args, options = main_parseArgs()
