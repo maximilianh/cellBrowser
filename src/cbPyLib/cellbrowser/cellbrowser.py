@@ -3769,7 +3769,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         elif "gene_symbols" in var:
             geneIdObj = var['gene_symbols']
             geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
-            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
         else:
             genes = var.index.tolist()
 
