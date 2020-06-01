@@ -1074,8 +1074,11 @@ var cellbrowser = function() {
     }
 
 
-    function onSelChange(cellIds) {
+    function onSelChange(selection) {
     /* called each time when the selection has been changed */
+        var cellIds = [];
+        selection.forEach(function(x) {cellIds.push(x)});
+
         if (cellIds.length===0 || cellIds===null) {
             clearMetaAndGene();
             clearSelectionState();
@@ -1093,6 +1096,21 @@ var cellbrowser = function() {
         if ("geneSym" in gLegend)
             buildViolinPlot();
 
+        var cols = renderer.col.arr;
+        var selectedLegends = {};
+        for (var i = 0; i < gLegend.rows.length; i++) {
+            selectedLegends[i] = 0;
+        }
+        selection.forEach(function(cellId) {
+            selectedLegends[cols[cellId]]++;
+        });
+        for (var i = 0; i < gLegend.rows.length; i++) {
+            if (selectedLegends[i] == gLegend.rows[i].count) {
+                $("#tpLegendCheckbox_" + i).prop("checked", true);
+            } else {
+                $("#tpLegendCheckbox_" + i).prop("checked", false);
+            }
+        }
     }
 
     function onSaveAsClick() {
@@ -1107,8 +1125,6 @@ var cellbrowser = function() {
         renderer.selectClear();
         renderer.selectVisible();
         renderer.drawDots();
-
-        $(".tpLegendCheckbox").prop("checked", true);
     }
 
     function onSelectNoneClick() {
@@ -1116,8 +1132,6 @@ var cellbrowser = function() {
         clearSelectionState();
         renderer.selectClear();
         renderer.drawDots();
-
-        $(".tpLegendCheckbox").prop("checked", false);
     }
 
     function onSelectInvertClick() {
@@ -1125,10 +1139,6 @@ var cellbrowser = function() {
         clearSelectionState();
         renderer.selectInvert();
         renderer.drawDots();
-
-        $(".tpLegendCheckbox").each(function() {
-            $(this).prop("checked", !$(this).prop("checked"));
-        });
     }
 
     function buildOneComboboxRow(htmls, comboWidth, rowIdx, queryExpr) {
@@ -5088,49 +5098,9 @@ var cellbrowser = function() {
     function onLegendLabelClick(ev) {
     /* called when user clicks on legend entry. */
 
-        //function saveLabel() {
-            ///* save the current labelEl text to the cart and update everything */
-            //$(".tooltip").remove(); // not sure why tooltips won't disappear here
-            //labelEl.removeAttr("contenteditable");
-            //var newLabel = labelEl.text(); // = strip the rich text tags possibly added through copy/paste
-            //var metaInfo = gLegend.metaInfo;
-            //cartFieldArrayUpdate(db, metaInfo, "shortLabels", legendId, newLabel);
-            //legendUpdateLabels(gLegend.metaInfo.name);
-            //rendererUpdateLabels(metaInfo);
-            //buildLegendBar();
-            //renderer.drawDots();
-        //}
-
         var legendId = parseInt(ev.target.id.split("_")[1]);
         var colorIndex = gLegend.rows[legendId].intKey;
-
-        //if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
-            // user clicked the same entry as before: 
-            //gLegend.lastClicked = null;
-                //$('#tpLegend_'+legendId).removeClass('tpLegendSelect');
-                //renderer.selectClear();
-        //}
-        //else {
-            // clear the old selection
-            //if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey) {
-                //renderer.selectClear();
-                //$('.tpLegend').removeClass('tpLegendSelect');
-            //}
-            $("#tpLegendCheckbox_"+colorIndex).prop("checked", true);
-            renderer.selectByColor(colorIndex);
-            //menuBarShow("#tpFilterButton");
-            //menuBarShow("#tpOnlySelectedButton");
-            //$('#tpLegend_'+legendId).addClass('tpLegendSelect');
-            //gLegend.lastClicked=legendId;
-            clearSelectionState();
-            //if (gLegend.type==="meta" && gLegend.metaInfo.type==="enum") {
-                //let fieldName = gLegend.metaInfo.name;
-                //let fieldVal = gLegend.metaInfo.valCounts[colorIndex][0];
-                //let queryList = [{"m":fieldName, "eq":fieldVal}];
-                //saveQueryList(queryList);
-            //}
-        //}
-        renderer.drawDots();
+        $("#tpLegendCheckbox_" + colorIndex).click();
     }
 
     function onSortByClick (ev) {
