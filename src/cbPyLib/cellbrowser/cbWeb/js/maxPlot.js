@@ -1897,8 +1897,9 @@ function MaxPlot(div, top, left, width, height, args) {
             if (self.lastClick!==undefined && x2===self.lastClick[0] && y2===self.lastClick[1]) {
                 self.zoomBy(1.33);
                 self.lastClick = [-1,-1];
+            } else {
+                self.lastClick = [x2, y2];
             }
-            self.lastClick = [x2, y2];
 
             var labelInfo = self.labelAt(x2, y2);
             if (labelInfo!==null && self.doDrawLabels)
