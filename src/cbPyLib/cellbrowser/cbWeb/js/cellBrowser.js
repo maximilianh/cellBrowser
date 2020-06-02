@@ -1111,6 +1111,7 @@ var cellbrowser = function() {
                 $("#tpLegendCheckbox_" + i).prop("checked", false);
             }
         }
+        updateLegendGrandCheckbox();
     }
 
     function onSaveAsClick() {
@@ -3314,6 +3315,7 @@ var cellbrowser = function() {
         gLegend.rowType = "range";
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
+        gLegend.selectionDirection = "all";
         legendSetPalette(gLegend, "default");
 
         var colors = legendGetColors(legendRows);
@@ -3859,6 +3861,7 @@ var cellbrowser = function() {
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
         legend.rowType = "category";
+        legend.selectionDirection = "all";
         legendSetPalette(legend, "default");
         return legend;
     }
@@ -5157,25 +5160,47 @@ var cellbrowser = function() {
     function setLegendHeaders(type) {
     /* set the headers of the right-hand legend */
         if (type==="category") {
-            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span><span class="tpLegendHover" title="click to sort by name"> Name<span class="caret"></span></span>');
+            $('#tpLegendCol1').html('<span title="select all checkboxes below" id="tpLegendClear">&#9745;</span><span class="tpLegendHover" title="click to sort by name"> Name<span class="caret"></span></span>');
             $('#tpLegendCol2').html('<span class="tpLegendHover" title="click to sort by frequency"> Frequency<span class="caret"></span></span>');
         }
         else {
-            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span> Range<span');
+            $('#tpLegendCol1').html('<span title="select all checkboxes below" id="tpLegendClear">&#9745;</span> Range<span');
             $('#tpLegendCol2').html('Frequency');
         }
         activateTooltip("#tpLegendClear");
         activateTooltip(".tpLegendHover");
     }
 
+    function updateLegendGrandCheckbox() {
+        var checkbox = $("#tpLegendClear");
+        var total = renderer.getCount();
+        var selected = renderer.selCells.size;
+        if (gLegend.selectionDirection == "all" && total == selected) {
+            gLegend.selectionDirection = "none";
+            checkbox.html("&#9746;");
+            // from https://stackoverflow.com/questions/9501921/change-twitter-bootstrap-tooltip-content-on-click
+            checkbox.attr('title', "unselect all checkboxes below")
+                .bsTooltip('fixTitle')
+                .data('bs.tooltip')
+                .$tip.find('.tooltip-inner')
+                .text("unselect all checkboxes below");
+        } else if (gLegend.selectionDirection == "none" && selected === 0) {
+            gLegend.selectionDirection = "all";
+            checkbox.html("&#9745;");
+            checkbox.attr('title', "select all checkboxes below")
+                .bsTooltip('fixTitle')
+                .data('bs.tooltip')
+                .$tip.find('.tooltip-inner')
+                .text("select all checkboxes below");
+        }
+    }
+
     function onLegendClearClick(ev) { 
         /* unselect all checkboxes in the legend and clear the selection */ 
-        renderer.selectClear();
-        renderer.drawDots();
-
-        var cboxes = document.getElementsByClassName("tpLegendCheckbox");
-        for (var i=0; i < cboxes.length; i++) {
-            cboxes[i].checked = false;
+        if (gLegend.selectionDirection == "all") {
+            onSelectAllClick()
+        } else {
+            onSelectNoneClick();
         }
         ev.stopPropagation();
     }
