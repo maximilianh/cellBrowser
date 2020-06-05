@@ -28,6 +28,13 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 * Sansom Lab, Oxford, https://sansomlab.github.io for `Croft et al, Nature 2019 <https://www.nature.com/articles/s41586-019-1263-7>`_
 * http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
 
+These papers have cell browsers made at UCSC:
+* organoidatlas: https://www.sciencedirect.com/science/article/pii/S221112472030053X
+* dros-brain: https://elifesciences.org/articles/50354
+* kidney-atlas: https://science.sciencemag.org/content/365/6460/1461.abstract
+* allen-celltypes/mouse-cortex: https://www.biorxiv.org/content/10.1101/2020.03.30.015214v1.full
+* organoidreportcard: https://www.nature.com/articles/s41586-020-1962-0
+
 Additional availability
 -----------------------
 
