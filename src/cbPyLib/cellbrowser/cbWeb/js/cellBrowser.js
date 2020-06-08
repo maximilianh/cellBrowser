@@ -443,6 +443,8 @@ var cellbrowser = function() {
         "doi" : "Publication Fulltext",
         "arrayexpress" : "ArrayExpress",
         "ena_project" : "European Nucleotide Archive",
+        "ega_study" : "European Genome Archive",
+        "cirm_dataset" : "California Institute of Regenerative Medicine Dataset",
     };
 
     let descUrls = {
@@ -455,6 +457,8 @@ var cellbrowser = function() {
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
         "doi" : "http://dx.doi.org/",
         "ena_project" : "https://www.ebi.ac.uk/ena/data/view/",
+        "ega_study" : "https://ega-archive.org/studies/",
+        "cirm_dataset" : "https://cirm.ucsc.edu/d/",
         "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
     }
 
@@ -472,23 +476,37 @@ var cellbrowser = function() {
         htmls.push("<b>");
         htmls.push(label);
         htmls.push(": </b>");
-        htmls.push("<a target=_blank href='");
 
-        let url = desc[key].toString();
-        let urlLabel = url;
-        let spcPos = url.indexOf(" ");
-        if (spcPos!==-1) {
-            urlLabel = url.slice(spcPos+1);
-            url = url.slice(0,spcPos);
+        // for cases where more than one ID is needed, this function also accepts a list in the object
+        // for 99% of the cases, it'll be a string though
+        let urls = desc[key];
+        if (!(urls instanceof Array))
+            urls = [urls];
+
+        let frags = []; // html fragments, one per identifier
+        for (let url of urls) {
+            url = url.toString(); // in case it's an integer or float
+            let urlLabel = url;
+            let spcPos = url.indexOf(" ");
+            if (spcPos!==-1) {
+                urlLabel = url.slice(spcPos+1);
+                url = url.slice(0,spcPos);
+            }
+                
+            if (!url.startsWith("http"))
+                url = descUrls[key]+url;
+
+            let parts = []
+            parts.push("<a target=_blank href='");
+            parts.push(url);
+            parts.push("'>");
+            parts.push(urlLabel);
+            parts.push("</a>");
+            let htmlLine = parts.join("");
+            frags.push(htmlLine);
         }
-            
-        if (!url.startsWith("http"))
-            url = descUrls[key]+url;
-
-        htmls.push(url);
-        htmls.push("'>");
-        htmls.push(urlLabel);
-        htmls.push("</a><br>");
+        htmls.push(frags.join(", "));
+        htmls.push("<br>");
     }
 
     function buildDownloadsPane(datasetInfo, desc) {
@@ -2061,6 +2079,23 @@ var cellbrowser = function() {
     }
 
 
+    function onAboutClick() {
+        /* user clicked on help > about */
+        var dlgHeight = 500;
+
+        var htmls = [];
+        var title = "UCSC Cell Browser";
+
+        htmls.push("<p><b>Version:</b> "+gVersion+"</p>");
+        htmls.push("<p><b>Written by:</b> Maximilian Haeussler, Nikolay Markov (U Northwestern), Brian Raney, Lucas Seninge</p>");
+        htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support: Matt Speir</p>");
+        htmls.push("<p><b>Code contributions by:</b> Pablo Moreno (EBI, UK)</p>");
+        htmls.push("<p><b>Documentation:</b> <a target=_blank href='https://cellbrowser.readthedocs.io/'>Readthedocs</a></p>");
+        htmls.push("<p><b>Github Repo: </b><a target=_blank href='https://github.com/maximilianh/cellBrowser/'>cellBrowser</a></p>");
+
+        showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:500});
+    }
+
     function buildMenuBar() {
         /* draw the menubar at the top */
        var htmls = [];
@@ -2162,6 +2197,7 @@ var cellbrowser = function() {
          htmls.push('<li class="dropdown">');
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">Help</a>');
          htmls.push('<ul class="dropdown-menu">');
+         htmls.push('<li><a href="#" id="tpAboutButton">About</a></li>');
          htmls.push('<li><a href="#" id="tpTutorialButton">Tutorial</a></li>');
          htmls.push('<li><a target=_blank href="https://github.com/maximilianh/cellBrowser#readme" id="tpGithubButton">Setup your own cell browser</a></li>');
          htmls.push('</ul>'); // Help dropdown-menu
@@ -2191,6 +2227,7 @@ var cellbrowser = function() {
        $('#tpMark').click( onMarkClick );
        $('#tpMarkClear').click( onMarkClearClick );
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
+       $('#tpAboutButton').click( onAboutClick );
        $('#tpOpenDatasetLink').click( openCurrentDataset );
        //$('#tpOpenDatasetLink').click( function() { 
            //openDatasetDialog(db.conf, db.name); } );
@@ -4858,7 +4895,7 @@ var cellbrowser = function() {
     function setupKeyboard() {
     /* bind the keyboard shortcut keys */
         phoneHome();
-        Mousetrap.bind('o', function() { openDatasetDialog(db.conf, db.name)});
+        Mousetrap.bind('o', openCurrentDataset);
         Mousetrap.bind('c m', onMarkClearClick);
         Mousetrap.bind('h m', onMarkClick);
 

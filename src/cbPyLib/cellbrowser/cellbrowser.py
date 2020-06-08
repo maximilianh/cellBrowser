@@ -4676,7 +4676,10 @@ def copyAndReplace(inFname, outDir):
     data = open(inFname).read()
     data = data.replace("$VERSION$", versionStr)
 
-    getStaticFile
+    outFname = join(outDir, basename(inFname))
+    with open(outFname, "w") as ofh:
+        ofh.write(data)
+    logging.debug("Wrote version string %s into file %s, source was %s" % (repr(versionStr), inFname, outFname))
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -4690,7 +4693,7 @@ def copyStatic(baseDir, outDir):
     copyAllFiles(baseDir, "css", outDir)
     copyAllFiles(baseDir, "genes", outDir, ext=".json.gz")
 
-    copyAndReplace(join(baseDir, "js", "cellbrowser.js"), join(outDir, "js"))
+    copyAndReplace(join(baseDir, "js", "cellBrowser.js"), join(outDir, "js"))
 
 def writeVersionedLink(ofh, mask, webDir, relFname, addVersion=True):
     " write sprintf-formatted mask to ofh, but add ?md5 to jsFname first. Goal is to force cache reload in browser. "
