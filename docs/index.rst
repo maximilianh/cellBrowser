@@ -42,5 +42,5 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
    dataDesc.rst
    collections.rst
    load.rst
-   bulk
+   bulk.rst
    requirements

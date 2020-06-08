@@ -21,7 +21,10 @@ file into a cell browser::
 
     cbImportSeurat -i pbmc3k_small.rds -o pbmc3kImport
 
-This works with objects created by versions 2 and 3 of Seurat. Make sure that you have the same version of Seurat installed that was used to create the object.
+This works with objects created by versions 2 and 3 of Seurat. Make sure that
+you have the same major version of Seurat installed that was used to create the
+object. You cannot open Seurat2 objects with Seurat3 or vice versa. 
+(We often need to switch between Seurat versions and found conda environments very helpful for this.)
 
 The ``-i`` option specifies the input ``rds`` file and the ``-o`` option specifies a name for the output
 directory. You can use the ``-n`` option to change the dataset name in the cell browser;
