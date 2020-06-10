@@ -2722,6 +2722,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         for sf in summInfo["supplFiles"]:
             rawInPath = join(inDir, sf["file"])
             rawOutPath = join(datasetDir, basename(sf["file"]))
+            sf["file"] = basename(sf["file"]) # strip input directory
             if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
                 logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
                 shutil.copyfile(rawInPath, rawOutPath)
@@ -3717,6 +3718,15 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
+def geneSeriesToStrings(geneIdSeries, indexFirst=False):
+    " convert a pandas data series to a list of |-separated strings "
+    if indexFirst:
+        geneIdAndSyms = list(zip(geneIdSeries.index, geneIdSeries.values))
+    else:
+        geneIdAndSyms = list(zip(geneIdSeries.values, geneIdSeries.index))
+    genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+    return genes
+
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
@@ -3763,13 +3773,11 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         # when reading 10X files, read_h5 puts the geneIds into a separate field
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
         if "gene_ids" in var:
-            geneIdObj = var["gene_ids"]
-            geneIdAndSyms = list(zip(geneIdObj.values, geneIdObj.index))
-            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+            genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
         elif "gene_symbols" in var:
-            geneIdObj = var['gene_symbols']
-            geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
-            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+            genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
+        elif "Accession" in var: # only seen this in the ABA Loom files
+            genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
         else:
             genes = var.index.tolist()
 
@@ -5030,6 +5038,14 @@ def addMetaToAnnData(adata, fname):
     #adata.obs["Cluster"] = df["Cluster"].astype("category")
     #adata.obs["Cluster"] = pd.Categorical(df["Cluster"], ordered=True)
     return adata
+
+def getObsKeys(adata):
+    "get the keys of the obs object. Anndata broke compatibility, so try to accept two ways"
+    try:
+        obsKeys = adata.obsKeys.dtype.names # this used to work
+    except:
+        obsKeys = list(adata.obs.keys()) # this seems to work with newer versions
+    return obsKeys
 
 def getObsmKeys(adata):
     "get the keys of the obsm object. Has this changed in newer versions of anndata? "

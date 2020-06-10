@@ -7,7 +7,7 @@ from collections import defaultdict
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
-from .cellbrowser import generateHtmls
+from .cellbrowser import generateHtmls, getObsKeys
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -540,6 +540,25 @@ def cbImportScanpy_parseArgs(showHelp=False):
     setDebug(options.debug)
     return args, options
 
+def importLoom(inFname):
+    " load a loom file with anndata and fix up the obsm attributes "
+    import pandas as pd
+    import anndata
+    ad = anndata.read_loom(inFname)
+
+    coordKeys = ["_tSNE1", "_tSNE2"]
+    obsKeys = getObsKeys(ad)
+    if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
+        logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
+        newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
+        print(newObj)
+        ad.obsm["tsne"] = newObj
+        del ad.obs[coordKeys[0]]
+        del ad.obs[coordKeys[1]]
+    else:
+        logging.warn("Did not find %s in anndata.obs, cannot import coordinates" % repr(coordKeys))
+    return ad
+
 def cbImportScanpyCli():
     " convert h5ad to directory "
     args, options = cbImportScanpy_parseArgs()
@@ -561,7 +580,11 @@ def cbImportScanpyCli():
     clusterField = options.clusterField
 
     import anndata
-    ad = anndata.read_h5ad(inFname)
+    if inFname.endswith(".loom"):
+
+        ad = importLoom(inFname)
+    else:
+        ad = anndata.read_h5ad(inFname)
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
             markerField=markerField, clusterField=clusterField)
     generateHtmls(datasetName, outDir)
