@@ -493,7 +493,7 @@ def cbCellrangerCli_parseArgs(showHelp=False):
 
 def cbImportScanpy_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] input.h5ad outDir datasetName - convert Scanpy AnnData object to cellbrowser
+    parser = optparse.OptionParser("""usage: %prog [options] inFilename outDir datasetName - convert Scanpy AnnData object to cellbrowser. inFilename can be an .h5ad or .loom file.
 
     Example:
     - %prog -i pbmc3k.h5ad -o pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
@@ -525,7 +525,7 @@ def cbImportScanpy_parseArgs(showHelp=False):
             help="name of the marker genes field, default: %default", default="rank_genes_groups")
 
     parser.add_option("", "--clusterField", dest="clusterField", action="store",
-            help="if no marker genes are present, use this field to calculate them", default="louvain")
+            help="if no marker genes are present, use this field to calculate them. Default is to try a list of common field names, like 'Cluster' or 'louvain' and a few others")
 
     parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
         help="do not convert the matrix, saves time if the same one has been exported before to the "
