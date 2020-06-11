@@ -31,6 +31,8 @@ var cellbrowser = function() {
 
     var renderer = null;
 
+    var background = null;
+
     // last 10 genes
     var gRecentGenes = [];
 
@@ -1080,10 +1082,12 @@ var cellbrowser = function() {
     /* called each time when the selection has been changed */
         var cellIds = [];
         selection.forEach(function(x) {cellIds.push(x)});
+        $("#tpSetBackground").parent("li").removeClass("disabled");
 
         if (cellIds.length===0 || cellIds===null) {
             clearMetaAndGene();
             clearSelectionState();
+            $("#tpSetBackground").parent("li").addClass("disabled");
         } else if (cellIds.length===1) {
             var cellId = cellIds[0];
             var cellCountBelow = cellIds.length-1;
@@ -1525,6 +1529,26 @@ var cellbrowser = function() {
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
         $("#tpMetaVal").focus();
         return true;
+    }
+
+    function onBackgroudSetClick() {
+// Tools -> Set cells as background
+        if ($("#tpSetBackground").parent("li").hasClass("disabled")) {
+            return;
+        }
+
+        background = renderer.getSelection();
+        $("#tpResetBackground").parent("li").removeClass("disabled");
+        if ("geneSym" in gLegend)
+            buildViolinPlot();
+    }
+
+    function onBackgroudResetClick() {
+// Tools -> Reset background cells
+        background = null;
+        $("#tpResetBackground").parent("li").addClass("disabled");
+        if ("geneSym" in gLegend)
+            buildViolinPlot();
     }
 
     function saveQueryList(queryList) {
@@ -2175,6 +2199,8 @@ var cellbrowser = function() {
          //htmls.push('<li><a href="#" id="tpRenameClusters">Rename clusters...<span class="dropmenu-item-content"></span></a></li>');
          htmls.push('<li><a href="#" id="tpCustomAnnots">Remove all custom annotations<span class="dropmenu-item-content"></span></a></li>');
          //htmls.push('<li><a href="#" id="tpCluster">Run clustering...<span class="dropmenu-item-content"></span></a></li>');
+         htmls.push('<li class="disabled"><a href="#" id="tpSetBackground">Set as background cells<span class="dropmenu-item-content">b s</span></a></li>');
+         htmls.push('<li class="disabled"><a href="#" id="tpResetBackground">Reset background cells<span class="dropmenu-item-content">b r</span></a></li>');
          htmls.push('</ul>'); // Tools dropdown-menu
          htmls.push('</li>'); // Tools dropdown container
 
@@ -2224,6 +2250,8 @@ var cellbrowser = function() {
 
        $('#tpRenameClusters').click( onRenameClustersClick );
        $('#tpCustomAnnots').click( onCustomAnnotationsClick );
+       $('#tpSetBackground').click( onBackgroudSetClick );
+       $('#tpResetBackground').click( onBackgroudResetClick );
        //$('#tpCluster').click( onRunClusteringClick );
 
        // This version is more like OSX/Windows:
@@ -2501,10 +2529,13 @@ var cellbrowser = function() {
 
         var labelLines = [];
         //labelLines.push([labelList[0], dataList[0].length+" cells"]);
-        labelLines.push([labelList[0], dataList[0].length]);
-        if (dataList.length > 1)
+        labelLines[0] = labelList[0].split("\n");
+        labelLines[0].push(dataList[0].length);
+        if (dataList.length > 1) {
             //labelLines.push([labelList[1], dataList[1].length+" cells"]);
-            labelLines.push([labelList[1], dataList[1].length]);
+            labelLines[1] = labelList[1].split("\n");
+            labelLines[1].push(dataList[1].length);
+        }
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
@@ -2587,6 +2618,31 @@ var cellbrowser = function() {
         var dataList = [];
         var labelList = [];
         var selCells = renderer.getSelection();
+
+        // filter exprVec by background
+        if (background !== null) {
+            var ourSelCells = {};
+            for (var i = 0; i < selCells.length; i++) {
+                ourSelCells[selCells[i]] = true;
+            }
+            var ourCells = {};
+            for (i = 0; i < background.length; i++) {
+                ourCells[background[i]] = true;
+            }
+
+            var result = [];
+            var renamedSelCells = [];
+            for (i = 0; i < exprVec.length; i++) {
+                if (i in ourSelCells) {
+                    renamedSelCells.push(result.length);
+                    result.push(exprVec[i]);
+                } else if (i in ourCells) {
+                    result.push(exprVec[i]);
+                }
+            }
+            exprVec = result;
+            selCells = renamedSelCells;
+        }
         // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
         // restrict the plot to the selected cells, if any
         if (db.conf.violinField!==undefined) {
@@ -2596,12 +2652,20 @@ var cellbrowser = function() {
             if (selCells.length===0) {
                 // no selection, no violinField: default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
-                labelList = ['All cells'];
+                if (background === null) {
+                    labelList = ['All cells'];
+                } else {
+                    labelList = ['Background\ncells'];
+                }
                 buildViolinFromValues(labelList, dataList);
             } else {
                 // cells are selected and no violin field: make two violin plots, selected against other cells
                 dataList = splitExpr(exprVec, selCells);
-                labelList = ['Selected', 'Others'];
+                if (background === null) {
+                    labelList = ['Selected', 'Others'];
+                } else {
+                    labelList = ['Selected', 'Background\nOthers'];
+                }
                 if (dataList[1].length===0) {
                     dataList = [dataList[0]];
                     labelList = ['All Selected'];
@@ -4888,6 +4952,8 @@ var cellbrowser = function() {
         Mousetrap.bind('s i', onSelectInvertClick);
         Mousetrap.bind('s s', onSelectNameClick);
 
+        Mousetrap.bind('b s', onBackgroudSetClick);
+        Mousetrap.bind('b r', onBackgroudResetClick);
 
         Mousetrap.bind('m', function() {$('#tpMetaCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('d', function() {$('#tpDatasetCombo').trigger("chosen:open"); return false;});
