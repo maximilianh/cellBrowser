@@ -37,7 +37,7 @@ not specify the label, a default label will be used (e.g. 'Biorxiv Preprint'):
 - ``paper_url``: URL to any website with the fulltext
 - ``other_url``: URL to a website that describes the dataset
 
-The following tags contain accession IDs and will be translated to links:
+The following tags contain accession IDs and will be translated to links (remember that in addition to a string, they can also be a list of strings, in the usual JSON format e.g. ['123', '234']):
 
 - ``pmid``: Pubmed ID of the publication (CIRM TagsV5)
 - ``geo_series``: NCBI GEO series ID (CIRM TagsV5)
@@ -48,6 +48,8 @@ The following tags contain accession IDs and will be translated to links:
 - ``doi``: DOI of paper fulltext
 - ``dbgap``: NCBI dbGaP accession, starts with phs
 - ``bioproject``: NCBI Bioproject accession, PRJNAxxxx. Can be included with or without the PRJNA prefix.
+- ``ega_study``: EGA accession
+- ``cirm_dataset``: CIRM CDW dataset name
 
 The following tags contain just text:
 
