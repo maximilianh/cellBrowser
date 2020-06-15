@@ -1083,6 +1083,9 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.scaleData = function() {
        /* scale coords and labels to current zoom range, write results to pxCoords and pxLabels */
+       if (self.coords===null) // window resize can call this before coordinates are loaded.
+           return;
+
        var borderMargin = self.port.radius;
        self.calcRadius();
 
