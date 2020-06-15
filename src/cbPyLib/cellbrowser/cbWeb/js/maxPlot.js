@@ -174,7 +174,7 @@ function MaxPlot(div, top, left, width, height, args) {
         self.col.pal = null;        // list of six-digit hex codes 
         self.col.arr = null;        // length is coords.px/2, one byte per cell = index into self.col.pal
 
-        self.selCells   = [];  // IDs of cells that are selected (drawn in black)
+        self.selCells = new Set();  // IDs of cells that are selected (drawn in black)
 
         self.doDrawLabels = true;  // should cluster labels be drawn?
         self.initPort(args);
@@ -652,13 +652,12 @@ function MaxPlot(div, top, left, width, height, args) {
        // draw the selection as black rectangles
        ctx.globalAlpha = 0.7;
        ctx.fillStyle="black";
-       for (i = 0; i < selCells.length; i++) {
-           var cellId = selCells[i];
+        selCells.forEach(function(cellId) {
            let pxX = pxCoords[2*cellId];
            let pxY = pxCoords[2*cellId+1];
            ctx.fillRect(pxX-radius, pxY-radius, dblSize, dblSize);
            count += 1;
-       }
+        })
        console.log(count+" rectangles drawn (including selection)");
        ctx.restore();
        return count;
@@ -907,18 +906,17 @@ function MaxPlot(div, top, left, width, height, args) {
        
        // overdraw the selection as solid black circle outlines
        ctx.globalAlpha = 0.7;
-       for (i = 0; i < selCells.length; i++) {
-           var cellId = selCells[i];
+        selCells.forEach(function(cellId) {
            let pxX = pxCoords[2*cellId];
            let pxY = pxCoords[2*cellId+1];
            if (isHidden(pxX, pxY))
-               continue;
+                return;
            // make sure that old leftover overlapping black circles don't shine through
            let col = coordColors[cellId];
            ctx.drawImage(off, col * tileWidth, 0, tileWidth, tileHeight, pxX - radius -1, pxY - radius-1, tileWidth, tileHeight);
 
            ctx.drawImage(off, selImgId * tileWidth, 0, tileWidth, tileHeight, pxX - radius -1, pxY - radius-1, tileWidth, tileHeight);
-       }
+        })
 
        console.log(count +" circles drawn");
        ctx.restore();
@@ -1020,17 +1018,16 @@ function MaxPlot(div, top, left, width, height, args) {
        }
        
        // overdraw the selection as black pixels
-       for (i = 0; i < selCells.length; i++) {
-           var cellId = selCells[i];
+        selCells.forEach(function(cellId) {
            let pxX = pxCoords[2*cellId];
            let pxY = pxCoords[2*cellId+1];
            if (isHidden(pxX, pxY))
-               continue;
+                return;
            let p = 4 * (pxY*width+pxX); // pointer to red value of pixel at x,y
            cData[p] = 0; 
            cData[p+1] = 0;
            cData[p+2] = 0;
-       }
+        })
 
        self.ctx.putImageData(canvasData, 0, 0);
        return count;
@@ -1498,30 +1495,29 @@ function MaxPlot(div, top, left, width, height, args) {
     
     this.selectClear = function() {
         /* clear selection */
-        self.selCells.length = 0;
+        self.selCells.clear();
         setStatus("");
         if (self.onSelChange!==null)
-            self.onSelChange([]);
+            self.onSelChange(self.selCells);
     };
 
     this.selectSet = function(cellIds) {
         /* set selection to an array of integer cellIds */
-        self.selCells.length = 0;
+        self.selCells.clear();
         //self.selCells.push(...cellIds); // "extend" = array spread syntax, https://davidwalsh.name/spread-operator
         let selCells = self.selCells;
         for (let i=0; i<cellIds.length; i++)
-            selCells.push(cellIds[i]);
+            selCells.add(cellIds[i]);
         self._selUpdate();
     };
 
     this.selectAdd = function(cellIdx) {
         /* add a single cell to the selection. If it already exists, remove it. */
         console.time("selectAdd");
-        var foundIdx = self.selCells.indexOf(cellIdx);
-        if (foundIdx===-1)
-            self.selCells.push(cellIdx);
+        if (self.selCells.has(cellIdx))
+            self.selCells.delete(cellIdx);
         else
-            self.selCells.splice(foundIdx, 1);
+            self.selCells.add(cellIdx);
         console.time("selectAdd");
         self._selUpdate();
     };
@@ -1535,7 +1531,7 @@ function MaxPlot(div, top, left, width, height, args) {
             var pxY = pxCoords[2*i+1];
             if (isHidden(pxX, pxY))
                continue;
-            selCells.push(i); // XX: DUPLICATES?
+            selCells.add(i);
         }
         self.selCells = selCells;
         self._selUpdate();
@@ -1545,12 +1541,15 @@ function MaxPlot(div, top, left, width, height, args) {
         /* add all cells with a given color to the selection */
         var colArr = self.col.arr;
         var selCells = self.selCells;
+        var cnt = 0;
         for (var i = 0; i < colArr.length; i++) {
-            if (colArr[i]===colIdx)
-                selCells.push(i); // XX  duplicates ?
+            if (colArr[i]===colIdx) {
+                selCells.add(i);
+                cnt++;
+            }
         }
         self.selCells = selCells;
-        console.log(self.selCells.length+" cells appended to selection, by color");
+        console.log(cnt + " cells appended to selection, by color");
         self._selUpdate();
     };
 
@@ -1558,24 +1557,16 @@ function MaxPlot(div, top, left, width, height, args) {
         /* remove all cells with a given color from the selection */
         var colArr = self.col.arr;
         var selCells = self.selCells;
-
-        // make set of all cells to remove
-        var removeCells = new Set();
+        var cnt = 0;
         for (var i = 0; i < colArr.length; i++) {
-            if (colArr[i]===colIdx)
-                removeCells.add(i);
+            if (colArr[i]===colIdx) {
+                selCells.delete(i);
+                cnt++;
+            }
         }
 
-        // copy selection, skipping cells that should be removed
-        var newSel = [];
-        for (var i = 0; i < selCells.length; i++) {
-            var selId = selCells[i];
-            if (!removeCells.has(selId))
-                newSel.push(selId); // XX  duplicates ?
-        }
-
-        self.selCells = newSel;
-        console.log(removeCells.length+" cells removed from selection, by color");
+        self.selCells = selCells;
+        console.log(cnt + " cells removed from selection, by color");
         self._selUpdate();
     };
 
@@ -1595,7 +1586,7 @@ function MaxPlot(div, top, left, width, height, args) {
             if (isHidden(pxX, pxY))
                continue;
             if ((minX <= pxX) && (pxX <= maxX) && (minY <= pxY) && (pxY <= maxY)) {
-                self.selCells.push(i); // XX  duplicates?
+                self.selCells.add(i);
             }
 
         }
@@ -1605,22 +1596,21 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.getSelection = function() {
         /* return selected cells as a list of ints */
-        return self.selCells;
+        var cellIds = [];
+        self.selCells.forEach(function(x) {cellIds.push(x)});
+        return cellIds;
     };
     
     this.selectInvert = function() {
         /* invert selection */
         var selCells = self.selCells;
-        var selCellsObj = new Set();
-        for (var i = 0; i < selCells.length; i++) { // IE11 doesn't have array init constructor
-                selCellsObj.add(selCells[i]);
-        }
-
-        selCells.length = 0; // keep the same object
         var cellCount = self.getCount();
         for (let i = 0; i < cellCount; i++) {
-            if (! selCellsObj.has(i))
-                selCells.push(i);
+            if (selCells.has(i)) {
+                selCells.delete(i);
+            } else {
+                selCells.add(i);
+            }
         }
         self.selCells = selCells;
         self._selUpdate();
@@ -1628,14 +1618,14 @@ function MaxPlot(div, top, left, width, height, args) {
     
     this.getCount = function() {
         /* return maximum number of cells in dataset, may include hidden cells, see isHidden() */
-        return self.coords.orig.length;
+        return self.coords.orig.length / 2;
     };
     
     // END SELECTION METHODS (could be an object?)
 
     this._selUpdate = function() {
         /* called after the selection has been updated, calls the onSelChange callback */
-        setStatus(self.selCells.length+" "+self.gSampleDescription+"s selected");
+        setStatus(self.selCells.size + " " + self.gSampleDescription + "s selected");
         if (self.onSelChange!==null)
             self.onSelChange(self.selCells);
     }
@@ -1912,8 +1902,9 @@ function MaxPlot(div, top, left, width, height, args) {
             if (self.lastClick!==undefined && x2===self.lastClick[0] && y2===self.lastClick[1]) {
                 self.zoomBy(1.33);
                 self.lastClick = [-1,-1];
+            } else {
+                self.lastClick = [x2, y2];
             }
-            self.lastClick = [x2, y2];
 
             var labelInfo = self.labelAt(x2, y2);
             if (labelInfo!==null && self.doDrawLabels)
@@ -1922,7 +1913,10 @@ function MaxPlot(div, top, left, width, height, args) {
                 var clickedCellIds = self.cellsAt(x2, y2);
                 // click on a cell -> update selection and redraw
                 if (clickedCellIds!==null && self.onCellClick!==null) {
-                    self.selCells = clickedCellIds;
+                    self.selectClear();
+                    for (var i = 0; i < clickedCellIds.length; i++) {
+                        self.selCells.add(clickedCellIds[i]);
+                    }
                     self.drawDots();
                     self.onCellClick(clickedCellIds, ev);
 
