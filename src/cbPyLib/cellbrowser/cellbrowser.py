@@ -1116,14 +1116,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 def writeNum(col, packFmt, ofh):
     " write a list of numbers to a binary file "
 
-def cleanString(s):
-    " returns only alphanum characters in string s "
-    newS = []
-    for c in s:
-        if c.isalnum():
-            newS.append(c)
-    return "".join(newS)
-
 def moveOrGzip(inFname, outFname):
     " if outFname has .gz, runGzip, otherwise just move file over "
     if outFname.endswith(".gz"):
@@ -1199,11 +1191,11 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
     metaDescs = parseMetaDesc(inConf)
     enumOrder = inConf.get("enumOrder")
 
-    # the user inputs the enum fields cellbrowser.conf as their real names, but internally, unfortunately
+    # the user inputs the enum fields in cellbrowser.conf as their real names, but internally, unfortunately
     # we have to strip special chars so fix the user's field names to our format
     sanEnumFields = []
     if enumFields is not None:
-        sanEnumFields = [nonAlphaToUnderscores(n) for n in enumFields]
+        sanEnumFields = [sanitizeName(n) for n in enumFields]
 
     fieldInfo = []
     validFieldNames = set()
@@ -1229,7 +1221,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = cleanString(fieldName.split("|")[0])
+        cleanFieldName = sanitizeName(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -2404,9 +2396,13 @@ def to_camel_case(snake_str):
     return components[0] + ''.join(x.title() for x in components[1:])
 
 def sanitizeName(name):
-    " remove all nonalpha chars, allow underscores "
+    " remove all nonalpha chars, allow underscores, special treatment for %, + and -. Makes a valid file name. "
     assert(name!=None)
     #newName = to_camel_case(name.replace(" ", "_"))
+    # some characters are actually pretty common and there we have seen fields where the only 
+    # difference are these characters
+    # if this continues to be aproblem, maybe append the MD5 of a raw field name to the sanitized name
+    name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
         logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
@@ -2414,10 +2410,9 @@ def sanitizeName(name):
     return newName
 
 def nonAlphaToUnderscores(name):
-    " for tab-sep tables: replace nonalpha chars with  underscores "
+    " for tab-sep tables: replace nonalpha chars with  underscores. Makes a valid name for namedtuple.  "
     assert(name!=None)
-    #newName = to_camel_case(name.replace(" ", "_"))
-    newName = name.replace("%","perc")
+    newName = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = re.sub("[^a-zA-Z0-9_]","_", newName)
     newName = re.sub("^_","", newName)  # remove _ prefix
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
@@ -2428,14 +2423,16 @@ def parseMarkerTable(filename, geneToSym):
     logging.debug("Reading cluster markers from %s" % (filename))
     ifh = openFile(filename)
 
+    # why does Seurat have so many different ways of writing a dataframe to a text file ??
     seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
     seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
     seuratLine4 = "Gene\tp-value\tlog2(FoldChange)\tpct.1\tpct.2\tadjusted p-value\tCluster"
+    seuratLine5 = 'p_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
     headerLine = ifh.readline().rstrip("\r\n")
 
     sep = sepForFile(filename)
-    if headerLine == seuratLine or headerLine == seuratLine2 or headerLine == seuratLine3:
+    if headerLine in [seuratLine, seuratLine2, seuratLine4, seuratLine5]:
         logging.debug("Cluster marker file %s was recognized to be in Seurat format" % filename)
         # field 0 is not the gene ID, it has some weird suffix appended.
         headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
@@ -2726,6 +2723,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         for sf in summInfo["supplFiles"]:
             rawInPath = join(inDir, sf["file"])
             rawOutPath = join(datasetDir, basename(sf["file"]))
+            sf["file"] = basename(sf["file"]) # strip input directory
             if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
                 logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
                 shutil.copyfile(rawInPath, rawOutPath)
@@ -2931,7 +2929,7 @@ def readSampleNames(fname):
     sampleNames = []
     i = 1
     doneNames = set()
-    for row in lineFileNextRow(fname):
+    for row in lineFileNextRow(fname, noHeaders=True):
         metaName = row[0]
         if metaName=="":
             errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
@@ -3005,11 +3003,11 @@ def parseLineInfo(inFname, limits):
         maxY = max(maxY, y1, y2)
 
         lines.append( (x1, y1, x2, y2) )
-    logging.info("Parsed %s, got %d lines" % (inFname, len(lines)))
+    logging.info("Read lines from %s, got %d lines" % (inFname, len(lines)))
 
     scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
     limits = minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY
-    logging.debug("Lines parsed, new limits are: %s" % repr(limits))
+    logging.debug("Lines read, new limits are: %s" % repr(limits))
     return lines, limits
 
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
@@ -3089,12 +3087,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         # now that we have the global limits, scale everything
         coordDict = scaleCoords(coords, limits)
 
-        clusterInfo = {}
-        if hasLines:
-            lineFlipY = inCoordInfo.get("lineFlipY", flipY)
-            lineData = scaleLines(lineCoords, limits, lineFlipY)
-            clusterInfo["lines"] = lineData
-
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
@@ -3115,7 +3107,11 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         outFnames.append(textOutBase)
         coordInfo, xVals, yVals = writeCoords(coordLabel, coordDict, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
 
-
+        clusterInfo = {}
+        if hasLines:
+            lineFlipY = inCoordInfo.get("lineFlipY", flipY)
+            lineData = scaleLines(lineCoords, limits, lineFlipY)
+            clusterInfo["lines"] = lineData
         if hasLabels:
             logging.debug("Calculating cluster midpoints for "+coordLabel)
             clusterMids= makeMids(xVals, yVals, labelVec, labelVals, coordInfo)
@@ -3126,7 +3122,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             labelVals = []
 
 
-        if hasLabels or hasLines:
+        if hasLabels:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
             midFh = open(clusterLabelFname, "w")
             json.dump(clusterInfo, midFh, indent=2)
@@ -3723,6 +3719,15 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
+def geneSeriesToStrings(geneIdSeries, indexFirst=False):
+    " convert a pandas data series to a list of |-separated strings "
+    if indexFirst:
+        geneIdAndSyms = list(zip(geneIdSeries.index, geneIdSeries.values))
+    else:
+        geneIdAndSyms = list(zip(geneIdSeries.values, geneIdSeries.index))
+    genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+    return genes
+
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
     import pandas as pd
@@ -3769,13 +3774,11 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         # when reading 10X files, read_h5 puts the geneIds into a separate field
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
         if "gene_ids" in var:
-            geneIdObj = var["gene_ids"]
-            geneIdAndSyms = list(zip(geneIdObj.values, geneIdObj.index))
-            genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+            genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
         elif "gene_symbols" in var:
-            geneIdObj = var['gene_symbols']
-            geneIdAndSyms = zip(geneIdObj.index, geneIdObj.values)
-            genes = [x+"|"+y for (x,y) in geneIdAndSyms]
+            genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
+        elif "Accession" in var: # only seen this in the ABA Loom files
+            genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
         else:
             genes = var.index.tolist()
 
@@ -3884,7 +3887,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
         if "columns" in dir(adata.obs): # in older scanpy objects obs is not a pandas dataframe
             if clusterField not in adata.obs.columns:
-                tryFields = ["CellType", "cell_type", "Celltypes", "Cell_type", "celltype", "annotated_cell_identity.text"]
+                tryFields = ["CellType", "cell_type", "Celltypes", "Cell_type", "celltype", "annotated_cell_identity.text", "BroadCellType", "Class"]
                 logging.info("Cluster field '%s' not in adata.obs, trying %s" % (clusterField, tryFields))
                 foundField = None
                 for fieldName in tryFields:
@@ -3895,10 +3898,11 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
                     errAbort("Could not find field '%s' in the scanpy object. To make a cell browser, you should have a "
                     " field like 'cluster' or "
                     "'celltype' or 'louvain' in your object. The available fields are: %s ."
+                    "These names were tried: %s. "
                     "Re-run the import and specify the field that contains cell-type-like annotations with the "
                     "option --clusterField from the command line or clusterField='xxx' from Jupyter. "
                     "If you have a use case where this field should not be required, please contact us. "
-                    % (clusterField, repr(adata.obs.columns)))
+                    % (clusterField, repr(adata.obs.columns), tryFields) )
 
                 clusterField = foundField
 
@@ -4593,6 +4597,10 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
         if not "md5" in datasetDesc:
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
 
+        if not "name" in datasetDesc:
+            errAbort("The file dataset.json for the subdirectory %s is not valid. Please rebuild it, then "
+                    "come back here and retry the cbBuild command" % subDir)
+
         dsName = datasetDesc["name"]
         if dsName in dsNames:
             errAbort("Duplicate name: %s appears in these directories: %s and %s" % \
@@ -4653,28 +4661,35 @@ def findDatasets(outDir):
     logging.info("Found %d datasets" % len(datasets))
     return datasets
 
-def copyAllFiles(fromDir, subDir, toDir):
+def copyAllFiles(fromDir, subDir, toDir, ext=None):
     " copy all files in fromDir/subDir to toDir/subDir "
     outDir = join(toDir, subDir)
     makeDir(outDir)
     logging.debug("Copying all files from %s/%s to %s" % (fromDir, subDir, toDir))
     for filename in glob.glob(join(fromDir, subDir, '*')):
-    # egg-support commented out for now, eggs are out of fashion
-    #for filename in pkg_resources.resource_listdir(__name__, join(fromDir, subDir)):
         if isdir(filename):
             continue
-        #fullPath = join(fromDir, subDir, filename)
+        if ext and not filename.endswith(ext):
+            continue
         fullPath = filename
-        #logging.debug("Copying %s to %s" % (fullPath, outDir))
-        # copy uses chmod() which we don't want
-        #shutil.copy(filename, outDir)
         dstPath = join(outDir, basename(filename))
         shutil.copyfile(fullPath, dstPath)
-        #s = pkg_resources.resource_string(__name__, filename)
-        #outFname = join(outDir, filename)
-        #ofh = open(outFname, "wb")
-        #ofh.write(s)
-        #ofh.close()
+
+def copyAndReplace(inFname, outDir):
+    " copy file, replacing $VERSION and $GENEFILES "
+    try:
+        from ._version import get_versions
+        versionStr = get_versions()['version']
+    except:
+        versionStr = "versioneerPackageNotInstalled"
+
+    data = open(inFname).read()
+    data = data.replace("$VERSION$", versionStr)
+
+    outFname = join(outDir, basename(inFname))
+    with open(outFname, "w") as ofh:
+        ofh.write(data)
+    logging.debug("Wrote version string %s into file %s, source was %s" % (repr(versionStr), inFname, outFname))
 
 def copyStatic(baseDir, outDir):
     " copy all js, css and img files to outDir "
@@ -4686,6 +4701,9 @@ def copyStatic(baseDir, outDir):
     copyAllFiles(baseDir, "ext", outDir)
     copyAllFiles(baseDir, "js", outDir)
     copyAllFiles(baseDir, "css", outDir)
+    copyAllFiles(baseDir, "genes", outDir, ext=".json.gz")
+
+    copyAndReplace(join(baseDir, "js", "cellBrowser.js"), join(outDir, "js"))
 
 def writeVersionedLink(ofh, mask, webDir, relFname, addVersion=True):
     " write sprintf-formatted mask to ofh, but add ?md5 to jsFname first. Goal is to force cache reload in browser. "
@@ -4756,6 +4774,9 @@ def summarizeDatasets(datasets):
             summDs["sampleCount"] = ds["sampleCount"]
         else:
             summDs["isCollection"] = True
+            if not "datasets" in ds:
+                errAbort("The dataset %s has a dataset.json file that looks invalide. Please rebuild that dataset. "
+                        "Then go back to the current directory and retry the same command. " % ds["name"])
             children = ds["datasets"]
 
             collCount = 0
@@ -5019,6 +5040,14 @@ def addMetaToAnnData(adata, fname):
     #adata.obs["Cluster"] = df["Cluster"].astype("category")
     #adata.obs["Cluster"] = pd.Categorical(df["Cluster"], ordered=True)
     return adata
+
+def getObsKeys(adata):
+    "get the keys of the obs object. Anndata broke compatibility, so try to accept two ways"
+    try:
+        obsKeys = adata.obsKeys.dtype.names # this used to work
+    except:
+        obsKeys = list(adata.obs.keys()) # this seems to work with newer versions
+    return obsKeys
 
 def getObsmKeys(adata):
     "get the keys of the obsm object. Has this changed in newer versions of anndata? "
@@ -5589,8 +5618,8 @@ def open10xMtxForRows(mtxFname, geneFname, barcodeFname):
 
     #print(mat.shape[0])
     #print(len(genes))
-    assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count
-    assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count
+    assert(mat.shape[0]==len(genes)) # matrix gene count has to match gene tsv file line count. Does the genes file have a strange header?
+    assert(mat.shape[1]==len(barcodes)) # matrix cell count has to match barcodes tsv file line count. Does the barcodes file have a strange header line?
 
     return mat, genes, barcodes
 
@@ -5717,9 +5746,7 @@ def generateDownloads(datasetName, outDir):
 
 def generateHtmls(datasetName, outDir):
     " generate desc.conf in outDir, if it doesn't exist "
-    #copyPkgFile("sampleConfig/summary.html", outDir, {"datasetName" :datasetName})
     generateDataDesc(datasetName, outDir, {})
-    #generateDownloads(datasetName, outDir)
 
 if __name__=="__main__":
     args, options = main_parseArgs()

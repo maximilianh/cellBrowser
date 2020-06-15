@@ -701,9 +701,9 @@ function MaxPlot(div, top, left, width, height, args) {
         ctx.save();
         //ctx.globalAlpha = 1.0;
 
-        ctx.strokeStyle = attrs.color || "#AAAAAA"; 
-        ctx.lineWidth = attrs.width || 3; 
-        ctx.globalAlpha = attrs.alpha || 0.5;
+        ctx.strokeStyle = attrs.lineColor || "#888888"; 
+        ctx.lineWidth = attrs.lineWidth || 3; 
+        ctx.globalAlpha = attrs.lineAlpha || 0.5;
         //ctx.miterLimit =2;
         //ctx.strokeStyle = "rgba(200, 200, 200, 0.3)";
 
@@ -1080,6 +1080,9 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.scaleData = function() {
        /* scale coords and labels to current zoom range, write results to pxCoords and pxLabels */
+       if (self.coords===null) // window resize can call this before coordinates are loaded.
+           return;
+
        var borderMargin = self.port.radius;
        self.calcRadius();
 
@@ -1211,6 +1214,8 @@ function MaxPlot(div, top, left, width, height, args) {
        //setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
        setStatus(count+ " visible " + self.gSampleDescription+"s loaded");
 
+       if (opts.lines)
+           self._setLines(opts["lines"], opts);
        self.scaleData();
     };
 
@@ -2035,11 +2040,11 @@ function MaxPlot(div, top, left, width, height, args) {
         }
     };
 
-    this.setLines = function(lines, color, width, attrs) {
+    this._setLines = function(lines, attrs) {
         if (lines===undefined)
             return;
         self.coords.lines = lines;
-        self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+        //self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
         if (!attrs)
             self.coords.lineAttrs = {};
         else

@@ -24,8 +24,8 @@ setuptools.setup(
     the Cell Browser at https://cells.ucsc.edu or read about how to convert
     data with this package on https://cellbrowser.rtfd.org.""",
     long_description_content_type="text/markdown",
-    packages=setuptools.find_packages("src/cbPyLib/"),
-    package_dir={'':'src/cbPyLib/'},   # tell distutils packages are under src
+    packages=setuptools.find_packages("src/cbPyLib"),
+    package_dir={'':'src/cbPyLib'},   # tell distutils packages are under src
     include_package_data=True,  # use MANIFEST.in for non-python files
     #package_data={
         #'cellbrowser': ['cbWeb/js/*.js', 'cbWeb/html/*.html', 'cbWeb/ext/*']

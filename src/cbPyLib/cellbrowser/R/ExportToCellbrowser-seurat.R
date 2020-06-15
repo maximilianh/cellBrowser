@@ -2,7 +2,8 @@
 require(reticulate)
 
 # ---
-#' Write sparse matrix to .tsv.gz file by writing chunks, concating them with the Unix cat command,
+#' Used by ExportToCellbrowser:
+#' Write a big sparse matrix to a .tsv.gz file by writing chunks, concating them with the Unix cat command,
 #' then gziping the result. This does not work on Windows, we'd have to use the copy /b command there.
 #'
 #' @param inMat input matrix
@@ -39,7 +40,8 @@ writeSparseMatrix = function (inMat, outFname, sliceSize=1000) {
         unlink(fnames); 
 }
 
-#' Return the correct matrix object from a Seurat object
+#' used by ExportToCellbrowser: 
+#' Return a matrix object from a Seurat object or show an error message
 #'
 #' @param object Seurat object
 #' @param matrix.slot the name of the slot
@@ -60,19 +62,48 @@ findMatrix = function( object, matrix.slot ) {
 #' Export Seurat object for UCSC cell browser
 #'
 #' @param object Seurat object
-#' @param dir output directory path
-#' @param dataset.name name of the dataset
-#' @param meta.fields vector of metadata fields to export. By default all are exported.
-#' @param meta.fields.names list that defines metadata field names
-#'                          after the export. Should map metadata
-#'                          column name to export field name
-#' @param use.mtx for datasets > 100k cells, this is necessary, as otherwise R will report "problem too big"
-#' @param matrix.slot one of "counts", "scale.data", "data". Defaults to "counts".
-#' @param embeddings vector of embedding names to export. By default all are exported.
-#' @param markers.file path to file with marker genes
+#' @param dir path to directory where to save exported files. These are:
+#' exprMatrix.tsv, tsne.coords.tsv, meta.tsv, markers.tsv and a default cellbrowser.conf
+#' @param dataset.name name of the dataset. Defaults to Seurat project name
+#' @param reductions vector of reduction names to export, defaults to all reductions.
+#' @param markers.file path to file with marker genes. Alternatively,
+#' markers can also be supplied in the object, as misc$markers.
+#' @param markers.n if no markers were supplied, FindAllMarkers is run.
+#' This parameter indicates how many markers to calculate, default is 100
+#' @param matrix.slot matrix to use, default is 'counts'
+#' @param use.mtx export the matrix in .mtx.gz format. Default is False,
+#'        unless the matrix is bigger than R's maximum matrix size.
 #' @param cluster.field name of the metadata field containing cell cluster
-#' @param cb.dir in which dir to create UCSC cell browser content root
-#' @param port \emph{experimental} on which port to run UCSC cell browser after export
+#' @param cb.dir path to directory where to create UCSC cellbrowser static
+#' website content root, e.g. an index.html, .json files, etc. These files
+#' can be copied to any webserver. If this is specified, the cellbrowser
+#' package has to be accessible from R via reticulate.
+#' @param meta.fields vector of meta fields to export, default is all.
+#' @param meta.fields.names vector meta field names to show in UI. Must have 
+#'        same length as meta.fields. Default is meta.fields.
+#' @param skip.markers whether to skip exporting markers
+#' @param skip.expr.matrix whether to skip exporting expression matrix
+#' @param skip.metadata whether to skip exporting metadata
+#' @param skip.reductions whether to skip exporting reductions
+#' @param port on which port to run UCSC cellbrowser webserver after export
+#' @param ... specifies the metadata fields to export. To supply field with
+#' human readable name, pass name as \code{field="name"} parameter.
+#'
+#' @return This function exports Seurat object as a set of tsv files
+#' to \code{dir} directory, copying the \code{markers.file} if it is
+#' passed. It also creates the default \code{cellbrowser.conf} in the
+#' directory. This directory could be read by \code{cbBuild} to
+#' create a static website viewer for the dataset. If \code{cb.dir}
+#' parameter is passed, the function runs \code{cbBuild} (if it is
+#' installed) to create this static website in \code{cb.dir} directory.
+#' If \code{port} parameter is passed, it also runs the webserver for
+#' that directory and opens a browser.
+#'
+#' @author Maximilian Haeussler, Nikolay Markov
+#'
+#' @importFrom utils browseURL
+#' @importFrom reticulate py_module_available import
+#' @importFrom tools file_ext
 #'
 #' @export
 #'
@@ -87,21 +118,23 @@ findMatrix = function( object, matrix.slot ) {
 ExportToCellbrowser <- function(
   object,
   dir,
-  dataset.name,
-  meta.fields = NULL,
-  meta.fields.names = NULL,
-  embeddings = NULL,
-  matrix.slot = "counts",
+  dataset.name = Project(object = object),
+  reductions = NULL,
   markers.file = NULL,
   cluster.field = NULL,
-  port = NULL,
   cb.dir = NULL,
+  port = NULL,
+  use.mtx = FALSE,
+  meta.fields = NULL,
+  meta.fields.names = NULL,
+  matrix.slot = "counts",
   markers.n = 100,
-  skip.expr.matrix = FALSE,
   skip.markers = FALSE,
-  all.meta = FALSE,
-  use.mtx = FALSE
+  skip.expr.matrix = FALSE,
+  skip.metadata = FALSE,
+  skip.reductions = FALSE
 ) {
+
   if (!require("Seurat",character.only = TRUE)) {
           stop("This script requires that Seurat (V2 or V3) is installed")
   }
@@ -116,6 +149,7 @@ ExportToCellbrowser <- function(
           stop("The installed version of Seurat is different from Seurat object loaded. You have to down- or upgrade your installed Seurat version, see the Seurat documentation")
   }
 
+  embeddings = reductions # Seurat prefers the word reductions
 
   # compatibility layer for Seurat 2 vs 3 
   # see https://satijalab.org/seurat/essential_commands.html
@@ -183,7 +217,9 @@ ExportToCellbrowser <- function(
   if (!dir.exists(dir)) {
     stop("Output directory ", dir, " cannot be created or is a file")
   }
-
+  if (dataset.name == "SeuratProject") {
+    warning("Using default project name means that you may overwrite project with the same name in the cellbrowser html output folder")
+  }
   enum.fields <- c()
 
   # Export expression matrix
@@ -227,7 +263,7 @@ ExportToCellbrowser <- function(
       message("Using all embeddings contained in the Seurat object: ", embeddings)
   }
 
-  embeddings.conf <- c()
+  embedNames = c()
   for (embedding in embeddings) {
     emb <- dr[[embedding]]
     if (is.null(emb)) {
@@ -248,12 +284,22 @@ ExportToCellbrowser <- function(
     )
     message("Writing embeddings to ", fname)
     write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
-    conf <- sprintf(
-      '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
-      embedding
-    )
-    embeddings.conf <- c(embeddings.conf, conf)
+    embedNames = append(embedNames, embedding)
   }
+
+  # by default, the embeddings are sorted in the object by order of creation (pca, tsne, umap).
+  # But that is usually the opposite of what users want, they want the last embedding to appear first
+  # in the UI, so reverse the order here
+  embedNames = sort(embedNames, decreasing=T)
+  embeddings.conf <- c()
+  for (embedName in embedNames) {
+      conf <- sprintf(
+        '{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',
+        embedName
+      )
+      embeddings.conf <- c(embeddings.conf, conf)
+   }
+
 
   # Export metadata
   df <- data.frame(row.names = cellOrder, check.names=FALSE)
@@ -386,9 +432,8 @@ coords=%s'
   cat(config, file=confPath)
 
   message("Prepared cellbrowser directory ", dir)
-
-  if (!is.null(cb.dir)) {
-    if (!py_module_available("cellbrowser")) {
+  if (!is.null(x = cb.dir)) {
+    if (!py_module_available(module = "cellbrowser")) {
           stop(
             "The Python package `cellbrowser` is required to prepare and run ",
             "Cellbrowser. Please install it ",
@@ -396,16 +441,17 @@ coords=%s'
             "or `pip install cellbrowser --user` (as a non-root user). ",
             "To adapt the Python that is used, you can either set the env. variable RETICULATE_PYTHON ",
             "or do `require(reticulate) and use one of these functions: use_python(), use_virtualenv(), use_condaenv(). ",
-            "See https://rstudio.github.io/reticulate/articles/versions.html . ",
-            "At the moment, R's reticulate is using this Python: ",import('sys')$executable,". "
-           )
+            "See https://rstudio.github.io/reticulate/articles/versions.html; ",
+            "at the moment, R's reticulate is using this Python: ",
+            import(module = 'sys')$executable,
+            ". "
+         )
     }
-
-    if (!is.null(port)) {
-      port <- as.integer(port)
+    if (!is.null(x = port)) {
+      port <- as.integer(x = port)
     }
     message("Converting cellbrowser directory to html/json files")
-    cb <- import("cellbrowser")
+    cb <- import(module = "cellbrowser")
     cb$cellbrowser$build(dir, cb.dir)
     message("HTML files are ready in ", cb.dir)
 
@@ -413,8 +459,8 @@ coords=%s'
       message("Starting http server")
       cb$cellbrowser$stop()
       cb$cellbrowser$serve(cb.dir, port)
-      Sys.sleep(0.4)
-      utils::browseURL(sprintf("http://localhost:%d", port))
+      Sys.sleep(time = 0.4)
+      browseURL(url = paste0("http://localhost:", port))
     }
   }
 }

@@ -314,7 +314,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('saveRDS(sobj, file = "%s")' % rdsPath)
 
     cmds.append("message('Exporting Seurat data object to cbBuild directory %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', all.meta=TRUE, use.mtx=T, matrix.slot='%s')" %
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', use.mtx=T, matrix.slot='%s')" %
             (outDir, datasetName, "counts"))
 
     writeRScript(cmds, scriptPath, "cbSeurat")
@@ -528,7 +528,7 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
         matrixSlot = options.matrixSlot
 
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
-    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, all.meta=TRUE, use.mtx=%s, matrix.slot='%s')" %
+    cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, use.mtx=%s, matrix.slot='%s')" %
             (outDir, datasetName, markerFileStr, clusterStr, skipStr, skipMarkerStr, useMtx, matrixSlot))
 
     writeRScript(cmds, scriptPath, "cbImportSeurat")
