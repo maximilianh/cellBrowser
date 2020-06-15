@@ -5181,19 +5181,21 @@ var cellbrowser = function() {
             gLegend.selectionDirection = "none";
             checkbox.html("&#9746;");
             // from https://stackoverflow.com/questions/9501921/change-twitter-bootstrap-tooltip-content-on-click
-            checkbox.attr('title', "unselect all checkboxes below")
-                .bsTooltip('fixTitle')
-                .data('bs.tooltip')
-                .$tip.find('.tooltip-inner')
+            checkbox.attr('title', "unselect all checkboxes below");
+            var tip = checkbox.bsTooltip('fixTitle').data('bs.tooltip').$tip;
+            if (tip) {
+                tip.find('.tooltip-inner')
                 .text("unselect all checkboxes below");
+            }
         } else if (gLegend.selectionDirection == "none" && selected === 0) {
             gLegend.selectionDirection = "all";
             checkbox.html("&#9745;");
-            checkbox.attr('title', "select all checkboxes below")
-                .bsTooltip('fixTitle')
-                .data('bs.tooltip')
-                .$tip.find('.tooltip-inner')
+            checkbox.attr('title', "select all checkboxes below");
+            var tip = checkbox.bsTooltip('fixTitle').data('bs.tooltip').$tip;
+            if (tip) {
+                tip.find('.tooltip-inner')
                 .text("select all checkboxes below");
+            }
         }
     }
 
