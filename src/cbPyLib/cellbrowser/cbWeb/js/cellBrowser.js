@@ -31,6 +31,8 @@ var cellbrowser = function() {
 
     var renderer = null;
 
+    var background = null;
+
     // last 10 genes
     var gRecentGenes = [];
 
@@ -951,7 +953,7 @@ var cellbrowser = function() {
 
         let doFaceting = false;
         let filtList = [];
-        if (openDsInfo.parents === undefined) {
+        if (openDsInfo.parents === undefined && openDsInfo.datasets !== undefined) {
             //noteLines.push("<span>Filter:</span>");
             let bodyParts = getBodyParts(openDsInfo.datasets);
             if (bodyParts.length!==0) {
@@ -1074,7 +1076,9 @@ var cellbrowser = function() {
             changeUrl({"ds":openDatasetName});
         });
 
+        var focused = document.activeElement;
         var scroller = $("#tpDatasetList").overlayScrollbars({ });
+        $(focused).focus();
 
 
         $("#tabLink1").tab("show");
@@ -1093,11 +1097,16 @@ var cellbrowser = function() {
     }
 
 
-    function onSelChange(cellIds) {
+    function onSelChange(selection) {
     /* called each time when the selection has been changed */
+        var cellIds = [];
+        selection.forEach(function(x) {cellIds.push(x)});
+        $("#tpSetBackground").parent("li").removeClass("disabled");
+
         if (cellIds.length===0 || cellIds===null) {
             clearMetaAndGene();
             clearSelectionState();
+            $("#tpSetBackground").parent("li").addClass("disabled");
         } else if (cellIds.length===1) {
             var cellId = cellIds[0];
             var cellCountBelow = cellIds.length-1;
@@ -1112,6 +1121,22 @@ var cellbrowser = function() {
         if ("geneSym" in gLegend)
             buildViolinPlot();
 
+        var cols = renderer.col.arr;
+        var selectedLegends = {};
+        for (var i = 0; i < gLegend.rows.length; i++) {
+            selectedLegends[i] = 0;
+        }
+        selection.forEach(function(cellId) {
+            selectedLegends[cols[cellId]]++;
+        });
+        for (var i = 0; i < gLegend.rows.length; i++) {
+            if (selectedLegends[i] == gLegend.rows[i].count) {
+                $("#tpLegendCheckbox_" + i).prop("checked", true);
+            } else {
+                $("#tpLegendCheckbox_" + i).prop("checked", false);
+            }
+        }
+        updateLegendGrandCheckbox();
     }
 
     function onSaveAsClick() {
@@ -1523,6 +1548,26 @@ var cellbrowser = function() {
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:dlgWidth, buttons:buttons});
         $("#tpMetaVal").focus();
         return true;
+    }
+
+    function onBackgroudSetClick() {
+// Tools -> Set cells as background
+        if ($("#tpSetBackground").parent("li").hasClass("disabled")) {
+            return;
+        }
+
+        background = renderer.getSelection();
+        $("#tpResetBackground").parent("li").removeClass("disabled");
+        if ("geneSym" in gLegend)
+            buildViolinPlot();
+    }
+
+    function onBackgroudResetClick() {
+// Tools -> Reset background cells
+        background = null;
+        $("#tpResetBackground").parent("li").addClass("disabled");
+        if ("geneSym" in gLegend)
+            buildViolinPlot();
     }
 
     function saveQueryList(queryList) {
@@ -2088,7 +2133,7 @@ var cellbrowser = function() {
 
         htmls.push("<p><b>Version:</b> "+gVersion+"</p>");
         htmls.push("<p><b>Written by:</b> Maximilian Haeussler, Nikolay Markov (U Northwestern), Brian Raney, Lucas Seninge</p>");
-        htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support: Matt Speir</p>");
+        htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support:</b> Matt Speir</p>");
         htmls.push("<p><b>Code contributions by:</b> Pablo Moreno (EBI, UK)</p>");
         htmls.push("<p><b>Documentation:</b> <a target=_blank href='https://cellbrowser.readthedocs.io/'>Readthedocs</a></p>");
         htmls.push("<p><b>Github Repo: </b><a target=_blank href='https://github.com/maximilianh/cellBrowser/'>cellBrowser</a></p>");
@@ -2190,6 +2235,8 @@ var cellbrowser = function() {
          //htmls.push('<li><a href="#" id="tpRenameClusters">Rename clusters...<span class="dropmenu-item-content"></span></a></li>');
          htmls.push('<li><a href="#" id="tpCustomAnnots">Remove all custom annotations<span class="dropmenu-item-content"></span></a></li>');
          //htmls.push('<li><a href="#" id="tpCluster">Run clustering...<span class="dropmenu-item-content"></span></a></li>');
+         htmls.push('<li class="disabled"><a href="#" id="tpSetBackground">Set as background cells<span class="dropmenu-item-content">b s</span></a></li>');
+         htmls.push('<li class="disabled"><a href="#" id="tpResetBackground">Reset background cells<span class="dropmenu-item-content">b r</span></a></li>');
          htmls.push('</ul>'); // Tools dropdown-menu
          htmls.push('</li>'); // Tools dropdown container
 
@@ -2241,6 +2288,8 @@ var cellbrowser = function() {
 
        $('#tpRenameClusters').click( onRenameClustersClick );
        $('#tpCustomAnnots').click( onCustomAnnotationsClick );
+       $('#tpSetBackground').click( onBackgroudSetClick );
+       $('#tpResetBackground').click( onBackgroudResetClick );
        //$('#tpCluster').click( onRunClusteringClick );
 
        // This version is more like OSX/Windows:
@@ -2518,10 +2567,13 @@ var cellbrowser = function() {
 
         var labelLines = [];
         //labelLines.push([labelList[0], dataList[0].length+" cells"]);
-        labelLines.push([labelList[0], dataList[0].length]);
-        if (dataList.length > 1)
+        labelLines[0] = labelList[0].split("\n");
+        labelLines[0].push(dataList[0].length);
+        if (dataList.length > 1) {
             //labelLines.push([labelList[1], dataList[1].length+" cells"]);
-            labelLines.push([labelList[1], dataList[1].length]);
+            labelLines[1] = labelList[1].split("\n");
+            labelLines[1].push(dataList[1].length);
+        }
 
         const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
 
@@ -2604,6 +2656,31 @@ var cellbrowser = function() {
         var dataList = [];
         var labelList = [];
         var selCells = renderer.getSelection();
+
+        // filter exprVec by background
+        if (background !== null) {
+            var ourSelCells = {};
+            for (var i = 0; i < selCells.length; i++) {
+                ourSelCells[selCells[i]] = true;
+            }
+            var ourCells = {};
+            for (i = 0; i < background.length; i++) {
+                ourCells[background[i]] = true;
+            }
+
+            var result = [];
+            var renamedSelCells = [];
+            for (i = 0; i < exprVec.length; i++) {
+                if (i in ourSelCells) {
+                    renamedSelCells.push(result.length);
+                    result.push(exprVec[i]);
+                } else if (i in ourCells) {
+                    result.push(exprVec[i]);
+                }
+            }
+            exprVec = result;
+            selCells = renamedSelCells;
+        }
         // if we have a violin meta field to split on, make two violin plots, one meta vs, the other meta
         // restrict the plot to the selected cells, if any
         if (db.conf.violinField!==undefined) {
@@ -2613,12 +2690,20 @@ var cellbrowser = function() {
             if (selCells.length===0) {
                 // no selection, no violinField: default to a single violin plot
                 dataList = [Array.prototype.slice.call(exprVec)];
-                labelList = ['All cells'];
+                if (background === null) {
+                    labelList = ['All cells'];
+                } else {
+                    labelList = ['Background\ncells'];
+                }
                 buildViolinFromValues(labelList, dataList);
             } else {
                 // cells are selected and no violin field: make two violin plots, selected against other cells
                 dataList = splitExpr(exprVec, selCells);
-                labelList = ['Selected', 'Others'];
+                if (background === null) {
+                    labelList = ['Selected', 'Others'];
+                } else {
+                    labelList = ['Selected', 'Background\nOthers'];
+                }
                 if (dataList[1].length===0) {
                     dataList = [dataList[0]];
                     labelList = ['All Selected'];
@@ -3337,6 +3422,7 @@ var cellbrowser = function() {
         gLegend.rowType = "range";
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
+        gLegend.selectionDirection = "all";
         legendSetPalette(gLegend, "default");
 
         var colors = legendGetColors(legendRows);
@@ -3882,6 +3968,7 @@ var cellbrowser = function() {
         legend.rows = rows;
         legend.isSortedByName = sortResult.isSortedByName;
         legend.rowType = "category";
+        legend.selectionDirection = "all";
         legendSetPalette(legend, "default");
         return legend;
     }
@@ -4912,6 +4999,8 @@ var cellbrowser = function() {
         Mousetrap.bind('s i', onSelectInvertClick);
         Mousetrap.bind('s s', onSelectNameClick);
 
+        Mousetrap.bind('b s', onBackgroudSetClick);
+        Mousetrap.bind('b r', onBackgroudResetClick);
 
         Mousetrap.bind('m', function() {$('#tpMetaCombo').trigger("chosen:open"); return false;});
         Mousetrap.bind('d', function() {$('#tpDatasetCombo').trigger("chosen:open"); return false;});
@@ -5127,49 +5216,9 @@ var cellbrowser = function() {
     function onLegendLabelClick(ev) {
     /* called when user clicks on legend entry. */
 
-        //function saveLabel() {
-            ///* save the current labelEl text to the cart and update everything */
-            //$(".tooltip").remove(); // not sure why tooltips won't disappear here
-            //labelEl.removeAttr("contenteditable");
-            //var newLabel = labelEl.text(); // = strip the rich text tags possibly added through copy/paste
-            //var metaInfo = gLegend.metaInfo;
-            //cartFieldArrayUpdate(db, metaInfo, "shortLabels", legendId, newLabel);
-            //legendUpdateLabels(gLegend.metaInfo.name);
-            //rendererUpdateLabels(metaInfo);
-            //buildLegendBar();
-            //renderer.drawDots();
-        //}
-
         var legendId = parseInt(ev.target.id.split("_")[1]);
         var colorIndex = gLegend.rows[legendId].intKey;
-
-        //if (("lastClicked" in gLegend) && gLegend.lastClicked===legendId) {
-            // user clicked the same entry as before: 
-            //gLegend.lastClicked = null;
-                //$('#tpLegend_'+legendId).removeClass('tpLegendSelect');
-                //renderer.selectClear();
-        //}
-        //else {
-            // clear the old selection
-            //if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey) {
-                //renderer.selectClear();
-                //$('.tpLegend').removeClass('tpLegendSelect');
-            //}
-            $("#tpLegendCheckbox_"+colorIndex).prop("checked", true);
-            renderer.selectByColor(colorIndex);
-            //menuBarShow("#tpFilterButton");
-            //menuBarShow("#tpOnlySelectedButton");
-            //$('#tpLegend_'+legendId).addClass('tpLegendSelect');
-            //gLegend.lastClicked=legendId;
-            clearSelectionState();
-            //if (gLegend.type==="meta" && gLegend.metaInfo.type==="enum") {
-                //let fieldName = gLegend.metaInfo.name;
-                //let fieldVal = gLegend.metaInfo.valCounts[colorIndex][0];
-                //let queryList = [{"m":fieldName, "eq":fieldVal}];
-                //saveQueryList(queryList);
-            //}
-        //}
-        renderer.drawDots();
+        $("#tpLegendCheckbox_" + colorIndex).click();
     }
 
     function onSortByClick (ev) {
@@ -5226,25 +5275,47 @@ var cellbrowser = function() {
     function setLegendHeaders(type) {
     /* set the headers of the right-hand legend */
         if (type==="category") {
-            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span><span class="tpLegendHover" title="click to sort by name"> Name<span class="caret"></span></span>');
+            $('#tpLegendCol1').html('<span title="select all checkboxes below" id="tpLegendClear">&#9745;</span><span class="tpLegendHover" title="click to sort by name"> Name<span class="caret"></span></span>');
             $('#tpLegendCol2').html('<span class="tpLegendHover" title="click to sort by frequency"> Frequency<span class="caret"></span></span>');
         }
         else {
-            $('#tpLegendCol1').html('<span title="unselect all checkboxes below" id="tpLegendClear">&#9746;</span> Range<span');
+            $('#tpLegendCol1').html('<span title="select all checkboxes below" id="tpLegendClear">&#9745;</span> Range<span');
             $('#tpLegendCol2').html('Frequency');
         }
         activateTooltip("#tpLegendClear");
         activateTooltip(".tpLegendHover");
     }
 
+    function updateLegendGrandCheckbox() {
+        var checkbox = $("#tpLegendClear");
+        var total = renderer.getCount();
+        var selected = renderer.selCells.size;
+        if (gLegend.selectionDirection == "all" && total == selected) {
+            gLegend.selectionDirection = "none";
+            checkbox.html("&#9746;");
+            // from https://stackoverflow.com/questions/9501921/change-twitter-bootstrap-tooltip-content-on-click
+            checkbox.attr('title', "unselect all checkboxes below")
+                .bsTooltip('fixTitle')
+                .data('bs.tooltip')
+                .$tip.find('.tooltip-inner')
+                .text("unselect all checkboxes below");
+        } else if (gLegend.selectionDirection == "none" && selected === 0) {
+            gLegend.selectionDirection = "all";
+            checkbox.html("&#9745;");
+            checkbox.attr('title', "select all checkboxes below")
+                .bsTooltip('fixTitle')
+                .data('bs.tooltip')
+                .$tip.find('.tooltip-inner')
+                .text("select all checkboxes below");
+        }
+    }
+
     function onLegendClearClick(ev) { 
         /* unselect all checkboxes in the legend and clear the selection */ 
-        renderer.selectClear();
-        renderer.drawDots();
-
-        var cboxes = document.getElementsByClassName("tpLegendCheckbox");
-        for (var i=0; i < cboxes.length; i++) {
-            cboxes[i].checked = false;
+        if (gLegend.selectionDirection == "all") {
+            onSelectAllClick()
+        } else {
+            onSelectNoneClick();
         }
         ev.stopPropagation();
     }
@@ -5264,6 +5335,7 @@ var cellbrowser = function() {
             renderer.unselectByColor(valIdx);
         renderer.drawDots();
         ev.stopPropagation();
+        $(this).blur();
     }
 
     function buildMinMaxPart(htmls) {
@@ -6430,6 +6502,9 @@ var cellbrowser = function() {
             datasetName = "autism";
         if (datasetName==="aparna")
             datasetName = "cortex-dev";
+
+        if (datasetName)
+            datasetName = datasetName.toLowerCase();
         return datasetName;
     }
 
