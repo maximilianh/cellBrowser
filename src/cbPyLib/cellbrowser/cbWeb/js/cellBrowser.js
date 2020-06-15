@@ -2088,7 +2088,7 @@ var cellbrowser = function() {
 
         htmls.push("<p><b>Version:</b> "+gVersion+"</p>");
         htmls.push("<p><b>Written by:</b> Maximilian Haeussler, Nikolay Markov (U Northwestern), Brian Raney, Lucas Seninge</p>");
-        htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support: Matt Speir</p>");
+        htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support:</b> Matt Speir</p>");
         htmls.push("<p><b>Code contributions by:</b> Pablo Moreno (EBI, UK)</p>");
         htmls.push("<p><b>Documentation:</b> <a target=_blank href='https://cellbrowser.readthedocs.io/'>Readthedocs</a></p>");
         htmls.push("<p><b>Github Repo: </b><a target=_blank href='https://github.com/maximilianh/cellBrowser/'>cellBrowser</a></p>");
@@ -6430,6 +6430,9 @@ var cellbrowser = function() {
             datasetName = "autism";
         if (datasetName==="aparna")
             datasetName = "cortex-dev";
+
+        if (datasetName)
+            datasetName = datasetName.toLowerCase();
         return datasetName;
     }
 
