@@ -379,6 +379,7 @@ def cbSeuratCli():
     writeCellbrowserConf(datasetName, coords, cbConfPath, args=confArgs)
 
     generateHtmls(datasetName, outDir)
+    copyPkgFile("sampleConfig/desc.conf", outDir)
 
 def cbImportSeurat_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "

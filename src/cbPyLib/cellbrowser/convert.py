@@ -546,17 +546,21 @@ def importLoom(inFname):
     import anndata
     ad = anndata.read_loom(inFname)
 
-    coordKeys = ["_tSNE1", "_tSNE2"]
+    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"])
     obsKeys = getObsKeys(ad)
-    if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
-        logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
-        newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
-        print(newObj)
-        ad.obsm["tsne"] = newObj
-        del ad.obs[coordKeys[0]]
-        del ad.obs[coordKeys[1]]
-    else:
-        logging.warn("Did not find %s in anndata.obs, cannot import coordinates" % repr(coordKeys))
+    foundCoords = False
+    for coordKeys in coordKeyList:
+        if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
+            logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
+            newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
+            ad.obsm["tsne"] = newObj
+            del ad.obs[coordKeys[0]]
+            del ad.obs[coordKeys[1]]
+            foundCoords = True
+            break
+
+    if not foundCoords:
+        logging.warn("Did not find any keys like %s in anndata.obs, cannot import coordinates" % repr(coordKeyList))
     return ad
 
 def cbImportScanpyCli():

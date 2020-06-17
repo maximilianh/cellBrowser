@@ -2318,7 +2318,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     if (not doFilter and not ".csv" in inFname.lower()):
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
 
-        # XX stupid .gz heuristics... 
+        # XX no happy: stupid .gz filename heuristics
         if inFname.endswith(".gz"):
             cmd = "cp \"%s\" \"%s\"" % (inFname, outFname)
         else:
@@ -2342,9 +2342,14 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
 
     keepFields = set(filtSampleNames)
     keepIdx = []
+    doneSampleNames = set()
     for i, name in enumerate(sampleNames):
         if name in keepFields:
-            keepIdx.append(i)
+            if name in doneSampleNames:
+                logging.warn("sample '%s' appears at least twice in expression matrix. Only the first one is used now" % name)
+            else:
+                keepIdx.append(i)
+                doneSampleNames.add(name)
 
     assert(len(keepIdx)!=0)
     logging.debug("Keeping %d fields" % len(keepIdx))
@@ -2934,10 +2939,11 @@ def readSampleNames(fname):
         if metaName=="":
             errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
         if metaName in doneNames:
-            errAbort("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
-
-        doneNames.add(metaName)
-        sampleNames.append(row[0])
+            logging.warn("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
+            continue
+        else:
+            doneNames.add(metaName)
+            sampleNames.append(row[0])
         i+=1
     logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
@@ -3554,6 +3560,9 @@ def metaHasChanged(datasetDir, metaOutFname):
     if not "outMeta" in oldData["fileVersions"]:
         logging.debug("Old config file has no meta data MD5, re-converting meta data")
         return True
+    elif not isfile(metaOutFname):
+        logging.info("file %s does not exist, reconverting it" % metaOutFname)
+        return True
     else:
         oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
         newMd5 = md5ForFile(metaOutFname)
@@ -3596,7 +3605,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
     doMeta = metaHasChanged(datasetDir, outMetaFname)
 
-    geneToSym = -1 # None would mean "there are no gene symbols to map to"
+    geneToSym = -1 # -1 = "we have not read any", "None" would mean "there are no gene symbols to map to"
 
     if not doMeta:
         sampleNames = readSampleNames(outMetaFname)
