@@ -445,7 +445,6 @@ var cellbrowser = function() {
         "doi" : "Publication Fulltext",
         "arrayexpress" : "ArrayExpress",
         "ena_project" : "European Nucleotide Archive",
-        "ega_study" : "European Genome Archive",
         "cirm_dataset" : "California Institute of Regenerative Medicine Dataset",
     };
 
@@ -459,7 +458,6 @@ var cellbrowser = function() {
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
         "doi" : "http://dx.doi.org/",
         "ena_project" : "https://www.ebi.ac.uk/ena/data/view/",
-        "ega_study" : "https://ega-archive.org/studies/",
         "cirm_dataset" : "https://cirm.ucsc.edu/d/",
         "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
     }
@@ -686,6 +684,8 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "sra");
         htmlAddLink(htmls, desc, "doi");
         htmlAddLink(htmls, desc, "arrayexpress");
+        htmlAddLink(htmls, desc, "cirm_dataset");
+        htmlAddLink(htmls, desc, "ega_study");
         htmlAddLink(htmls, desc, "ena_project");
 
         if (desc.urls) {
