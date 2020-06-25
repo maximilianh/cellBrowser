@@ -70,7 +70,3 @@ or ``sudo apt-get install apache2``) and use the directory ``/var/www/`` instead
 
     sudo cbBuild -o /var/www/
 
-We got a report that the software works on Windows 10, within the Linux subsystem. Go into the 
-bash command line, install pip there, then use pip to install cellbrowser. Email cells@ucsc.edu for more info.
-
-

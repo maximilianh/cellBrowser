@@ -48,3 +48,17 @@ You don't use pip, conda or git? You can also download the current master branch
     wget https://github.com/maximilianh/cellBrowser/archive/master.zip
     unzip master.zip
     cellBrowser-master/src/cbBuild
+
+Installation on Windows
+~~~~~~~~~~~~~~~~~~~~~~~
+
+First install the Windows Linux subsystem. 
+Then open the Windows Linux Subsystem bash terminal and run these commands::
+
+    sudo apt-get update
+    sudo apt-get install python-pip
+    sudo pip install cellbrowser.
+
+Email cells@ucsc.edu for more info.
+
+
