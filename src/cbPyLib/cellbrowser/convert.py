@@ -19,20 +19,21 @@ def cbToolCli_parseArgs(showHelp=False):
     matCat - merge expression matrices with one line per gene into a big matrix.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
-    metaCat - concat/join meta tables on the first (cell ID) field
+    metaCat - concat/join meta tables on the first (cell ID) field or reorder their fields
 
     Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
     - %prog matCat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
     - %prog metaCat meta.tsv seurat/meta.tsv scanpy/meta.tsv newMeta.tsv - merge meta matrices
+    - %prog metaCat meta.tsv meta.newOrder.tsv --order=cluster,cellType,patient_age - reorder meta fields
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
     parser.add_option("", "--fixDots", dest="fixDots", action="store_true",
         help="try to fix R's mangling of various special chars to '.' in the cell IDs")
-    parser.add_option("", "--first", dest="first", action="store",
-        help="only for metaCat: names of fields to order first, comma-sep, e.g. disease,age. Not cellId, that's always the first field")
+    parser.add_option("", "--order", dest="order", action="store",
+        help="only for metaCat: new order of fields, comma-sep, e.g. 'disease,age'. Do not include cellId, it's always the first field by definition. Any missing field will be appended at the end.")
     parser.add_option("", "--del", dest="delFields", action="store",
         help="only for metaCat: names of fields to remove")
 
@@ -179,8 +180,8 @@ def metaCat(inFnames, outFname, options):
     allIds = set() # set with all cellIds
 
     firstFields = []
-    if options.first!="" and options.first is not None:
-        firstFields = options.first.split(",")
+    if options.order!="" and options.order is not None:
+        firstFields = options.order.split(",")
 
     delFields = []
     if options.delFields!="" and options.delFields is not None:
@@ -229,9 +230,9 @@ def metaCat(inFnames, outFname, options):
     for h in firstFields:
         try:
             idx = allHeaders.index(h)
+            firstFieldIdx.append(idx)
         except ValueError:
-            errAbort("Field %s specified on command line --first is not in the meta data file" % repr(h))
-        firstFieldIdx.append(idx)
+            logging.warning("Field %s specified on command line --order is not in the meta data file" % repr(h))
 
     # and those of fields we will skip
     delFieldIdx = []
@@ -243,7 +244,7 @@ def metaCat(inFnames, outFname, options):
         delFieldIdx.append(idx)
 
     if len(firstFields)!=0:
-        logging.info("Putting these fields first: %s" % firstFields)
+        logging.info("Order of fields that come first: %s" % firstFields)
     if len(delFields)!=0:
         logging.info("Removing these fields: %s" % delFields)
 
@@ -293,7 +294,7 @@ def importCellrangerMatrix(inDir, outDir):
 
     # ugly code warning
     if len(matFnames1)!=0:
-        # cellranger 1/2 files are not gziped
+        # cellranger 1/2 mtx files are not gziped
         assert(len(matFnames1)==1)
         matFname = matFnames1[0]
         logging.info("Found %s" % matFname)
@@ -301,7 +302,7 @@ def importCellrangerMatrix(inDir, outDir):
         geneFname = matFname.replace("matrix.mtx", "genes.tsv")
         mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
     elif len(matFnames2)!=0:
-        # cellranger 3 files are gzipped
+        # cellranger 3 mtx files are gzipped
         assert(len(matFnames2)==1)
         matFname = matFnames2[0]
         logging.info("Found %s" % matFname)
@@ -309,6 +310,7 @@ def importCellrangerMatrix(inDir, outDir):
         geneFname = matFname.replace("matrix.mtx.gz", "features.tsv.gz")
         mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
     elif len(matFnames3)!=0:
+        # h5 files of cellranger 1/2/3 are read via scanpy
         matFnames3 = glob.glob(mask3)
         logging.info("Found %s" % matFnames3)
         assert(len(matFnames3)==1)
@@ -317,7 +319,7 @@ def importCellrangerMatrix(inDir, outDir):
         import scanpy.api as sc
         logging.info("Reading matrix %s" % matFname)
         adata = readMatrixAnndata(matFname)
-        anndataToTsv(adata, outExprFname)
+        anndataMatrixToTsv(adata, outExprFname)
     else:
         errAbort("Could not find matrix, neither as %s, %s nor %s" % (mask1, mask2, mask3))
         logging.info("Looking for %s" % mask3)
