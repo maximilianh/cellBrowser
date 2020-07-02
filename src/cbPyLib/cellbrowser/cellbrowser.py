@@ -263,14 +263,19 @@ def staticFileNextRow(relPath):
     for row in lineFileNextRow(fh):
         yield row
 
+def findPkgFile(relPath):
+    " return filename of file that is part of the pip package or git folder "
+    baseDir = dirname(__file__) # = directory of this script
+    srcPath = join(baseDir, relPath)
+    return srcPath
+
 def copyPkgFile(relPath, outDir=None, values=None):
     """ copy file from directory under the current package directory to outDir or current directory
     Don't overwrite if the file is already there.
     """
     if outDir is None:
         outDir = os.getcwd()
-    baseDir = dirname(__file__) # = directory of this script
-    srcPath = join(baseDir, relPath)
+    srcPath = findPkgFile(relPath)
     destPath = join(outDir, basename(relPath))
     if isfile(destPath):
         logging.info("%s already exists, not overwriting" % destPath)
@@ -2615,7 +2620,6 @@ def copyImage(inDir, summInfo, datasetDir):
     """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
     inFname = join(inDir, summInfo["image"])
     logging.debug("Copying %s to %s" % (inFname, datasetDir))
-    #shutil.copy(inFname, datasetDir)
     shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
 
     cmd = ["file", inFname]
@@ -2634,6 +2638,7 @@ def copyImage(inDir, summInfo, datasetDir):
         width, height = sizeStr.split("x")
 
     summInfo["image"] = (summInfo["image"], width, height)
+    summInfo["imageMd5"] = md5ForFile(inFname)
 
     if "imageMapFile" in summInfo:
         mapFname = join(inDir, summInfo["imageMapFile"])
@@ -2665,11 +2670,40 @@ def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf
         else:
             return
 
-    text = readFile(fname)
-    summInfo[key] = text
+    if fname.endswith(".json"):
+        data = readJson(fname)
+        summInfo[key] = data
+    else:
+        text = readFile(fname)
+        summInfo[key] = text
+
+def copyImageFile(inDir, data, outDir, doneNames, imageSetFnames):
+    """ given data as a dict, try to copy files with key 'file' and 'thumb' to outDir.
+    Also, strip the whole directory from the file name and keep only the base name.
+    doneNames and imageSetFnames are used to catch duplicate-filename cases.
+    """
+    for key in ["file", "thumb"]:
+        if key not in data:
+            continue
+        rawInPath = join(inDir, data[key])
+        base = basename(rawInPath) # strip directory part
+        if base in doneNames and base not in imageSetFnames:
+            errAbort("The basename %s is used twice in the images.json definition. Note that all image names "
+                    "must be unique as users may want to download images. Often you can make them unique by "
+                    "making their subdirectory part of the filename." % base)
+
+        data[key] = base
+        rawOutPath = join(outDir, base)
+        if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+            logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+            shutil.copyfile(rawInPath, rawOutPath)
+        else:
+            logging.debug("Not copying %s again, already in output directory" % rawInPath)
+        doneNames.add(base)
+        imageSetFnames.add(base)
 
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
-    " write a json file that describes the dataset abstract/methods/downloads, easier than a summary.html "
+    " write a json file that describes the dataset abstract/methods/downloads "
     confFname = join(inDir, "datasetDesc.conf")
     if not isfile(confFname):
         confFname = join(inDir, "desc.conf")
@@ -2709,6 +2743,11 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
         readFileIntoDict(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
         del summInfo["methodsFile"]
 
+    if "imageSetFile" in summInfo:
+        readFileIntoDict(summInfo, "imageSets", inDir, summInfo["imageSetsFile"], mustExist=True)
+    else:
+        readFileIntoDict(summInfo, "imageSets", inDir, "images.json")
+
     # import the unit description from cellbrowser.conf
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
@@ -2735,8 +2774,29 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
             else:
                 logging.info("Not copying %s again, already in output directory" % rawInPath)
 
+    # copy the main image
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
+
+    # copy over the imageSet files. This can take a while
+    imageDir = join(datasetDir, "images")
+    makeDir(imageDir)
+
+    doneNames = set()
+    if "imageSets" in summInfo:
+        for catInfo in summInfo["imageSets"]:
+            for imageSet in catInfo["categoryImageSets"]:
+                imageSetFnames = set()
+                for dl in imageSet.get("downloads"):
+                    copyImageFile(inDir, dl, imageDir, doneNames, imageSetFnames)
+                for img in imageSet.get("images"):
+                    copyImageFile(inDir, img, imageDir, doneNames, imageSetFnames)
+
+
+    # if we have a desc.conf: with so much data now in other files, generate the md5 from the data
+    # itself not just the desc.conf
+    if "desc" in outConf["fileVersions"]:
+        outConf["fileVersions"]["desc"]["md5"] = md5ForDict(summInfo)[:MD5LEN]
 
     writeJson(summInfo, outPath)
 
@@ -2934,7 +2994,7 @@ def readSampleNames(fname):
     sampleNames = []
     i = 1
     doneNames = set()
-    for row in lineFileNextRow(fname, noHeaders=True):
+    for row in lineFileNextRow(fname, noHeaders=False):
         metaName = row[0]
         if metaName=="":
             errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
@@ -3406,6 +3466,11 @@ def md5ForList(l):
     for s in l:
         hash_md5.update(s.encode("utf8"))
     md5 = hash_md5.hexdigest()
+    return md5
+
+def md5ForDict(summInfo):
+    " given a dict of various objects, return the md5 "
+    md5 = md5ForList([json.dumps(summInfo)])
     return md5
 
 def md5WithPython(fname):
@@ -4784,7 +4849,7 @@ def summarizeDatasets(datasets):
         else:
             summDs["isCollection"] = True
             if not "datasets" in ds:
-                errAbort("The dataset %s has a dataset.json file that looks invalide. Please rebuild that dataset. "
+                errAbort("The dataset %s has a dataset.json file that looks invalid. Please rebuild that dataset. "
                         "Then go back to the current directory and retry the same command. " % ds["name"])
             children = ds["datasets"]
 
@@ -5031,8 +5096,12 @@ def addMetaToAnnData(adata, fname):
 
     try:
         df3 = df1.join(df2, how="left")
+        logging.info("%d meta data columns before setting in anndata object" % len(adata.obs.index))
         adata.obs = df3
         logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
+        logging.info("%d meta data columns before setting" % len(df3.index))
+        logging.info("%d meta data columns after setting in anndata object" % len(adata.obs.index))
+
     except ValueError:
         logging.warn("Could not merge h5ad and meta data, skipping h5ad meta and using only provided meta. Most likly this happens when the field names in the h5ad and the meta file overlap")
         adata.obs = df2
@@ -5428,7 +5497,7 @@ def mustBePython3():
         print("Once this is all done, install scanpy.")
         sys.exit(1)
 
-def generateDataDesc(datasetName, outDir, algParams=None):
+def generateDataDesc(datasetName, outDir, algParams=None, other=None):
     " write a desc.conf to outDir "
     outFname = join(outDir, "desc.conf")
 
@@ -5436,38 +5505,28 @@ def generateDataDesc(datasetName, outDir, algParams=None):
         logging.info("Not writing %s, already exists" % outFname)
         return
 
-    c = maybeLoadConfig(outFname)
+    inFname = findPkgFile("sampleConfig/desc.conf")
+    #c = maybeLoadConfig(outFname)
     #if isfile(outFname):
         #c = loadConfig(outFname)
     #else:
         #c = OrderedDict()
 
-    c["title"] = datasetName.replace("_", " ")
-    if not "image" in c:
-        c["#image"] = "thumb.png"
-    if not "abstract" in c:
-        c["abstract"] = "Please edit desc.conf to modify this abstract, then rerun cbBuild"
-    if not "methods" in c:
-        c["methods"] = \
-"""<section>Sample collection</section>
-TBD
-<section>Analysis</section>
-This dataset was created by a generic Scanpy pipeline run through cbScanpy.
-"""
+    sampleData = open(inFname).read()
+    ofh = open(outFname, "wt")
+    ofh.write(sampleData)
 
-    if not "unitDesc" in c:
-        c["#unitDesc"] = "count"
-
+    #c["title"] = datasetName.replace("_", " ")
     # always overwrite the parameters
     if algParams:
-        params = {}
-        # the version param in scanpy suddenly is not a string anymore
-        # make absolutely sure that we have no non-strings in this dict
-        for key, val in algParams.items():
-            params[str(key)] = str(val)
-        c["algParams"] = params
+        ofh.write("algParams = %s\n" % repr(algParams))
 
-    writePyConf(c, outFname)
+    if other:
+        for key, val in other.items():
+            ofh.write("%s = %s\n" % (key, repr(val)))
+
+    ofh.close()
+    #writePyConf(c, outFname)
 
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
@@ -5753,9 +5812,9 @@ def generateDownloads(datasetName, outDir):
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def generateHtmls(datasetName, outDir):
+def generateHtmls(datasetName, outDir, desc=None):
     " generate desc.conf in outDir, if it doesn't exist "
-    generateDataDesc(datasetName, outDir, {})
+    generateDataDesc(datasetName, outDir, {}, other=desc)
 
 if __name__=="__main__":
     args, options = main_parseArgs()
