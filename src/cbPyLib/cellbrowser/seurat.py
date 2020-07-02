@@ -378,7 +378,7 @@ def cbSeuratCli():
 
     writeCellbrowserConf(datasetName, coords, cbConfPath, args=confArgs)
 
-    generateHtmls(datasetName, outDir)
+    generateHtmls(datasetName, outDir, desc = {"supplFiles": [{"Seurat RDS": inMatrix}]})
     copyPkgFile("sampleConfig/desc.conf", outDir)
 
 def cbImportSeurat_parseArgs(showHelp=False):
@@ -537,15 +537,16 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
     if not isfile(metaPath):
         errAbort("R script did not complete successfully. Check %s and analysisLog.txt." % scriptPath)
 
+    descDict = None
     if inFormat=="rds":
         rdsOutPath = join(outDir, "seurat.rds")
         logging.info("Copying %s to %s" % (inFname, rdsOutPath))
         shutil.copyfile(inFname, rdsOutPath)
+        descDict = {"supplFiles": [{"Seurat RDS": "seurat.rds"}]}
 
     cbConfPath = join(outDir, "cellbrowser.conf")
-    #writeCellbrowserConf(datasetName, coords, cbConfPath, args={"clusterField":"Cluster"})
 
-    generateHtmls(datasetName, outDir)
+    generateHtmls(datasetName, outDir, desc = descDict)
 
 def cbImportSeuratCli():
     " convert .rds to directory "
@@ -559,7 +560,7 @@ def cbImportSeuratCli():
 
     datasetName = options.datasetName
     if datasetName is None:
-        datasetName = basename(outDir.rstrip("/"))
+        datasetName = basename(abspath(outDir).rstrip("/"))
 
     cbImportSeurat(inFname, outDir, datasetName, options)
 

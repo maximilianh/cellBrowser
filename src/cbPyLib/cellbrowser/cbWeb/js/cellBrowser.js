@@ -566,11 +566,77 @@ var cellbrowser = function() {
 
                 htmls.push("<p><b>Cell Browser configuration</b>: ");
                 htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
+
+                $( "#pane3" ).html(htmls.join(""));
+                $( "#pane3" ).show();
+                $( "#tabLink3" ).show();
             }
-            $( "#pane3" ).html(htmls.join(""));
-            $( "#pane3" ).show();
-            $( "#tabLink3" ).show();
+
         }
+    }
+
+    function buildImagesPane(datasetInfo, desc) {
+        if (!desc.imageSets) {
+            $( "#tabLinkImg" ).hide();
+            $( "#paneImg" ).hide();
+            return;
+        }
+
+        let htmls = [];
+        htmls.push("<h4>Microscopy images</h4>");
+        // TOC 
+        let catIdx = 0;
+        htmls.push("<div style='padding-bottom:8px'>Jump to: ");
+        for (let catInfo of desc.imageSets) {
+            htmls.push("<a style='padding-left:12px' href='#imgCat"+catIdx+"'>"+catInfo.categoryLabel+"</a>");
+            catIdx++;
+        }
+        htmls.push("</div>");
+
+        if (desc.imageSetNote)
+            htmls.push("<p>"+desc.imageSetNote+"<p>");
+
+        // actual HTML
+        catIdx = 0;
+        for (let catInfo of desc.imageSets) {
+            htmls.push("<div style='padding-top:6px; padding-bottom:4px' class='tpImgCategory'>");
+            htmls.push("<a name='imgCat"+catIdx+"'></a>");
+            catIdx++;
+            htmls.push("<b>"+catInfo.categoryLabel+":</b><br>");
+            let imgDir = datasetInfo.name+"/images/";
+            htmls.push("<div style='padding-left:1em; padding-top:4px' class='tpImgSets'>");
+
+            for (let imgSet of catInfo.categoryImageSets) {
+                let imgLinks = [];
+                if (imgSet.setLabel)
+                    htmls.push("<b>"+imgSet.setLabel+"</b><br>");
+                htmls.push("<div style='padding-left:1em;' class='tpImgSetLinks'>");
+                for (let img of imgSet.images) {
+                    imgLinks.push("Show: <a target=_blank href='"+imgDir+img.file+"'>"+img.label+"</a>");
+                }
+                htmls.push(imgLinks.join(", "));
+
+                if (imgSet.downloads) {
+                    let dlLinks = [];
+                    for (let dl of imgSet.downloads) {
+                        //dlLinks.push("<a href='"+imgDir+dl.file+"' download><span style='font-size:12px' class='material-icons-round'>get_app</span>"+dl.label+"</a>");
+                        dlLinks.push("<a href='"+imgDir+dl.file+"' download>"+dl.label+"</a>");
+                    }
+                    //htmls.push("<br><div style='padding-left: 1em'>Download: ");
+                    htmls.push("<br><div>Download: ");
+                    htmls.push(dlLinks.join(", "));
+                    htmls.push("</div>");
+                }
+                //htmls.push("<br>");
+                htmls.push("</div>"); //  tpImgSetLinks
+            }
+            htmls.push("</div>"); //  tpImgSets
+            htmls.push("</div>"); //  tpImgCategory
+        }
+        //htmls.push("</ul>");
+        $( "#paneImg" ).html(htmls.join(""));
+        $( "#paneImg" ).show();
+        $( "#tabLinkImg" ).show();
     }
 
     function buildMethodsPane(datasetInfo, desc) {
@@ -697,15 +763,19 @@ var cellbrowser = function() {
             htmls.push("<b>Submitted by: </b> "+desc.submitter);
             if (desc.submission_date) {
                 htmls.push(" ("+desc.submission_date);
-                if (desc.version)
-                    htmls.push(", Version "+desc.version);
                 htmls.push(")");
             }
+            if (desc.version)
+                htmls.push(", Version "+desc.version);
             htmls.push("<br>");
         }
 
         if (desc.shepherd) {
-            htmls.push("<b>Data import by: </b> "+desc.shepherd);
+            htmls.push("<b>UCSC Data Shepherd: </b> "+desc.shepherd);
+            htmls.push("<br>");
+        }
+        if (desc.wrangler) {
+            htmls.push("<b>UCSC Data Wrangler: </b> "+desc.wrangler);
             htmls.push("<br>");
         }
 
@@ -729,6 +799,7 @@ var cellbrowser = function() {
 
         buildMethodsPane(datasetInfo, desc);
         buildDownloadsPane(datasetInfo, desc);
+        buildImagesPane(datasetInfo, desc);
 
         $("#tpOpenDialogTabs").tabs("refresh");
         //.tabs("option", "active", 0) does not do the color change of the tab so doing this instead
@@ -1023,6 +1094,7 @@ var cellbrowser = function() {
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLink2' data-toggle='tab' href='#pane2'>Methods</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLink3' data-toggle='tab' href='#pane3'>Data Download</a></li>");
+        htmls.push("<li><a class='tpDatasetTab' id='tabLinkImg' data-toggle='tab' href='#paneImg'>Images</a></li>");
         htmls.push("</ul>");
 
         htmls.push("<div id='pane1' class='tpDatasetPane tab-pane'>");
@@ -1035,6 +1107,10 @@ var cellbrowser = function() {
 
         htmls.push("<div id='pane3' class='tpDatasetPane tab-pane'>");
         htmls.push("<p>Loading download instructions...</p>");
+        htmls.push("</div>");
+
+        htmls.push("<div id='paneImg' class='tpDatasetPane tab-pane'>");
+        htmls.push("<p>Loading image data...</p>");
         htmls.push("</div>");
 
         htmls.push("</div>"); // tpOpenDialogTabs
@@ -2908,11 +2984,11 @@ var cellbrowser = function() {
                return [4, 0.6];
            if (dotCount<10000)
                return [3, 0.5];
-           if (dotCount<28000)
-               return [3, 0.3];
            if (dotCount<35000)
+               return [2, 0.3];
+           if (dotCount<60000)
                return [1, 0.5];
-           // more than 28k:
+           // everything else
            return [0, 0.3];
        }
 
@@ -4691,7 +4767,7 @@ var cellbrowser = function() {
         };
         $.contextMenu( menuOptCust );
         // setup the tooltips
-        //$('[title!=""]').tooltip();}
+        //$('[title!=""]').tooltip();
     }
 
     function buildLeftSidebar () {
@@ -6423,7 +6499,7 @@ var cellbrowser = function() {
     function getVar(name, defVal) {
         /* get query variable from current URL or default value if undefined */
        var myUrl = window.location.href;
-       myUrl = myUrl.replace("#", "");
+       myUrl = myUrl.split("#")[0]; // remove anchor from URL
        var urlParts = myUrl.split("?");
        var queryStr = urlParts[1];
        var varDict = deparam(queryStr); // parse key=val&... string to object
@@ -6503,7 +6579,8 @@ var cellbrowser = function() {
         if (datasetName==="aparna")
             datasetName = "cortex-dev";
 
-        if (datasetName)
+        // adult pancreas is the only dataset with an uppercase letter
+        if (datasetName && datasetName!=="adultPancreas")
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }
