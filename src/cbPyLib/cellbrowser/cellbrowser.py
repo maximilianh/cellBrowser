@@ -3770,7 +3770,6 @@ defColorField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
-#quickGenesFile='quickGenes.tsv'
 #alpha=0.3
 #radius=2
 """ % locals()
@@ -3780,6 +3779,8 @@ coords=%(coordStr)s
 
     if "quickGenesFile" in args:
         conf += 'quickGenesFile="%s"\n' % args["quickGenesFile"]
+    else:
+        conf += "#quickGenesFile='quickGenes.tsv'\n"
 
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
