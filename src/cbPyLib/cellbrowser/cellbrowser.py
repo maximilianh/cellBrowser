@@ -4036,7 +4036,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     meta_df.rename(metaFields, axis=1, inplace=True)
     fname = join(path, "meta.tsv")
-    meta_df.to_csv(fname,sep='\t')
+    meta_df.to_csv(fname,sep='\t', index_label="cellId")
 
     if clusterField is None:
         clusterField = 'louvain'
