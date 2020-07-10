@@ -2408,10 +2408,12 @@ def to_camel_case(snake_str):
 def sanitizeName(name):
     " remove all nonalpha chars, allow underscores, special treatment for %, + and -. Makes a valid file name. "
     assert(name!=None)
-    #newName = to_camel_case(name.replace(" ", "_"))
     # some characters are actually pretty common and there we have seen fields where the only 
     # difference are these characters
     # if this continues to be aproblem, maybe append the MD5 of a raw field name to the sanitized name
+    # IMPORTANT: There is a javascript version of this in cellBrowser.js. The function has the same 
+    # name and must return the same results, otherwise the front end can't find the filename
+    # for a given cluster name.
     name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
@@ -3124,7 +3126,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     coordFnames = makeAbsDict(inConf, "coords")
 
     flipY = inConf.get("flipY", False)
-    #useTwoBytes = inConf.get("useTwoBytes", None)
     useTwoBytes = True
 
     hasLabels = False
@@ -3142,6 +3143,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
         # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
+        flipY = inCoordInfo.get("flipY", flipY)
         coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
 
         hasLines = False
@@ -4532,6 +4534,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
 
     else:
         logging.info("Loading expression matrix: scanpy-supported format, like loom, tab-separated, etc.")
+        if matrixFname.endswith(".loom"):
+            logging.info("This is a loom file: activating --samplesOnRows")
+            samplesOnRows = True
+
         adata = sc.read(matrixFname, first_column_names=True)
         if not samplesOnRows:
             logging.info("Scanpy defaults to samples on lines, so transposing the expression matrix, use --samplesOnRows to change this")
@@ -5096,7 +5102,7 @@ def addMetaToAnnData(adata, fname):
         errAbort("Values in first column in file %s does not seem to match the cell IDs from the expression matrix. Examples: expression matrix: %s, meta data: %s" % (fname, l1[:3], l2[:3]))
 
     try:
-        df3 = df1.join(df2, how="left")
+        df3 = df1.join(df2, how="inner")
         logging.info("%d meta data columns before setting in anndata object" % len(adata.obs.index))
         adata.obs = df3
         logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
