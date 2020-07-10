@@ -13,29 +13,31 @@ from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, ge
 
 def cbToolCli_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv|matCat|metaCat - convert various single-cell related files
+    parser = optparse.OptionParser("""usage: %prog [options] command filenames - convert various single-cell related files
 
+Command is one of:
     mtx2tsv   - convert matrix market to .tsv.gz
     matCat - merge expression matrices with one line per gene into a big matrix.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
     metaCat - concat/join meta tables on the first (cell ID) field or reorder their fields
+    reorder - reorder the meta fields
 
-    Examples:
+Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
     - %prog matCat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
     - %prog metaCat meta.tsv seurat/meta.tsv scanpy/meta.tsv newMeta.tsv - merge meta matrices
-    - %prog metaCat meta.tsv meta.newOrder.tsv --order=cluster,cellType,patient_age - reorder meta fields
+    - %prog reorder meta.tsv meta.newOrder.tsv --delete samId --order=cluster,cellType,age - reorder meta fields
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
     parser.add_option("", "--fixDots", dest="fixDots", action="store_true",
-        help="try to fix R's mangling of various special chars to '.' in the cell IDs")
+            help="for reorder and metaCat: try to fix R's mangling of various special chars to '.' in the cell IDs")
     parser.add_option("", "--order", dest="order", action="store",
-        help="only for metaCat: new order of fields, comma-sep, e.g. 'disease,age'. Do not include cellId, it's always the first field by definition. Any missing field will be appended at the end.")
+        help="only for reorder and metaCat: new order of fields, comma-sep, e.g. 'disease,age'. Do not include cellId, it's always the first field by definition. Fields that are in the file but not specified here will be appended as the last columns.")
     parser.add_option("", "--del", dest="delFields", action="store",
-        help="only for metaCat: names of fields to remove")
+        help="only for reorder and metaCat: names of fields to remove")
 
 
     (options, args) = parser.parse_args()
@@ -57,7 +59,7 @@ def cbToolCli():
 
     cmd = args[0]
 
-    cmds = ["mtx2tsv", "matCat", "metaCat"]
+    cmds = ["mtx2tsv", "matCat", "metaCat", "reorder"]
 
     if cmd=="mtx2tsv":
         mtxFname = args[1]
@@ -69,7 +71,7 @@ def cbToolCli():
         inFnames = args[1:-1]
         outFname = args[-1]
         matCat(inFnames, outFname)
-    elif cmd=="metaCat":
+    elif cmd=="metaCat" or cmd=="reorder":
         inFnames = args[1:-1]
         outFname = args[-1]
 
