@@ -1359,7 +1359,7 @@ class MatrixMtxReader:
 
             if i%1000==0:
                 logging.info("%d genes written..." % i)
-            arr = mat.getrow(i).toarray()
+            arr = mat.getrow(i).toarray().astype("float32")
             yield (geneId, geneSym, arr)
 
 class MatrixTsvReader:
