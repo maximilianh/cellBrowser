@@ -2828,12 +2828,12 @@ def makeAbs(inDir, fname):
         return None
     return abspath(join(inDir, fname))
 
-def makeAbsDict(conf, key):
+def makeAbsDict(conf, key, fnameKey="file"):
     " given list of dicts with key 'file', assume they are relative to inDir and make their paths absolute "
     inDir = conf["inDir"]
     dicts = conf[key]
     for d in dicts:
-        d["file"] = makeAbs(inDir, d["file"])
+        d[fnameKey] = makeAbs(inDir, d[fnameKey])
     return dicts
 
 def parseTsvColumn(fname, colName):
@@ -3131,6 +3131,7 @@ def copyConf(inConf, outConf, keyName):
 def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     " convert the coordinates "
     coordFnames = makeAbsDict(inConf, "coords")
+    coordFnames = makeAbsDict(inConf, "coords", fnameKey="lineFile")
 
     flipY = inConf.get("flipY", False)
     useTwoBytes = True
