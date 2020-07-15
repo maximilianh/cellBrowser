@@ -548,7 +548,7 @@ function CbDbFile(url) {
 
     function discretizeArray(arr, maxBinCount, bin0Val) {
         /* discretize numeric values to deciles. return an obj with dArr and binInfo */
-        /* bin0Val is the value that is treated different, it is kept in its own bin */
+        /* bin0Val is the value that is treated differently, it is kept in its own bin */
         /* is bin0Val is null, switch off special bin0Value handling
         /* ported from Python cbAdd:discretizeArray */
         /* supports NaN special values */

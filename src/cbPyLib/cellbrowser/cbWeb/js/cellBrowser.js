@@ -523,8 +523,17 @@ var cellbrowser = function() {
                 htmls.push("The downloads section has been deactivated by the authors."); 
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
+                if (datasetInfo.fileVersions.inMatrix.fname.endsWith(".mtx.gz")) {
+                    htmls.push("<p><b>Expression in MTX format:</b> <a href='"+datasetInfo.name);
+                    htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
+                    htmls.push(", <a href='"+datasetInfo.name);
+                    htmls.push("/features.tsv.gz'>features.tsv.gz</a>");
+                    htmls.push(", <a href='"+datasetInfo.name);
+                    htmls.push("/barcodes.tsv.gz'>barcodes.tsv.gz</a>");
+                } else { 
                 htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
                 htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+                }
                 if (desc.unitDesc)
                     htmls.push("<br>Values are: "+desc.unitDesc);
                 htmls.push("</p>");
@@ -3416,8 +3425,19 @@ var cellbrowser = function() {
             legLabel = "0";
         else if (binMin==="Unknown")
             legLabel = "Unknown";
-        else if (binMin!==binMax)
-            legLabel = binMin.toFixed(minDig)+' - '+binMax.toFixed(maxDig);
+        else if (binMin!==binMax) {
+            if (Math.abs(binMin) > 1000000)
+                binMin = binMin.toPrecision(4);
+            if (Math.abs(binMax) > 1000000)
+                binMax = binMax.toPrecision(4);
+            console.log(binMin, binMax);
+            if (typeof(binMin)=== 'number')
+                binMin = binMin.toFixed(minDig);
+            if (typeof(binMax)=== 'number')
+                binMax = binMax.toFixed(minDig);
+
+            legLabel = binMin+' - '+binMax;
+        }
         else
             legLabel = binMin.toFixed(minDig);
         return legLabel;

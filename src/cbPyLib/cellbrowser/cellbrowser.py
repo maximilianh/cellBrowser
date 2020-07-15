@@ -4504,14 +4504,14 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     if matrixFname.endswith(".h5ad"):
         adata = sc.read(matrixFname, cache=False)
 
-    elif matrixFname.endswith(".mtx"):
+    elif isMtx(matrixFname):
         import pandas as pd
         logging.info("Loading expression matrix: mtx format")
         adata = sc.read(matrixFname, cache=False).T
 
-        mtxDir = dirname(matrixFname)
-        adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
-        adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
+        _mtxFname, geneFname, barcodeFname = findMtxFiles(matrixFname)
+        adata.var_names = pd.read_csv(geneFname, header=None, sep='\t')[1]
+        adata.obs_names = pd.read_csv(barcodeFname, header=None, sep='\t')[0]
 
     elif isdir(matrixFname):
         logging.info("Loading expression matrix: cellranger3 mtx.gz format from %s" % matrixFname)
@@ -5537,7 +5537,7 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
 
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
-    if ".mtx" in matrixFname or ".h5" in matrixFname:
+    if isMtx(matrixFname) or ".h5" in matrixFname:
         logging.error("Cannot copy %s to %s, as not a text-based file like tsv or csv. You will need to do the conversion yourself manually or with cbTool.")
         return
 
