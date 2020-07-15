@@ -1359,7 +1359,7 @@ class MatrixMtxReader:
 
             if i%1000==0:
                 logging.info("%d genes written..." % i)
-            arr = mat.getrow(i).toarray().astype("float32")
+            arr = mat.getrow(i).toarray()
             yield (geneId, geneSym, arr)
 
 class MatrixTsvReader:
@@ -1805,24 +1805,30 @@ def isMtx(path):
 
 def exprEncode(geneDesc, exprArr, matType):
     """ convert an array of numbers of type matType (int or float) to a compressed string of
-    floats
+    float32s
     The format of a record is:
     - 2 bytes: length of descStr, e.g. gene identifier or else
     - len(descStr) bytes: the descriptive string descStr
-    - array of n 4-byte floats (n = number of cells)
+    - array of n 4-byte floats (n = number of cells) or 4-byte unsigned ints
     """
     geneDesc = str(geneDesc) # make sure no unicode
     geneIdLen = struct.pack("<H", len(geneDesc))
 
     # on cortex-dev, numpy was around 30% faster. Not a huge difference.
     if numpyLoaded:
+        if matType=="float":
+            exprArr = exprArr.astype("float32")
+        elif matType=="int":
+            exprStr = exprArr.astype("uint32")
+        else:
+            assert(False) # internal error
         exprStr = exprArr.tobytes()
         minVal = np.amin(exprArr)
     else:
         if matType=="float":
             arrType = "f"
         elif matType=="int" or matType=="forceInt":
-            arrType = "I"
+            arrType = "L"
         else:
             assert(False) # internal error
 
@@ -3107,6 +3113,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
 
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType)
 
+    # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
     if matType=="int" or matType=="forceInt":
         outConf["matrixArrType"] = "Uint32"
     elif matType=="float":
