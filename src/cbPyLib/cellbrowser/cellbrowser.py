@@ -157,6 +157,13 @@ def makeDir(outDir):
         logging.info("Creating %s" % outDir)
         os.makedirs(outDir)
 
+def renameFile(oldName, newName):
+    " windows doesn't accept if newName already exists "
+    logging.debug("Renaming %s -> %s" % (oldName, newName))
+    if isfile(newName):
+        os.remove(newName)
+    os.rename(oldName, newName)
+
 def errAbort(msg):
         logging.error(msg)
         sys.exit(1)
@@ -236,7 +243,7 @@ def downloadStaticFile(remotePath, localPath):
     ofh = open(localTmp, "wb")
     ofh.write(data)
     ofh.close()
-    os.rename(localTmp, localPath)
+    renameFile(localTmp, localPath)
 
 def getStaticFile(relPath):
     """ get the full path to a static file in the dataDir directory (~/cbData or $CBDATA, by default, see above).
@@ -1126,8 +1133,7 @@ def moveOrGzip(inFname, outFname):
     if outFname.endswith(".gz"):
         runGzip(inFname, outFname)
     else:
-        logging.debug("Renaming %s to %s" % (inFname, outFname))
-        os.rename(inFname, outFname)
+        renameFile(inFname, outFname)
 
 def runGzip(fname, finalFname=None):
     " compress fname and move to finalFname when done "
@@ -1139,10 +1145,7 @@ def runGzip(fname, finalFname=None):
     if finalFname==None:
         return gzipFname
 
-    if isfile(finalFname):
-        os.remove(finalFname)
-    logging.debug("Renaming %s to %s" % (gzipFname, finalFname))
-    os.rename(gzipFname, finalFname)
+    renameFile(gzipFname, finalFname)
     if isfile(fname):
         os.remove(fname)
     return finalFname
@@ -1952,8 +1955,8 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     json.dump(discretIndex, jsonOfh)
     jsonOfh.close()
 
-    os.rename(tmpFname, binFname)
-    os.rename(discretTmp, discretBinFname)
+    renameFile(tmpFname, binFname)
+    renameFile(discretTmp, discretBinFname)
 
     return matType
 
@@ -2220,7 +2223,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         ofh.write("\n")
     ofh.close()
 
-    os.rename(tmpFname, fixedMetaFname)
+    renameFile(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, mustFilterMatrix
 
@@ -2281,7 +2284,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
             errAbort("No coordinates that are also in meta. Check coord and meta cell identifiers.")
 
     binFh.close()
-    os.rename(tmpFname, coordBinFname)
+    renameFile(tmpFname, coordBinFname)
 
     md5 = md5WithPython(coordBinFname)
     coordInfo["md5"] = md5[:MD5LEN]
@@ -2385,10 +2388,6 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     ofh.close()
     matIter.close()
 
-    #tmpFnameGz = outFname+".tmp.gz"
-    #runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
-    #os.remove(tmpFname)
-    #os.rename(tmpFnameGz, outFname)
     runGzip(tmpFname, outFname)
 
     return matIter.getMatType()
@@ -3890,7 +3889,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     if matFname.endswith(".gz"):
         runGzip(tmpFname, matFname)
     else:
-        os.rename(tmpFname, matFname)
+        renameFile(tmpFname, matFname)
 
 def makeDictDefaults(inVar, defaults):
     " convert inVar to dict if necessary, defaulting to our default labels "
@@ -4087,7 +4086,7 @@ def writeJson(data, outFname, ignoreKeys=None):
     if ignoreKeys:
         data.update(ignoredData)
 
-    os.rename(tmpName, outFname)
+    renameFile(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
 def writePyConf(idfInfo, descFname):
@@ -4962,7 +4961,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     ofh.write('</html>\n')
 
     ofh.close()
-    os.rename(tmpFname, newFname)
+    renameFile(tmpFname, newFname)
 
     #datasetLabels = [x["name"] for x in dsList]
     logging.info("Wrote %s (devMode: %s)" % (newFname, devMode))

@@ -7,7 +7,7 @@ from collections import defaultdict
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
-from .cellbrowser import generateHtmls, getObsKeys
+from .cellbrowser import generateHtmls, getObsKeys, renameFile
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -275,7 +275,7 @@ def metaCat(inFnames, outFname, options):
 
     ofh.close()
     if ofh!=sys.stdout:
-        os.rename(tmpFname, outFname)
+        renameFile(tmpFname, outFname)
     logging.info("Output field order is: %s" % allHeaders)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 
