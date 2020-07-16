@@ -1136,18 +1136,29 @@ def moveOrGzip(inFname, outFname):
         renameFile(inFname, outFname)
 
 def runGzip(fname, finalFname=None):
-    " compress fname and move to finalFname when done "
-    logging.debug("Compressing %s" % fname)
-    cmd = "gzip -f %s" % fname
-    runCommand(cmd)
-    gzipFname = fname+".gz"
+    " compress fname and move to finalFname when done, to make it atomic "
+    if which("gzip") is None:
+        logging.debug("gzip not found, falling back to Python's gzip")
+        if finalFname is None:
+            finalFname = fname+".gz"
+        ifh = open(fname, "rb")
+        ofh = gzip.open(finalFname, "wb")
+        logging.debug("Compressing %s to %s" % (fname, finalFname))
+        ofh.write(ifh.read())
+        ifh.close()
+        ofh.close()
+    else:
+        logging.debug("Compressing %s" % fname)
+        cmd = "gzip -f %s" % fname
+        runCommand(cmd)
+        gzipFname = fname+".gz"
 
-    if finalFname==None:
-        return gzipFname
+        if finalFname==None:
+            return gzipFname
 
-    renameFile(gzipFname, finalFname)
-    if isfile(fname):
-        os.remove(fname)
+        renameFile(gzipFname, finalFname)
+        if isfile(fname):
+            os.remove(fname)
     return finalFname
 
 def addLongLabels(acronyms, fieldMeta):
