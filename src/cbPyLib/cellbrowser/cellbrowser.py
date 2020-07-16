@@ -2843,7 +2843,8 @@ def makeAbsDict(conf, key, fnameKey="file"):
     inDir = conf["inDir"]
     dicts = conf[key]
     for d in dicts:
-        d[fnameKey] = makeAbs(inDir, d[fnameKey])
+        if fnameKey in d:
+            d[fnameKey] = makeAbs(inDir, d[fnameKey])
     return dicts
 
 def parseTsvColumn(fname, colName):
