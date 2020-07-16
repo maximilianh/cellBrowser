@@ -70,3 +70,4 @@ or ``sudo apt-get install apache2``) and use the directory ``/var/www/`` instead
 
     sudo cbBuild -o /var/www/
 
+Windows is usually not used as a web server, just use the built-in web-server via ``-p (portNumber)`` on Windows.
