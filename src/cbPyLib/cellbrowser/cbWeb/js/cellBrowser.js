@@ -4157,13 +4157,13 @@ var cellbrowser = function() {
         return htmls;
     }
 
-    function metaInfoFromElement(el) {
+    function metaInfoFromElement(target) {
         /* get the metaInfo object given a DOM element  */
         if (target.dataset.fieldName==="")
-            target = el.parentNode;
+            target = target.parentNode;
         if (target.dataset.fieldName==="")
-            target = el.parentNode;
-        var fieldName = el.dataset.fieldName;
+            target = target.parentNode;
+        var fieldName = target.dataset.fieldName;
         var metaInfo = db.findMetaInfo(fieldName);
         return metaInfo;
     }
@@ -4181,14 +4181,16 @@ var cellbrowser = function() {
         var fieldName = metaInfo.name;
 
         // change style of this field a little
-        var metaSel = "#tpMetaBox_"+fieldIdx;
+        var metaSel = "#tpMetaBox_"+metaInfo.index;
         //var backCol = "#666";
         //var foreCol = "#FFF";
         //$(metaSel).css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().children().css({color: foreCol, backgroundColor: backCol});
         $('.tpMetaBox').removeClass("tpMetaHover");
+        $('.tpMetaBox .tpMetaValue').removeClass("tpMetaHover");
         $(metaSel).addClass("tpMetaHover");
+        $(metaSel+" .tpMetaValue").addClass("tpMetaHover");
 
         var htmls = [];
 
