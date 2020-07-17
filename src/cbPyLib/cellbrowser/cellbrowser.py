@@ -2783,6 +2783,9 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     # copy over any other supplemental files
     if "supplFiles" in summInfo:
         for sf in summInfo["supplFiles"]:
+            if not "file" in sf or not "label" in sf:
+                errAbort("The supplFiles entries in desc.conf all must include at least a 'file' and a 'label' key. "
+                    "The entry %s doesn't seem to include one." % sf)
             rawInPath = join(inDir, sf["file"])
             rawOutPath = join(datasetDir, basename(sf["file"]))
             sf["file"] = basename(sf["file"]) # strip input directory
