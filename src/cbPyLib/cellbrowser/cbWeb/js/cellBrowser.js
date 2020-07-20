@@ -523,7 +523,7 @@ var cellbrowser = function() {
                 htmls.push("The downloads section has been deactivated by the authors."); 
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
-                if (datasetInfo.fileVersions.inMatrix.fname.endsWith(".mtx.gz")) {
+                if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
                     htmls.push("<p><b>Expression in MTX format:</b> <a href='"+datasetInfo.name);
                     htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
                     htmls.push(", <a href='"+datasetInfo.name);
