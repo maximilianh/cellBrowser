@@ -21,7 +21,7 @@ Add a statement like the following to your ``~/.cellbrowser.conf``::
 
     dataRoot='/celldata/'
 
-Alternatively, ``dataRoot`` can be set using the ``CBDATAROOT`` enviroment variable::
+Alternatively, ``dataRoot`` can be set using the ``CBDATAROOT`` environment variable::
 
     export CBDATAROOT='/celldata/'
 

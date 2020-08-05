@@ -4153,7 +4153,9 @@ def rebuildCollections(dataRoot, webRoot, collList):
         writeJson(collInfo, collOutFname)
 
 def findRoot(inDir=None):
-    " return directory dataRoot defined in config file "
+    """ return directory dataRoot defined in config file or CBDATAROOT
+    environment variable.
+    """
     
     if 'CBDATAROOT' in os.environ:
         dataRoot = os.environ['CBDATAROOT']
