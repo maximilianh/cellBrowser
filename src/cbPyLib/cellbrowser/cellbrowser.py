@@ -4154,9 +4154,14 @@ def rebuildCollections(dataRoot, webRoot, collList):
 
 def findRoot(inDir=None):
     " return directory dataRoot defined in config file "
-    dataRoot = getConfig("dataRoot")
+    
+    if 'CBDATAROOT' in os.environ:
+        dataRoot = os.environ['CBDATAROOT']
+    else:
+        dataRoot = getConfig("dataRoot")
+    
     if dataRoot is None:
-        logging.info("dataRoot is not set in ~/.cellbrowser.conf. Dataset hierarchies are not supported.")
+        logging.info("dataRoot is not set in ~/.cellbrowser.conf or via $CBDATAROOT. Dataset hierarchies are not supported.")
         return None
 
     dataRoot = abspath(expanduser(dataRoot).rstrip("/"))
