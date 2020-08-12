@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime, keyword, itertools
+import hashlib, timeit, datetime, keyword, itertools, os.path
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -4152,7 +4152,8 @@ def startHttpServer(outDir, port):
     os.chdir(outDir)
     print("Serving "+outDir+" on port %s" % str(port))
     print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the IP address of this server)")
-    sys.stderr = open("/dev/null", "w") # don't show http status message on console
+    if os.path.exists("/dev/null"): # can't do this on windows & Co
+        sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 
 def cbBuild(confFnames, outDir, port=None):
@@ -5617,9 +5618,13 @@ def cbScanpyCli():
         logging.info("Loading Scanpy libraries")
         import scanpy as sc
     except:
-        print("The Python package 'scanpy' is not installed in the current interpreter %s" % sys.executable)
+        print("Cannot run 'import scanpy' in python. ")
+        print("The Python package 'scanpy' or one of its dependencies is not installed ")
+        print("in the default Python interpreter on this machine,  '%s'" % sys.executable)
         print("Please install it following the instructions at https://scanpy.readthedocs.io/en/latest/installation.html")
-        print("We recommend the miniconda-based installation.")
+        print("The scanpy authors recommend the miniconda-based installation with these commands")
+        print("$ conda install seaborn scikit-learn statsmodels numba pytables")
+        print("$ conda install -c conda-forge python-igraph leiden")
         print("Then re-run this command.")
         sys.exit(1)
 
