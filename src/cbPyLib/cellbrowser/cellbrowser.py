@@ -2706,7 +2706,7 @@ def copyImageFile(inDir, data, outDir, doneNames, imageSetFnames):
         rawInPath = join(inDir, data[key])
         base = basename(rawInPath) # strip directory part
         if base in doneNames and base not in imageSetFnames:
-            errAbort("The basename %s is used twice in the images.json definition. Note that all image names "
+            logging.warn("The basename %s is used twice in the images.json definition. Note that all image names "
                     "must be unique as users may want to download images. Often you can make them unique by "
                     "making their subdirectory part of the filename." % base)
 
@@ -2720,7 +2720,7 @@ def copyImageFile(inDir, data, outDir, doneNames, imageSetFnames):
         doneNames.add(base)
         imageSetFnames.add(base)
 
-def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
+def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=None):
     " write a json file that describes the dataset abstract/methods/downloads "
     confFname = join(inDir, "datasetDesc.conf")
     if not isfile(confFname):
@@ -2745,6 +2745,9 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
 
     if coordFiles:
         summInfo["coordFiles"] = coordFiles
+
+    if matrixFname:
+        summInfo["matrixFile"] = matrixFname
 
     # try various ways to get the abstract and methods html text
     readFileIntoDict(summInfo, "abstract", inDir, "abstract.html")
@@ -3723,7 +3726,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
-    foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
+    foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles, outMatrixFname)
     #if not foundConf:
         #copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 

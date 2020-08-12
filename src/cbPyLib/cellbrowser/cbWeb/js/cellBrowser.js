@@ -4091,7 +4091,7 @@ var cellbrowser = function() {
         var fieldName = event.target.dataset.fieldName;
         if (isNaN(fieldName)) {
             // try up one level in the DOM tree
-            fieldName = event.target.dataset.fieldName;
+            fieldName = event.target.parentElement.dataset.fieldName;
         }
         colorByMetaField(fieldName);
     }
