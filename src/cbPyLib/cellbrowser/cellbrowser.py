@@ -4297,6 +4297,12 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         logging.debug("got a string, converting to a list")
         confFnames = [confFnames]
 
+    # at UCSC, we enforce some required dataset tags
+    global reqTagsDataset
+    reqTags = getConfig("reqTags")
+    if reqTags:
+        reqTagsDataset.extend(reqTags)
+
     datasets = []
     dataRoot = None
     todoConfigs = set() # list of collections we need to update once we're done
@@ -4510,6 +4516,7 @@ def cbBuildCli():
     if options.outDir is None:
         logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cellbrowser.conf.")
         cbBuild_parseArgs(showHelp=True)
+
 
     outDir = options.outDir
     #onlyMeta = options.onlyMeta
@@ -5012,7 +5019,7 @@ def cbMake(outDir, devMode=False):
 #        writeJson(dataset, outFname, ignoreKeys=["children"])
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
-    " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
+    " create datasets.json in outDir and rebuild index.html. Optionally copy over all other static js/css files "
     logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
@@ -5029,7 +5036,8 @@ def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
 
     if doCode or devMode:
         copyStatic(webDir, outDir)
-        makeIndexHtml(webDir, outDir, devMode=devMode)
+
+    makeIndexHtml(webDir, outDir, devMode=devMode)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
