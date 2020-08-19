@@ -83,6 +83,10 @@ var cellbrowser = function() {
     const cDefGradPaletteHeat = "tol-sq";  // default legend gradient palette for the heatmap
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
 
+    var datasetGradPalette = cDefGradPalette;
+    var datasetQualPalette = cDefQualPalette;
+
+
     const exprBinCount = 10; //number of expression bins for genes
     // has to match cbData.js.exprBinCount - TODO - share the constant between these two files
 
@@ -2849,7 +2853,7 @@ var cellbrowser = function() {
             $('#tpRecentGenes .tpGeneBarCell').click( onGeneClick );
         }
 
-        changeUrl({"gene":geneSym, "meta":null, "pal":null});
+        changeUrl({"gene":geneSym, "meta":null});
         console.log("Loading gene expression vector for "+geneSym);
 
         db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress);
@@ -3368,9 +3372,9 @@ var cellbrowser = function() {
         var palName = origPalName;
         if (origPalName==="default") {
             if (legend.rowType==="category")
-                palName = cDefQualPalette;
+                palName = datasetQualPalette;
             else
-                palName = cDefGradPalette;
+                palName = datasetGradPalette;
         }
 
         var rows = legend.rows;
@@ -3519,7 +3523,8 @@ var cellbrowser = function() {
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
         gLegend.selectionDirection = "all";
-        legendSetPalette(gLegend, "default");
+        var oldPal = getVar("pal", "default")
+        legendSetPalette(gLegend, oldPal);
 
         var colors = legendGetColors(legendRows);
         return colors;
@@ -3936,7 +3941,7 @@ var cellbrowser = function() {
         let colCount;
         if (!palName)
             if (metaInfo.type==="int" || metaInfo.type==="float") {
-                palName = cDefGradPalette;
+                palName = datasetGradPalette;
                 colCount = exprBinCount+1; // +1 because <unknown> is a special bin
             }
             else {
@@ -4310,6 +4315,15 @@ var cellbrowser = function() {
                 gSampleDesc = db.conf.sampleDesc;
             else
                 gSampleDesc = "cell";
+
+            // allow config to override the default palettes
+            datasetGradPalette = cDefGradPalette;
+            datasetQualPalette = cDefQualPalette;
+            if (db.conf.defQuantPal)
+                datasetGradPalette = db.conf.defQuandPal;
+            if (db.conf.defCatPal)
+                datasetQualPalette = db.conf.defCatPal;
+
 
             if (db.conf.metaBarWidth)
                 metaBarWidth = db.conf.metaBarWidth;
@@ -5647,7 +5661,7 @@ var cellbrowser = function() {
         if (cellIds===null)
             cellIds = [];
 
-        var pal = makeColorPalette(cDefGradPalette, exprBinCount);
+        var pal = makeColorPalette(datasetGradPalette, exprBinCount);
 
         console.time("avgCalc");
         for (var i=0; i<quickGenes.length; i++) {

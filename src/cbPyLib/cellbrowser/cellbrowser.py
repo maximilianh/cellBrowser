@@ -1227,20 +1227,22 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         logging.debug("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
+        cleanFieldName = sanitizeName(fieldName.split("|")[0])
+
         forceType = None
-        if (fieldName in sanEnumFields):
+        if (cleanFieldName in sanEnumFields):
             forceType = "enum"
 
         # very dumb heuristic to recognize fields that should not be treated as numbers but as enums
         # res.0.6 is the default field name for Seurat clustering. Field header sanitizing changes it to
         # res_0_6 which is not optimal, but namedtuple doesn't allow dots in names
-        if "luster" in fieldName or "ouvain" in fieldName or (fieldName.startswith("res_") and "_" in fieldName):
+        if "luster" in cleanFieldName or \
+                "ouvain" in cleanFieldName or (fieldName.startswith("res_") and "_" in fieldName):
             forceType="enum"
 
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = sanitizeName(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -3741,7 +3743,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "sortBy"]:
+        "metaBarWidth", "supplFiles", "body_parts", "sortBy", "defQuantPal", "defCatPal"]:
         copyConf(inConf, outConf, tag)
 
 
@@ -4913,6 +4915,9 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     ofh.write('<html>\n')
     ofh.write('<head>\n')
     ofh.write('<meta charset="utf-8">\n')
+    ofh.write('<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />')
+    ofh.write('<meta http-equiv="Pragma" content="no-cache" />')
+    ofh.write('<meta http-equiv="Expires" content="0" />')
     ofh.write('<title>UCSC Cell Browser</title>\n')
 
     cssFnames = ["ext/jquery-ui-1.12.1.css", "ext/spectrum-1.8.0.css", "ext/jquery.contextMenu.css",
