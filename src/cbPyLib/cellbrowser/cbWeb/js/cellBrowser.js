@@ -3391,7 +3391,7 @@ var cellbrowser = function() {
             pal = makeColorPalette(palName, n);
 
         if (pal===null) {
-            alert("Sorry, this palette does not have "+rows.length+" different colors");
+            alert("Sorry, palette '"+palName+"' does not have "+rows.length+" different colors");
             return false;
         }
 
@@ -4320,7 +4320,7 @@ var cellbrowser = function() {
             datasetGradPalette = cDefGradPalette;
             datasetQualPalette = cDefQualPalette;
             if (db.conf.defQuantPal)
-                datasetGradPalette = db.conf.defQuandPal;
+                datasetGradPalette = db.conf.defQuantPal;
             if (db.conf.defCatPal)
                 datasetQualPalette = db.conf.defCatPal;
 
