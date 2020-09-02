@@ -237,7 +237,13 @@ def downloadStaticFile(remotePath, localPath):
 
     remoteUrl = urljoin(CBHOMEURL, remotePath)
     logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
-    data = urlopen(remoteUrl).read()
+    if sys.version_info >= ( 2, 7, 9 ):
+        # newer python versions check the https certificate. It seems that UCSC uses certificates
+        # that are not part of the cert database on some linux distributions.
+        # To avoid any problems, we're switching off cert verification
+        data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
+    else:
+        data = urlopen(remoteUrl).read()
 
     localTmp = localPath+".download"
     ofh = open(localTmp, "wb")
