@@ -455,6 +455,11 @@ def readExportScript(cmds):
             continue
         if blockFound:
             cmds.append(line.rstrip("\n"))
+
+    # the R export function is also part of seurat-wrappers.
+    # we want to have only a single source code file, and seurat-wrappers code 
+    # cannot use require, so it's commented out there.
+    cmds = [l.replace("#require(", "require(") for l in cmds]
     return cmds
 
 def writeRScript(cmds, scriptPath, madeBy):
