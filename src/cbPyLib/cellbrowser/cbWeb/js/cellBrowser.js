@@ -768,8 +768,15 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "ena_project");
 
         if (desc.urls) {
-            for (let key of keys(desc.urls))
+            for (let key in desc.urls)
                 htmlAddLink(htmls, desc.urls, key, key);
+        }
+
+        if (desc.custom) {
+            for (let key in desc.custom) {
+                htmls.push("<b>"+key+": </b> "+desc.custom[key]);
+                htmls.push("<br>");
+            }
         }
 
         if (desc.submitter) {
