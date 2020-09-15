@@ -2029,9 +2029,17 @@ def parseColors(fname):
         logging.warn("File %s does not exist" % fname)
         return None
 
-    colDict = parseDict(fname)
-    newDict = {}
-    for metaVal, color in iterItems(colDict):
+    ifh = openFile(fname)
+    sep = sepForFile(fname)
+    lineNo = 0
+    newDict = dict()
+    for line in ifh:
+        lineNo +=1
+        row = line.rstrip("\n\r").split(sep)
+        if len(row)!=2:
+            errAbort("color file %s - line %d does not contain exactly two fields: %s" % (fname, lineNo, row))
+        metaVal, color = row
+
         if color.lower()=="color":
             continue
 
