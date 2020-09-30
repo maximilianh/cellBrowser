@@ -70,6 +70,4 @@ or ``sudo apt-get install apache2``) and use the directory ``/var/www/`` instead
 
     sudo cbBuild -o /var/www/
 
-We hope you do not use this software on Windows. Email cells@ucsc.edu if you have to.
-
-
+Windows is usually not used as a web server, just use the built-in web-server via ``-p (portNumber)`` on Windows.

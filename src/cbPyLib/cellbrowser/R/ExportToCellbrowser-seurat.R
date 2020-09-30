@@ -312,8 +312,6 @@ ExportToCellbrowser <- function(
       if (is.null(name)) {
         name <- field
       }
-      #df[[name]] <- object[[field]][, 1]
-      #df[[name]] <- FetchData(object, field)[, 1]
       df[[name]] <- meta[[field]]
       if (!is.numeric(df[[name]])) {
         enum.fields <- c(enum.fields, name)
@@ -324,7 +322,7 @@ ExportToCellbrowser <- function(
 
   fname <- file.path(dir, "meta.tsv")
   message("Writing meta data to ", fname)
-  write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names=FALSE)
+  write.table(as.matrix(df[cellOrder, ]), sep="\t", file=fname, quote = FALSE, row.names=FALSE)
 
   # Export markers
   markers.string <- ''

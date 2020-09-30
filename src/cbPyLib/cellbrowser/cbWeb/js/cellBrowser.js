@@ -76,12 +76,16 @@ var cellbrowser = function() {
     // color for missing value when coloring by expression value
     //var cNullColor = "CCCCCC";
     //const cNullColor = "DDDDDD";
-    const cNullColor = "95DFFF";
+    const cNullColor = "95DFFF"; //= light blue
 
     const cDefGradPalette = "tol-sq-blue";  // default legend gradient palette for gene expression
     // this is a special palette, tol-sq with the first entry being a light blue, so 0 stands out a bit more
     const cDefGradPaletteHeat = "tol-sq";  // default legend gradient palette for the heatmap
     const cDefQualPalette  = "rainbow"; // default legend palette for categorical values
+
+    var datasetGradPalette = cDefGradPalette;
+    var datasetQualPalette = cDefQualPalette;
+
 
     const exprBinCount = 10; //number of expression bins for genes
     // has to match cbData.js.exprBinCount - TODO - share the constant between these two files
@@ -445,7 +449,6 @@ var cellbrowser = function() {
         "doi" : "Publication Fulltext",
         "arrayexpress" : "ArrayExpress",
         "ena_project" : "European Nucleotide Archive",
-        "ega_study" : "European Genome Archive",
         "cirm_dataset" : "California Institute of Regenerative Medicine Dataset",
     };
 
@@ -459,7 +462,6 @@ var cellbrowser = function() {
         "dbgap" : "https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=",
         "doi" : "http://dx.doi.org/",
         "ena_project" : "https://www.ebi.ac.uk/ena/data/view/",
-        "ega_study" : "https://ega-archive.org/studies/",
         "cirm_dataset" : "https://cirm.ucsc.edu/d/",
         "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
     }
@@ -525,8 +527,17 @@ var cellbrowser = function() {
                 htmls.push("The downloads section has been deactivated by the authors."); 
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
+                if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
+                    htmls.push("<p><b>Expression in MTX format:</b> <a href='"+datasetInfo.name);
+                    htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
+                    htmls.push(", <a href='"+datasetInfo.name);
+                    htmls.push("/features.tsv.gz'>features.tsv.gz</a>");
+                    htmls.push(", <a href='"+datasetInfo.name);
+                    htmls.push("/barcodes.tsv.gz'>barcodes.tsv.gz</a>");
+                } else { 
                 htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
                 htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+                }
                 if (desc.unitDesc)
                     htmls.push("<br>Values are: "+desc.unitDesc);
                 htmls.push("</p>");
@@ -568,11 +579,77 @@ var cellbrowser = function() {
 
                 htmls.push("<p><b>Cell Browser configuration</b>: ");
                 htmls.push("<a target=_blank href='"+datasetInfo.name+"/dataset.json'>dataset.json</a></p>");
+
+                $( "#pane3" ).html(htmls.join(""));
+                $( "#pane3" ).show();
+                $( "#tabLink3" ).show();
             }
-            $( "#pane3" ).html(htmls.join(""));
-            $( "#pane3" ).show();
-            $( "#tabLink3" ).show();
+
         }
+    }
+
+    function buildImagesPane(datasetInfo, desc) {
+        if (!desc.imageSets) {
+            $( "#tabLinkImg" ).hide();
+            $( "#paneImg" ).hide();
+            return;
+        }
+
+        let htmls = [];
+        htmls.push("<h4>Microscopy images</h4>");
+        // TOC 
+        let catIdx = 0;
+        htmls.push("<div style='padding-bottom:8px'>Jump to: ");
+        for (let catInfo of desc.imageSets) {
+            htmls.push("<a style='padding-left:12px' href='#imgCat"+catIdx+"'>"+catInfo.categoryLabel+"</a>");
+            catIdx++;
+        }
+        htmls.push("</div>");
+
+        if (desc.imageSetNote)
+            htmls.push("<p>"+desc.imageSetNote+"<p>");
+
+        // actual HTML
+        catIdx = 0;
+        for (let catInfo of desc.imageSets) {
+            htmls.push("<div style='padding-top:6px; padding-bottom:4px' class='tpImgCategory'>");
+            htmls.push("<a name='imgCat"+catIdx+"'></a>");
+            catIdx++;
+            htmls.push("<b>"+catInfo.categoryLabel+":</b><br>");
+            let imgDir = datasetInfo.name+"/images/";
+            htmls.push("<div style='padding-left:1em; padding-top:4px' class='tpImgSets'>");
+
+            for (let imgSet of catInfo.categoryImageSets) {
+                let imgLinks = [];
+                if (imgSet.setLabel)
+                    htmls.push("<b>"+imgSet.setLabel+"</b><br>");
+                htmls.push("<div style='padding-left:1em;' class='tpImgSetLinks'>");
+                for (let img of imgSet.images) {
+                    imgLinks.push("Show: <a target=_blank href='"+imgDir+img.file+"'>"+img.label+"</a>");
+                }
+                htmls.push(imgLinks.join(", "));
+
+                if (imgSet.downloads) {
+                    let dlLinks = [];
+                    for (let dl of imgSet.downloads) {
+                        //dlLinks.push("<a href='"+imgDir+dl.file+"' download><span style='font-size:12px' class='material-icons-round'>get_app</span>"+dl.label+"</a>");
+                        dlLinks.push("<a href='"+imgDir+dl.file+"' download>"+dl.label+"</a>");
+                    }
+                    //htmls.push("<br><div style='padding-left: 1em'>Download: ");
+                    htmls.push("<br><div>Download: ");
+                    htmls.push(dlLinks.join(", "));
+                    htmls.push("</div>");
+                }
+                //htmls.push("<br>");
+                htmls.push("</div>"); //  tpImgSetLinks
+            }
+            htmls.push("</div>"); //  tpImgSets
+            htmls.push("</div>"); //  tpImgCategory
+        }
+        //htmls.push("</ul>");
+        $( "#paneImg" ).html(htmls.join(""));
+        $( "#paneImg" ).show();
+        $( "#tabLinkImg" ).show();
     }
 
     function buildMethodsPane(datasetInfo, desc) {
@@ -686,26 +763,39 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "sra");
         htmlAddLink(htmls, desc, "doi");
         htmlAddLink(htmls, desc, "arrayexpress");
+        htmlAddLink(htmls, desc, "cirm_dataset");
+        htmlAddLink(htmls, desc, "ega_study");
         htmlAddLink(htmls, desc, "ena_project");
 
         if (desc.urls) {
-            for (let key of keys(desc.urls))
+            for (let key in desc.urls)
                 htmlAddLink(htmls, desc.urls, key, key);
+        }
+
+        if (desc.custom) {
+            for (let key in desc.custom) {
+                htmls.push("<b>"+key+": </b> "+desc.custom[key]);
+                htmls.push("<br>");
+            }
         }
 
         if (desc.submitter) {
             htmls.push("<b>Submitted by: </b> "+desc.submitter);
             if (desc.submission_date) {
                 htmls.push(" ("+desc.submission_date);
-                if (desc.version)
-                    htmls.push(", Version "+desc.version);
                 htmls.push(")");
             }
+            if (desc.version)
+                htmls.push(", Version "+desc.version);
             htmls.push("<br>");
         }
 
         if (desc.shepherd) {
-            htmls.push("<b>Data import by: </b> "+desc.shepherd);
+            htmls.push("<b>UCSC Data Shepherd: </b> "+desc.shepherd);
+            htmls.push("<br>");
+        }
+        if (desc.wrangler) {
+            htmls.push("<b>UCSC Data Wrangler: </b> "+desc.wrangler);
             htmls.push("<br>");
         }
 
@@ -729,6 +819,7 @@ var cellbrowser = function() {
 
         buildMethodsPane(datasetInfo, desc);
         buildDownloadsPane(datasetInfo, desc);
+        buildImagesPane(datasetInfo, desc);
 
         $("#tpOpenDialogTabs").tabs("refresh");
         //.tabs("option", "active", 0) does not do the color change of the tab so doing this instead
@@ -1023,6 +1114,7 @@ var cellbrowser = function() {
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLink2' data-toggle='tab' href='#pane2'>Methods</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLink3' data-toggle='tab' href='#pane3'>Data Download</a></li>");
+        htmls.push("<li><a class='tpDatasetTab' id='tabLinkImg' data-toggle='tab' href='#paneImg'>Images</a></li>");
         htmls.push("</ul>");
 
         htmls.push("<div id='pane1' class='tpDatasetPane tab-pane'>");
@@ -1035,6 +1127,10 @@ var cellbrowser = function() {
 
         htmls.push("<div id='pane3' class='tpDatasetPane tab-pane'>");
         htmls.push("<p>Loading download instructions...</p>");
+        htmls.push("</div>");
+
+        htmls.push("<div id='paneImg' class='tpDatasetPane tab-pane'>");
+        htmls.push("<p>Loading image data...</p>");
         htmls.push("</div>");
 
         htmls.push("</div>"); // tpOpenDialogTabs
@@ -2764,7 +2860,7 @@ var cellbrowser = function() {
             $('#tpRecentGenes .tpGeneBarCell').click( onGeneClick );
         }
 
-        changeUrl({"gene":geneSym, "meta":null, "pal":null});
+        changeUrl({"gene":geneSym, "meta":null});
         console.log("Loading gene expression vector for "+geneSym);
 
         db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress);
@@ -2908,11 +3004,11 @@ var cellbrowser = function() {
                return [4, 0.6];
            if (dotCount<10000)
                return [3, 0.5];
-           if (dotCount<28000)
-               return [3, 0.3];
            if (dotCount<35000)
+               return [2, 0.3];
+           if (dotCount<60000)
                return [1, 0.5];
-           // more than 28k:
+           // everything else
            return [0, 0.3];
        }
 
@@ -3271,7 +3367,11 @@ var cellbrowser = function() {
             var colorVal = null;
             if (colors)
                 colorVal = colors[i];
-            rows[i][keyName] = colorVal;
+
+            var legendRow = rows[i];
+            if (legendRow.label == "0" && legend.type=="expr")
+                colorVal = cNullColor;
+            legendRow[keyName] = colorVal;
         }
     }
 
@@ -3283,9 +3383,9 @@ var cellbrowser = function() {
         var palName = origPalName;
         if (origPalName==="default") {
             if (legend.rowType==="category")
-                palName = cDefQualPalette;
+                palName = datasetQualPalette;
             else
-                palName = cDefGradPalette;
+                palName = datasetGradPalette;
         }
 
         var rows = legend.rows;
@@ -3302,7 +3402,7 @@ var cellbrowser = function() {
             pal = makeColorPalette(palName, n);
 
         if (pal===null) {
-            alert("Sorry, this palette does not have "+rows.length+" different colors");
+            alert("Sorry, palette '"+palName+"' does not have "+rows.length+" different colors");
             return false;
         }
 
@@ -3340,8 +3440,19 @@ var cellbrowser = function() {
             legLabel = "0";
         else if (binMin==="Unknown")
             legLabel = "Unknown";
-        else if (binMin!==binMax)
-            legLabel = binMin.toFixed(minDig)+' - '+binMax.toFixed(maxDig);
+        else if (binMin!==binMax) {
+            if (Math.abs(binMin) > 1000000)
+                binMin = binMin.toPrecision(4);
+            if (Math.abs(binMax) > 1000000)
+                binMax = binMax.toPrecision(4);
+            console.log(binMin, binMax);
+            if (typeof(binMin)=== 'number')
+                binMin = binMin.toFixed(minDig);
+            if (typeof(binMax)=== 'number')
+                binMax = binMax.toFixed(minDig);
+
+            legLabel = binMin+' - '+binMax;
+        }
         else
             legLabel = binMin.toFixed(minDig);
         return legLabel;
@@ -3423,7 +3534,8 @@ var cellbrowser = function() {
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
         gLegend.selectionDirection = "all";
-        legendSetPalette(gLegend, "default");
+        var oldPal = getVar("pal", "default")
+        legendSetPalette(gLegend, oldPal);
 
         var colors = legendGetColors(legendRows);
         return colors;
@@ -3840,7 +3952,7 @@ var cellbrowser = function() {
         let colCount;
         if (!palName)
             if (metaInfo.type==="int" || metaInfo.type==="float") {
-                palName = cDefGradPalette;
+                palName = datasetGradPalette;
                 colCount = exprBinCount+1; // +1 because <unknown> is a special bin
             }
             else {
@@ -3995,7 +4107,7 @@ var cellbrowser = function() {
         var fieldName = event.target.dataset.fieldName;
         if (isNaN(fieldName)) {
             // try up one level in the DOM tree
-            fieldName = event.target.dataset.fieldName;
+            fieldName = event.target.parentElement.dataset.fieldName;
         }
         colorByMetaField(fieldName);
     }
@@ -4061,13 +4173,13 @@ var cellbrowser = function() {
         return htmls;
     }
 
-    function metaInfoFromElement(el) {
+    function metaInfoFromElement(target) {
         /* get the metaInfo object given a DOM element  */
         if (target.dataset.fieldName==="")
-            target = el.parentNode;
+            target = target.parentNode;
         if (target.dataset.fieldName==="")
-            target = el.parentNode;
-        var fieldName = el.dataset.fieldName;
+            target = target.parentNode;
+        var fieldName = target.dataset.fieldName;
         var metaInfo = db.findMetaInfo(fieldName);
         return metaInfo;
     }
@@ -4085,14 +4197,16 @@ var cellbrowser = function() {
         var fieldName = metaInfo.name;
 
         // change style of this field a little
-        var metaSel = "#tpMetaBox_"+fieldIdx;
+        var metaSel = "#tpMetaBox_"+metaInfo.index;
         //var backCol = "#666";
         //var foreCol = "#FFF";
         //$(metaSel).css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().children().css({color: foreCol, backgroundColor: backCol});
         $('.tpMetaBox').removeClass("tpMetaHover");
+        $('.tpMetaBox .tpMetaValue').removeClass("tpMetaHover");
         $(metaSel).addClass("tpMetaHover");
+        $(metaSel+" .tpMetaValue").addClass("tpMetaHover");
 
         var htmls = [];
 
@@ -4212,6 +4326,15 @@ var cellbrowser = function() {
                 gSampleDesc = db.conf.sampleDesc;
             else
                 gSampleDesc = "cell";
+
+            // allow config to override the default palettes
+            datasetGradPalette = cDefGradPalette;
+            datasetQualPalette = cDefQualPalette;
+            if (db.conf.defQuantPal)
+                datasetGradPalette = db.conf.defQuantPal;
+            if (db.conf.defCatPal)
+                datasetQualPalette = db.conf.defCatPal;
+
 
             if (db.conf.metaBarWidth)
                 metaBarWidth = db.conf.metaBarWidth;
@@ -4691,7 +4814,7 @@ var cellbrowser = function() {
         };
         $.contextMenu( menuOptCust );
         // setup the tooltips
-        //$('[title!=""]').tooltip();}
+        //$('[title!=""]').tooltip();
     }
 
     function buildLeftSidebar () {
@@ -5549,7 +5672,7 @@ var cellbrowser = function() {
         if (cellIds===null)
             cellIds = [];
 
-        var pal = makeColorPalette(cDefGradPalette, exprBinCount);
+        var pal = makeColorPalette(datasetGradPalette, exprBinCount);
 
         console.time("avgCalc");
         for (var i=0; i<quickGenes.length; i++) {
@@ -5849,7 +5972,8 @@ var cellbrowser = function() {
 
     function sanitizeName(name) {
         /* ported from cellbrowser.py: remove non-alpha, allow underscores */
-        var newName = name.replace(/[^a-zA-Z_0-9+]/g, "");
+        var newName = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc");
+        var newName = newName.replace(/[^a-zA-Z_0-9+]/g, "");
         return newName;
     }
 
@@ -6425,7 +6549,7 @@ var cellbrowser = function() {
     function getVar(name, defVal) {
         /* get query variable from current URL or default value if undefined */
        var myUrl = window.location.href;
-       myUrl = myUrl.replace("#", "");
+       myUrl = myUrl.split("#")[0]; // remove anchor from URL
        var urlParts = myUrl.split("?");
        var queryStr = urlParts[1];
        var varDict = deparam(queryStr); // parse key=val&... string to object
@@ -6505,7 +6629,8 @@ var cellbrowser = function() {
         if (datasetName==="aparna")
             datasetName = "cortex-dev";
 
-        if (datasetName)
+        // adult pancreas is the only dataset with an uppercase letter
+        if (datasetName && datasetName!=="adultPancreas")
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }

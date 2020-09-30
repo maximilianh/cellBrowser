@@ -43,4 +43,5 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
    collections.rst
    load.rst
    bulk.rst
+   images.rst
    requirements

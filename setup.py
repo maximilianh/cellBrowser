@@ -42,7 +42,8 @@ setuptools.setup(
         'cbMarkerAnnotate = cellbrowser.geneinfo:cbMarkerAnnotateCli',
         'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',
         'cbImportSeurat = cellbrowser.seurat:cbImportSeuratCli',
-        'cbImportCellranger = cellbrowser.convert:cbCellrangerCli'
+        'cbImportCellranger = cellbrowser.convert:cbCellrangerCli',
+        'cbHub = cellbrowser.hubmaker.cbHubCli'
     ]
     },
     #package_data={

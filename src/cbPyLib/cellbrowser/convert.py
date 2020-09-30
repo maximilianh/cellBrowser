@@ -7,34 +7,37 @@ from collections import defaultdict
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
-from .cellbrowser import generateHtmls, getObsKeys
+from .cellbrowser import generateHtmls, getObsKeys, renameFile
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
 def cbToolCli_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] mtx2tsv|matCat|metaCat - convert various single-cell related files
+    parser = optparse.OptionParser("""usage: %prog [options] command filenames - convert various single-cell related files
 
+Command is one of:
     mtx2tsv   - convert matrix market to .tsv.gz
     matCat - merge expression matrices with one line per gene into a big matrix.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
-    metaCat - concat/join meta tables on the first (cell ID) field
+    metaCat - concat/join meta tables on the first (cell ID) field or reorder their fields
+    reorder - reorder the meta fields
 
-    Examples:
+Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
     - %prog matCat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
     - %prog metaCat meta.tsv seurat/meta.tsv scanpy/meta.tsv newMeta.tsv - merge meta matrices
+    - %prog reorder meta.tsv meta.newOrder.tsv --delete samId --order=cluster,cellType,age - reorder meta fields
     """)
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true",
         help="show debug messages")
     parser.add_option("", "--fixDots", dest="fixDots", action="store_true",
-        help="try to fix R's mangling of various special chars to '.' in the cell IDs")
-    parser.add_option("", "--first", dest="first", action="store",
-        help="only for metaCat: names of fields to order first, comma-sep, e.g. disease,age. Not cellId, that's always the first field")
+            help="for reorder and metaCat: try to fix R's mangling of various special chars to '.' in the cell IDs")
+    parser.add_option("", "--order", dest="order", action="store",
+        help="only for reorder and metaCat: new order of fields, comma-sep, e.g. 'disease,age'. Do not include cellId, it's always the first field by definition. Fields that are in the file but not specified here will be appended as the last columns.")
     parser.add_option("", "--del", dest="delFields", action="store",
-        help="only for metaCat: names of fields to remove")
+        help="only for reorder and metaCat: names of fields to remove")
 
 
     (options, args) = parser.parse_args()
@@ -56,7 +59,7 @@ def cbToolCli():
 
     cmd = args[0]
 
-    cmds = ["mtx2tsv", "matCat", "metaCat"]
+    cmds = ["mtx2tsv", "matCat", "metaCat", "reorder"]
 
     if cmd=="mtx2tsv":
         mtxFname = args[1]
@@ -68,7 +71,7 @@ def cbToolCli():
         inFnames = args[1:-1]
         outFname = args[-1]
         matCat(inFnames, outFname)
-    elif cmd=="metaCat":
+    elif cmd=="metaCat" or cmd=="reorder":
         inFnames = args[1:-1]
         outFname = args[-1]
 
@@ -179,8 +182,8 @@ def metaCat(inFnames, outFname, options):
     allIds = set() # set with all cellIds
 
     firstFields = []
-    if options.first!="" and options.first is not None:
-        firstFields = options.first.split(",")
+    if options.order!="" and options.order is not None:
+        firstFields = options.order.split(",")
 
     delFields = []
     if options.delFields!="" and options.delFields is not None:
@@ -229,9 +232,9 @@ def metaCat(inFnames, outFname, options):
     for h in firstFields:
         try:
             idx = allHeaders.index(h)
+            firstFieldIdx.append(idx)
         except ValueError:
-            errAbort("Field %s specified on command line --first is not in the meta data file" % repr(h))
-        firstFieldIdx.append(idx)
+            logging.warning("Field %s specified on command line --order is not in the meta data file" % repr(h))
 
     # and those of fields we will skip
     delFieldIdx = []
@@ -243,7 +246,7 @@ def metaCat(inFnames, outFname, options):
         delFieldIdx.append(idx)
 
     if len(firstFields)!=0:
-        logging.info("Putting these fields first: %s" % firstFields)
+        logging.info("Order of fields that come first: %s" % firstFields)
     if len(delFields)!=0:
         logging.info("Removing these fields: %s" % delFields)
 
@@ -272,7 +275,7 @@ def metaCat(inFnames, outFname, options):
 
     ofh.close()
     if ofh!=sys.stdout:
-        os.rename(tmpFname, outFname)
+        renameFile(tmpFname, outFname)
     logging.info("Output field order is: %s" % allHeaders)
     logging.info("Wrote %d lines (not counting header)" % len(allRows))
 
@@ -293,7 +296,7 @@ def importCellrangerMatrix(inDir, outDir):
 
     # ugly code warning
     if len(matFnames1)!=0:
-        # cellranger 1/2 files are not gziped
+        # cellranger 1/2 mtx files are not gziped
         assert(len(matFnames1)==1)
         matFname = matFnames1[0]
         logging.info("Found %s" % matFname)
@@ -301,7 +304,7 @@ def importCellrangerMatrix(inDir, outDir):
         geneFname = matFname.replace("matrix.mtx", "genes.tsv")
         mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
     elif len(matFnames2)!=0:
-        # cellranger 3 files are gzipped
+        # cellranger 3 mtx files are gzipped
         assert(len(matFnames2)==1)
         matFname = matFnames2[0]
         logging.info("Found %s" % matFname)
@@ -309,6 +312,7 @@ def importCellrangerMatrix(inDir, outDir):
         geneFname = matFname.replace("matrix.mtx.gz", "features.tsv.gz")
         mtxToTsvGz(matFname, geneFname, barcodeFname, outExprFname)
     elif len(matFnames3)!=0:
+        # h5 files of cellranger 1/2/3 are read via scanpy
         matFnames3 = glob.glob(mask3)
         logging.info("Found %s" % matFnames3)
         assert(len(matFnames3)==1)
@@ -317,7 +321,7 @@ def importCellrangerMatrix(inDir, outDir):
         import scanpy.api as sc
         logging.info("Reading matrix %s" % matFname)
         adata = readMatrixAnndata(matFname)
-        anndataToTsv(adata, outExprFname)
+        anndataMatrixToTsv(adata, outExprFname)
     else:
         errAbort("Could not find matrix, neither as %s, %s nor %s" % (mask1, mask2, mask3))
         logging.info("Looking for %s" % mask3)
@@ -546,17 +550,21 @@ def importLoom(inFname):
     import anndata
     ad = anndata.read_loom(inFname)
 
-    coordKeys = ["_tSNE1", "_tSNE2"]
+    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"])
     obsKeys = getObsKeys(ad)
-    if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
-        logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
-        newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
-        print(newObj)
-        ad.obsm["tsne"] = newObj
-        del ad.obs[coordKeys[0]]
-        del ad.obs[coordKeys[1]]
-    else:
-        logging.warn("Did not find %s in anndata.obs, cannot import coordinates" % repr(coordKeys))
+    foundCoords = False
+    for coordKeys in coordKeyList:
+        if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
+            logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
+            newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
+            ad.obsm["tsne"] = newObj
+            del ad.obs[coordKeys[0]]
+            del ad.obs[coordKeys[1]]
+            foundCoords = True
+            break
+
+    if not foundCoords:
+        logging.warn("Did not find any keys like %s in anndata.obs, cannot import coordinates" % repr(coordKeyList))
     return ad
 
 def cbImportScanpyCli():

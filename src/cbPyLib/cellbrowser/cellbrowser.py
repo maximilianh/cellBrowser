@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime, keyword, itertools
+import hashlib, timeit, datetime, keyword, itertools, os.path
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -157,6 +157,13 @@ def makeDir(outDir):
         logging.info("Creating %s" % outDir)
         os.makedirs(outDir)
 
+def renameFile(oldName, newName):
+    " windows doesn't accept if newName already exists "
+    logging.debug("Renaming %s -> %s" % (oldName, newName))
+    if isfile(newName):
+        os.remove(newName)
+    os.rename(oldName, newName)
+
 def errAbort(msg):
         logging.error(msg)
         sys.exit(1)
@@ -230,13 +237,19 @@ def downloadStaticFile(remotePath, localPath):
 
     remoteUrl = urljoin(CBHOMEURL, remotePath)
     logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
-    data = urlopen(remoteUrl).read()
+    if sys.version_info >= ( 2, 7, 9 ):
+        # newer python versions check the https certificate. It seems that UCSC uses certificates
+        # that are not part of the cert database on some linux distributions.
+        # To avoid any problems, we're switching off cert verification
+        data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
+    else:
+        data = urlopen(remoteUrl).read()
 
     localTmp = localPath+".download"
     ofh = open(localTmp, "wb")
     ofh.write(data)
     ofh.close()
-    os.rename(localTmp, localPath)
+    renameFile(localTmp, localPath)
 
 def getStaticFile(relPath):
     """ get the full path to a static file in the dataDir directory (~/cbData or $CBDATA, by default, see above).
@@ -263,14 +276,19 @@ def staticFileNextRow(relPath):
     for row in lineFileNextRow(fh):
         yield row
 
+def findPkgFile(relPath):
+    " return filename of file that is part of the pip package or git folder "
+    baseDir = dirname(__file__) # = directory of this script
+    srcPath = join(baseDir, relPath)
+    return srcPath
+
 def copyPkgFile(relPath, outDir=None, values=None):
     """ copy file from directory under the current package directory to outDir or current directory
     Don't overwrite if the file is already there.
     """
     if outDir is None:
         outDir = os.getcwd()
-    baseDir = dirname(__file__) # = directory of this script
-    srcPath = join(baseDir, relPath)
+    srcPath = findPkgFile(relPath)
     destPath = join(outDir, basename(relPath))
     if isfile(destPath):
         logging.info("%s already exists, not overwriting" % destPath)
@@ -1121,25 +1139,32 @@ def moveOrGzip(inFname, outFname):
     if outFname.endswith(".gz"):
         runGzip(inFname, outFname)
     else:
-        logging.debug("Renaming %s to %s" % (inFname, outFname))
-        os.rename(inFname, outFname)
+        renameFile(inFname, outFname)
 
 def runGzip(fname, finalFname=None):
-    " compress fname and move to finalFname when done "
-    logging.debug("Compressing %s" % fname)
-    cmd = "gzip -f %s" % fname
-    runCommand(cmd)
-    gzipFname = fname+".gz"
+    " compress fname and move to finalFname when done, to make it atomic "
+    if which("gzip") is None:
+        logging.debug("gzip not found, falling back to Python's gzip")
+        if finalFname is None:
+            finalFname = fname+".gz"
+        ifh = open(fname, "rb")
+        ofh = gzip.open(finalFname, "wb")
+        logging.debug("Compressing %s to %s" % (fname, finalFname))
+        ofh.write(ifh.read())
+        ifh.close()
+        ofh.close()
+    else:
+        logging.debug("Compressing %s" % fname)
+        cmd = "gzip -f %s" % fname
+        runCommand(cmd)
+        gzipFname = fname+".gz"
 
-    if finalFname==None:
-        return gzipFname
+        if finalFname==None:
+            return gzipFname
 
-    if isfile(finalFname):
-        os.remove(finalFname)
-    logging.debug("Renaming %s to %s" % (gzipFname, finalFname))
-    os.rename(gzipFname, finalFname)
-    if isfile(fname):
-        os.remove(fname)
+        renameFile(gzipFname, finalFname)
+        if isfile(fname):
+            os.remove(fname)
     return finalFname
 
 def addLongLabels(acronyms, fieldMeta):
@@ -1208,20 +1233,22 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         logging.debug("Meta data field index %d: '%s'" % (colIdx, fieldName))
         validFieldNames.add(fieldName)
 
+        cleanFieldName = sanitizeName(fieldName.split("|")[0])
+
         forceType = None
-        if (fieldName in sanEnumFields):
+        if (cleanFieldName in sanEnumFields):
             forceType = "enum"
 
         # very dumb heuristic to recognize fields that should not be treated as numbers but as enums
         # res.0.6 is the default field name for Seurat clustering. Field header sanitizing changes it to
         # res_0_6 which is not optimal, but namedtuple doesn't allow dots in names
-        if "luster" in fieldName or "ouvain" in fieldName or (fieldName.startswith("res_") and "_" in fieldName):
+        if "luster" in cleanFieldName or \
+                "ouvain" in cleanFieldName or (fieldName.startswith("res_") and "_" in fieldName):
             forceType="enum"
 
         if colIdx==0:
             forceType = "unique"
 
-        cleanFieldName = sanitizeName(fieldName.split("|")[0])
 
         fieldMeta = OrderedDict()
         fieldMeta["name"] = cleanFieldName
@@ -1354,7 +1381,7 @@ class MatrixMtxReader:
 
             if i%1000==0:
                 logging.info("%d genes written..." % i)
-            arr = mat.getrow(i).toarray().astype("float32")
+            arr = mat.getrow(i).toarray()
             yield (geneId, geneSym, arr)
 
 class MatrixTsvReader:
@@ -1800,24 +1827,30 @@ def isMtx(path):
 
 def exprEncode(geneDesc, exprArr, matType):
     """ convert an array of numbers of type matType (int or float) to a compressed string of
-    floats
+    float32s
     The format of a record is:
     - 2 bytes: length of descStr, e.g. gene identifier or else
     - len(descStr) bytes: the descriptive string descStr
-    - array of n 4-byte floats (n = number of cells)
+    - array of n 4-byte floats (n = number of cells) or 4-byte unsigned ints
     """
     geneDesc = str(geneDesc) # make sure no unicode
     geneIdLen = struct.pack("<H", len(geneDesc))
 
     # on cortex-dev, numpy was around 30% faster. Not a huge difference.
     if numpyLoaded:
+        if matType=="float":
+            exprArr = exprArr.astype("float32")
+        elif matType=="int":
+            exprStr = exprArr.astype("uint32")
+        else:
+            assert(False) # internal error
         exprStr = exprArr.tobytes()
         minVal = np.amin(exprArr)
     else:
         if matType=="float":
             arrType = "f"
         elif matType=="int" or matType=="forceInt":
-            arrType = "I"
+            arrType = "L"
         else:
             assert(False) # internal error
 
@@ -1941,8 +1974,8 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     json.dump(discretIndex, jsonOfh)
     jsonOfh.close()
 
-    os.rename(tmpFname, binFname)
-    os.rename(discretTmp, discretBinFname)
+    renameFile(tmpFname, binFname)
+    renameFile(discretTmp, discretBinFname)
 
     return matType
 
@@ -1996,9 +2029,17 @@ def parseColors(fname):
         logging.warn("File %s does not exist" % fname)
         return None
 
-    colDict = parseDict(fname)
-    newDict = {}
-    for metaVal, color in iterItems(colDict):
+    ifh = openFile(fname)
+    sep = sepForFile(fname)
+    lineNo = 0
+    newDict = dict()
+    for line in ifh:
+        lineNo +=1
+        row = line.rstrip("\n\r").split(sep)
+        if len(row)!=2:
+            errAbort("color file %s - line %d does not contain exactly two fields: %s" % (fname, lineNo, row))
+        metaVal, color = row
+
         if color.lower()=="color":
             continue
 
@@ -2209,7 +2250,7 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         ofh.write("\n")
     ofh.close()
 
-    os.rename(tmpFname, fixedMetaFname)
+    renameFile(tmpFname, fixedMetaFname)
 
     return matrixSampleNames, mustFilterMatrix
 
@@ -2270,7 +2311,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
             errAbort("No coordinates that are also in meta. Check coord and meta cell identifiers.")
 
     binFh.close()
-    os.rename(tmpFname, coordBinFname)
+    renameFile(tmpFname, coordBinFname)
 
     md5 = md5WithPython(coordBinFname)
     coordInfo["md5"] = md5[:MD5LEN]
@@ -2318,7 +2359,7 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     if (not doFilter and not ".csv" in inFname.lower()):
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
 
-        # XX stupid .gz heuristics... 
+        # XX no happy: stupid .gz filename heuristics
         if inFname.endswith(".gz"):
             cmd = "cp \"%s\" \"%s\"" % (inFname, outFname)
         else:
@@ -2342,9 +2383,14 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
 
     keepFields = set(filtSampleNames)
     keepIdx = []
+    doneSampleNames = set()
     for i, name in enumerate(sampleNames):
         if name in keepFields:
-            keepIdx.append(i)
+            if name in doneSampleNames:
+                logging.warn("sample '%s' appears at least twice in expression matrix. Only the first one is used now" % name)
+            else:
+                keepIdx.append(i)
+                doneSampleNames.add(name)
 
     assert(len(keepIdx)!=0)
     logging.debug("Keeping %d fields" % len(keepIdx))
@@ -2369,10 +2415,6 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
     ofh.close()
     matIter.close()
 
-    #tmpFnameGz = outFname+".tmp.gz"
-    #runCommand("gzip -c %s > %s " % (tmpFname, tmpFnameGz))
-    #os.remove(tmpFname)
-    #os.rename(tmpFnameGz, outFname)
     runGzip(tmpFname, outFname)
 
     return matIter.getMatType()
@@ -2398,10 +2440,12 @@ def to_camel_case(snake_str):
 def sanitizeName(name):
     " remove all nonalpha chars, allow underscores, special treatment for %, + and -. Makes a valid file name. "
     assert(name!=None)
-    #newName = to_camel_case(name.replace(" ", "_"))
     # some characters are actually pretty common and there we have seen fields where the only 
     # difference are these characters
     # if this continues to be aproblem, maybe append the MD5 of a raw field name to the sanitized name
+    # IMPORTANT: There is a javascript version of this in cellBrowser.js. The function has the same 
+    # name and must return the same results, otherwise the front end can't find the filename
+    # for a given cluster name.
     name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
@@ -2610,7 +2654,6 @@ def copyImage(inDir, summInfo, datasetDir):
     """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
     inFname = join(inDir, summInfo["image"])
     logging.debug("Copying %s to %s" % (inFname, datasetDir))
-    #shutil.copy(inFname, datasetDir)
     shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
 
     cmd = ["file", inFname]
@@ -2629,6 +2672,7 @@ def copyImage(inDir, summInfo, datasetDir):
         width, height = sizeStr.split("x")
 
     summInfo["image"] = (summInfo["image"], width, height)
+    summInfo["imageMd5"] = md5ForFile(inFname)
 
     if "imageMapFile" in summInfo:
         mapFname = join(inDir, summInfo["imageMapFile"])
@@ -2660,11 +2704,40 @@ def readFileIntoDict(summInfo, key, inDir, fname, mustExist=False, encoding="utf
         else:
             return
 
-    text = readFile(fname)
-    summInfo[key] = text
+    if fname.endswith(".json"):
+        data = readJson(fname)
+        summInfo[key] = data
+    else:
+        text = readFile(fname)
+        summInfo[key] = text
 
-def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
-    " write a json file that describes the dataset abstract/methods/downloads, easier than a summary.html "
+def copyImageFile(inDir, data, outDir, doneNames, imageSetFnames):
+    """ given data as a dict, try to copy files with key 'file' and 'thumb' to outDir.
+    Also, strip the whole directory from the file name and keep only the base name.
+    doneNames and imageSetFnames are used to catch duplicate-filename cases.
+    """
+    for key in ["file", "thumb"]:
+        if key not in data:
+            continue
+        rawInPath = join(inDir, data[key])
+        base = basename(rawInPath) # strip directory part
+        if base in doneNames and base not in imageSetFnames:
+            logging.warn("The basename %s is used twice in the images.json definition. Note that all image names "
+                    "must be unique as users may want to download images. Often you can make them unique by "
+                    "making their subdirectory part of the filename." % base)
+
+        data[key] = base
+        rawOutPath = join(outDir, base)
+        if not isfile(rawOutPath) or getsize(rawInPath)!=getsize(rawOutPath):
+            logging.info("Copying %s to %s" % (rawInPath, rawOutPath))
+            shutil.copyfile(rawInPath, rawOutPath)
+        else:
+            logging.debug("Not copying %s again, already in output directory" % rawInPath)
+        doneNames.add(base)
+        imageSetFnames.add(base)
+
+def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=None):
+    " write a json file that describes the dataset abstract/methods/downloads "
     confFname = join(inDir, "datasetDesc.conf")
     if not isfile(confFname):
         confFname = join(inDir, "desc.conf")
@@ -2689,6 +2762,9 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     if coordFiles:
         summInfo["coordFiles"] = coordFiles
 
+    if matrixFname:
+        summInfo["matrixFile"] = matrixFname
+
     # try various ways to get the abstract and methods html text
     readFileIntoDict(summInfo, "abstract", inDir, "abstract.html")
     readFileIntoDict(summInfo, "methods", inDir, "methods.html")
@@ -2703,6 +2779,11 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     if "methodsFile" in summInfo:
         readFileIntoDict(summInfo, "methods", inDir, summInfo["methodsFile"], mustExist=True)
         del summInfo["methodsFile"]
+
+    if "imageSetFile" in summInfo:
+        readFileIntoDict(summInfo, "imageSets", inDir, summInfo["imageSetsFile"], mustExist=True)
+    else:
+        readFileIntoDict(summInfo, "imageSets", inDir, "images.json")
 
     # import the unit description from cellbrowser.conf
     if "unit" in outConf and not "unitDesc" in summInfo:
@@ -2721,6 +2802,9 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
     # copy over any other supplemental files
     if "supplFiles" in summInfo:
         for sf in summInfo["supplFiles"]:
+            if not "file" in sf or not "label" in sf:
+                errAbort("The supplFiles entries in desc.conf all must include at least a 'file' and a 'label' key. "
+                    "The entry %s doesn't seem to include one." % sf)
             rawInPath = join(inDir, sf["file"])
             rawOutPath = join(datasetDir, basename(sf["file"]))
             sf["file"] = basename(sf["file"]) # strip input directory
@@ -2730,8 +2814,29 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None):
             else:
                 logging.info("Not copying %s again, already in output directory" % rawInPath)
 
+    # copy the main image
     if "image" in summInfo:
         summInfo = copyImage(inDir, summInfo, datasetDir)
+
+    # copy over the imageSet files. This can take a while
+    imageDir = join(datasetDir, "images")
+    makeDir(imageDir)
+
+    doneNames = set()
+    if "imageSets" in summInfo:
+        for catInfo in summInfo["imageSets"]:
+            for imageSet in catInfo["categoryImageSets"]:
+                imageSetFnames = set()
+                for dl in imageSet.get("downloads"):
+                    copyImageFile(inDir, dl, imageDir, doneNames, imageSetFnames)
+                for img in imageSet.get("images"):
+                    copyImageFile(inDir, img, imageDir, doneNames, imageSetFnames)
+
+
+    # if we have a desc.conf: with so much data now in other files, generate the md5 from the data
+    # itself not just the desc.conf
+    if "desc" in outConf["fileVersions"]:
+        outConf["fileVersions"]["desc"]["md5"] = md5ForDict(summInfo)[:MD5LEN]
 
     writeJson(summInfo, outPath)
 
@@ -2755,12 +2860,13 @@ def makeAbs(inDir, fname):
         return None
     return abspath(join(inDir, fname))
 
-def makeAbsDict(conf, key):
+def makeAbsDict(conf, key, fnameKey="file"):
     " given list of dicts with key 'file', assume they are relative to inDir and make their paths absolute "
     inDir = conf["inDir"]
     dicts = conf[key]
     for d in dicts:
-        d["file"] = makeAbs(inDir, d["file"])
+        if fnameKey in d:
+            d[fnameKey] = makeAbs(inDir, d[fnameKey])
     return dicts
 
 def parseTsvColumn(fname, colName):
@@ -2929,15 +3035,16 @@ def readSampleNames(fname):
     sampleNames = []
     i = 1
     doneNames = set()
-    for row in lineFileNextRow(fname, noHeaders=True):
+    for row in lineFileNextRow(fname, noHeaders=False):
         metaName = row[0]
         if metaName=="":
             errAbort("invalid sample name - line %d in %s: sample name (first field) is empty" % (i, fname))
         if metaName in doneNames:
-            errAbort("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
-
-        doneNames.add(metaName)
-        sampleNames.append(row[0])
+            logging.warn("sample name duplicated - line %d in %s: sample name %s (first field) has been seen before" % (i, fname, metaName))
+            continue
+        else:
+            doneNames.add(metaName)
+            sampleNames.append(row[0])
         i+=1
     logging.debug("Found %d sample names, e.g. %s" % (len(sampleNames), sampleNames[:3]))
     return sampleNames
@@ -3039,6 +3146,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
 
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType)
 
+    # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
     if matType=="int" or matType=="forceInt":
         outConf["matrixArrType"] = "Uint32"
     elif matType=="float":
@@ -3056,9 +3164,9 @@ def copyConf(inConf, outConf, keyName):
 def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     " convert the coordinates "
     coordFnames = makeAbsDict(inConf, "coords")
+    coordFnames = makeAbsDict(inConf, "coords", fnameKey="lineFile")
 
     flipY = inConf.get("flipY", False)
-    #useTwoBytes = inConf.get("useTwoBytes", None)
     useTwoBytes = True
 
     hasLabels = False
@@ -3076,6 +3184,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
         # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
+        flipY = inCoordInfo.get("flipY", flipY)
         coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
 
         hasLines = False
@@ -3402,6 +3511,11 @@ def md5ForList(l):
     md5 = hash_md5.hexdigest()
     return md5
 
+def md5ForDict(summInfo):
+    " given a dict of various objects, return the md5 "
+    md5 = md5ForList([json.dumps(summInfo)])
+    return md5
+
 def md5WithPython(fname):
     " get md5 using python lib. OK for small files, very slow for big files. "
     hash_md5 = hashlib.md5()
@@ -3554,6 +3668,9 @@ def metaHasChanged(datasetDir, metaOutFname):
     if not "outMeta" in oldData["fileVersions"]:
         logging.debug("Old config file has no meta data MD5, re-converting meta data")
         return True
+    elif not isfile(metaOutFname):
+        logging.info("file %s does not exist, reconverting it" % metaOutFname)
+        return True
     else:
         oldMd5 = oldData["fileVersions"]["outMeta"]["md5"]
         newMd5 = md5ForFile(metaOutFname)
@@ -3596,7 +3713,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     doMatrix = matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outConf)
     doMeta = metaHasChanged(datasetDir, outMetaFname)
 
-    geneToSym = -1 # None would mean "there are no gene symbols to map to"
+    geneToSym = -1 # -1 = "we have not read any", "None" would mean "there are no gene symbols to map to"
 
     if not doMeta:
         sampleNames = readSampleNames(outMetaFname)
@@ -3625,7 +3742,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
-    foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles)
+    foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles, outMatrixFname)
     #if not foundConf:
         #copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 
@@ -3640,7 +3757,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "sortBy"]:
+        "metaBarWidth", "supplFiles", "body_parts", "sortBy", "defQuantPal", "defCatPal"]:
         copyConf(inConf, outConf, tag)
 
 
@@ -3696,7 +3813,6 @@ defColorField='%(clusterField)s'
 labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
-#quickGenesFile='quickGenes.tsv'
 #alpha=0.3
 #radius=2
 """ % locals()
@@ -3706,6 +3822,8 @@ coords=%(coordStr)s
 
     if "quickGenesFile" in args:
         conf += 'quickGenesFile="%s"\n' % args["quickGenesFile"]
+    else:
+        conf += "#quickGenesFile='quickGenes.tsv'\n"
 
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
@@ -3805,7 +3923,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     if matFname.endswith(".gz"):
         runGzip(tmpFname, matFname)
     else:
-        os.rename(tmpFname, matFname)
+        renameFile(tmpFname, matFname)
 
 def makeDictDefaults(inVar, defaults):
     " convert inVar to dict if necessary, defaulting to our default labels "
@@ -3961,7 +4079,7 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     meta_df.rename(metaFields, axis=1, inplace=True)
     fname = join(path, "meta.tsv")
-    meta_df.to_csv(fname,sep='\t')
+    meta_df.to_csv(fname,sep='\t', index_label="cellId")
 
     if clusterField is None:
         clusterField = 'louvain'
@@ -4002,7 +4120,7 @@ def writeJson(data, outFname, ignoreKeys=None):
     if ignoreKeys:
         data.update(ignoredData)
 
-    os.rename(tmpName, outFname)
+    renameFile(tmpName, outFname)
     logging.info("Wrote %s" % outFname)
 
 def writePyConf(idfInfo, descFname):
@@ -4053,7 +4171,8 @@ def startHttpServer(outDir, port):
     os.chdir(outDir)
     print("Serving "+outDir+" on port %s" % str(port))
     print("Point your internet browser to http://"+ipAddr+":"+str(sa[1])+" (or the IP address of this server)")
-    sys.stderr = open("/dev/null", "w") # don't show http status message on console
+    if os.path.exists("/dev/null"): # can't do this on windows & Co
+        sys.stderr = open("/dev/null", "w") # don't show http status message on console
     httpd.serve_forever()
 
 def cbBuild(confFnames, outDir, port=None):
@@ -4198,6 +4317,12 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         # it's very easy to forget that the input should be a list so we accept a single string instead
         logging.debug("got a string, converting to a list")
         confFnames = [confFnames]
+
+    # at UCSC, we enforce some required dataset tags
+    global reqTagsDataset
+    reqTags = getConfig("reqTags")
+    if reqTags:
+        reqTagsDataset.extend(reqTags)
 
     datasets = []
     dataRoot = None
@@ -4413,6 +4538,7 @@ def cbBuildCli():
         logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cellbrowser.conf.")
         cbBuild_parseArgs(showHelp=True)
 
+
     outDir = options.outDir
     #onlyMeta = options.onlyMeta
     port = options.port
@@ -4434,14 +4560,14 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     if matrixFname.endswith(".h5ad"):
         adata = sc.read(matrixFname, cache=False)
 
-    elif matrixFname.endswith(".mtx"):
+    elif isMtx(matrixFname):
         import pandas as pd
         logging.info("Loading expression matrix: mtx format")
         adata = sc.read(matrixFname, cache=False).T
 
-        mtxDir = dirname(matrixFname)
-        adata.var_names = pd.read_csv(join(mtxDir, 'genes.tsv'), header=None, sep='\t')[1]
-        adata.obs_names = pd.read_csv(join(mtxDir, 'barcodes.tsv'), header=None)[0]
+        _mtxFname, geneFname, barcodeFname = findMtxFiles(matrixFname)
+        adata.var_names = pd.read_csv(geneFname, header=None, sep='\t')[1]
+        adata.obs_names = pd.read_csv(barcodeFname, header=None, sep='\t')[0]
 
     elif isdir(matrixFname):
         logging.info("Loading expression matrix: cellranger3 mtx.gz format from %s" % matrixFname)
@@ -4464,6 +4590,10 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
 
     else:
         logging.info("Loading expression matrix: scanpy-supported format, like loom, tab-separated, etc.")
+        if matrixFname.endswith(".loom"):
+            logging.info("This is a loom file: activating --samplesOnRows")
+            samplesOnRows = True
+
         adata = sc.read(matrixFname, first_column_names=True)
         if not samplesOnRows:
             logging.info("Scanpy defaults to samples on lines, so transposing the expression matrix, use --samplesOnRows to change this")
@@ -4782,7 +4912,7 @@ def summarizeDatasets(datasets):
         else:
             summDs["isCollection"] = True
             if not "datasets" in ds:
-                errAbort("The dataset %s has a dataset.json file that looks invalide. Please rebuild that dataset. "
+                errAbort("The dataset %s has a dataset.json file that looks invalid. Please rebuild that dataset. "
                         "Then go back to the current directory and retry the same command. " % ds["name"])
             children = ds["datasets"]
 
@@ -4813,6 +4943,9 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     ofh.write('<html>\n')
     ofh.write('<head>\n')
     ofh.write('<meta charset="utf-8">\n')
+    ofh.write('<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />')
+    ofh.write('<meta http-equiv="Pragma" content="no-cache" />')
+    ofh.write('<meta http-equiv="Expires" content="0" />')
     ofh.write('<title>UCSC Cell Browser</title>\n')
 
     cssFnames = ["ext/jquery-ui-1.12.1.css", "ext/spectrum-1.8.0.css", "ext/jquery.contextMenu.css",
@@ -4880,7 +5013,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     ofh.write('</html>\n')
 
     ofh.close()
-    os.rename(tmpFname, newFname)
+    renameFile(tmpFname, newFname)
 
     #datasetLabels = [x["name"] for x in dsList]
     logging.info("Wrote %s (devMode: %s)" % (newFname, devMode))
@@ -4907,7 +5040,7 @@ def cbMake(outDir, devMode=False):
 #        writeJson(dataset, outFname, ignoreKeys=["children"])
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
-    " create datasets.json in outDir. Optionally rebuild index.html and copy over all other static files "
+    " create datasets.json in outDir and rebuild index.html. Optionally copy over all other static js/css files "
     logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
@@ -4924,7 +5057,8 @@ def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
 
     if doCode or devMode:
         copyStatic(webDir, outDir)
-        makeIndexHtml(webDir, outDir, devMode=devMode)
+
+    makeIndexHtml(webDir, outDir, devMode=devMode)
 
     if port:
         print("Interrupt this process, e.g. with Ctrl-C, to stop the webserver")
@@ -5028,9 +5162,13 @@ def addMetaToAnnData(adata, fname):
         errAbort("Values in first column in file %s does not seem to match the cell IDs from the expression matrix. Examples: expression matrix: %s, meta data: %s" % (fname, l1[:3], l2[:3]))
 
     try:
-        df3 = df1.join(df2, how="left")
+        df3 = df1.join(df2, how="inner")
+        logging.info("%d meta data columns before setting in anndata object" % len(adata.obs.index))
         adata.obs = df3
         logging.debug("list of column names in merged meta data: %s"% ",".join(list(df3.columns)))
+        logging.info("%d meta data columns before setting" % len(df3.index))
+        logging.info("%d meta data columns after setting in anndata object" % len(adata.obs.index))
+
     except ValueError:
         logging.warn("Could not merge h5ad and meta data, skipping h5ad meta and using only provided meta. Most likly this happens when the field names in the h5ad and the meta file overlap")
         adata.obs = df2
@@ -5426,7 +5564,7 @@ def mustBePython3():
         print("Once this is all done, install scanpy.")
         sys.exit(1)
 
-def generateDataDesc(datasetName, outDir, algParams=None):
+def generateDataDesc(datasetName, outDir, algParams=None, other=None):
     " write a desc.conf to outDir "
     outFname = join(outDir, "desc.conf")
 
@@ -5434,42 +5572,32 @@ def generateDataDesc(datasetName, outDir, algParams=None):
         logging.info("Not writing %s, already exists" % outFname)
         return
 
-    c = maybeLoadConfig(outFname)
+    inFname = findPkgFile("sampleConfig/desc.conf")
+    #c = maybeLoadConfig(outFname)
     #if isfile(outFname):
         #c = loadConfig(outFname)
     #else:
         #c = OrderedDict()
 
-    c["title"] = datasetName.replace("_", " ")
-    if not "image" in c:
-        c["#image"] = "thumb.png"
-    if not "abstract" in c:
-        c["abstract"] = "Please edit desc.conf to modify this abstract, then rerun cbBuild"
-    if not "methods" in c:
-        c["methods"] = \
-"""<section>Sample collection</section>
-TBD
-<section>Analysis</section>
-This dataset was created by a generic Scanpy pipeline run through cbScanpy.
-"""
+    sampleData = open(inFname).read()
+    ofh = open(outFname, "wt")
+    ofh.write(sampleData)
 
-    if not "unitDesc" in c:
-        c["#unitDesc"] = "count"
-
+    #c["title"] = datasetName.replace("_", " ")
     # always overwrite the parameters
     if algParams:
-        params = {}
-        # the version param in scanpy suddenly is not a string anymore
-        # make absolutely sure that we have no non-strings in this dict
-        for key, val in algParams.items():
-            params[str(key)] = str(val)
-        c["algParams"] = params
+        ofh.write("algParams = %s\n" % repr(algParams))
 
-    writePyConf(c, outFname)
+    if other:
+        for key, val in other.items():
+            ofh.write("%s = %s\n" % (key, repr(val)))
+
+    ofh.close()
+    #writePyConf(c, outFname)
 
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
-    if ".mtx" in matrixFname or ".h5" in matrixFname:
+    if isMtx(matrixFname) or ".h5" in matrixFname:
         logging.error("Cannot copy %s to %s, as not a text-based file like tsv or csv. You will need to do the conversion yourself manually or with cbTool.")
         return
 
@@ -5527,9 +5655,13 @@ def cbScanpyCli():
         logging.info("Loading Scanpy libraries")
         import scanpy as sc
     except:
-        print("The Python package 'scanpy' is not installed in the current interpreter %s" % sys.executable)
+        print("Cannot run 'import scanpy' in python. ")
+        print("The Python package 'scanpy' or one of its dependencies is not installed ")
+        print("in the default Python interpreter on this machine,  '%s'" % sys.executable)
         print("Please install it following the instructions at https://scanpy.readthedocs.io/en/latest/installation.html")
-        print("We recommend the miniconda-based installation.")
+        print("The scanpy authors recommend the miniconda-based installation with these commands")
+        print("$ conda install seaborn scikit-learn statsmodels numba pytables")
+        print("$ conda install -c conda-forge python-igraph leiden")
         print("Then re-run this command.")
         sys.exit(1)
 
@@ -5751,9 +5883,9 @@ def generateDownloads(datasetName, outDir):
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def generateHtmls(datasetName, outDir):
+def generateHtmls(datasetName, outDir, desc=None):
     " generate desc.conf in outDir, if it doesn't exist "
-    generateDataDesc(datasetName, outDir, {})
+    generateDataDesc(datasetName, outDir, {}, other=desc)
 
 if __name__=="__main__":
     args, options = main_parseArgs()
