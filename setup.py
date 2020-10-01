@@ -43,7 +43,7 @@ setuptools.setup(
         'cbImportScanpy = cellbrowser.convert:cbImportScanpyCli',
         'cbImportSeurat = cellbrowser.seurat:cbImportSeuratCli',
         'cbImportCellranger = cellbrowser.convert:cbCellrangerCli',
-        'cbHub = cellbrowser.hubmaker.cbHubCli'
+        'cbHub = cellbrowser.hubmaker:cbHubCli'
     ]
     },
     #package_data={
