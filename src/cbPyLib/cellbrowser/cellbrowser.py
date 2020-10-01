@@ -2449,7 +2449,7 @@ def sanitizeName(name):
     name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
-        logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
+        logging.debug("Sanitized %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
     return newName
 
@@ -2462,38 +2462,38 @@ def nonAlphaToUnderscores(name):
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     return newName
 
-def parseMarkerTable(filename, geneToSym):
-    " parse marker gene table and return dict clusterName -> list of rows (geneId, geneSym, otherFields...)"
-    logging.debug("Reading cluster markers from %s" % (filename))
-    ifh = openFile(filename)
+def guessMarkerFields(headers):
+    """ return a tuple (newHeaders, clusterIdx, geneIdx, otherStart, otherEnd), all of these are 0-based
+        indexes of the respective fields. Should recognize Seurat2 and Seurat3 formats.
+    """
 
-    # why does Seurat have so many different ways of writing a dataframe to a text file ??
-    seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
-    seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
-    seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
-    seuratLine4 = "Gene\tp-value\tlog2(FoldChange)\tpct.1\tpct.2\tadjusted p-value\tCluster"
-    seuratLine5 = 'p_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
-    headerLine = ifh.readline().rstrip("\r\n")
-
-    sep = sepForFile(filename)
-    if headerLine in [seuratLine, seuratLine2, seuratLine4, seuratLine5]:
-        logging.debug("Cluster marker file %s was recognized to be in Seurat format" % filename)
-        # field 0 is not the gene ID, it has some weird suffix appended.
-        headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
-        geneIdx = 7
+    # note: with seurat2, field 0 is not the gene ID, it has some weird suffix appended.
+    seurat2Headers =  ['', 'p_val', 'avg_logFC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
+    seurat3Headers = ["Gene","p-value","log2(FoldChange)","pct.1","pct.2","adjusted p-value","Cluster"]
+    # the name of the first field varies depending now people use table.write, so we ignore it for the
+    # header comparison
+    if headers[1:8] == seurat2Headers[1:]:
+        logging.info("Cluster marker file was recognized to be in Seurat2 format")
+        geneIdx = 7 # see note above: field0 is not the actual geneId, but something else, a unique row ID
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
-        otherEnd = 6
-    elif headerLine == seuratLine4:
-        headers = headerLine.split(sep)
+        otherEnd = len(headers)
+
+        newHeaders = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
+        newHeaders.extend(headers[8:])
+        headers = newHeaders
+
+    elif headers[1:7] == seurat3Headers[1:]:
+        logging.info("Cluster marker file was recognized to be in Seurat3 format")
         geneIdx = 0
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
-        otherEnd = 6
+        otherEnd = len(headers)
+
     else:
-        logging.info("Reading %s: assuming marker file format (cluster, gene, score) + any other fields" % filename)
+        logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
         headers = headerLine.split(sep)
         clusterIdx = 0
         geneIdx = 1
@@ -2501,6 +2501,18 @@ def parseMarkerTable(filename, geneToSym):
         otherStart = 3
         otherEnd = 9999
 
+    return headers, clusterIdx, geneIdx, scoreIdx, otherStart, otherEnd
+
+
+def parseMarkerTable(filename, geneToSym):
+    " parse marker gene table and return dict clusterName -> list of rows (geneId, geneSym, otherFields...)"
+    logging.debug("Reading cluster markers from %s" % (filename))
+    ifh = openFile(filename)
+    headerLine = ifh.readline().rstrip("\r\n")
+    sep = sepForFile(filename)
+    headers = headerLine.split(sep)
+
+    headers, clusterIdx, geneIdx, scoreIdx, otherStart, otherEnd = guessMarkerFields(headers)
     otherHeaders = headers[otherStart:otherEnd]
     logging.debug("Other headers: %s" % otherHeaders)
 
@@ -3278,7 +3290,7 @@ def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
 
     if len(notInLabels)!=0:
         logging.warn(("%s: the following cluster names are in the marker file but not in the meta file: %s. "+
-                "Users may not notice the problem, but it may indicate an erronous meta data file.") % \
+                "Users may not notice the problem, but it may indicate an erroneous meta data file.") % \
                 (markerFname, notInLabels))
 
 def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
@@ -3410,6 +3422,7 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
 
 def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
     " return geneToSym, based on gene tables "
+    logging.debug("Reading gene symbols, geneIdType %s, example list of symbols: %s" % (geneIdType, matrixFnameOrGeneIds))
     if geneIdType==None or geneIdType=="auto":
         geneIdType = guessGeneIdType(matrixFnameOrGeneIds)
 
@@ -3424,7 +3437,6 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
                 "To get the big mapping table for all NCBI organisms, please run this command: "\
                 "wget https://ftp.ncbi.nih.gov/gene/DATA/gene_info.gz -O - | zcat | cut -f2,3 | gzip -c > %s" % \
                 geneIdTable)
-
 
     return geneToSym
 
