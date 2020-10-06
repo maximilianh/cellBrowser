@@ -5591,7 +5591,7 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
     #c["title"] = datasetName.replace("_", " ")
     # always overwrite the parameters
     if algParams:
-        ofh.write("algParams = %s\n" % repr(algParams))
+        ofh.write("algParams = %s\n" % repr(dict(algParams)))
 
     if other:
         for key, val in other.items():
