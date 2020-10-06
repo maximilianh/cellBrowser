@@ -9,8 +9,8 @@ There are a number of ways to create a cell browser using Seurat:
 
 Each of these methods are described in more detail below.
 
-Convert a Seurat ``rds`` file
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Convert a Seurat ``rds`` or ``.rdata` file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First, create an .rds file in R as described in the Seurat tutorial::
 
@@ -21,8 +21,9 @@ file into a cell browser::
 
     cbImportSeurat -i pbmc3k_small.rds -o pbmc3kImport
 
-This works with objects created by versions 2 and 3 of Seurat. Make sure that
-you have the same major version of Seurat installed that was used to create the
+This works with objects created by versions 2 and 3 of Seurat. ``cbImportSeurat`` can read 
+both ``.rds`` and ``.rdata`` files, for `.rdata` it assume the first object is the Seurat object.
+Make sure that you have the same major version of Seurat installed that was used to create the
 object. You cannot open Seurat2 objects with Seurat3 or vice versa. 
 (We often need to switch between Seurat versions and found conda environments very helpful for this.)
 

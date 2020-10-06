@@ -1566,7 +1566,8 @@ var cellbrowser = function() {
         }
     }
 
-    function addNewAnnotation(fieldLabel, newMetaValue, cellIds) {              var metaInfo;
+    function addNewAnnotation(fieldLabel, newMetaValue, cellIds) {              
+        var metaInfo;
         let cellCount = db.conf.sampleCount;
         if (!db.getMetaFields()[0].isCustom) {
             // add a new enum meta field

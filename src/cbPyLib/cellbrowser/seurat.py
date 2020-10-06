@@ -509,7 +509,7 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
         cmds.append("message('Reading %s as .rds file')" % inFname)
         cmds.append("sobj <- readRDS(file='%s')" % inFname)
     else:
-        cmds.append("message('Reading %s as .RData file, using first object as Seurat object')" % inFname)
+        cmds.append("message('Reading %s as .RData file, assuming that the first object in the file is the Seurat object')" % inFname)
         cmds.append("names <- load('%s')" % inFname)
         cmds.append("sobj <- get(names[1])")
 

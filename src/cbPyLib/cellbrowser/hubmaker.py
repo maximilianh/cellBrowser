@@ -7,7 +7,9 @@ from os.path import join, basename, dirname, isfile, isdir, splitext
 import os
 
 import sys
-from .cellbrowser import *
+from .cellbrowser import setDebug, lineFileNextRow, getSizesFname, readGeneSymbols, parseGeneLocs
+from .cellbrowser import MatrixTsvReader, runCommand, copyPkgFile, loadConfig, iterItems, getStaticFile
+from .cellbrowser import errAbort
 
 CBEMAIL = os.getenv("CBEMAIL", "unknown")
 
@@ -25,24 +27,25 @@ def cbHub_parseArgs():
     It will read cellbrowser.conf, create hub.txt and write the job scripts.
     You can then run the job scripts as described below.
 
-    This will create one shell script per cell cluster, with names like 'job-xxx.sh',
-    in the current directory. To run these scripts in parallel on a big server,
-    e.g. with 10 processes use the Unix command "parallel":
-      ls *.sh | parallel -j 10 bash
-
-    Each job will write a log of stdout/stderr to files named e.g. job-1.log
-
-    Requirements that have to be installed on this machine with binaries in PATH:
-    - samtools https://github.com/samtools/samtools
-    - wiggletools https://github.com/Ensembl/WiggleTools
-    - intronProspector https://github.com/diekhans/intronProspector
-    - UCSC tools wigToBigWig, bedToBigBed from http://hgdownload.soe.ucsc.edu/admin/exe/
-
     Run the UCSC tool hubCheck on the resulting hub.txt to make sure that all jobs
     have successfully completed.
 
-    You can override some settings in cellbrowser.conf with the command line options:
-    %prog -m metaFname -c clusterField -m exprMatrix -o hubDir
+    You can override some settings from cellbrowser.conf with command line options:
+    %prog -m meta.tsv -c Cluster -m exprMatrix.tsv.gz -o hubDir
+
+    ONLY if 'bamDir' has been specified in cellbrowser.conf:
+      | %prog will create one shell script per cell cluster, with names like 'job-xxx.sh',
+      | in the current directory. To run these scripts in parallel on a big server,
+      | e.g. with 10 processes use the Unix command "parallel":
+      |   ls *.sh | parallel -j 10 bash
+      | Each job will write a log of stdout/stderr to files named e.g. job-1.log
+      | Requirements that have to be installed on this machine with binaries in PATH:
+      | - samtools https://github.com/samtools/samtools
+      | - wiggletools https://github.com/Ensembl/WiggleTools
+      | - intronProspector https://github.com/diekhans/intronProspector
+      | - UCSC tools wigToBigWig, bedToBigBed from http://hgdownload.soe.ucsc.edu/admin/exe/
+    Otherwise:
+      - %prog requires bedToBigBed in the current PATH, see http://hgdownload.soe.ucsc.edu/admin/exe/
     """)
 
     parser.add_option("", "--init", dest="init", action="store_true", \
@@ -83,7 +86,7 @@ def cbHub_parseArgs():
         parser.print_help()
         exit(1)
 
-    cellbrowser.setDebug(options.debug)
+    setDebug(options.debug)
     return args, options
 
 def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
@@ -92,7 +95,7 @@ def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
     clusterToCells = defaultdict(list)
     metaCellIds = set()
     skipCount = 0
-    for row in cellbrowser.lineFileNextRow(metaFname):
+    for row in lineFileNextRow(metaFname):
         clusterName = row._asdict()[clusterFieldName]
         cellId = row[0]
         if fixDot:
@@ -349,7 +352,7 @@ def findBams(bamDir, clusterToCells):
     create dict with cluster -> (cellIds, bamFnames)
     """
     metaCellIds = set()
-    for cluster, cellIds in clusterToCells.iteritems():
+    for cluster, cellIds in iterItems(clusterToCells):
         for cellId in cellIds:
             metaCellIds.add(cellId)
 
@@ -387,7 +390,7 @@ def findBams(bamDir, clusterToCells):
     #logging.info("Got %s BAM files and %s cell ids in the meta data" % (len(metaCellIds), len(cellIdToBamFnames)))
 
     emptyClusterCount = 0
-    for clusterName, cellIds in clusterToCells.iteritems():
+    for clusterName, cellIds in iterItems(clusterToCells):
 
         bamFnames = []
         for cellId in cellIds:
@@ -428,7 +431,7 @@ def writeDebugReport(allMetaCellIds, cellIdToBams, clusterBams, idReportFname):
     allCellIds = set(allMetaCellIds).union(cellIdToBams)
 
     cellToCluster = {}
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         for cellId in cellIds:
             cellToCluster[cellId] = clusterName
 
@@ -473,7 +476,7 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     jlFh = open("jobList", "w")
 
     #cellCount = 0
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         uniqueCellIds = set(cellIds)
         #cellCount += len(uniqueCellIds)
 
@@ -481,11 +484,11 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     saneHubName = sanitizeName(hubName)
     writeParentStanzas(tfh, saneHubName, hubName, cellCount)
 
-    chromSizes = cellbrowser.getSizesFname(db)
+    chromSizes = getSizesFname(db)
 
     jobNo = 0
     emptyClusterCount = 0
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         saneClusterName = sanitizeName(clusterName)
         logging.info("Processing cluster %s, %d cellIds/BAM files, examples: %s" % (clusterName, len(cellIds), cellIds[0]))
         cmds = []
@@ -643,7 +646,7 @@ def writeCatFile(clusterToCells, catFname):
     " write file with cellId<tab>clusterName "
     logging.info("Writing %s" % catFname)
     ofh = open(catFname, "w")
-    for clusterName, cellIds in clusterToCells.iteritems():
+    for clusterName, cellIds in iterItems(clusterToCells):
         for cellId in cellIds:
             ofh.write("%s\t%s\n" % (cellId, clusterName))
     ofh.close()
@@ -670,20 +673,20 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
 
         logging.info("Using %s to map symbols to genome" % defGenes)
 
-        geneToSym = cellbrowser.readGeneSymbols({'geneIdType':defGenes})
-        geneLocsId = cellbrowser.parseGeneLocs(defGenes)
+        geneToSym = readGeneSymbols(defGenes, inMatrixFname)
+        geneLocsId = parseGeneLocs(defGenes)
         geneLocs = {}
         for geneId, locs in iterItems(geneLocsId):
             sym = geneToSym[geneId]
             geneLocs[sym] = locs
     else:
-        geneToSym = cellbrowser.readGeneSymbols({'geneIdType':geneType})
-        geneLocs = cellbrowser.parseGeneLocs(geneType)
+        geneToSym = readGeneSymbols(geneType, inMatrixFname)
+        geneLocs = parseGeneLocs(geneType)
 
     matOfh = open(outMatrixFname, "w")
     clustOfh = open(clusterFname, "w")
 
-    mr = cellbrowser.MatrixTsvReader()
+    mr = MatrixTsvReader()
     mr.open(inMatrixFname)
     matType, cellNames = mr.matType, mr.sampleNames
 
@@ -789,16 +792,16 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
 
     bedFname2 = bedFname.replace(".bed", ".sorted.bed")
     cmd = "LC_COLLATE=C sort -k1,1 -k2,2n %s > %s" % (bedFname, bedFname2)
-    cellbrowser.runCommand(cmd)
+    runCommand(cmd)
 
     # convert to .bb using .as file
     # from https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
     #asFname = join(dataDir, )
-    asFname = cellbrowser.getStaticFile(["genomes", "barChartBed.as"])
-    sizesFname = cellbrowser.getSizesFname(genome)
+    asFname = getStaticFile(["genomes", "barChartBed.as"])
+    sizesFname = getSizesFname(genome)
 
     cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname2, sizesFname, bbFname)
-    cellbrowser.runCommand(cmd)
+    runCommand(cmd)
 
 def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, unitName, email, refHtmlFname, hubUrl, skipBarchart, outDir):
 
@@ -842,11 +845,11 @@ def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFi
 def cbTrackHub(options):
     " make track hub given meta file and directory with bam files "
     if options.init:
-        cellbrowser.copyPkgFile("sampleConfig/cellbrowser.conf")
+        copyPkgFile("sampleConfig/cellbrowser.conf")
         sys.exit(0)
 
     if isfile(options.inConf):
-        conf = cellbrowser.loadConfig(options.inConf)
+        conf = loadConfig(options.inConf)
 
         db = conf["ucscDb"]
         inMatrixFname = conf["exprMatrix"]
