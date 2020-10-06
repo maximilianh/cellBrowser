@@ -7,7 +7,7 @@ from os.path import join, basename, dirname, isfile, isdir, splitext
 import os
 
 import sys
-import cellbrowser
+from .cellbrowser import setDebug
 
 CBEMAIL = os.getenv("CBEMAIL", "unknown")
 
