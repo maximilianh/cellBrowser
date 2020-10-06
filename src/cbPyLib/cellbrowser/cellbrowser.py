@@ -241,6 +241,7 @@ def downloadStaticFile(remotePath, localPath):
         # newer python versions check the https certificate. It seems that UCSC uses certificates
         # that are not part of the cert database on some linux distributions.
         # To avoid any problems, we're switching off cert verification
+        import ssl
         data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
     else:
         data = urlopen(remoteUrl).read()
