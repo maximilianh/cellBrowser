@@ -2495,7 +2495,6 @@ def guessMarkerFields(headers):
 
     else:
         logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
-        headers = headerLine.split(sep)
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
