@@ -4,7 +4,7 @@ import logging, sys, optparse, string, glob
 from collections import defaultdict
 from os.path import join, basename, dirname, isfile
 
-import cellbrowser
+from .cellbrowser import sepForFile, getStaticFile, openFile, splitOnce, setDebug
 
 # ==== functions =====
 def cbGuessGencode_parseArgs():
@@ -18,10 +18,7 @@ def cbGuessGencode_parseArgs():
         parser.print_help()
         exit(1)
 
-    if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    setDebug(options.debug)
     return args, options
 
 # ----------- main --------------
@@ -29,11 +26,11 @@ def parseSignatures(org, geneIdType):
     " return dict with gene release -> list of unique signature genes "
     ret = {}
     logging.info("Parsing gencode release signature genes")
-    fname = cellbrowser.getStaticFile("genes/gencode-%s.guessVersion.%s.tsv.gz" % (org, geneIdType))
+    fname = getStaticFile("genes/gencode-%s.guessVersion.%s.tsv.gz" % (org, geneIdType))
     logging.info("Parsing %s" % fname)
     genes = set()
     verToGenes = {}
-    for line in cellbrowser.openFile(fname):
+    for line in openFile(fname):
         if line.startswith("#"):
             continue
         version, geneIds = line.rstrip("\n").split('\t')
@@ -58,12 +55,12 @@ def parseGenes(fname):
     fileGenes = set()
     headDone = False
     logging.info("Parsing first column from %s" % fname)
-    sep = cellbrowser.sepForFile(fname)
-    for line in cellbrowser.openFile(fname):
+    sep = sepForFile(fname)
+    for line in openFile(fname):
         if not headDone:
             headDone = True
             continue
-        geneId = cellbrowser.splitOnce(line[:50], sep)[0]
+        geneId = splitOnce(line[:50], sep)[0]
         geneId = geneId.strip("\n").strip("\r").strip()
         fileGenes.add(geneId.split('.')[0].split("|")[0])
     logging.info("Read %d genes" % len(fileGenes))
