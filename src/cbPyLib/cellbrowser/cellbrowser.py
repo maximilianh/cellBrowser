@@ -65,9 +65,8 @@ if sys.version_info >= (3, 0):
     isPy3 = True
 
 # directory to static data files, e.g. gencode tables
-# By default, this is ~/cbData, or alternatively /usr/local/share/cellbrowser 
+# By default, this is ~/cellbrowserData, or alternatively /usr/local/share/cellbrowser 
 # or the directory in the environment variable CBDATA, see findCbData()
-#dataDir = join(dirname(__file__), "..", "cbData")
 dataDir = None
 
 # the default html dir, used if the --htmlDir option is set but empty
@@ -253,8 +252,8 @@ def downloadStaticFile(remotePath, localPath):
     renameFile(localTmp, localPath)
 
 def getStaticFile(relPath):
-    """ get the full path to a static file in the dataDir directory (~/cbData or $CBDATA, by default, see above).
-    If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cbData/<pathParts>
+    """ get the full path to a static file in the dataDir directory (~/cellbrowserData or $CBDATA, by default, see above).
+    If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cellbrowserData/<pathParts>
     and copied onto the local disk under dataDir
     """
     dataDir = findCbData()
@@ -335,21 +334,23 @@ def readLines(lines, fname):
             lines.append(line)
     return lines
 
-def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
+def loadConfig(fname, addName=False, ignoreName=False, reqTags=[], addTo=None):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
     logging.debug("Loading settings from %s" % fname)
+
+    conf = OrderedDict()
+    if addTo:
+        logging.debug("Adding existing settings")
+        conf.update(addTo)
+
     g = {}
-    l = OrderedDict()
     g["fileBase"] = basename(fname).split('.')[0]
     g["dirName"] = basename(dirname(fname))
 
-
     lines = readLines([], fname)
-    exec("\n".join(lines), g, l)
-
-    conf = l
+    exec("\n".join(lines), g, conf)
 
     for rt in reqTags:
         if not rt in conf:
@@ -5081,14 +5082,15 @@ def cbUpgradeCli():
 
     cbUpgrade(outDir, doCode=options.addCode, devMode=options.devMode, port=options.port)
 
-def parseGeneLocs(geneType):
+def parseGeneLocs(db, geneType):
     """
     return dict with geneId -> list of bedRows
     bedRows have (chrom, start, end, geneId, score, strand)
     """
-    fname = getStaticFile(join("genes", geneType+".genes.bed"))
+    fname = getStaticFile(join("genes", db+"."+geneType+".genes.bed.gz"))
+    logging.info("Reading gene locations from %s" % fname)
     ret = defaultdict(list)
-    for line in open(fname):
+    for line in openFile(fname):
         row = line.rstrip("\r\n").split('\t')
         name = row[3].split(".")[0]
         ret[name].append(row)
