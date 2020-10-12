@@ -145,8 +145,8 @@ genome %s
 
 def writeBarChartDesc(hubDir, hubName, hubUrl, refHtmlFname):
     " write the desc. html pages for the barchart track "
-    htmFname = join(hubDir, "barchart.html")
-    ofh = open(htmlFname, "w")
+    htmFname = join(hubDir, "barChart.html")
+    ofh = open(htmFname, "w")
 
     hubBase = hubUrl.rsplit("/")[0]
     refHtml = ""
