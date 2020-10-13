@@ -27,6 +27,7 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
 * Sansom Lab, Oxford, https://sansomlab.github.io for `Croft et al, Nature 2019 <https://www.nature.com/articles/s41586-019-1263-7>`_
 * http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
+* Bin Ren lab, CAAtlas http://catlas.org/mousebrain/#!/home
 
 These papers have cell browsers made at UCSC:
 * organoidatlas: https://www.sciencedirect.com/science/article/pii/S221112472030053X
