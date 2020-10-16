@@ -699,6 +699,51 @@ def writeCatFile(clusterToCells, catFname):
             ofh.write("%s\t%s\n" % (cellId, clusterName))
     ofh.close()
 
+def makeClusterCellIdxArray(clusterOrder, clusterToCells, cellNames, clusterFname):
+    """
+    make a list of lists of cellIds, one per cluster, in the right order.
+    Result is an array (one element per cluster), with each inside array the list of cell indices of this cluster.
+    also write the cluster names to clusterFname
+    """
+    clustOfh = open(clusterFname, "w")
+    allCellIds = range(0, len(cellNames))
+    cellNameToId = dict(zip(cellNames, allCellIds))
+
+    clusterCellIds = [] # list of tuples with cell-indexes, one per cluster
+    allCellNames = [] # list for cellIds, with a matrix, meta and with bam file
+    allCellIndices = [] # position of all cellIds in allCellNames
+    notInMat = []
+    for clusterName in clusterOrder:
+        cellIdxList = []
+        for cellName in clusterToCells[clusterName]:
+            if cellName not in cellNameToId:
+                #logging.warn("%s is in meta but not in expression matrix." % cellName)
+                notInMat.append(cellName)
+                continue
+            idx = cellNameToId[cellName]
+            cellIdxList.append(idx)
+            allCellNames.append(cellName)
+            allCellIndices.append(idx)
+            sanClusterName = clusterName.replace(" ", "_")
+            clustOfh.write("%s\t%s\n" % (cellName, sanClusterName))
+
+        if len(cellIdxList)==0:
+            logging.warn("No cells assigned to cluster %s" % clusterName)
+
+        if numpyLoaded:
+            cellIds = np.array(cellIdxList)
+        else:
+            cellIds = tuple(cellIdxList)
+
+        clusterCellIds.append(cellIdxList)
+
+    clustOfh.close()
+
+    if len(notInMat)!=0:
+        logging.warn("%d identifiers from the meta file are not in the expression matrix. Examples: %s" % (len(notInMat), notInMat[:10]))
+
+    return clusterCellIds, allCellNames, allCellIndices
+
 def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneModel, clusterToCells, \
         clusterOrder, clusterFname, bbFname):
     """ create a barGraph bigBed file for an expression matrix
@@ -743,47 +788,13 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
         #geneToSym = {v: k for k, v in my_map.items()} # invert the dictionary key->value to value->key
 
     matOfh = open(outMatrixFname, "w")
-    clustOfh = open(clusterFname, "w")
 
     mr = MatrixTsvReader(geneToSym)
     mr.open(inMatrixFname)
     matType, cellNames = mr.matType, mr.sampleNames
 
-    cellIds = range(0, len(cellNames))
-    cellNameToId = dict(zip(cellNames, cellIds))
-
-    # make a list of lists of cellIds, one per cluster, in the right order
-    clusterCellIds = [] # list of tuples with cell-indexes, one per cluster
-    allCellNames = [] # list for cellIds, with a matrix, meta and with bam file
-    allCellIndices = [] # position of all cellIds in allCellNames
-    notInMat = []
-    for clusterName in clusterOrder:
-        cellIdxList = []
-        for cellName in clusterToCells[clusterName]:
-            if cellName not in cellNameToId:
-                #logging.warn("%s is in meta but not in expression matrix." % cellName)
-                notInMat.append(cellName)
-                continue
-            idx = cellNameToId[cellName]
-            cellIdxList.append(idx)
-            allCellNames.append(cellName)
-            allCellIndices.append(idx)
-            sanClusterName = clusterName.replace(" ", "_")
-            clustOfh.write("%s\t%s\n" % (cellName, sanClusterName))
-
-        if len(cellIdxList)==0:
-            logging.warn("No cells assigned to cluster %s" % clusterName)
-
-        if numpyLoaded:
-            cellIds = np.array(cellIds)
-        else:
-            cellIds = tuple(cellIdxList)
-
-        clusterCellIds.append(cellIds)
-    clustOfh.close()
-
-    if len(notInMat)!=0:
-        logging.warn("%d identifiers from the meta file are not in the expression matrix. Examples: %s" % (len(notInMat), notInMat[:10]))
+    clusterCellIds, allCellNames, allCellIndices = \
+            makeClusterCellIdxArray(clusterOrder, clusterToCells, cellNames, clusterFname)
 
     # write header line
     matOfh.write("#gene\t")
@@ -801,22 +812,24 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
     geneCount = 0
     skipCount = 0
     for geneId, sym, exprArr in mr.iterRows():
-        logging.debug("Writing BED and matrix line for %s, symbol %s" % (geneId, sym))
+        logging.debug("Writing BED and matrix line for %s, symbol %s, %d expr values" % (geneId, sym, len(exprArr)))
 
-        # write the new matrix row
+        # write the new matrix row first field
         offset = matOfh.tell()
         rowHeader = "%s\t" % (geneId)
         matOfh.write(rowHeader)
 
+        # write the new matrix row values
         newRow = []
         for idx in allCellIndices:
             newRow.append(str(exprArr[idx]))
+
         newLine = "\t".join(newRow)
         matOfh.write(newLine)
         matOfh.write("\n")
         lineLen = len(geneId)+len(newLine)+2 # include tab and newline
-        medianList = []
 
+        medianList = []
         for cellIds in clusterCellIds:
             if not numpyLoaded:
                 assert(False) # XXX at the moment, I require numpy
@@ -832,9 +845,9 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
                 #bedScore = min(1000, bedScore)
                 bedScore = 0
             else:
-                exprArr = np.take(exprArr, cellIds)
-                median = np.median(exprArr)
-                #median = np.percentile(exprArr, 90)
+                clusterExprs = np.take(exprArr, cellIds)
+                median = np.median(clusterExprs)
+                #median = np.percentile(clusterExprs, 90)
                 bedScore = 0
 
             medianList.append(str(median))
@@ -860,7 +873,10 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
         # one geneId may have multiple placements, e.g. Ensembl's rule for duplicate genes
         for bedRow in bedRows:
-            sym = geneToSym.get(geneId, geneId)
+            if geneToSym!=None:
+                sym = geneToSym.get(geneId, geneId)
+            else:
+                sym = geneId
             bedRow[4] = str(bedScore) # 4 = score field
             bedRow.append(sym)
             bedRow.append(str(len(medianList)))

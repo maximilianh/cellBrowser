@@ -1415,7 +1415,8 @@ class MatrixTsvReader:
                 proc, stdout = popen(cmd, doWait=False)
                 self.ifh = stdout # faster implementation and in addition uses 2 CPUs
         else:
-            self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
+            #self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
+            self.ifh = io.open(fname, "rt") # utf8 performance? necessary for python3?
 
         self.sep = sepForFile(fname)
         logging.debug("Field separator is %s" % repr(self.sep))
@@ -1494,6 +1495,7 @@ class MatrixTsvReader:
                     arr = arr.astype(int)
                 else:
                     arr = [int(x) for x in arr]
+            logging.debug("Yielding gene %s, sym %s, %d fields" % (geneId, sym, len(arr)))
             yield (geneId, sym, arr)
 
         skipIds = 0
