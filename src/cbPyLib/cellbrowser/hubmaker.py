@@ -15,13 +15,13 @@ CBEMAIL = os.getenv("CBEMAIL", None)
 
 # We do not require numpy but numpy is around 30-40% faster in processing arrays
 # So use it if it's present
-#numpyLoaded = True
-#try:
-#    import numpy as np
-#except:
-#    numpyLoaded = False
-#    logging.debug("Numpy could not be loaded. This is fine but matrix conversion may be 2/3 slower.")
-numpyLoaded = False
+numpyLoaded = True
+try:
+    import numpy as np
+except:
+    numpyLoaded = False
+    logging.debug("Numpy could not be loaded. This is fine but matrix conversion may be 2/3 slower.")
+#numpyLoaded = False
 
 # ==== functions =====
     
@@ -735,6 +735,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
     if geneToSym is None:
         geneToSym = readGeneSymbols("gencode-human", inMatrixFname)
         symToGene = {v: k for k, v in geneToSym.items()} # invert the dictionary key->value to value->key
+        geneToSym = None
 
     geneLocs = parseGeneLocs(genome, geneModel)
 
@@ -818,6 +819,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
         for cellIds in clusterCellIds:
             if not numpyLoaded:
+                assert(False) # XXX at the moment, I require numpy
                 exprList = []
                 for cellId in cellIds:
                     exprList.append(exprArr[cellId])
@@ -832,6 +834,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
             else:
                 exprArr = np.take(exprArr, cellIds)
                 median = np.median(exprArr)
+                #median = np.percentile(exprArr, 90)
                 bedScore = 0
 
             medianList.append(str(median))
@@ -981,8 +984,8 @@ def cbTrackHub(options):
         errAbort("You need to specify the geneModel setting in your hub.conf."
             "A track hub requires a gene model set, e.g. 'gencode28' for hg38.")
     if email is None:
-        errAbort("A UCSC track hub should include an email address."
-            "Please specify one in hub.conf or via the CBEMAIL environment variable or in ~/.cellbrowser.conf")
+        errAbort("A UCSC track hub should include an email address. "
+            "Please specify one in hub.conf with the 'email=' setting or via the CBEMAIL environment variable or with the 'email=' setting in in ~/.cellbrowser.conf")
 
     outDir = options.outDir
 
