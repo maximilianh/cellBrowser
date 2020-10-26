@@ -4358,6 +4358,9 @@ var cellbrowser = function() {
 
             cartLoad(db);
             renderData();
+
+            if (getVar("openDialog"))
+                openCurrentDataset();
             cartSave(db); // = set the current URL from local storage settings
 
             // start the tutorial after a while
