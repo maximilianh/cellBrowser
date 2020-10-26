@@ -1101,7 +1101,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
             valCounts = valCounts.items()
             valCounts = list(sorted(valCounts, key=operator.itemgetter(1), reverse=True)) # = (label, count)
 
-        #valCounts = valCounts.items()
         if colors!=None:
             colArr = []
             foundColors = 0
@@ -1262,6 +1261,15 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
             fieldMeta["desc"] = fieldName
 
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceType, enumOrderList)
+
+        if enumOrder:
+            fieldMeta["sortBy"] = "none"
+        else:
+            if inConf["sortBy"] and fieldName in inConf["sortBy"]:
+                defSortVal = inConf["sortBy"][fieldName]
+                if not defSortVal in ["name", "freq"]:
+                    errAbort("sortBy must be a dictionary with fieldName -> value and the value must be 'name' or 'freq'.")
+                fieldMeta["defaultSort"] = defSortVal
 
         fieldType = fieldMeta["type"]
 
@@ -3772,7 +3780,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "sortBy", "defQuantPal", "defCatPal"]:
+        "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal"]:
         copyConf(inConf, outConf, tag)
 
 
