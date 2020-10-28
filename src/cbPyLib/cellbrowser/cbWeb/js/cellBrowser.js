@@ -949,9 +949,8 @@ var cellbrowser = function() {
 
     function openDatasetDialog(openDsInfo, selName) {
     /* build dataset open dialog, 
-     * - datasetList is the list of all datasets to show on the left, null to hide list
      * - openDsInfo is the currently open object or a collection. 
-     * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
+     * - selName is the currently selected dataset in this list
      */
 
         var datasetList = [];
@@ -1142,8 +1141,11 @@ var cellbrowser = function() {
 
         var buttons = [];
         if (db!==null) {
+            var cancelLabel = "Cancel";
+            if (onlyInfo)
+                cancelLabel = "Close";
             buttons.push( {
-                text:"Cancel", 
+                text: cancelLabel, 
                 click: function() { 
                     $( this ).dialog( "close" ); 
                     if (openDsInfo.isCollection)
@@ -2373,8 +2375,6 @@ var cellbrowser = function() {
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
        $('#tpAboutButton').click( onAboutClick );
        $('#tpOpenDatasetLink').click( openCurrentDataset );
-       //$('#tpOpenDatasetLink').click( function() { 
-           //openDatasetDialog(db.conf, db.name); } );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
@@ -4360,7 +4360,7 @@ var cellbrowser = function() {
             renderData();
 
             if (getVar("openDialog"))
-                openCurrentDataset();
+                openDatasetDialog(db.conf, db.name); // open Info dialog
             cartSave(db); // = set the current URL from local storage settings
 
             // start the tutorial after a while
