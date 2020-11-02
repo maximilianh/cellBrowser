@@ -80,6 +80,13 @@ def cbHub_parseArgs():
     parser.add_option("-o", "--outDir", dest="outDir", action="store", \
             help="the output directory for the hub, default is %default")
 
+    parser.add_option("", "--stat", dest="stat", action="store", \
+            help="how to summarize data values of a cluster, one of: median, mean, percentile, nonzero. default is %default", default="median")
+
+    parser.add_option("", "--perc", dest="percentile", action="store", \
+            help="if stat is 'percentile', which percentile to use. a number 0-100. default is %default", default=90,
+            type='int')
+
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     #parser.add_option("", "--fixDot", dest="fixDot", action="store_true", help="replace dots in cell meta IDs with dashes (for R)")
     #parser.add_option("-t", "--geneType", dest="geneType", help="type of gene IDs in expression matrix. values like 'symbols', or 'gencode22', 'gencode28' or 'gencode-m13'.")
@@ -644,7 +651,7 @@ def toHex(rgb):
     b = rgb[2]
     return "#{0:02x}{1:02x}{2:02x}".format(clamp(r*255), clamp(g*255), clamp(b*255))
 
-def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
+def writeBarChartTdb(tfh, bbFname, clusterNames, unitName, stat, percentile):
     " write the barChart tdb stanza "
     stepSize = 1.0 / len(clusterNames)
     colorCodes = []
@@ -659,7 +666,11 @@ def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
     tfh.write('type bigBarChart\n')
     tfh.write('visibility full\n')
     tfh.write('shortLabel Cluster expression\n')
-    tfh.write('longLabel Median Cluster expression\n')
+    if stat=="percentile":
+        metric = "%dth percentile" % percentile
+    else:
+        metric = stat.capitalize()
+    tfh.write('longLabel %s Cluster expression\n' % metric)
 
     # only remove spaces, this is more readable than sanitizeName
     saneClusterNames = []
@@ -670,7 +681,7 @@ def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
 
     tfh.write('barChartBars %s\n' % " ".join(saneClusterNames))
     tfh.write('barChartColors %s\n' % " ".join(hexCodes))
-    tfh.write('barChartMetric median\n')
+    tfh.write('barChartMetric %s\n' % metric)
     tfh.write('barChartUnit %s\n' % unitName)
     tfh.write('barChartMatrixUrl exprMatrix.tsv\n')
     tfh.write('barChartSampleUrl clusters.tsv\n')
@@ -745,7 +756,7 @@ def makeClusterCellIdxArray(clusterOrder, clusterToCells, cellNames, clusterFnam
     return clusterCellIds, allCellNames, allCellIndices
 
 def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneModel, clusterToCells, \
-        clusterOrder, clusterFname, bbFname):
+        clusterOrder, stat, percentile, clusterFname, bbFname):
     """ create a barGraph bigBed file for an expression matrix
     clusterToCells is a dict clusterName -> list of cellIDs
     clusterOrder is a list of the clusterNames in the right order
@@ -829,6 +840,8 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
         matOfh.write("\n")
         lineLen = len(geneId)+len(newLine)+2 # include tab and newline
 
+        bedScore = 0
+
         medianList = []
         for cellIds in clusterCellIds:
             if not numpyLoaded:
@@ -837,20 +850,30 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
                 for cellId in cellIds:
                     exprList.append(exprArr[cellId])
                 n = len(cellIds)
-                if len(exprList)==0:
-                    median = 0
-                else:
-                    median = sorted(exprList)[n//2] # approx OK, no special case for even n's
-                #bedScore = len([x for x in exprList if x!=0]) # score = non-zero medians
-                #bedScore = min(1000, bedScore)
-                bedScore = 0
+
+                if stat=="median":
+                    if len(exprList)==0:
+                        summVal = 0
+                    else:
+                        summVal = sorted(exprList)[n//2] # approx OK, no special case for even n's
+                elif stat=="mean":
+                    summVal = float(sum(exprList))/len(exprList)
+                elif stat=="percentile":
+                    summVal = sorted(exprList)[int(percentile/100.0*len(exprList))] # did not check this against numpy
+                elif stat=="nonzero":
+                    summVal = len([x for x in exprList if x!=0])
             else:
                 clusterExprs = np.take(exprArr, cellIds)
-                median = np.median(clusterExprs)
-                #median = np.percentile(clusterExprs, 90)
-                bedScore = 0
+                if stat=="median":
+                    summVal = np.median(clusterExprs)
+                elif stat=="mean":
+                    summVal = np.mean(clusterExprs)
+                elif stat=="percentile":
+                    summVal = np.percentile(clusterExprs, percentile)
+                elif stat=="nonzero":
+                    summVal = np.count_nonzero(clusterExprs)
 
-            medianList.append(str(median))
+            medianList.append(str(summVal))
 
         if geneType.startswith("symbol"):
             if geneId not in symToGene:
@@ -909,7 +932,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
     runCommand(cmd)
 
 def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, \
-        geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, outDir):
+        geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, stat, percentile, outDir):
 
     clusterToCells = parseClustersFromMeta(metaFname, clusterFieldName, fixDot)
 
@@ -935,10 +958,11 @@ def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFi
     if skipBarchart:
         logging.info("Not creating barChart file, got command line option")
     else:
-        writeBarChartTdb(tfh, bbFname, clusterOrder, unitName)
+        writeBarChartTdb(tfh, bbFname, clusterOrder, unitName, stat, percentile)
         #if isfile(bbFname):
             #logging.info("Not creating barChart file, %s already exists" % bbFname)
-        makeBarGraphBigBed(db, inMatrixFname, matrixFname, geneType, geneModel, clusterToCells, clusterOrder, catFname, bbFname)
+        makeBarGraphBigBed(db, inMatrixFname, matrixFname, geneType, geneModel, clusterToCells, clusterOrder, stat, percentile, \
+                catFname, bbFname)
         writeBarChartDesc(outDir, hubName, hubUrl, refHtmlFname)
 
     if bamDir:
@@ -1021,7 +1045,10 @@ def cbTrackHub(options):
         logging.info("Making %s" % outDir)
         os.makedirs(outDir)
 
-    buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, outDir)
+    stat = options.stat
+    percentile = options.percentile
+
+    buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, stat, percentile, outDir)
 
 def cbHubCli():
     args, options = cbHub_parseArgs()
