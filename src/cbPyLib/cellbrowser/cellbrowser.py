@@ -1265,7 +1265,7 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
         if enumOrder:
             fieldMeta["sortBy"] = "none"
         else:
-            if inConf["sortBy"] and fieldName in inConf["sortBy"]:
+            if inConf.get("sortBy") and fieldName in inConf["sortBy"]:
                 defSortVal = inConf["sortBy"][fieldName]
                 if not defSortVal in ["name", "freq"]:
                     errAbort("sortBy must be a dictionary with fieldName -> value and the value must be 'name' or 'freq'.")
@@ -4427,9 +4427,9 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
 
     cbUpgrade(outDir, doData=False)
 
-    outIndexFname = join(outDir, "index.html")
+    outIndexFname = join(outDir, "js", "cellBrowser.js")
     if not isfile(outIndexFname):
-        logging.info("%s does not exist: running cbUpgrade now to make sure there is an index.html" % outIndexFname)
+        logging.info("%s does not exist: running cbUpgrade now to make sure there are static js/css files" % outIndexFname)
         cbUpgrade(outDir, doData=False, doCode=True)
 
     if port:
@@ -5056,7 +5056,11 @@ def cbMake(outDir, devMode=False):
 #        writeJson(dataset, outFname, ignoreKeys=["children"])
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
-    " create datasets.json in outDir and rebuild index.html. Optionally copy over all other static js/css files "
+    """ Rebuild index.html in outDir.
+    If doData is set: re-index all top-level datasets and recreate dataset.json
+    If doCode is set: copy all js/css 
+    If port is set to number: start the minimal webserver.
+    """
     logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
