@@ -861,7 +861,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
                 elif stat=="percentile":
                     summVal = sorted(exprList)[int(percentile/100.0*len(exprList))] # did not check this against numpy
                 elif stat=="nonzero":
-                    summVal = len([x for x in exprList if x!=0])
+                    summVal = float(len([x for x in exprList if x!=0])) / len(exprList)
             else:
                 clusterExprs = np.take(exprArr, cellIds)
                 if stat=="median":
@@ -871,7 +871,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
                 elif stat=="percentile":
                     summVal = np.percentile(clusterExprs, percentile)
                 elif stat=="nonzero":
-                    summVal = np.count_nonzero(clusterExprs)
+                    summVal = np.count_nonzero(clusterExprs) / float(clusterExprs.size)
 
             medianList.append(str(summVal))
 
