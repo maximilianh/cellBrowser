@@ -825,9 +825,30 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
     for geneId, sym, exprArr in mr.iterRows():
         logging.debug("Writing BED and matrix line for %s, symbol %s, %d expr values" % (geneId, sym, len(exprArr)))
 
+        if geneType.startswith("symbol"):
+            # input has symbols
+            if geneId not in symToGene:
+                logging.warn("Cannot resolve symbol %s to a gene accession" % geneId)
+                continue
+            else:
+                geneId = symToGene[geneId]
+                bedRows = geneLocs[geneId]
+
+        else:
+            # input has accessions
+            if geneId not in geneLocs:
+                geneId2 = geneId.replace(".", "-", 1) # does this make sense? (for R)
+                if geneId2 not in geneLocs:
+                    logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
+                    skipCount += 1
+                    continue
+                else:
+                    geneId = geneId2
+            bedRows = geneLocs[geneId]
+
         # write the new matrix row first field
         offset = matOfh.tell()
-        rowHeader = "%s\t" % (geneId)
+        rowHeader = "%s\t" % (sym)
         matOfh.write(rowHeader)
 
         # write the new matrix row values
@@ -875,33 +896,18 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
             medianList.append(str(summVal))
 
-        if geneType.startswith("symbol"):
-            if geneId not in symToGene:
-                logging.warn("Cannot resolve symbol %s to a gene accession" % geneId)
-                continue
-            else:
-                geneId = symToGene[geneId]
-        else:
-            if geneId not in geneLocs:
-                geneId2 = geneId.replace(".", "-", 1) # does this make sense? (for R)
-                if geneId2 not in geneLocs:
-                    logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
-                    skipCount += 1
-                    continue
-                else:
-                    geneId = geneId2
 
-        bedRows = geneLocs[geneId]
         geneCount += 1
 
         # one geneId may have multiple placements, e.g. Ensembl's rule for duplicate genes
         for bedRow in bedRows:
-            if geneToSym!=None:
-                sym = geneToSym.get(geneId, geneId)
-            else:
-                sym = geneId
+            #if geneToSym!=None:
+                #sym = geneToSym.get(geneId, geneId)
+            #else:
+                #sym = geneId
             bedRow[4] = str(bedScore) # 4 = score field
-            bedRow.append(sym)
+            bedRow[3] = sym
+            bedRow.append(geneId)
             bedRow.append(str(len(medianList)))
             bedRow.append(",".join(medianList))
             bedRow.append(str(offset))
@@ -909,6 +915,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
             bedFh.write("\t".join(bedRow))
             bedFh.write("\n")
+            bedFh.flush()
 
     bedFh.close()
 
