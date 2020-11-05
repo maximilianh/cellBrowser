@@ -4345,7 +4345,12 @@ var cellbrowser = function() {
             resizeDivs(true);
 
             if (!db.conf.metaFields) {
-                showCollectionDialog(datasetName);
+                // pablo often has single-dataset installations, there is no need to open the
+                // dataset selection box then.
+                if (db.conf.datasets.length===1 && datasetName==="") // "" is the root dataset
+                    loadDataset(db.conf.datasets[0].name, false);
+                else
+                    showCollectionDialog(datasetName);
                 return;
             }
 
