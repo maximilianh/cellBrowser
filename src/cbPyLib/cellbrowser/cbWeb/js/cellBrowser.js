@@ -4772,7 +4772,7 @@ var cellbrowser = function() {
             }
 
             htmls.push("<div class='tpMetaValue' style='width:"+(metaBarWidth-2*metaBarMargin)+"px"+styleAdd+
-                "' data-field-name='"+metaInfo.name+"'>&nbsp;</div>");
+                "' data-field-name='"+metaInfo.name+"' id='tpMeta_" + i + "'>&nbsp;</div>");
             htmls.push("</div>"); // tpMetaBox
         }
         htmls.push("<div style='background-color:white; float:right' id='tpMetaNote' style='display:none; height:1em'></div>");
