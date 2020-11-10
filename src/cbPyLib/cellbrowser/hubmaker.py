@@ -1001,7 +1001,7 @@ def cbTrackHub(options):
 
         geneModel = conf.get("geneModel")
         db = conf.get("ucscDb")
-        email = conf.get("hubEmail", CBEMAIL)
+        email = conf.get("email", CBEMAIL)
 
         inMatrixFname = conf["exprMatrix"]
         metaFname = conf["meta"]
