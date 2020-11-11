@@ -66,8 +66,9 @@ findMatrix = function( object, matrix.slot ) {
 #' exprMatrix.tsv, tsne.coords.tsv, meta.tsv, markers.tsv and a default cellbrowser.conf
 #' @param dataset.name name of the dataset. Defaults to Seurat project name
 #' @param reductions vector of reduction names to export, defaults to all reductions.
-#' @param markers.file path to file with marker genes. Alternatively,
-#' markers can also be supplied in the object, as misc$markers.
+#' @param markers.file path to file with marker genes. By defaults, marker
+#' are searched in the object itself as misc$markers. If none are supplied in 
+#' object or via this argument, they are recalculated with \code{FindAllMarkers}
 #' @param markers.n if no markers were supplied, FindAllMarkers is run.
 #' This parameter indicates how many markers to calculate, default is 100
 #' @param matrix.slot matrix to use, default is 'counts'
@@ -86,7 +87,7 @@ findMatrix = function( object, matrix.slot ) {
 #' @param skip.metadata whether to skip exporting metadata
 #' @param skip.reductions whether to skip exporting reductions
 #' @param port on which port to run UCSC cellbrowser webserver after export
-#' @param ... specifies the metadata fields to export. To supply field with
+#' @param ... specifies the metadata fields to export. To supply a field name and its
 #' human readable name, pass name as \code{field="name"} parameter.
 #'
 #' @return This function exports Seurat object as a set of tsv files
@@ -101,9 +102,10 @@ findMatrix = function( object, matrix.slot ) {
 #'
 #' @author Maximilian Haeussler, Nikolay Markov
 #'
+#' @importFrom tools file_ext
 #' @importFrom utils browseURL
 #' @importFrom reticulate py_module_available import
-#' @importFrom tools file_ext
+#' @importFrom Seurat Project Idents GetAssayData Embeddings FetchData
 #'
 #' @export
 #'

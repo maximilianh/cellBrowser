@@ -65,9 +65,8 @@ if sys.version_info >= (3, 0):
     isPy3 = True
 
 # directory to static data files, e.g. gencode tables
-# By default, this is ~/cbData, or alternatively /usr/local/share/cellbrowser 
+# By default, this is ~/cellbrowserData, or alternatively /usr/local/share/cellbrowser 
 # or the directory in the environment variable CBDATA, see findCbData()
-#dataDir = join(dirname(__file__), "..", "cbData")
 dataDir = None
 
 # the default html dir, used if the --htmlDir option is set but empty
@@ -253,8 +252,8 @@ def downloadStaticFile(remotePath, localPath):
     renameFile(localTmp, localPath)
 
 def getStaticFile(relPath):
-    """ get the full path to a static file in the dataDir directory (~/cbData or $CBDATA, by default, see above).
-    If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cbData/<pathParts>
+    """ get the full path to a static file in the dataDir directory (~/cellbrowserData or $CBDATA, by default, see above).
+    If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cellbrowserData/<pathParts>
     and copied onto the local disk under dataDir
     """
     dataDir = findCbData()
@@ -335,21 +334,23 @@ def readLines(lines, fname):
             lines.append(line)
     return lines
 
-def loadConfig(fname, addName=False, ignoreName=False, reqTags=[]):
+def loadConfig(fname, addName=False, ignoreName=False, reqTags=[], addTo=None):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
     logging.debug("Loading settings from %s" % fname)
+
+    conf = OrderedDict()
+    if addTo:
+        logging.debug("Adding existing settings")
+        conf.update(addTo)
+
     g = {}
-    l = OrderedDict()
     g["fileBase"] = basename(fname).split('.')[0]
     g["dirName"] = basename(dirname(fname))
 
-
     lines = readLines([], fname)
-    exec("\n".join(lines), g, l)
-
-    conf = l
+    exec("\n".join(lines), g, conf)
 
     for rt in reqTags:
         if not rt in conf:
@@ -1100,7 +1101,6 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
             valCounts = valCounts.items()
             valCounts = list(sorted(valCounts, key=operator.itemgetter(1), reverse=True)) # = (label, count)
 
-        #valCounts = valCounts.items()
         if colors!=None:
             colArr = []
             foundColors = 0
@@ -1262,6 +1262,15 @@ def metaToBin(inConf, outConf, fname, colorFname, outDir, enumFields):
 
         fieldMeta, binVals = guessFieldMeta(col, fieldMeta, colors, forceType, enumOrderList)
 
+        if enumOrder:
+            fieldMeta["sortBy"] = "none"
+        else:
+            if inConf.get("sortBy") and fieldName in inConf["sortBy"]:
+                defSortVal = inConf["sortBy"][fieldName]
+                if not defSortVal in ["name", "freq"]:
+                    errAbort("sortBy must be a dictionary with fieldName -> value and the value must be 'name' or 'freq'.")
+                fieldMeta["defaultSort"] = defSortVal
+
         fieldType = fieldMeta["type"]
 
         if fieldType=="enum":
@@ -1414,7 +1423,8 @@ class MatrixTsvReader:
                 proc, stdout = popen(cmd, doWait=False)
                 self.ifh = stdout # faster implementation and in addition uses 2 CPUs
         else:
-            self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
+            #self.ifh = io.open(fname, "r", encoding="utf8") # utf8 performance? necessary for python3?
+            self.ifh = io.open(fname, "rt") # utf8 performance? necessary for python3?
 
         self.sep = sepForFile(fname)
         logging.debug("Field separator is %s" % repr(self.sep))
@@ -1493,6 +1503,7 @@ class MatrixTsvReader:
                     arr = arr.astype(int)
                 else:
                     arr = [int(x) for x in arr]
+            logging.debug("Yielding gene %s, sym %s, %d fields" % (geneId, sym, len(arr)))
             yield (geneId, sym, arr)
 
         skipIds = 0
@@ -2450,7 +2461,7 @@ def sanitizeName(name):
     name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
     newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
     if newName!=name:
-        logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
+        logging.debug("Sanitized %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
     return newName
 
@@ -2463,45 +2474,56 @@ def nonAlphaToUnderscores(name):
     logging.debug("Sanitizing %s -> %s" % (repr(name), newName))
     return newName
 
-def parseMarkerTable(filename, geneToSym):
-    " parse marker gene table and return dict clusterName -> list of rows (geneId, geneSym, otherFields...)"
-    logging.debug("Reading cluster markers from %s" % (filename))
-    ifh = openFile(filename)
+def guessMarkerFields(headers):
+    """ return a tuple (newHeaders, clusterIdx, geneIdx, otherStart, otherEnd), all of these are 0-based
+        indexes of the respective fields. Should recognize Seurat2 and Seurat3 formats.
+    """
 
-    # why does Seurat have so many different ways of writing a dataframe to a text file ??
-    seuratLine = '\tp_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
-    seuratLine2 = '"","p_val","avg_logFC","pct.1","pct.2","p_val_adj","cluster","gene"'
-    seuratLine3 = ",p_val,avg_logFC,pct.1,pct.2,p_val_adj,cluster,gene"
-    seuratLine4 = "Gene\tp-value\tlog2(FoldChange)\tpct.1\tpct.2\tadjusted p-value\tCluster"
-    seuratLine5 = 'p_val\tavg_logFC\tpct.1\tpct.2\tp_val_adj\tcluster\tgene'
-    headerLine = ifh.readline().rstrip("\r\n")
-
-    sep = sepForFile(filename)
-    if headerLine in [seuratLine, seuratLine2, seuratLine4, seuratLine5]:
-        logging.debug("Cluster marker file %s was recognized to be in Seurat format" % filename)
-        # field 0 is not the gene ID, it has some weird suffix appended.
-        headers = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
-        geneIdx = 7
+    # note: with seurat2, field 0 is not the gene ID, it has some weird suffix appended.
+    seurat2Headers =  ['', 'p_val', 'avg_logFC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
+    seurat3Headers = ["Gene","p-value","log2(FoldChange)","pct.1","pct.2","adjusted p-value","Cluster"]
+    # the name of the first field varies depending now people use table.write, so we ignore it for the
+    # header comparison
+    if headers[1:8] == seurat2Headers[1:]:
+        logging.info("Cluster marker file was recognized to be in Seurat2 format")
+        geneIdx = 7 # see note above: field0 is not the actual geneId, but something else, a unique row ID
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
-        otherEnd = 6
-    elif headerLine == seuratLine4:
-        headers = headerLine.split(sep)
+        otherEnd = len(headers)
+
+        newHeaders = ["rowNameFromR", "pVal", "avg. logFC", "PCT1", "PCT2", "pVal adj.", "Cluster", "Gene"]
+        newHeaders.extend(headers[8:])
+        headers = newHeaders
+
+    elif headers[1:7] == seurat3Headers[1:]:
+        logging.info("Cluster marker file was recognized to be in Seurat3 format")
         geneIdx = 0
         scoreIdx = 1
         clusterIdx = 6
         otherStart = 2
-        otherEnd = 6
+        otherEnd = len(headers)
+
     else:
-        logging.info("Reading %s: assuming marker file format (cluster, gene, score) + any other fields" % filename)
-        headers = headerLine.split(sep)
+        logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
         otherStart = 3
         otherEnd = 9999
 
+    return headers, clusterIdx, geneIdx, scoreIdx, otherStart, otherEnd
+
+
+def parseMarkerTable(filename, geneToSym):
+    " parse marker gene table and return dict clusterName -> list of rows (geneId, geneSym, otherFields...)"
+    logging.debug("Reading cluster markers from %s" % (filename))
+    ifh = openFile(filename)
+    headerLine = ifh.readline().rstrip("\r\n")
+    sep = sepForFile(filename)
+    headers = headerLine.split(sep)
+
+    headers, clusterIdx, geneIdx, scoreIdx, otherStart, otherEnd = guessMarkerFields(headers)
     otherHeaders = headers[otherStart:otherEnd]
     logging.debug("Other headers: %s" % otherHeaders)
 
@@ -3279,7 +3301,7 @@ def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
 
     if len(notInLabels)!=0:
         logging.warn(("%s: the following cluster names are in the marker file but not in the meta file: %s. "+
-                "Users may not notice the problem, but it may indicate an erronous meta data file.") % \
+                "Users may not notice the problem, but it may indicate an erroneous meta data file.") % \
                 (markerFname, notInLabels))
 
 def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
@@ -3411,6 +3433,7 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
 
 def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
     " return geneToSym, based on gene tables "
+    logging.debug("Reading gene symbols, geneIdType %s, example list of symbols: %s" % (geneIdType, matrixFnameOrGeneIds))
     if geneIdType==None or geneIdType=="auto":
         geneIdType = guessGeneIdType(matrixFnameOrGeneIds)
 
@@ -3425,7 +3448,6 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
                 "To get the big mapping table for all NCBI organisms, please run this command: "\
                 "wget https://ftp.ncbi.nih.gov/gene/DATA/gene_info.gz -O - | zcat | cut -f2,3 | gzip -c > %s" % \
                 geneIdTable)
-
 
     return geneToSym
 
@@ -3758,7 +3780,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "sortBy", "defQuantPal", "defCatPal"]:
+        "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal"]:
         copyConf(inConf, outConf, tag)
 
 
@@ -4412,9 +4434,9 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
 
     cbUpgrade(outDir, doData=False)
 
-    outIndexFname = join(outDir, "index.html")
+    outIndexFname = join(outDir, "js", "cellBrowser.js")
     if not isfile(outIndexFname):
-        logging.info("%s does not exist: running cbUpgrade now to make sure there is an index.html" % outIndexFname)
+        logging.info("%s does not exist: running cbUpgrade now to make sure there are static js/css files" % outIndexFname)
         cbUpgrade(outDir, doData=False, doCode=True)
 
     if port:
@@ -5041,7 +5063,11 @@ def cbMake(outDir, devMode=False):
 #        writeJson(dataset, outFname, ignoreKeys=["children"])
 
 def cbUpgrade(outDir, doData=True, doCode=False, devMode=False, port=None):
-    " create datasets.json in outDir and rebuild index.html. Optionally copy over all other static js/css files "
+    """ Rebuild index.html in outDir.
+    If doData is set: re-index all top-level datasets and recreate dataset.json
+    If doCode is set: copy all js/css 
+    If port is set to number: start the minimal webserver.
+    """
     logging.debug("running cbUpgrade, doData=%s, doCode=%s, devMode=%s" % (doData, doCode, devMode))
     baseDir = dirname(__file__) # = directory of this script
     webDir = join(baseDir, "cbWeb")
@@ -5077,14 +5103,15 @@ def cbUpgradeCli():
 
     cbUpgrade(outDir, doCode=options.addCode, devMode=options.devMode, port=options.port)
 
-def parseGeneLocs(geneType):
+def parseGeneLocs(db, geneType):
     """
     return dict with geneId -> list of bedRows
     bedRows have (chrom, start, end, geneId, score, strand)
     """
-    fname = getStaticFile(join("genes", geneType+".genes.bed"))
+    fname = getStaticFile(join("genes", db+"."+geneType+".genes.bed.gz"))
+    logging.info("Reading gene locations from %s" % fname)
     ret = defaultdict(list)
-    for line in open(fname):
+    for line in openFile(fname):
         row = line.rstrip("\r\n").split('\t')
         name = row[3].split(".")[0]
         ret[name].append(row)
@@ -5587,7 +5614,7 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
     #c["title"] = datasetName.replace("_", " ")
     # always overwrite the parameters
     if algParams:
-        ofh.write("algParams = %s\n" % repr(algParams))
+        ofh.write("algParams = %s\n" % repr(dict(algParams)))
 
     if other:
         for key, val in other.items():

@@ -243,16 +243,21 @@ def tabGeneAnnotate(inFname, symToEntrez, symToSfari, entrezToClass, entrezToOmi
         if geneToSym is -1:
             geneToSym = readGeneSymbols(None, [sym])
         if geneToSym is not None:
-            sym = geneToSym.get(sym, sym)
+            geneId = geneToSym.get(sym)
+            if geneId is None:
+                logging.debug("Cannot find NCBI Gene ID for symbol: %s" % sym)
+                geneId = sym
+            sym = geneId
 
         hprdClass = ""
         entrezId = symToEntrez.get(sym)
-        omimId = entrezToOmim.get(entrezId, "")
-        if entrezId != None:
-            hprdClass = entrezToClass.get(entrezId, "")
+
+        if entrezId == None:
+            logging.debug("Cannot find entrezId for symbol %s" % sym)
 
         # now summarize the presence/absence of this gene in various specialized gene lists:
         # OMIM, COSMIC, SFARI
+        hprdClass = entrezToClass.get(entrezId, "")
         geneLists = []
         if sym!="":
             # SFARI

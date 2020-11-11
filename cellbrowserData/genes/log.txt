@@ -6,3 +6,4 @@ wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.
 wget ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Mus_musculus.gene_info.gz -O - | zcat | cut -f2,3 | grep -v ^Gene > entrez-mouse.symbols.tsv
 zcat entrez-human.symbols.tsv.gz | cat - entrez-mouse.symbols.tsv > entrez.symbols.tsv
 cp entrez.symbols.tsv.gz ~/htdocs-cells/downloads/cellbrowserData/genes/
+cp /hive/data/outside/gencode/tsv/gencode28.genes.bed ./hg38.gencode28.genes.bed

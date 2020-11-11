@@ -7,9 +7,21 @@ from os.path import join, basename, dirname, isfile, isdir, splitext
 import os
 
 import sys
-import cellbrowser
+from .cellbrowser import setDebug, lineFileNextRow, getSizesFname, readGeneSymbols, parseGeneLocs
+from .cellbrowser import MatrixTsvReader, runCommand, copyPkgFile, loadConfig, iterItems, getStaticFile
+from .cellbrowser import errAbort, getConfig
 
-CBEMAIL = os.getenv("CBEMAIL", "unknown")
+CBEMAIL = os.getenv("CBEMAIL", None)
+
+# We do not require numpy but numpy is around 30-40% faster in processing arrays
+# So use it if it's present
+numpyLoaded = True
+try:
+    import numpy as np
+except:
+    numpyLoaded = False
+    logging.debug("Numpy could not be loaded. This is fine but matrix conversion may be 2/3 slower.")
+#numpyLoaded = False
 
 # ==== functions =====
     
@@ -17,40 +29,41 @@ def cbHub_parseArgs():
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
     parser = optparse.OptionParser("""usage: %prog [options] - create a UCSC track hub for a single cell dataset
 
-    Run the program with "--init" to write a sample cellbrowser.conf into the current directory.
-    Adapt this file to your needs. For %prog, only the parts under "hub" are relevant.
+    Run the program with "--init" to write a sample hub.conf into the current directory.
+    Adapt this file to your needs.
 
-    Call the program without any arguments if there is cellbrowser.conf in the current dir:
-    %prog
-    It will read cellbrowser.conf, create hub.txt and write the job scripts.
+    Call the program like this if there is hub.conf in the current dir:
+    %prog -o hub
+    It will read hub.conf, create hub/hub.txt and write the job scripts.
     You can then run the job scripts as described below.
-
-    This will create one shell script per cell cluster, with names like 'job-xxx.sh',
-    in the current directory. To run these scripts in parallel on a big server,
-    e.g. with 10 processes use the Unix command "parallel":
-      ls *.sh | parallel -j 10 bash
-
-    Each job will write a log of stdout/stderr to files named e.g. job-1.log
-
-    Requirements that have to be installed on this machine with binaries in PATH:
-    - samtools https://github.com/samtools/samtools
-    - wiggletools https://github.com/Ensembl/WiggleTools
-    - intronProspector https://github.com/diekhans/intronProspector
-    - UCSC tools wigToBigWig, bedToBigBed from http://hgdownload.soe.ucsc.edu/admin/exe/
 
     Run the UCSC tool hubCheck on the resulting hub.txt to make sure that all jobs
     have successfully completed.
 
-    You can override some settings in cellbrowser.conf with the command line options:
-    %prog -m metaFname -c clusterField -m exprMatrix -o hubDir
+    You can override some settings from cellbrowser.conf with command line options:
+    %prog -m meta.tsv -c Cluster -m exprMatrix.tsv.gz -o hub
+
+    ONLY if 'bamDir' has been specified in cellbrowser.conf:
+      | %prog will create one shell script per cell cluster, with names like 'job-xxx.sh',
+      | in the current directory. To run these scripts in parallel on a big server,
+      | e.g. with 10 processes use the Unix command "parallel":
+      |   ls *.sh | parallel -j 10 bash
+      | Each job will write a log of stdout/stderr to files named e.g. job-1.log
+      | Requirements that have to be installed on this machine with binaries in PATH:
+      | - samtools https://github.com/samtools/samtools
+      | - wiggletools https://github.com/Ensembl/WiggleTools
+      | - intronProspector https://github.com/diekhans/intronProspector
+      | - UCSC tools wigToBigWig, bedToBigBed from http://hgdownload.soe.ucsc.edu/admin/exe/
+    Otherwise:
+      - %prog requires bedToBigBed in the current PATH, see http://hgdownload.soe.ucsc.edu/admin/exe/
     """)
 
     parser.add_option("", "--init", dest="init", action="store_true", \
-            help="write a sample cellbrowser.conf to the current directory")
+            help="write a sample hub.conf to the current directory")
 
     parser.add_option("-i", "--inConf", dest="inConf", action="store", \
-            help="a cellbrowser.conf input file to read all options from, default %default", \
-            default = "cellbrowser.conf")
+            help="a hub.conf input file to read all options from. (settings can also be specified via cellbrowser.conf in the current directory.) default %default", \
+            default = "hub.conf")
 
     #parser.add_option("-g", "--genome", dest="genome", action="store", \
             #help="a ucsc assembly identifier, like hg19, hg38 or mm10")
@@ -64,14 +77,21 @@ def cbHub_parseArgs():
     parser.add_option("-c", "--clusterField", dest="clusterField", action="store", \
             help="field in expr matrix that contains the cluster name")
 
-    parser.add_option("-o", "--hubDir", dest="hubDir", action="store", \
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", \
             help="the output directory for the hub, default is %default")
+
+    parser.add_option("", "--stat", dest="stat", action="store", \
+            help="how to summarize data values of a cluster, one of: median, mean, percentile, nonzero. default is %default", default="median")
+
+    parser.add_option("", "--perc", dest="percentile", action="store", \
+            help="if stat is 'percentile', which percentile to use. a number 0-100. default is %default", default=90,
+            type='int')
 
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     #parser.add_option("", "--fixDot", dest="fixDot", action="store_true", help="replace dots in cell meta IDs with dashes (for R)")
     #parser.add_option("-t", "--geneType", dest="geneType", help="type of gene IDs in expression matrix. values like 'symbols', or 'gencode22', 'gencode28' or 'gencode-m13'.")
     #parser.add_option("", "--bamDir", dest="bamDir", help="directory with BAM files, one per cell. Merges small BAM files into one per cell cluster.")
-    parser.add_option("", "--clusterOrder", dest="clusterOrder", help="file with cluster names in the order that they should appear in the track. default is alphabetical order.")
+    #parser.add_option("", "--clusterOrder", dest="clusterOrder", help="file with cluster names in the order that they should appear in the track. default is alphabetical order.")
     parser.add_option("-s", "--skipBarchart", dest="skipBarchart", help="do not create the bar chart graph", action="store_true")
     #parser.add_option("", "--name", dest="name", help="name of track hub.")
     #parser.add_option("", "--email", dest="email", help="contact email for track hub. Default is %default, taken from the env. variable CBEMAIL", default=CBEMAIL)
@@ -79,11 +99,12 @@ def cbHub_parseArgs():
     #parser.add_option("", "--test", dest="test", action="store_true", help="do something") 
     (options, args) = parser.parse_args()
 
-    if not options.exprMatrix and not isfile(options.inConf) and not options.init:
+    #if not options.exprMatrix and not isfile(options.inConf) and not options.init :
+    if not options.outDir and not options.init:
         parser.print_help()
         exit(1)
 
-    cellbrowser.setDebug(options.debug)
+    setDebug(options.debug)
     return args, options
 
 def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
@@ -92,7 +113,7 @@ def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
     clusterToCells = defaultdict(list)
     metaCellIds = set()
     skipCount = 0
-    for row in cellbrowser.lineFileNextRow(metaFname):
+    for row in lineFileNextRow(metaFname):
         clusterName = row._asdict()[clusterFieldName]
         cellId = row[0]
         if fixDot:
@@ -129,10 +150,47 @@ genome %s
 
 """ % (hubName, hubName, email, db))
 
-def writeDescPages(hubDir, hubName, hubUrl, refHtmlFname):
+def writeBarChartDesc(hubDir, hubName, hubUrl, refHtmlFname):
+    " write the desc. html pages for the barchart track "
+    htmFname = join(hubDir, "barChart.html")
+    ofh = open(htmFname, "w")
+
+    hubBase = hubUrl.rsplit("/")[0]
+    refHtml = ""
+    if refHtmlFname is not None:
+        refHtml = open(refHtmlFname).read()
+
+    ofh.write("""
+<h2>Description</h2>
+<p>This track shows the median value of expression, for all cells from each cell cluster.
+
+<h2>Display Conventions and Configuration</h2>
+<p>This track is a <a href='https://genome.ucsc.edu/goldenPath/help/barChart.html'>barChart Graph</a> track.
+
+<h2>Methods</h2>
+<p>The annotation files that associate cells to cluster names were parsed. Then the expression matrix was read.
+For each gene, the expresssion values for all cells from a cluster were read and sorted.
+The median of this sorted list was written to a bigBed file.</p>
+
+<h2>Data Access</h2>
+<p>The bigBed file can be downloaded from the <a href='{hubBase}'>track hub directory</a>.</p>
+
+<h2>Credits</h2>
+<p>Thanks for the authors of the dataset for making their data available.</p>
+
+<h2>References</h2>
+<p>
+{refHtml}
+</p>""".format(**locals()))
+
+    ofh.close()
+
+def writeBamDescPages(hubDir, hubName, hubUrl, refHtmlFname):
+    " write the desc. html pages for the bam-related tracks "
     saneHubName = sanitizeName(hubName)
     readDesc = join(hubDir, saneHubName+".html")
     readFh = open(readDesc, "w")
+
     hubBase = hubUrl.rsplit("/")[0]
     refHtml = ""
     if refHtmlFname is not None:
@@ -349,7 +407,7 @@ def findBams(bamDir, clusterToCells):
     create dict with cluster -> (cellIds, bamFnames)
     """
     metaCellIds = set()
-    for cluster, cellIds in clusterToCells.iteritems():
+    for cluster, cellIds in iterItems(clusterToCells):
         for cellId in cellIds:
             metaCellIds.add(cellId)
 
@@ -387,7 +445,7 @@ def findBams(bamDir, clusterToCells):
     #logging.info("Got %s BAM files and %s cell ids in the meta data" % (len(metaCellIds), len(cellIdToBamFnames)))
 
     emptyClusterCount = 0
-    for clusterName, cellIds in clusterToCells.iteritems():
+    for clusterName, cellIds in iterItems(clusterToCells):
 
         bamFnames = []
         for cellId in cellIds:
@@ -428,7 +486,7 @@ def writeDebugReport(allMetaCellIds, cellIdToBams, clusterBams, idReportFname):
     allCellIds = set(allMetaCellIds).union(cellIdToBams)
 
     cellToCluster = {}
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         for cellId in cellIds:
             cellToCluster[cellId] = clusterName
 
@@ -473,7 +531,7 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     jlFh = open("jobList", "w")
 
     #cellCount = 0
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         uniqueCellIds = set(cellIds)
         #cellCount += len(uniqueCellIds)
 
@@ -481,11 +539,11 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     saneHubName = sanitizeName(hubName)
     writeParentStanzas(tfh, saneHubName, hubName, cellCount)
 
-    chromSizes = cellbrowser.getSizesFname(db)
+    chromSizes = getSizesFname(db)
 
     jobNo = 0
     emptyClusterCount = 0
-    for clusterName, (cellIds, bamFnames) in clusterBams.iteritems():
+    for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         saneClusterName = sanitizeName(clusterName)
         logging.info("Processing cluster %s, %d cellIds/BAM files, examples: %s" % (clusterName, len(cellIds), cellIds[0]))
         cmds = []
@@ -593,7 +651,7 @@ def toHex(rgb):
     b = rgb[2]
     return "#{0:02x}{1:02x}{2:02x}".format(clamp(r*255), clamp(g*255), clamp(b*255))
 
-def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
+def writeBarChartTdb(tfh, bbFname, clusterNames, unitName, stat, percentile):
     " write the barChart tdb stanza "
     stepSize = 1.0 / len(clusterNames)
     colorCodes = []
@@ -608,7 +666,11 @@ def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
     tfh.write('type bigBarChart\n')
     tfh.write('visibility full\n')
     tfh.write('shortLabel Cluster expression\n')
-    tfh.write('longLabel Median Cluster expression\n')
+    if stat=="percentile":
+        metric = "%dth percentile" % percentile
+    else:
+        metric = stat.capitalize()
+    tfh.write('longLabel %s Cluster expression\n' % metric)
 
     # only remove spaces, this is more readable than sanitizeName
     saneClusterNames = []
@@ -619,7 +681,7 @@ def writeBarChartTdb(tfh, bbFname, clusterNames, unitName):
 
     tfh.write('barChartBars %s\n' % " ".join(saneClusterNames))
     tfh.write('barChartColors %s\n' % " ".join(hexCodes))
-    tfh.write('barChartMetric median\n')
+    tfh.write('barChartMetric %s\n' % metric)
     tfh.write('barChartUnit %s\n' % unitName)
     tfh.write('barChartMatrixUrl exprMatrix.tsv\n')
     tfh.write('barChartSampleUrl clusters.tsv\n')
@@ -643,62 +705,31 @@ def writeCatFile(clusterToCells, catFname):
     " write file with cellId<tab>clusterName "
     logging.info("Writing %s" % catFname)
     ofh = open(catFname, "w")
-    for clusterName, cellIds in clusterToCells.iteritems():
+    for clusterName, cellIds in iterItems(clusterToCells):
         for cellId in cellIds:
             ofh.write("%s\t%s\n" % (cellId, clusterName))
     ofh.close()
 
-def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterToCells, \
-        clusterOrder, clusterFname, bbFname):
-    """ create a barGraph bigBed file for an expression matrix
-    clusterToCells is a dict clusterName -> list of cellIDs
-    clusterOrder is a list of the clusterNames in the right order
+def makeClusterCellIdxArray(clusterOrder, clusterToCells, cellNames, clusterFname):
     """
-    logging.info("*** Creating barChartGraph bigbed file")
-    if geneType.startswith("symbol"):
-        # create a mapping from symbol -> gene locations
-        if "/" in geneType:
-            defGenes = geneType.split("/")[1]
-        elif genome=="hg38":
-            defGenes = "gencode24"
-        elif genome=="hg19":
-            defGenes = "gencode19"
-        elif genome=="mm10":
-            defGenes = "gencode-m13"
-        else:
-            errAbort("Unclear how to map symbols to genome for db %s. Please adapt cellbrowser.py" % genome)
-
-        logging.info("Using %s to map symbols to genome" % defGenes)
-
-        geneToSym = cellbrowser.readGeneSymbols({'geneIdType':defGenes})
-        geneLocsId = cellbrowser.parseGeneLocs(defGenes)
-        geneLocs = {}
-        for geneId, locs in iterItems(geneLocsId):
-            sym = geneToSym[geneId]
-            geneLocs[sym] = locs
-    else:
-        geneToSym = cellbrowser.readGeneSymbols({'geneIdType':geneType})
-        geneLocs = cellbrowser.parseGeneLocs(geneType)
-
-    matOfh = open(outMatrixFname, "w")
+    make a list of lists of cellIds, one per cluster, in the right order.
+    Result is an array (one element per cluster), with each inside array the list of cell indices of this cluster.
+    also write the cluster names to clusterFname
+    """
     clustOfh = open(clusterFname, "w")
+    allCellIds = range(0, len(cellNames))
+    cellNameToId = dict(zip(cellNames, allCellIds))
 
-    mr = cellbrowser.MatrixTsvReader()
-    mr.open(inMatrixFname)
-    matType, cellNames = mr.matType, mr.sampleNames
-
-    cellIds = range(0, len(cellNames))
-    cellNameToId = dict(zip(cellNames, cellIds))
-
-    # make a list of lists of cellIds, one per cluster, in the right order
     clusterCellIds = [] # list of tuples with cell-indexes, one per cluster
     allCellNames = [] # list for cellIds, with a matrix, meta and with bam file
     allCellIndices = [] # position of all cellIds in allCellNames
+    notInMat = []
     for clusterName in clusterOrder:
         cellIdxList = []
         for cellName in clusterToCells[clusterName]:
             if cellName not in cellNameToId:
-                logging.warn("%s is in meta but not in expression matrix." % cellName)
+                #logging.warn("%s is in meta but not in expression matrix." % cellName)
+                notInMat.append(cellName)
                 continue
             idx = cellNameToId[cellName]
             cellIdxList.append(idx)
@@ -710,8 +741,71 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
         if len(cellIdxList)==0:
             logging.warn("No cells assigned to cluster %s" % clusterName)
 
-        clusterCellIds.append(tuple(cellIdxList))
+        if numpyLoaded:
+            cellIds = np.array(cellIdxList)
+        else:
+            cellIds = tuple(cellIdxList)
+
+        clusterCellIds.append(cellIdxList)
+
     clustOfh.close()
+
+    if len(notInMat)!=0:
+        logging.warn("%d identifiers from the meta file are not in the expression matrix. Examples: %s" % (len(notInMat), notInMat[:10]))
+
+    return clusterCellIds, allCellNames, allCellIndices
+
+def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneModel, clusterToCells, \
+        clusterOrder, stat, percentile, clusterFname, bbFname):
+    """ create a barGraph bigBed file for an expression matrix
+    clusterToCells is a dict clusterName -> list of cellIDs
+    clusterOrder is a list of the clusterNames in the right order
+    """
+    logging.info("Creating barChartGraph bigbed file: genome %s, geneType %s, geneModel %s" % (genome, geneType, geneModel))
+    #if geneType.startswith("symbol"):
+    #    # create a mapping from symbol -> gene locations
+    #    if "/" in geneType:
+    #        defGenes = geneType.split("/")[1]
+    #    elif genome=="hg38":
+    #        defGenes = "gencode24"
+    #    elif genome=="hg19":
+    #        defGenes = "gencode19"
+    #    elif genome=="mm10":
+    #        defGenes = "gencode-m13"
+    #    else:
+    #        errAbort("Unclear how to map symbols to genome for db %s. Please adapt cellbrowser.py" % genome)
+
+    #    logging.info("Using %s to map symbols to genome" % defGenes)
+
+    #    geneToSym = readGeneSymbols(geneType, inMatrixFname)
+    #    geneLocsId = parseGeneLocs(genome, defGenes)
+    #    geneLocs = {}
+    #    for geneId, locs in iterItems(geneLocsId):
+    #        sym = geneToSym[geneId]
+    #        geneLocs[sym] = locs
+    #else:
+    geneToSym = None
+    #if geneType.startswith("symbol"):
+        #geneType = "gencode-human"
+    geneToSym = readGeneSymbols(geneType, inMatrixFname)
+    if geneToSym is None:
+        geneToSym = readGeneSymbols("gencode-human", inMatrixFname)
+        symToGene = {v: k for k, v in geneToSym.items()} # invert the dictionary key->value to value->key
+        geneToSym = None
+
+    geneLocs = parseGeneLocs(genome, geneModel)
+
+    #if geneType.startswith("symbol"):
+        #geneToSym = {v: k for k, v in my_map.items()} # invert the dictionary key->value to value->key
+
+    matOfh = open(outMatrixFname, "w")
+
+    mr = MatrixTsvReader(geneToSym)
+    mr.open(inMatrixFname)
+    matType, cellNames = mr.matType, mr.sampleNames
+
+    clusterCellIds, allCellNames, allCellIndices = \
+            makeClusterCellIdxArray(clusterOrder, clusterToCells, cellNames, clusterFname)
 
     # write header line
     matOfh.write("#gene\t")
@@ -726,54 +820,94 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
 
     bedFh = open(bedFname, "w")
 
+    geneCount = 0
     skipCount = 0
     for geneId, sym, exprArr in mr.iterRows():
-        logging.debug("Writing BED and matrix line for %s" % geneId)
+        logging.debug("Writing BED and matrix line for %s, symbol %s, %d expr values" % (geneId, sym, len(exprArr)))
 
-        # write the new matrix row
+        if geneType.startswith("symbol"):
+            # input has symbols
+            if geneId not in symToGene:
+                logging.warn("Cannot resolve symbol %s to a gene accession" % geneId)
+                continue
+            else:
+                geneId = symToGene[geneId]
+                bedRows = geneLocs[geneId]
+
+        else:
+            # input has accessions
+            if geneId not in geneLocs:
+                geneId2 = geneId.replace(".", "-", 1) # does this make sense? (for R)
+                if geneId2 not in geneLocs:
+                    logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
+                    skipCount += 1
+                    continue
+                else:
+                    geneId = geneId2
+            bedRows = geneLocs[geneId]
+
+        # write the new matrix row first field
         offset = matOfh.tell()
-        rowHeader = "%s\t" % (geneId)
+        rowHeader = "%s\t" % (sym)
         matOfh.write(rowHeader)
 
+        # write the new matrix row values
         newRow = []
         for idx in allCellIndices:
             newRow.append(str(exprArr[idx]))
+
         newLine = "\t".join(newRow)
         matOfh.write(newLine)
         matOfh.write("\n")
         lineLen = len(geneId)+len(newLine)+2 # include tab and newline
 
+        bedScore = 0
+
         medianList = []
-
         for cellIds in clusterCellIds:
-            exprList = []
-            for cellId in cellIds:
-                exprList.append(exprArr[cellId])
-            n = len(cellIds)
-            if len(exprList)==0:
-                median = 0
-            else:
-                median = sorted(exprList)[n//2] # approx OK, no special case for even n's
-            medianList.append(str(median))
-            bedScore = len([x for x in exprList if x!=0]) # score = non-zero medians
-            bedScore = min(1000, bedScore)
+            if not numpyLoaded:
+                assert(False) # XXX at the moment, I require numpy
+                exprList = []
+                for cellId in cellIds:
+                    exprList.append(exprArr[cellId])
+                n = len(cellIds)
 
-        if geneId not in geneLocs:
-            geneId2 = geneId.replace(".", "-", 1) # does this make sense? (for R)
-            if geneId2 not in geneLocs:
-                logging.warn("Cannot place gene '%s' onto genome, dropping it" % geneId)
-                skipCount += 1
-                continue
+                if stat=="median":
+                    if len(exprList)==0:
+                        summVal = 0
+                    else:
+                        summVal = sorted(exprList)[n//2] # approx OK, no special case for even n's
+                elif stat=="mean":
+                    summVal = float(sum(exprList))/len(exprList)
+                elif stat=="percentile":
+                    summVal = sorted(exprList)[int(percentile/100.0*len(exprList))] # did not check this against numpy
+                elif stat=="nonzero":
+                    summVal = float(len([x for x in exprList if x!=0])) / len(exprList)
             else:
-                geneId = geneId2
+                clusterExprs = np.take(exprArr, cellIds)
+                if stat=="median":
+                    summVal = np.median(clusterExprs)
+                elif stat=="mean":
+                    summVal = np.mean(clusterExprs)
+                elif stat=="percentile":
+                    summVal = np.percentile(clusterExprs, percentile)
+                elif stat=="nonzero":
+                    summVal = np.count_nonzero(clusterExprs) / float(clusterExprs.size)
 
-        bedRows = geneLocs[geneId]
+            medianList.append(str(summVal))
+
+
+        geneCount += 1
 
         # one geneId may have multiple placements, e.g. Ensembl's rule for duplicate genes
         for bedRow in bedRows:
-            sym = geneToSym.get(geneId, geneId)
+            #if geneToSym!=None:
+                #sym = geneToSym.get(geneId, geneId)
+            #else:
+                #sym = geneId
             bedRow[4] = str(bedScore) # 4 = score field
-            bedRow.append(sym)
+            bedRow[3] = sym
+            bedRow.append(geneId)
             bedRow.append(str(len(medianList)))
             bedRow.append(",".join(medianList))
             bedRow.append(str(offset))
@@ -781,26 +915,31 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, clusterT
 
             bedFh.write("\t".join(bedRow))
             bedFh.write("\n")
+            bedFh.flush()
 
     bedFh.close()
 
     if skipCount != 0:
         logging.info("Could not place %d genes, these were skipped" % skipCount)
 
+    if geneCount==0:
+        errAbort("Could not resolve a single gene to a genome location. You will need to change the gene identifier options in hub.conf and check the expression matrix.")
+
+    logging.info("Processed %d genes" % geneCount)
     bedFname2 = bedFname.replace(".bed", ".sorted.bed")
     cmd = "LC_COLLATE=C sort -k1,1 -k2,2n %s > %s" % (bedFname, bedFname2)
-    cellbrowser.runCommand(cmd)
+    runCommand(cmd)
 
     # convert to .bb using .as file
     # from https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
-    #asFname = join(dataDir, )
-    asFname = cellbrowser.getStaticFile(["genomes", "barChartBed.as"])
-    sizesFname = cellbrowser.getSizesFname(genome)
+    asFname = getStaticFile(join("genomes", "barChartBed.as"))
+    sizesFname = getSizesFname(genome)
 
     cmd = "bedToBigBed -as=%s -type=bed6+5 -tab %s %s %s" % (asFname, bedFname2, sizesFname, bbFname)
-    cellbrowser.runCommand(cmd)
+    runCommand(cmd)
 
-def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, unitName, email, refHtmlFname, hubUrl, skipBarchart, outDir):
+def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, \
+        geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, stat, percentile, outDir):
 
     clusterToCells = parseClustersFromMeta(metaFname, clusterFieldName, fixDot)
 
@@ -826,64 +965,97 @@ def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFi
     if skipBarchart:
         logging.info("Not creating barChart file, got command line option")
     else:
-        writeBarChartTdb(tfh, bbFname, clusterOrder, unitName)
-        if isfile(bbFname):
-            logging.info("Not creating barChart file, %s already exists" % bbFname)
-        else:
-            makeBarGraphBigBed(db, inMatrixFname, matrixFname, geneType, clusterToCells, clusterOrder, catFname, bbFname)
+        writeBarChartTdb(tfh, bbFname, clusterOrder, unitName, stat, percentile)
+        #if isfile(bbFname):
+            #logging.info("Not creating barChart file, %s already exists" % bbFname)
+        makeBarGraphBigBed(db, inMatrixFname, matrixFname, geneType, geneModel, clusterToCells, clusterOrder, stat, percentile, \
+                catFname, bbFname)
+        writeBarChartDesc(outDir, hubName, hubUrl, refHtmlFname)
 
     if bamDir:
         mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir)
+        writeBamDescPages(outDir, hubName, hubUrl, refHtmlFname)
 
     tfh.close()
 
-    writeDescPages(outDir, hubName, hubUrl, refHtmlFname)
 
 def cbTrackHub(options):
     " make track hub given meta file and directory with bam files "
     if options.init:
-        cellbrowser.copyPkgFile("sampleConfig/cellbrowser.conf")
+        copyPkgFile("sampleConfig/hub.conf")
         sys.exit(0)
 
-    if isfile(options.inConf):
-        conf = cellbrowser.loadConfig(options.inConf)
+    global CBEMAIL
+    if CBEMAIL is None:
+        CBEMAIL = getConfig("email")
 
-        db = conf["ucscDb"]
+    db, geneModel, email = None, None, None
+
+    cbConfFname = join(dirname(options.inConf), "cellbrowser.conf")
+    conf = loadConfig(cbConfFname)
+
+    if not isfile(options.inConf):
+        logging.warn("Could not find a file %s. You can create one with the --init option." % options.inConf)
+    else:
+        conf = loadConfig(options.inConf, addTo=conf)
+
+        geneModel = conf.get("geneModel")
+        db = conf.get("ucscDb")
+        email = conf.get("email", CBEMAIL)
+
         inMatrixFname = conf["exprMatrix"]
         metaFname = conf["meta"]
         clusterFieldName = conf["clusterField"]
         clusterOrderFile = conf.get("clusterOrder")
-        bamDir = conf.get("bamDir", "bam")
+        bamDir = conf.get("bamDir")
+
         fixDot = conf.get("fixDot", False)
-        email = conf.get("hubEmail", CBEMAIL)
+
         geneType = conf["geneIdType"]
-        outDir = conf["hubDir"]
-        unitName = conf.get("unit", "TPM")
-        hubUrl = conf.get("hubUrl", "")
-        refHtmlFname = conf.get("refHtml", None)
+
+        if not "unit" in conf:
+            errAbort("For track hubs, the unit of the values in the matrix is important. "
+            "Please specify a value for the 'unit' setting in cellbrowser.conf or hub.conf.")
+
+        unitName = conf.get("unit")
+        hubUrl = conf.get("hubUrl")
+        refHtmlFname = conf.get("refHtmlFile", None)
 
         # use name, shortLabel or hubName from conf
-        hubName = conf.get("hubName", conf.get("shortLabel", conf["name"]))
+        hubName = conf.get("shortLabel", "UCSC single cell track hub, generated by cbHub")
 
-    if options.hubDir:
-        outDir = options.hubDir
+    if not db:
+        errAbort("You need to specify the ucscDb setting in your hub.conf."
+            "A track hub requires at least the name of the UCSC assembly, e.g. 'hg19' or 'mm10'.")
+    if not geneModel:
+        errAbort("You need to specify the geneModel setting in your hub.conf."
+            "A track hub requires a gene model set, e.g. 'gencode28' for hg38.")
+    if email is None:
+        errAbort("A UCSC track hub should include an email address. "
+            "Please specify one in hub.conf with the 'email=' setting or via the CBEMAIL environment variable or with the 'email=' setting in in ~/.cellbrowser.conf")
+
+    outDir = options.outDir
+
     if options.exprMatrix:
         inMatrixFname = options.exprMatrix
     if options.meta:
         metaFname = options.meta
     if options.clusterField:
         clusterFieldName = options.clusterField
-    if options.clusterOrder:
-        clusterOrderFile = options.clusterOrder
-    if options.hubDir:
-        outDir = options.hubDir
+    #if options.clusterOrder:
+        #clusterOrderFile = options.clusterOrder
+    if options.outDir:
+        outDir = options.outDir
     skipBarchart = options.skipBarchart
 
     if not isdir(outDir):
         logging.info("Making %s" % outDir)
         os.makedirs(outDir)
 
-    buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, unitName, email, refHtmlFname, hubUrl, skipBarchart, outDir)
+    stat = options.stat
+    percentile = options.percentile
+
+    buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, stat, percentile, outDir)
 
 def cbHubCli():
     args, options = cbHub_parseArgs()

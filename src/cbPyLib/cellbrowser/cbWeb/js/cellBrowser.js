@@ -949,9 +949,8 @@ var cellbrowser = function() {
 
     function openDatasetDialog(openDsInfo, selName) {
     /* build dataset open dialog, 
-     * - datasetList is the list of all datasets to show on the left, null to hide list
      * - openDsInfo is the currently open object or a collection. 
-     * - openCollection is true to show 'collection' decorations: summary entry, note at the top and back link
+     * - selName is the currently selected dataset in this list
      */
 
         var datasetList = [];
@@ -1142,8 +1141,11 @@ var cellbrowser = function() {
 
         var buttons = [];
         if (db!==null) {
+            var cancelLabel = "Cancel";
+            if (onlyInfo)
+                cancelLabel = "Close";
             buttons.push( {
-                text:"Cancel", 
+                text: cancelLabel, 
                 click: function() { 
                     $( this ).dialog( "close" ); 
                     if (openDsInfo.isCollection)
@@ -1566,7 +1568,8 @@ var cellbrowser = function() {
         }
     }
 
-    function addNewAnnotation(fieldLabel, newMetaValue, cellIds) {              var metaInfo;
+    function addNewAnnotation(fieldLabel, newMetaValue, cellIds) {              
+        var metaInfo;
         let cellCount = db.conf.sampleCount;
         if (!db.getMetaFields()[0].isCustom) {
             // add a new enum meta field
@@ -2372,8 +2375,6 @@ var cellbrowser = function() {
        $('#tpTutorialButton').click( function()  { showIntro(false); } );
        $('#tpAboutButton').click( onAboutClick );
        $('#tpOpenDatasetLink').click( openCurrentDataset );
-       //$('#tpOpenDatasetLink').click( function() { 
-           //openDatasetDialog(db.conf, db.name); } );
        $('#tpSaveImage').click( onSaveAsClick );
        $('#tpSelectAll').click( onSelectAllClick );
        $('#tpSelectNone').click( onSelectNoneClick );
@@ -4007,12 +4008,14 @@ var cellbrowser = function() {
             metaCounts[valIdx].push(valIdx);
 
         var oldSortBy = getFromUrl("SORT");
+        // URL overrides default value
         if (sortBy===undefined && oldSortBy!==undefined)
             sortBy = oldSortBy;
-        if (sortBy===undefined && db.conf.sortBy)
-            sortBy = db.conf.sortBy[metaInfo.label];
-
-        if (sortBy!==undefined && sortBy!=="freq" && sortBy!=="name") {
+        
+        // default sorting can be specfied with "sortBy" in cellbrowser.conf
+        if (sortBy===undefined && metaInfo.sortBy)
+            sortBy = metaInfo.sortBy;
+        if (sortBy!==undefined && sortBy!=="freq" && sortBy!=="name" && sortBy!=="none") {
             alert("sortBy is '"+cleanString(sortBy)+' but it can only be "freq" or "name"');
             sortBy = undefined;
         }
@@ -4040,14 +4043,11 @@ var cellbrowser = function() {
         //var defaultColors = makeColorPalette(countListSorted.length, useGradient);
 
         var rows = [];
-        //var defColIdx = 0;
         var shortLabels = metaInfo.ui.shortLabels;
         var longLabels = metaInfo.ui.longLabels;
         for (var legRowIdx = 0; legRowIdx < countListSorted.length; legRowIdx++) {
             var legRowInfo = countListSorted[legRowIdx];
-            //var label = legRowInfo[0];
             let valIdx = legRowInfo[2]; // index of the original field in fieldInfo
-            //let valIdx = legRowInfo.intKey;
             var label = shortLabels[valIdx];
 
             var desc  = null;
@@ -4345,7 +4345,12 @@ var cellbrowser = function() {
             resizeDivs(true);
 
             if (!db.conf.metaFields) {
-                showCollectionDialog(datasetName);
+                // pablo often has single-dataset installations, there is no need to open the
+                // dataset selection box then.
+                if (db.conf.datasets.length===1 && datasetName==="") // "" is the root dataset
+                    loadDataset(db.conf.datasets[0].name, false);
+                else
+                    showCollectionDialog(datasetName);
                 return;
             }
 
@@ -4358,6 +4363,9 @@ var cellbrowser = function() {
 
             cartLoad(db);
             renderData();
+
+            if (getVar("openDialog"))
+                openDatasetDialog(db.conf, db.name); // open Info dialog
             cartSave(db); // = set the current URL from local storage settings
 
             // start the tutorial after a while
@@ -5202,35 +5210,17 @@ var cellbrowser = function() {
 
     function sortPairsBy(countList, sortBy) {
     /* sort an array in the format [name, count] by either name (using naturalSort) or count */
-    // XX no need anymore to return a dict, just return the list
-        // convert the dict to a list of (count, key)
-        //var countList = [];
-        //var numCount = 0;
-        //var count = null;
-        //var useGradient = false; // use a rainbow or gradient palette?
-        //for (var key in dict) {
-            //count = dict[key];
-            //if (!isNaN(key)) // key looks like a number
-                //numCount++;
-            //countList.push( [count, key] );
-        //}
-
-        // auto-detect: sort list by name if most names are numbers
-        //if ((countList.length >= 4 && numCount >= countList.length-1)) {
-            //if (sortBy===undefined)
-                //sortBy = "name";
-            //useGradient = true;
-        //}
-
         var isSortedByName = null;
 
         if (sortBy==="name") {
             countList.sort(function(a, b) { return naturalSort(a[0], b[0]); });  // I have a feeling that this is very slow...
             isSortedByName = true;
         }
-        else {
+        else if (sortBy=="count") {
             // sort this list by count
             countList = countList.sort(function(a, b){ return b[1] - a[1]; }); // reverse-sort by count
+            isSortedByName = false;
+        } else {
             isSortedByName = false;
         }
 
