@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+
+import argparse, pathlib
+
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Creates blocks of html code for dataset annoucements.")
+parser.add_argument('dataDescFile', type=str, help='Two column \
+file (csv or tsv). Column 1 is dataset name (e.g. cortex-dev). Column 2 is a short \
+description of that dataset (should be a single sentence)')
+args = parser.parse_args()
+
+datasets = dict()
+
+# From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+fileType = pathlib.Path(args.dataDescFile).suffix
+
+dfh = open(args.dataDescFile, 'r')
+
+print("<p>\n<ul>")
+for line in dfh:
+    if fileType == ".csv":
+        splitLine = line.strip().split(",", 1)
+    if fileType == ".tsv":
+        splitLine = line.strip().split("\t", 1)
+    name = splitLine[0]
+    desc = splitLine[1]
+    conf = "/hive/data/inside/cells/datasets/" + name + "/cellbrowser.conf"
+    for cline in open(conf, "r"):
+        if cline.startswith("shortLabel"):
+            cLineSplit = cline.strip().split("=")
+            label = cLineSplit[1].replace('"','')
+            print("  <li><a href='?ds="+name+"' target='_blank'>"+label+"</a> - "+desc)

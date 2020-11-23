@@ -1,0 +1,143 @@
+#! /usr/bin/env python3
+
+import json, sys, operator, argparse
+
+def print_diffs(key, beta_val, test_val):
+    """Print out values for cells-beta and cells-test"""
+    print(key, "\n", "cells-beta:", beta_val, "\n", "cells-test:", test_val)
+
+def process_dict(betaDict, testDict):
+    """Processes a dictionary, printing out differenting values if needed.
+       Or continuing to process if it finds another dictionary."""
+    for key in betaDict.keys():
+        beta_val = betaDict[key]
+        test_val = testDict[key]
+        if isinstance(beta_val, dict):
+            process_dict(beta_val, test_val)
+        else:
+            if beta_val != test_val:
+                print_diffs(key, beta_val, test_val)
+
+# Set up script arguments
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Shows diffs between cells-test and cells-beta.")
+parser.add_argument("-r","--run", action='store_true',
+    help='run script to looks for diffs')
+parser.add_argument("-n","--namesonly", action='store_true',
+    help='Show only names of datasets that have diffs')
+args = parser.parse_args()
+
+def main():
+    """Main function of datasetDiffs. Runs all of the other functions of the program."""
+    # Script only runs if option to run is set via -r/--run
+    if args.run == True:
+        # Open dataset.json on both dev and beta
+        # Hard coded since I don't think you'd ever be able to reasonably compare
+        # two arbitrary hosts or collections of datasets?
+        # Loading them as dictionaries via json.load
+        ctfh =  open("/usr/local/apache/htdocs-cells/dataset.json", "r")
+        # Loading as dictionary via json.load
+        cells_test = json.load(ctfh)
+        cbfh =  open("/usr/local/apache/htdocs-cells-beta/dataset.json", "r")
+        cells_beta = json.load(cbfh)
+
+        # Make some vars for cells-test info:
+        #   - a set of datasets and
+        #   - a dictionary with dataset names as the key and the json file
+        #     for that dataset as the value
+        ct_datasets = set()
+        ct_djson = dict()
+        # Go through datasets on cells-test
+        for dataset in cells_test["datasets"]:
+            dname = dataset["name"]
+            # Save dataset names to a set
+            ct_datasets.add(dname)
+            # Load json for current dataset and save into a dict
+            dpath = "/usr/local/apache/htdocs-cells/" + dname + "/dataset.json"
+            dfh = open(dpath, "r")
+            djson = json.load(dfh)
+            ct_djson[dname] = djson
+
+        # Make some vars for cells-beta info:
+        #   - a set of datasets and
+        #   - a dictionary with dataset names as the key and the json file
+        #     for that dataset as the value
+        cb_datasets = set()
+        cb_djson = dict()
+        for dataset in cells_beta["datasets"]:
+            dname = dataset["name"]
+            cb_datasets.add(dname)
+            dpath = "/usr/local/apache/htdocs-cells-beta/" + dname + "/dataset.json"
+            dfh = open(dpath, "r")
+            djson = json.load(dfh)
+            cb_djson[dname] = djson
+
+        # Print out only datasets on cells-test only
+        dev_only = ct_datasets.difference(cb_datasets)
+        print("Datasets on cells-test only:")
+        print(dev_only,"\n")
+
+        # First pass of processing dicts to find collections and add subdatasets to main dict
+        cb_subdirs = dict()
+        ct_subdirs = dict()
+        for dataset in cb_djson:
+            # Collections have "datasets" somewhere in their keys
+            if "datasets" in cb_djson[dataset].keys():
+                subdirs = cb_djson[dataset]["datasets"]
+                for subdir in subdirs:
+                    subname = subdir["name"]
+                    # Save info about beta version of dataset
+                    bpath = "/usr/local/apache/htdocs-cells-beta/" + dname + "/dataset.json"
+                    bfh = open(bpath, "r")
+                    bjson = json.load(bfh)
+                    cb_subdirs[subname] = bjson
+
+                    # Save info about test version of dataset
+                    tpath = "/usr/local/apache/htdocs-cells/" + dname + "/dataset.json"
+                    tfh = open(tpath, "r")
+                    tjson = json.load(tfh)
+                    ct_subdirs[subname] = tjson
+
+        # Merge these subdir dicts with the main dicts
+        # Syntax from https://stackoverflow.com/questions/38987/how-do-i-merge-two-dictionaries-in-a-single-expression-in-python-taking-union-o
+        cb_djson = {**cb_djson, **cb_subdirs}
+        ct_djson = {**ct_djson, **ct_subdirs}
+
+        # Loop through beta datasets as we want to compare only the datasets currently on 
+        # cells-beta to cells-test to look for diffs
+        for dataset in cb_djson:
+            # Check if the overall dicts are the same for a dataset on test/beta
+            # If not, we'll go through and print out only those values that are different
+            if not operator.eq(ct_djson[dataset], cb_djson[dataset]):
+                # Print dataset name
+                print("\n" + dataset)
+
+                # Script has option to print only names of datasets that have diffs
+                # This whole chunk gets skipped if that's the case
+                if not args.namesonly:
+                    for key in cb_djson[dataset].keys():
+                        # Check if current value is a dict and if so, process that a certain way
+                        if isinstance(cb_djson[dataset][key], dict):
+                            process_dict(cb_djson[dataset][key], ct_djson[dataset][key])
+                        # Otherwise check to see if values for test/beta are different
+                        # and print only the diffs
+                        else: 
+                            beta_val = cb_djson[dataset][key]
+                            test_val = ct_djson[dataset][key]
+                            if beta_val != test_val:
+                                # The value for this keys if often large and bloats the results
+                                # making it difficult to actually see the diffs. Only print a
+                                # message saying this value differs for test/beta.
+                                if key == "metaFields":
+                                    print(key, "beta and test differ")
+                                # Otherwise print out the field that differs and what the values
+                                # are for test/beta
+                                else:
+                                    print_diffs(key, beta_val, test_val)
+    else:
+        print("Script looks for differences between cells-test and cells-beta.\n\nRun script with -r/--run to look for diffs.")
+        exit(1)
+
+if __name__ == "__main__":
+    main()
