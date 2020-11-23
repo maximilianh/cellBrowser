@@ -1,15 +1,15 @@
 # create a track hub from an expression matrix
 
-import subprocess, colorsys
+import subprocess, colorsys, hashlib
 import logging, sys, optparse, re, unicodedata, string, glob, distutils.spawn, gzip
 from collections import defaultdict, namedtuple
-from os.path import join, basename, dirname, isfile, isdir, splitext
+from os.path import join, basename, dirname, isfile, isdir, splitext, abspath
 import os
 
 import sys
 from .cellbrowser import setDebug, lineFileNextRow, getSizesFname, readGeneSymbols, parseGeneLocs
 from .cellbrowser import MatrixTsvReader, runCommand, copyPkgFile, loadConfig, iterItems, getStaticFile
-from .cellbrowser import errAbort, getConfig
+from .cellbrowser import errAbort, getConfig, getAliasFname, makeDir
 
 CBEMAIL = os.getenv("CBEMAIL", None)
 
@@ -53,7 +53,11 @@ def cbHub_parseArgs():
       | - samtools https://github.com/samtools/samtools
       | - wiggletools https://github.com/Ensembl/WiggleTools
       | - intronProspector https://github.com/diekhans/intronProspector
-      | - UCSC tools wigToBigWig, bedToBigBed from http://hgdownload.soe.ucsc.edu/admin/exe/
+      | - UCSC tools wigToBigWig, bedToBigBed, chromToUcsc from http://hgdownload.soe.ucsc.edu/admin/exe/
+      |
+      | To link meta.tsv with bamDir files:
+      | The cellId from meta.tsv will be used to try to find the BAM file in bamDir,
+      | by stripping off .bam and/or using just the file name before the first dot.
     Otherwise:
       - %prog requires bedToBigBed in the current PATH, see http://hgdownload.soe.ucsc.edu/admin/exe/
     """)
@@ -329,7 +333,7 @@ def findProgram(name):
 def writeJobScript(jobFn, cmds):
     " write commands to a shell script with file name "
     jobFh = open(jobFn, "w")
-    logFname = splitext(jobFn)[0]+'.log'
+    logFname = splitext(basename(jobFn))[0]+'.log'
 
     jobFh.write("#!/bin/bash\n")
     jobFh.write("set -e # = abort on error\n")
@@ -528,9 +532,12 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     idReportFname = join(outDir, "metaBamMatch.txt")
     cellCount = writeDebugReport(allMetaCellIds, cellIdToBams, clusterBams, idReportFname)
 
-    jlFh = open("jobList", "w")
+    jobsDir = join(outDir, "jobs")
+    outDir = abspath(outDir)
 
-    #cellCount = 0
+    makeDir(join(jobsDir, "jobs"))
+    jlFh = open(join(jobsDir, "jobList"), "w")
+
     for clusterName, (cellIds, bamFnames) in iterItems(clusterBams):
         uniqueCellIds = set(cellIds)
         #cellCount += len(uniqueCellIds)
@@ -540,6 +547,7 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
     writeParentStanzas(tfh, saneHubName, hubName, cellCount)
 
     chromSizes = getSizesFname(db)
+    aliasTable = getAliasFname(db)
 
     jobNo = 0
     emptyClusterCount = 0
@@ -565,6 +573,8 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
 
         intronProspector = findProgram("intronProspector")
         samtools = findProgram("samtools")
+        bamFnames = [join("..", "..", fn) for fn in bamFnames]
+
         if len(bamFnames)==1:
             # samtools merge aborts if only one input BAM file
             cmd = "cat %s " % (bamFnames[0])
@@ -587,10 +597,10 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
         cmd = "samtools index %s" % outBam
         cmds.append(cmd)
 
-        cmd = """export LC_COLLATE=C; cat %s | awk '($5>1000) {$5=1000;} { OFS="\\t"; print}'  | sort -k1,1 -k2,2n > %s""" % (junctionBed, junctionBedSorted)
+        cmd = """export LC_COLLATE=C; cat %s | awk '($5>1000) {$5=1000;} { OFS="\\t"; print}' | chromToUcsc -a %s | sort -k1,1 -k2,2n > %s""" % (junctionBed, aliasTable, junctionBedSorted)
         cmds.append(cmd)
 
-        cmd = """export LC_COLLATE=C; cat %s | awk '($5>1000) {$5=1000;} { OFS="\\t"; print}' | sort -k1,1 -k2,2n > %s""" % (intronBed, intronBedSorted)
+        cmd = """export LC_COLLATE=C; cat %s | awk '($5>1000) {$5=1000;} { OFS="\\t"; print}' | chromToUcsc -a %s | sort -k1,1 -k2,2n > %s""" % (intronBed, aliasTable, intronBedSorted)
         cmds.append(cmd)
 
         bigBed = findProgram("bedToBigBed")
@@ -610,7 +620,7 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
         outBw = join(outDir, saneClusterName+".bw")
         # fix up the chrom field and the chrom=xxx stepSize fields
         # For wiggle files with Ensembl chrom names, we need UCSC chrom names
-        cmd = wiggletools+ """ coverage %s | awk '($1 ~ /^[0-9XYM]/ && (NF==4)) { if ($1=="MT") {$1="M"}; $1="chr"$1 } ($2 ~ /^chrom=[0-9XYM]/) {split($2,a, "="); if (a[2]=="MT") {a[2]="M"}; $2="chrom=chr"a[2]} // {OFS=" "; print}' > %s""" % (outBam, outWig)
+        cmd = wiggletools+ """ coverage %s | chromToUcsc -a %s > %s""" % (outBam, aliasTable, outWig)
         cmds.append(cmd)
 
         wigToBigWig = findProgram("wigToBigWig")
@@ -622,13 +632,12 @@ def mergeBams(hubName, db, tfh, bamDir, clusterToCells, outDir):
         cmd = "rm -f %s %s %s" % (outWig, intronBedSorted, junctionBedSorted)
         cmds.append(cmd)
 
-        #if False:
         if isfile(outBw):
             logging.info("Not running anything for %s, file %s already exists" % (saneClusterName, outBw))
         else:
-            jobFn = "job-%d.sh" % jobNo
+            jobFn = join(jobsDir, "job-%d.sh" % jobNo)
             writeJobScript(jobFn, cmds)
-            jlFh.write("/bin/bash %s {check out exists %s}\n" % (jobFn, outBw))
+            jlFh.write("/bin/bash %s {check out exists %s}\n" % (basename(jobFn), outBw))
         jobNo+=1
 
         writeTdbStanzas(tfh, clusterName, saneHubName, len(cellIds))
@@ -699,6 +708,10 @@ def sanitizeName(name):
     " remove all nonalpha chars and camel case name "
     newName = to_camel_case(name.replace(" ", "_"))
     newName = ''.join(ch for ch in newName if (ch.isalnum() or ch=="_"))
+    if len(newName)>80: # genome browser is limited to 128 chars
+        md5 = hashlib.md5(newName.encode('utf-8')).hexdigest()[:10]
+        newName = newName[:30]+"_"+newName[-30:]+"_"+md5
+
     return newName
 
 def writeCatFile(clusterToCells, catFname):
@@ -962,8 +975,8 @@ def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFi
 
     bbFname = join(outDir, 'barChart.bb')
     catFname = join(outDir, 'clusters.tsv')
-    if skipBarchart:
-        logging.info("Not creating barChart file, got command line option")
+    if skipBarchart or geneModel is None:
+        logging.info("Not creating barChart file, got command line option or geneModel is None")
     else:
         writeBarChartTdb(tfh, bbFname, clusterOrder, unitName, stat, percentile)
         #if isfile(bbFname):
@@ -992,7 +1005,11 @@ def cbTrackHub(options):
     db, geneModel, email = None, None, None
 
     cbConfFname = join(dirname(options.inConf), "cellbrowser.conf")
-    conf = loadConfig(cbConfFname)
+    if isfile(cbConfFname):
+        logging.info("Initializing configuration from %s" % cbConfFname)
+        conf = loadConfig(cbConfFname)
+    else:
+        conf = {}
 
     if not isfile(options.inConf):
         logging.warn("Could not find a file %s. You can create one with the --init option." % options.inConf)
@@ -1003,7 +1020,7 @@ def cbTrackHub(options):
         db = conf.get("ucscDb")
         email = conf.get("email", CBEMAIL)
 
-        inMatrixFname = conf["exprMatrix"]
+        inMatrixFname = conf.get("exprMatrix", None)
         metaFname = conf["meta"]
         clusterFieldName = conf["clusterField"]
         clusterOrderFile = conf.get("clusterOrder")
@@ -1011,7 +1028,7 @@ def cbTrackHub(options):
 
         fixDot = conf.get("fixDot", False)
 
-        geneType = conf["geneIdType"]
+        geneType = conf.get("geneIdType")
 
         if not "unit" in conf:
             errAbort("For track hubs, the unit of the values in the matrix is important. "
@@ -1019,6 +1036,11 @@ def cbTrackHub(options):
 
         unitName = conf.get("unit")
         hubUrl = conf.get("hubUrl")
+        if not hubUrl:
+            errAbort("For track hubs, the URL to the final hub is important. "
+            "Please specify a value for the 'hubUrl' setting in cellbrowser.conf or hub.conf. "
+            "If you're unsure, set it to a non-existing URL now and update it later, when you know the URL")
+
         refHtmlFname = conf.get("refHtmlFile", None)
 
         # use name, shortLabel or hubName from conf
@@ -1028,8 +1050,8 @@ def cbTrackHub(options):
         errAbort("You need to specify the ucscDb setting in your hub.conf."
             "A track hub requires at least the name of the UCSC assembly, e.g. 'hg19' or 'mm10'.")
     if not geneModel:
-        errAbort("You need to specify the geneModel setting in your hub.conf."
-            "A track hub requires a gene model set, e.g. 'gencode28' for hg38.")
+        logging.warn("You did not specify the geneModel setting in your hub.conf. Example values are 'gencode28' for hg38."
+            "Because no gene -> genome mapping is known, the barchart graph has been deactivated. ")
     if email is None:
         errAbort("A UCSC track hub should include an email address. "
             "Please specify one in hub.conf with the 'email=' setting or via the CBEMAIL environment variable or with the 'email=' setting in in ~/.cellbrowser.conf")

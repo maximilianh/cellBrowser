@@ -514,9 +514,6 @@ def cbScanpy_parseArgs():
     parser.add_option("-c", "--confFname", dest="confFname", action="store", default="scanpy.conf",
             help="config file from which settings are read, default is %default")
 
-    #parser.add_option("", "--inMeta", dest="inMeta", action="store",
-            #help="Existing meta data to read into the scanpy anndata.obs system. A .tsv or .csv file. Use in combination with --inCluster to get marker genes for existing cell type clusters. Can also be set in scanpy.conf.")
-
     parser.add_option("", "--inCluster", dest="inCluster", action="store",
             help="Do not run louvain-clustering, but use this meta field from ad.obs when calculating marker genes. The default is to use the louvain clustering results. Can be specified also in scanpy.conf.")
 
@@ -528,9 +525,6 @@ def cbScanpy_parseArgs():
 
     parser.add_option("-g", "--genome", dest="genome", action="store",
             help="when reading 10X HDF5 files, the genome to read. Default is %default. Use h5ls <h5file> to show possible genomes", default="GRCh38")
-
-    #parser.add_option("-m", "--metaFields", dest="metaFields", action="store",
-            #help="optional list of comma-separated meta-fields to export from the annData object. All fields are exported by default.")
 
     parser.add_option("", "--test",
         dest="test",
@@ -3777,7 +3771,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     readQuickGenes(inConf, geneToSym, datasetDir, outConf)
 
     # a few settings are passed through to the Javascript as they are
-    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc",
+    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc", "geneLabel",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal"]:
@@ -5122,6 +5116,12 @@ def getSizesFname(genome):
     " return chrom.sizes filename for db "
     fname = getStaticFile(join("genomes", genome+".sizes"))
     assert(isfile(fname))
+    return fname
+
+def getAliasFname(genome):
+    " return <db>.chromAlias.tsv filename for db "
+    fname = getStaticFile(join("genomes", genome+".chromAlias.tsv"))
+    assert(isfile(fname)) # try 'chromToUcsc --get <dbName>' or email us so we can add the file
     return fname
 
 def pipeLog(msg):
