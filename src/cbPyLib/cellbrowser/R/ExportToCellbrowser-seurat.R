@@ -200,7 +200,11 @@ ExportToCellbrowser <- function(
   }
 
   if (is.null(cluster.field)) {
-          cluster.field = "Cluster"
+      cluster.field = "Cluster"
+  }
+  else {
+      message("Using meta field ", cluster.field, " as the cell identity class");
+      Idents(object = object) <- cluster.field;
   }
 
   if (is.null(meta.fields)) {
