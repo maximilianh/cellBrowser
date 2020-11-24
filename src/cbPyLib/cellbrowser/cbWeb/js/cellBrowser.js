@@ -3528,7 +3528,7 @@ var cellbrowser = function() {
         gLegend = {};
         gLegend.type = "expr";
         gLegend.rows = legendRows;
-        gLegend.title = "Gene: "+geneSym;
+        gLegend.title = getGeneLabel()+": "+geneSym;
         gLegend.titleHover = geneId;
         gLegend.geneSym = geneSym;
         gLegend.rowType = "range";
@@ -4468,12 +4468,22 @@ var cellbrowser = function() {
         htmls.push('</div>');
     }
 
+    function getGeneLabel() {
+        /* some datasets have data not on genes, but on other things e.g. "lipids". The config can 
+         * define a label for the rows in the expression matrix */
+        var geneLabel = "Gene";
+        if (db.conf.geneLabel)
+            geneLabel = db.conf.geneLabel;
+        return geneLabel;
+    }
+
     function buildGeneCombo(htmls, id, left, width) {
         /* Combobox that allows searching for genes */
         //htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
         htmls.push('<div class="tpToolBarItem" style="padding-left: 3px">');
-        htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">Color by Gene</label>');
-        htmls.push('<select style="width:'+width+'px" id="'+id+'" placeholder="search for gene..." class="tpCombo">');
+        htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">Color by '+getGeneLabel()+'</label>');
+        var geneLabel = getGeneLabel().toLowerCase();
+        htmls.push('<select style="width:'+width+'px" id="'+id+'" placeholder="search for '+geneLabel+'..." class="tpCombo">');
         htmls.push('</select>');
         htmls.push('</div>');
         //htmls.push("<button>Multi-Gene</button>");
@@ -4842,7 +4852,7 @@ var cellbrowser = function() {
         htmls.push("<div id='tpLeftTabs'>");
         htmls.push("<ul>");
         htmls.push("<li><a href='#tpAnnotTab'>Annotation</a></li>");
-        htmls.push("<li><a href='#tpGeneTab'>Gene</a></li>");
+        htmls.push("<li><a href='#tpGeneTab'>"+getGeneLabel()+"</a></li>");
         htmls.push("</ul>");
 
         htmls.push("<div id='tpAnnotTab'>");
@@ -4861,12 +4871,13 @@ var cellbrowser = function() {
 
         buildGeneCombo(htmls, "tpGeneCombo", 0, metaBarWidth-10);
 
-        buildGeneTable(htmls, "tpRecentGenes", "Recent Genes", "Hover or select cells to update colors", gRecentGenes);
+        var geneLabel = getGeneLabel();
+        buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s", "Hover or select cells to update colors", gRecentGenes);
 
         //var myGenes = loadMyGenes();
 
         var noteStr = "No genes defined. Use the setting quickGenesFile in cellbrowser.conf to add a file with gene symbols that will be shown here";
-        buildGeneTable(htmls, "tpGenes", "Dataset Genes", null, db.conf.quickGenes, noteStr);
+        buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr);
 
         htmls.push("</div>"); // tpGeneTab
 
