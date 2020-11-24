@@ -229,13 +229,8 @@ def findCbData():
 
     return dataDir
 
-def downloadStaticFile(remotePath, localPath):
-    " download a file from CBHOMEURL/<remotePath> to localPath "
-    localDir = dirname(localPath)
-    makeDir(localDir)
-
-    remoteUrl = urljoin(CBHOMEURL, remotePath)
-    logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
+def downloadUrlBinary(remoteUrl):
+    " open URL, slurp in all data and return the resulting binary string "
     if sys.version_info >= ( 2, 7, 9 ):
         # newer python versions check the https certificate. It seems that UCSC uses certificates
         # that are not part of the cert database on some linux distributions.
@@ -244,6 +239,24 @@ def downloadStaticFile(remotePath, localPath):
         data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
     else:
         data = urlopen(remoteUrl).read()
+    return data
+
+def downloadUrlLines(url):
+    " open URL, slurp in all data and return a list of the text lines "
+    data = downloadUrlBinary(url)
+    content = gzip.decompress(data)
+    lines = content.splitlines()
+    lines = [l.decode("latin1") for l in lines]
+    return lines
+
+def downloadStaticFile(remotePath, localPath):
+    " download a file from CBHOMEURL/<remotePath> to localPath "
+    localDir = dirname(localPath)
+    makeDir(localDir)
+
+    remoteUrl = urljoin(CBHOMEURL, remotePath)
+    logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
+    data = downloadUrlBinary(remoteUrl)
 
     localTmp = localPath+".download"
     ofh = open(localTmp, "wb")
@@ -251,18 +264,33 @@ def downloadStaticFile(remotePath, localPath):
     ofh.close()
     renameFile(localTmp, localPath)
 
+def getStaticPath(relPath):
+    " return full path to a static file in the dataDir directory "
+    dataDir = findCbData()
+    absPath = join(dataDir, relPath)
+    return absPath
+
 def getStaticFile(relPath):
     """ get the full path to a static file in the dataDir directory (~/cellbrowserData or $CBDATA, by default, see above).
     If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cellbrowserData/<pathParts>
     and copied onto the local disk under dataDir
     """
-    dataDir = findCbData()
-    absPath = join(dataDir, relPath)
+    absPath = getStaticPath(relPath)
     if not isfile(absPath):
         logging.info("%s not found" % absPath)
         downloadStaticFile(relPath, absPath)
 
     return absPath
+
+def getGeneSymPath(geneType):
+    " return rel path to a tsv file with geneId, sym "
+    path = join("genes", geneType+".symbols.tsv.gz")
+    return path
+
+def getGeneBedPath(db, geneType):
+    " return rel path to a tsv file with geneId, sym "
+    path = join("genes", db+"."+geneType+".bed.gz")
+    return path
 
 def openStaticFile(relPath, mode="r"):
     " download static file and return an open file handle to it "
@@ -3434,7 +3462,7 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
     if geneIdType.startswith('symbol'):
         return None
 
-    geneIdTable = getStaticFile(join("genes", geneIdType+".symbols.tsv.gz"))
+    geneIdTable = getStaticFile(getGeneSymPath(geneIdType))
     geneToSym = readGeneToSym(geneIdTable)
 
     if geneIdType=="entrez" and len(geneToSym)<100000:
@@ -3444,6 +3472,17 @@ def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
                 geneIdTable)
 
     return geneToSym
+
+def getSymToGene(geneIdType):
+    " return a dict with symbol -> geneId from our internal system "
+    geneToSym = readGeneSymbols(geneIdType, None)
+    
+    d = {}
+    for key, val in iterItems(geneToSym):
+        if val in d and d[val]!=key:
+            logging.debug("%s symbol is assigned to two gene IDs: %s and %s" % (val, d[val], key))
+        d[val] = key
+    return d
 
 def readMitos(idType):
     ' return the gene IDs of all mitochondrial genes. 37 for human for all gencode versions '

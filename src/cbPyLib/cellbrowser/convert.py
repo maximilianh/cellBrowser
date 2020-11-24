@@ -587,12 +587,12 @@ def cbImportScanpyCli():
     markerField = options.markerField
     clusterField = options.clusterField
 
-    import anndata
     if inFname.endswith(".loom"):
-
         ad = importLoom(inFname)
     else:
+        import anndata
         ad = anndata.read_h5ad(inFname)
+
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
             markerField=markerField, clusterField=clusterField)
     generateHtmls(datasetName, outDir)
