@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+
+import sys, argparse
+import pandas as pd
+
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Transposes a matrix file (csv or tsv), i.e. rows are now columns and vice-versa.")
+parser.add_argument('matFile', type=str, help='A matrix file in csv or tsv format')
+args = parser.parse_args()
+
+# From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+fileType = pathlib.Path(args.matFile).suffix
+
+if fileType == ".csv":
+    df = pd.read_csv(args.matFile,sep=",")
+elif fileType == ".tsv":
+    df = pd.read_csv(args.matFile,sep="\t")
+else:
+    print("metaFile must have tsv or csv file extension")
+    exit(1)
+
+df_t = df.T
+outFname = args.matFile + ".transposed"
+if fileType == ".csv":
+    df_t.to_csv(outFname,sep=',',header=False)
+if fileType == ".tsv":
+    df_t.to_csv(outFname,sep='\t',header=False)

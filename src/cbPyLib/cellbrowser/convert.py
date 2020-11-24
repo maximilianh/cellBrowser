@@ -550,7 +550,7 @@ def importLoom(inFname):
     import anndata
     ad = anndata.read_loom(inFname)
 
-    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"])
+    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"], ["UMAP1","UMAP2"], ['Main_cluster_umap_1', 'Main_cluster_umap_2'])
     obsKeys = getObsKeys(ad)
     foundCoords = False
     for coordKeys in coordKeyList:
