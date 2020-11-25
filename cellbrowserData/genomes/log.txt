@@ -1,2 +1,5 @@
 twoBitInfo /gbdb/mm10/mm10.2bit mm10.sizes
 #wget https://genome.ucsc.edu/goldenpath/help/examples/barChart/barChartBed.as
+cp /hive/data/genomes/dm6/chrom.sizes dm6.sizes
+hgsql micMur3 -NBe 'select * from chromAlias' > micMur3.chromAlias.tsv
+touch mm9.chromAlias.tsv

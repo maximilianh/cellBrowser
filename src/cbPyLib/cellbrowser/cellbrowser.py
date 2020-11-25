@@ -75,7 +75,7 @@ dataDir = None
 defOutDir = None
 
 CBHOMEURL = "https://cells.ucsc.edu/downloads/cellbrowserData/"
-#CBHOMEURL = "http://localhost/downloads/cellbrowserData/"
+CBHOMEURL_TEST = "https://cells-test.gi.ucsc.edu/downloads/cellbrowserData/"
 
 # a special value that is used for both x and y to indicate that the cell should not be shown
 # must match the same value in maxPlot.js
@@ -244,8 +244,9 @@ def downloadUrlBinary(remoteUrl):
 def downloadUrlLines(url):
     " open URL, slurp in all data and return a list of the text lines "
     data = downloadUrlBinary(url)
-    content = gzip.decompress(data)
-    lines = content.splitlines()
+    if url.endswith(".gz"):
+        data = gzip.decompress(data)
+    lines = data.splitlines()
     lines = [l.decode("latin1") for l in lines]
     return lines
 
@@ -254,7 +255,11 @@ def downloadStaticFile(remotePath, localPath):
     localDir = dirname(localPath)
     makeDir(localDir)
 
-    remoteUrl = urljoin(CBHOMEURL, remotePath)
+    cbHomeUrl = CBHOMEURL
+    if getConfig("useTest"):
+        cbHomeUrl = CBHOMEURL_TEST
+
+    remoteUrl = urljoin(cbHomeUrl, remotePath)
     logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
     data = downloadUrlBinary(remoteUrl)
 
@@ -5134,7 +5139,7 @@ def parseGeneLocs(db, geneType):
     return dict with geneId -> list of bedRows
     bedRows have (chrom, start, end, geneId, score, strand)
     """
-    fname = getStaticFile(join("genes", db+"."+geneType+".genes.bed.gz"))
+    fname = getStaticFile(join("genes", db+"."+geneType+".bed.gz"))
     logging.info("Reading gene locations from %s" % fname)
     ret = defaultdict(list)
     for line in openFile(fname):
