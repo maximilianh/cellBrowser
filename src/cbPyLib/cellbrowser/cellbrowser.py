@@ -1354,7 +1354,9 @@ def iterLineOffsets(ifh):
        start = ifh.tell()
 
 def findMtxFiles(fname):
-    " given the name of a .mtx.gz or directory name, find the .mtx.gz, genes/features and barcode files " 
+    """ given the name of a .mtx.gz or directory name, find the .mtx.gz, genes/features and barcode files
+    return three filenames in the order (mtx, genes, barcode)
+    """
     logging.debug("Finding mtx/features/barcode filenames for mtx file %s" % fname)
     if isdir(fname):
         matDir = fname
@@ -2216,15 +2218,11 @@ def readMatrixSampleNames(fname):
 
 def metaReorder(matrixFname, metaFname, fixedMetaFname):
     """ check and reorder the meta data, has to be in the same order as the
-    expression matrix, write to fixedMetaFname. Remove single-value fields. """
+    expression matrix, write to fixedMetaFname. Remove single-value fields from the meta data. """
 
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
     metaSampleNames = readSampleNames(metaFname)
-
-    if matrixFname is not None:
-        matrixSampleNames = readMatrixSampleNames(matrixFname)
-    else:
-        matrixSampleNames=metaSampleNames
+    matrixSampleNames = readMatrixSampleNames(matrixFname)
 
     # check that there is a 1:1 sampleName relationship
     mat = set(matrixSampleNames)
@@ -2243,14 +2241,14 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     stop = False
     mustFilterMatrix = False
     if len(matrixNotMeta)!=0:
-        logging.warn("%d sample names are in the meta data, but not in the expression matrix. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
-        logging.warn("These samples will be removed from the meta data")
+        logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(matrixNotMeta), list(matrixNotMeta)[:10]))
+        logging.warn("These samples will be removed from the expression matrix, if possible")
         matrixSampleNames = [x for x in matrixSampleNames if x in meta]
+        mustFilterMatrix = True
 
     if len(metaNotMatrix)!=0:
-        logging.warn("%d sample names are in the expression matrix, but not in the meta data. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
-        logging.warn("These samples will be removed from the expression matrix. The matrix will need to be filtered.")
-        mustFilterMatrix = True
+        logging.warn("%d sample names are in the meta data, but not in the expression matrix. Examples: %s" % (len(metaNotMatrix), list(metaNotMatrix)[:10]))
+        logging.warn("These samples will be removed from the meta data.")
 
     # filter the meta data file
     logging.info("Data contains %d samples/cells" % len(matrixSampleNames))
@@ -2386,13 +2384,54 @@ def runCommand(cmd, verbose=False):
         errAbort("Could not run: %s" % cmd)
     return 0
 
+def readMtxDims(fname):
+    " return the x,y dimensions of the mtx file "
+    logging.debug("Opening MTX file %s" % fname)
+    headerFound = False
+    for line in openFile(fname):
+        if line.startswith("%%MatrixMarket "):
+            headerFound = True
+            continue
+        if not headerFound:
+            errAbort("The file %s is in MTX format does not start with '%%MatrixMarket'. Please check if the file extension is correct")
+
+        if line.startswith("%"):
+            continue
+
+        rowCount, colCount, entryCount = line.rstrip("\n\r").split()
+        rowCount = int(rowCount)
+        colCount = int(colCount)
+        entryCount = int(entryCount)
+        sparseness = float(entryCount) / (rowCount * colCount)
+        logging.info("MTX file %s: %d rows, %d columns, %d entries - sparseness %f" %
+                (fname, rowCount, colCount, entryCount, sparseness))
+        return rowCount, colCount
+
+def checkMtx(mtxFname, geneFname, barcodeFname):
+    " make sure that the dimensions of the mtx file match the sizes of the barcodes and genes files "
+    logging.debug("Checking %s" % mtxFname)
+    geneCount, cellCount = readMtxDims(mtxFname)
+    geneIds, barcodes = readGenesBarcodes(geneFname, barcodeFname)
+    logging.debug("%d geneIds, %d barcodes" % (len(geneIds), len(barcodes)))
+    if len(geneIds) != geneCount:
+        errAbort("The number of rows in the file %s (%d) is different from the number of lines in the file %s (%d). "
+                "The number should be identical and usually is the number of genes/features. "
+                "This suggests a problem in the way the data was exported. You may want to remove header lines. "
+                % (mtxFname, len(geneIds), geneFname, geneCount))
+    if len(barcodes) != cellCount:
+        errAbort("The number of columns in the file %s is different from the number of lines in the file %s. "
+                "The number should be identical and usually is the number of genes/features. "
+                "This suggests a problem in the way the data was exported. You may want to remove header lines. "
+                % (mtxFname, barcodeFname))
+
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matType):
     """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
     Returns the format of the matrix, "float" or "int", or None if not known
     """
     if isMtx(inFname):
-        fname1, fname2, fname3 = findMtxFiles(inFname)
-        syncFiles([fname1, fname2, fname3], dirname(outFname))
+        mtxFname, geneFname, barcodeFname = findMtxFiles(inFname)
+        checkMtx(mtxFname, geneFname, barcodeFname)
+        syncFiles([mtxFname, geneFname, barcodeFname], dirname(outFname))
         return None
 
     if (not doFilter and not ".csv" in inFname.lower()):
@@ -3175,8 +3214,8 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     if matType=="auto":
         matType = None
 
-    #if isMtx(outMatrixFname):
-        #errAbort("some cell identifiers are in the matrix but not in the meta. Cannot trim .mtx files now, only .tsv. Consider using cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy.")
+    if isMtx(outMatrixFname) and needFilterMatrix:
+            errAbort("Some cell identifiers are in the matrix but not in the meta. trimming .mtx files is not supported, only for the tsv.gz format. Consider using cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy from the expression matrix.")
 
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
@@ -3649,7 +3688,9 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     matrixIsSame = (origSize==nowSize)
 
     if not matrixIsSame:
-        logging.info("input matrix has input file size that is different from previously processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" % (oldMatrixInfo, nowSize))
+        logging.info("input matrix has input file size that is different from previously "
+            "processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" %
+            (oldMatrixInfo, nowSize))
         return True
 
     if not "fileVersions" in outConf:
@@ -3660,8 +3701,6 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     outConf["matrixArrType"] = lastConf["matrixArrType"]
 
     metaSampleNames = readOldSampleNames(datasetDir, lastConf)
-
-    #outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
 
     if isfile(outMatrixFname):
         matrixSampleNames = readMatrixSampleNames(outMatrixFname)
@@ -3796,7 +3835,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     if doMatrix or redo=='matrix':
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
         convertExprMatrix(inConf, outMatrixFname, outConf, sampleNames, geneToSym, datasetDir, needFilterMatrix)
-        # in case script crashes after this, keep the current state of the config
+        # in case we crash after this, keep the current state of the config, as matrix ops are so slow
         writeConfig(inConf, outConf, datasetDir)
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
