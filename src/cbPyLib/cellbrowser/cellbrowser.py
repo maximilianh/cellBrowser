@@ -2424,7 +2424,7 @@ def checkMtx(mtxFname, geneFname, barcodeFname):
                 "This suggests a problem in the way the data was exported. You may want to remove header lines. "
                 % (mtxFname, barcodeFname))
 
-def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matType):
+def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, outConf, matType):
     """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
     Returns the format of the matrix, "float" or "int", or None if not known
     """
@@ -2432,7 +2432,12 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, matT
         mtxFname, geneFname, barcodeFname = findMtxFiles(inFname)
         checkMtx(mtxFname, geneFname, barcodeFname)
         syncFiles([mtxFname, geneFname, barcodeFname], dirname(outFname))
+        outConf["fileVersions"]["inMatrix"] = getFileVersion(mtxFname)
+        outConf["fileVersions"]["barcodes"] = getFileVersion(barcodeFname)
+        outConf["fileVersions"]["features"] = getFileVersion(geneFname)
         return None
+
+    outConf["fileVersions"]["inMatrix"] = getFileVersion(inFname)
 
     if (not doFilter and not ".csv" in inFname.lower()):
         logging.info("Copying/compressing %s to %s" % (inFname, outFname))
@@ -3220,12 +3225,11 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
     matrixFname = getAbsPath(inConf, "exprMatrix")
-    outConf["fileVersions"]["inMatrix"] = getFileVersion(matrixFname)
     try:
-        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, matType)
+        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, outConf, matType)
     except ValueError:
         logging.warn("This is rare: mis-guessed the matrix data type, trying again and using floating point numbers. To avoid this message in the future, you can set matrixType='float' in cellbrowser.conf.")
-        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, "float")
+        matType = copyMatrixTrim(matrixFname, outMatrixFname, metaSampleNames, needFilterMatrix, geneToSym, outConf, "float")
 
     # step2: compress matrix and index to file
     binMat = join(outDir, "exprMatrix.bin")
@@ -3685,11 +3689,23 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     oldMatrixInfo = lastConf["fileVersions"]["inMatrix"]
     origSize = oldMatrixInfo ["size"]
     nowSize = getsize(inMatrixFname)
+
+    # mtx has three files, so have to add their sizes to the total now
+    if isMtx(inMatrix) and "barcodes" in lastConf["fileVersions"]:
+        oldBarInfo = lastConf["fileVersions"]["barcodes"]
+        oldFeatInfo = lastConf["fileVersions"]["features"]
+        origSize += oldBarInfo["size"] + oldFeatInfo["size"]
+        outConf["fileVersions"]["barcodes"] = oldBarInfo
+        outConf["fileVersions"]["features"] = oldFeatInfo
+
+        mtxFname, geneFname, barFname = findMtxFiles(inMatrixFname)
+        nowSize += getsize(geneFname) + getsize(barFname)
+
     matrixIsSame = (origSize==nowSize)
 
     if not matrixIsSame:
         logging.info("input matrix has input file size that is different from previously "
-            "processed matrix, have to reindex the expression matrix. Old file: %s, current file: %d" %
+            "processed matrix. Expression matrix must be reindexed. Old file(s): %s, current file: %d" %
             (oldMatrixInfo, nowSize))
         return True
 
@@ -3702,12 +3718,12 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     metaSampleNames = readOldSampleNames(datasetDir, lastConf)
 
-    if isfile(outMatrixFname):
-        matrixSampleNames = readMatrixSampleNames(outMatrixFname)
-        assert(len(matrixSampleNames)!=0)
-    else:
-        outFeatsName = join(datasetDir, "features.tsv.gz")
-        matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
+    #if isfile(outMatrixFname):
+    matrixSampleNames = readMatrixSampleNames(outMatrixFname)
+    assert(len(matrixSampleNames)!=0)
+    #else:
+    #outFeatsName = join(datasetDir, "features.tsv.gz")
+    #matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
 
     if set(metaSampleNames)!=set(matrixSampleNames):
         logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
@@ -3758,7 +3774,9 @@ def orderClusters(labelCoords, outConf):
     return labelOrder
 
 def metaHasChanged(datasetDir, metaOutFname):
-    " return true if md5 of metaOutFname is different from the one in datasetDir/dataset.json:fileVersions -> outMeta -> md5"
+    """ return true if md5 of metaOutFname is different from the one in
+    datasetDir/dataset.json:fileVersions -> outMeta -> md5"""
+
     oldJsonFname = join(datasetDir, "dataset.json")
     if not isfile(oldJsonFname):
         logging.debug("%s not found, assuming that meta data has to be recreated" % oldJsonFname)
