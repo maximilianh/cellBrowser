@@ -435,6 +435,9 @@ def cbImportSeurat_parseArgs(showHelp=False):
     parser.add_option("-s", "--matrixSlot", dest="matrixSlot", action="store", default="counts",
             help="Export this slot of the matrix. Can be 'counts', 'data.scale' or 'data'. Default is %default")
 
+    parser.add_option("", "--assay", dest="assay", action="store",
+            help="Select the Seurat3 assay to export.")
+
     (options, args) = parser.parse_args()
 
     if showHelp:
@@ -483,6 +486,7 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
     skipMarkers = options.skipMarkers
     clusterField = options.clusterField
     inFormat = options.inFormat
+    assay = options.assay
     markerFile = options.markerFile
     if markerFile is None:
         markerFileStr = "NULL"
@@ -532,6 +536,10 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
     matrixSlot = "counts"
     if options.matrixSlot:
         matrixSlot = options.matrixSlot
+
+    if assay:
+        cmds.append("message('Setting Seurat assay to %s')" % assay)
+        cmds.append("DefaultAssay(sobj) = '%s'" % assay)
 
     cmds.append("message('Exporting Seurat data to %s')" % outDir)
     cmds.append("ExportToCellbrowser(sobj, '%s', '%s', markers.file = %s, cluster.field=%s, skip.expr.matrix = %s, skip.markers = %s, use.mtx=%s, matrix.slot='%s')" %
