@@ -1282,6 +1282,7 @@ var cellbrowser = function() {
 
         htmls.push('<select name="operator" id="tpSelectOperator_'+rowIdx+'">');
         htmls.push('<option value="eq" selected>is equal to</option>');
+        htmls.push('<option value="neq" selected>is not equal to</option>');
         htmls.push('<option value="gt">is greater than</option>');
         htmls.push('<option value="lt">is less than</option>');
         htmls.push('</select>');
@@ -1456,9 +1457,11 @@ var cellbrowser = function() {
     function greaterThan(x, y) { return (x>y); }
     function lessThan(x, y) { return (x<y); }
     function equals(x, y) { return (x===y); }
+    function notequals(x, y) { return (x!==y); }
 
     function getQueryOp(query) {
         if ("eq" in query) return "eq";
+        if ("neq" in query) return "neq";
         if ("gt" in query) return "gt";
         if ("lt" in query) return "lt";
     }
@@ -1475,6 +1478,10 @@ var cellbrowser = function() {
         if ("gt" in query) {
             compFunc = greaterThan;
             val = query["gt"];
+        }
+        if ("neq" in query) {
+            compFunc = notequals;
+            val = query["neq"];
         }
 
         return [compFunc, val];
