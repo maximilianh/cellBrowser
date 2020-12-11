@@ -1,6 +1,6 @@
 # functions to guess the gene model release given a list of gene IDs
 # tested on python3 and python2
-import logging, sys, optparse, string, glob, gzip
+import logging, sys, optparse, string, glob, gzip, json
 from io import StringIO
 #from urllib.request import urlopen
 from urllib.request import Request, urlopen
@@ -9,7 +9,7 @@ from os.path import join, basename, dirname, isfile
 
 from .cellbrowser import sepForFile, getStaticFile, openFile, splitOnce, setDebug, getStaticPath
 from .cellbrowser import getGeneSymPath, downloadUrlLines, getSymToGene, getGeneBedPath, errAbort, iterItems
-from .cellbrowser import findCbData
+from .cellbrowser import findCbData, readGeneSymbols, getGeneJsonPath
 
 # ==== functions =====
 def cbGenes_parseArgs():
@@ -196,7 +196,7 @@ def writeRows(rows, outFname):
     logging.info("Wrote %s" % outFname)
 
 def buildLocusBed(db, geneType):
-    " build a BED file with a 'canonical' transcript for every gene "
+    " build a BED file with a 'canonical' transcript for every gene and a json file for it "
     if geneType.startswith("gencode"):
         release = geneType.split("-")[1]
         rows = iterGencodeBed(db, release)
@@ -205,6 +205,9 @@ def buildLocusBed(db, geneType):
 
     outFname = getStaticPath(getGeneBedPath(db, geneType))
     writeRows(rows, outFname)
+
+    jsonFname = getStaticPath(getGeneJsonPath(db, geneType))
+    bedToJson(db, geneType, jsonFname)
 
 def listModelsLocal():
     " print all gene models on local machine "
@@ -220,6 +223,15 @@ def listModelsLocal():
     names = [basename(x).replace(".bed.gz","") for x in fnames]
     print("Installed gene/location mappings:")
     print("\n".join(names))
+
+def iterBedRows(db, geneIdType):
+    " yield BED rows of gene models of given type "
+    fname = getStaticPath(getGeneBedPath(db, geneIdType))
+    logging.info("Reading BED file %s" % fname)
+    with openFile(fname) as ofh:
+        for line in ofh:
+            row = line.rstrip("\n\r").split("\t")
+            yield row
 
 def parseApacheDir(lines):
     fnames = []
@@ -313,6 +325,41 @@ def uniqueIds(org):
     writeUniqs(uniqSyms, join(dataDir, org+".syms.unique.tsv.gz"))
     writeUniqs(uniqIds, join(dataDir, org+".ids.unique.tsv.gz"))
 
+def bedToJson(db, geneIdType, jsonFname):
+    " convert BED file to more compact json file: chrom -> list of (start, end, strand, gene) "
+    geneToSym = readGeneSymbols(geneIdType)
+
+    # index transcripts by gene
+    bySym = defaultdict(dict)
+    for row in iterBedRows(db, geneIdType):
+        chrom, start, end, geneId, score, strand = row[:6]
+        sym = geneToSym[geneId]
+        start = int(start)
+        end = int(end)
+        transLen = end-start
+        bySym[sym].setdefault(chrom, []).append( (transLen, start, end, strand, geneId) )
+
+    symLocs = defaultdict(list)
+    for sym, chromDict in bySym.items():
+        for chrom, transList in chromDict.items():
+            transList.sort(reverse=True) # take longest transcript per chrom
+            _, start, end, strand, transId = transList[0]
+            symLocs[chrom].append( (start, end, strand, sym) )
+
+    sortedLocs = {}
+    for chrom, geneList in symLocs.items():
+        geneList.sort()
+        sortedLocs[chrom] = geneList
+
+    ofh = open(jsonFname, "wt")
+    outs = json.dumps(sortedLocs)
+    #md5 = hashlib.md5(outs.encode("utf8")).hexdigest()[:10]
+    ofh.write(outs)
+    ofh.close()
+    logging.info("Wrote %s" % jsonFname)
+
+    #fileInfo[code] = {"label":label, "file" : jsonFname, "md5" :md5}
+
 def buildGuessIndex():
     " read all gene model symbol files from the data dir, and output <organism>.unique.tsv.gz "
     dataDir = join(findCbData(), "genes")
@@ -345,6 +392,9 @@ def cbGenesCli():
         listModelsLocal()
     elif command=="index":
         buildGuessIndex()
+    elif command=="json":
+        db, geneType, outFname = args[1:]
+        bedToJson(db, geneType, outFname)
     else:
         errAbort("Unrecognized command: %s" % command)
 

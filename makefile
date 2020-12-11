@@ -10,6 +10,10 @@ static-data:
 
 minisample:
 	cd sampleData && tar cvfz /hive/data/inside/cells/samples/mini.tgz --hard-dereference -T miniFiles.txt 
+
+minify:
+	terser src/cbPyLib/cellbrowser/cbWeb/ext/*.js -o src/cbPyLib/cellbrowser/cbWeb/ext/minified.js
+
 pip:
 	rm -rf build/*
 	rm -rf dist/*

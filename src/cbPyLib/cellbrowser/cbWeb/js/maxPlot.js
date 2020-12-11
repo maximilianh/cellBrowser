@@ -1080,7 +1080,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.scaleData = function() {
        /* scale coords and labels to current zoom range, write results to pxCoords and pxLabels */
-       if (self.coords===null) // window resize can call this before coordinates are loaded.
+       if (!self.coords) // window resize can call this before coordinates are loaded.
            return;
 
        var borderMargin = self.port.radius;
@@ -1160,7 +1160,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
        self.quickResize(width, height);
 
-       self.scaleData();
+       if (self.coords)
+           self.scaleData();
        //clearCanvas(self.ctx, width, height);
        if (doRedraw===undefined || doRedraw===true)
            self.drawDots();

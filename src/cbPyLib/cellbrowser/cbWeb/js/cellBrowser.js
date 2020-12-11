@@ -6,6 +6,9 @@
 /* jshint -W117 */  // don't complain about unknown classes, like Set()
 /* jshint -W104 */  // allow 'const' 
 /* jshint -W069 */  // object access with ["xx"]
+
+/* TODO:
+ * - status bug - reset last expression array when coloring by meta */
  
 "use strict";
 
@@ -204,6 +207,14 @@ var cellbrowser = function() {
         return allKeys;
     }
 
+    function classAddListener(className, type, listener) {
+        /* add an event listener for all elements of a class */
+        var els = document.getElementsByClassName(className);
+        for (let el of els) {
+            el.addEventListener(type, listener);
+        }
+    }
+
     function capitalize(s) {
         return s[0].toUpperCase() + s.slice(1);
     }
@@ -348,10 +359,27 @@ var cellbrowser = function() {
          //$("#tpHideLabels").text(SHOWLABELSNAME);
     }
 
-    function prettyNumber(/*int*/ count) /*str*/ {
+    function prettySeqDist(count) {
+        /* create human-readable string from chrom distance */
+        var f = count;
+        if (Math.abs(count)>1000000) {
+            f = (count / 1000000);
+            return f.toFixed(3)+"Mbp";
+        }
+        if (Math.abs(count)>10000) {
+            f = (count / 1000);
+            return f.toFixed(2)+"kbp";
+        }
+        if (Math.abs(count)>1000) {
+            f = (count / 1000);
+            return f.toFixed(2)+"kbp";
+        }
+        return f;
+    }
+
+    function prettyNumber(/*int*/ count, isBp) /*str*/ {
         /* convert a number to a shorter string, e.g. 1200 -> 1.2k, 1200000 -> 1.2M, etc */
         var f = count;
-
         if (count>1000000) {
             f = (count / 1000000);
             return f.toFixed(1)+"M";
@@ -364,7 +392,6 @@ var cellbrowser = function() {
             f = (count / 1000);
             return f.toFixed(1)+"k";
         }
-
         return f;
     }
 
@@ -1348,7 +1375,7 @@ var cellbrowser = function() {
     }
 
     function connectOneComboboxRow(comboWidth, rowIdx, query) {
-        /* call the jquery inits and setup the change listeners for a combobox row */
+        /* Filter dialog. Call the jquery inits and setup the change listeners for a combobox row */
         /* Yes, a UI framework, like react or angular, would be very helpful here */
 
         // first of all: check if the meta name actually exists in this dataset still
@@ -1365,8 +1392,8 @@ var cellbrowser = function() {
                 "labelField" : 'text',
                 "valueField" : 'id',
                 "searchField" : 'text',
-                "load" : geneComboSearch
-        });
+                "load" : comboLoadGene,
+       });
         activateCombobox("tpSelectMetaCombo_"+rowIdx, comboWidth);
 
         $('#tpSelectRemove_'+rowIdx).click( function(ev) {
@@ -2440,7 +2467,7 @@ var cellbrowser = function() {
        $("#tpToolBar").css("width", rendererWidth+"px");
 
        $("#tpToolBar").css("height", toolBarHeight+"px");
-       $("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       //$("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
        $("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
@@ -2534,6 +2561,10 @@ var cellbrowser = function() {
 
        var metaInfo  = db.findMetaInfo(fieldName);
        console.log("Color by meta field "+fieldName);
+
+       // cbData always keeps the most recent expression array. Reset it now.
+       if (db.lastExprArr)
+           delete db.lastExprArr;
 
        var defaultMetaField = db.getDefaultColorField()[1];
 
@@ -2818,63 +2849,63 @@ var cellbrowser = function() {
     }
 
     function selectizeSetValue(selector, name) {
-            /* little convenience method to set a selective dropdown to a given value. does not trigger the change event. */
+        /* little convenience method to set a selective dropdown to a given
+         * value. does not trigger the change event. */
         if (name===undefined)
             return;
         var sel = $(selector)[0].selectize;
         sel.addOption({id: name, text: name});
-        //sel.refreshOptions();
-        //sel.setTextboxValue(name);
         sel.setValue(name, 1); // 1 = do not fire change
-        //sel.close();
-        // update the <select> element
-        //$(selector).empty();
-        //$(selector).append($('<option>', { value: name, text : name}));
-        //sel.setValue(name, true);
     }
 
-    function loadGeneAndColor(geneSym, onDone) {
-        /* color by a gene, load the array into the renderer and call onDone or just redraw */
+    function colorByLocus(locusStr, onDone) {
+        /* color by a gene or peak, load the array into the renderer and call onDone or just redraw */
         if (onDone===undefined)
             onDone = function() { renderer.drawDots(); };
 
-        function gotGeneVec(exprArr, decArr, geneSym, geneDesc, binInfo) {
+        function gotGeneVec(exprArr, decArr, locusStr, geneDesc, binInfo) {
             /* called when the expression vector has been loaded and binning is done */
             if (decArr===null)
                 return;
-            console.log("Received expression vector, gene "+geneSym+", geneId "+geneDesc);
+            console.log("Received expression vector, for "+locusStr+", desc: "+geneDesc);
             _dump(binInfo);
-            makeLegendExpr(geneSym, geneDesc, binInfo, exprArr, decArr);
+            makeLegendExpr(locusStr, geneDesc, binInfo, exprArr, decArr);
 
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
             buildLegendBar();
             onDone();
 
-            // update the gene combo box
-            selectizeSetValue("#tpGeneCombo", geneSym);
+            // update the URL and possibly the gene combo box
+            if (locusStr.indexOf("|") > -1) {
+                locusStr = peakListSerialize();
+                changeUrl({"locus":locusStr, "meta":null});
+            } else {
+                changeUrl({"gene":locusStr, "meta":null});
+                selectizeSetValue("#tpGeneCombo", locusStr);
+            }
+
 
             // update the "recent genes" div
             for (var i = 0; i < gRecentGenes.length; i++) {
                 // remove previous gene entry with the same symbol
-                if (gRecentGenes[i][0]===geneSym) {
+                if (gRecentGenes[i][0]===locusStr) {
                     gRecentGenes.splice(i, 1);
                     break;
                 }
             }
-            gRecentGenes.unshift([geneSym, geneDesc]); // insert at position 0
+            gRecentGenes.unshift([locusStr, geneDesc]); // insert at position 0
             gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
             buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
             $('#tpRecentGenes .tpGeneBarCell').click( onGeneClick );
         }
 
-        changeUrl({"gene":geneSym, "meta":null});
-        console.log("Loading gene expression vector for "+geneSym);
-
-        db.loadExprAndDiscretize(geneSym, gotGeneVec, onProgress);
-
         // clear the meta combo
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
+
+        console.log("Loading gene expression vector for "+locusStr);
+        db.loadExprAndDiscretize(locusStr, gotGeneVec, onProgress);
+
     }
 
    function gotCoords(coords, info, clusterInfo, newRadius) {
@@ -2887,10 +2918,6 @@ var cellbrowser = function() {
 
        // label text can be overriden by the user cart
        var labelField = db.conf.labelField;
-       //if (labelField) {
-           //var metaInfo = db.findMetaInfo(labelField);
-           //var oldToNew = makeLabelRenames(metaInfo);
-        //}
 
        if (clusterInfo) {
            var origLabels = [];
@@ -2903,8 +2930,7 @@ var cellbrowser = function() {
                var labelInfo = clusterMids[i];
                var oldName = labelInfo[2];
                origLabels.push(oldName);
-               //var newName = oldToNew[oldName];
-               var newName = oldName; // XXX
+               var newName = oldName;
                labelInfo[2] = newName;
            }
            renderer.origLabels = origLabels;
@@ -2936,7 +2962,12 @@ var cellbrowser = function() {
            colorType = "meta";
            colorBy = getVar("meta");
            activateTab("meta");
+       } else if (getVar("locus")!==undefined) {
+           colorType = "locus";
+           colorBy = getVar("locus");
+           activateTab("gene");
        }
+
        gLegend = {};
        if (colorType==="meta") {
            colorByMetaField(colorBy, onDone);
@@ -2951,9 +2982,12 @@ var cellbrowser = function() {
            $('#tpMetaCombo').val(fieldIdx).trigger('chosen:updated');
            $('#tpMetaBox_'+fieldIdx).addClass('tpMetaSelect');
        }
-       else {
-           loadGeneAndColor(colorBy, onDone);
-       }
+       else if (colorType==="locus") {
+           colorByLocus(colorBy, onDone);
+           peakListSetStatus(colorBy);
+       } else
+           // must be gene then
+           colorByLocus(colorBy, onDone);
     }
 
    function makeFullLabel(db) {
@@ -3068,18 +3102,22 @@ var cellbrowser = function() {
 
        colorByDefaultField(doneOnePart);
 
-       // pre-load the config file, as the users will often go directly to the info dialog
-       // and the following pre-loads risk blocking it.
+       if (db.conf.atacSearch)
+           db.loadGeneLocs(db.conf.atacSearch, db.conf.fileVersions.geneLocs);
+       // pre-load the dataset description file, as the users will often go directly to the info dialog
+       // and the following pre-loads risk blocking this load.
        var jsonUrl = cbUtil.joinPaths([db.conf.name, "desc.json"]) +"?"+db.conf.md5;
        fetch(jsonUrl);
 
-       if (db.conf.quickGenes)
-           db.preloadGenes(db.conf.quickGenes, function() { 
-               updateGeneTableColors(null); 
-               if (getVar("heat")==="1")
-                   onHeatClick();
-            }, onProgressConsole);
-       db.preloadAllMeta();
+       if (db.conf.sampleCount < 50000) {
+           if (db.conf.quickGenes)
+               db.preloadGenes(db.conf.quickGenes, function() { 
+                   updateGeneTableColors(null); 
+                   if (getVar("heat")==="1")
+                       onHeatClick();
+                }, onProgressConsole);
+           db.preloadAllMeta();
+        }
     }
 
     function onTransClick(ev) {
@@ -3583,7 +3621,7 @@ var cellbrowser = function() {
         if (geneSym===null)
             geneSym = alphaNumSearch(gRecentGenes, saneSym);
 
-        loadGeneAndColor(geneSym);
+        colorByLocus(geneSym);
         event.stopPropagation();
     }
 
@@ -3861,7 +3899,7 @@ var cellbrowser = function() {
 
         if (geneInfos===undefined || geneInfos===null || geneInfos.length===0) {
             if (noteStr!==undefined)
-                htmls.push(noteStr);
+                htmls.push("<div style='font-style:80%'>"+noteStr+"</div>");
             htmls.push("</div>");
             return;
         }
@@ -4300,14 +4338,18 @@ var cellbrowser = function() {
         removeFocus();
     }
 
-    function onGeneChange(ev) {
+    function onGeneComboChange(ev) {
         /* user changed the gene in the combobox */
         var geneSym = ev.target.value;
         if (geneSym==="")
             return; // do nothing if user just deleted the current gene
-        //$('#tpGeneCombo')[0].selectize.close();
-        loadGeneAndColor(geneSym);
-        //$(this).blur(); // remove focus
+        alert("onChange event");
+        //if (db.conf.atacSearch) {
+            //var inView = db.findRangesByGene(geneSym);
+            //peakListShowTitle(geneSym, inView.pos);
+            //peakListShowRanges(geneSym, inView.ranges);
+        //} else
+            colorByLocus(geneSym);
     }
 
     function onMetaComboChange(ev, choice) {
@@ -4393,6 +4435,7 @@ var cellbrowser = function() {
         removeSplit();
 
         db = new CbDbFile(datasetName);
+        cellbrowser.db = db; // easier debugging
 
         var vars;
         if (resetVars)
@@ -4479,6 +4522,8 @@ var cellbrowser = function() {
         /* some datasets have data not on genes, but on other things e.g. "lipids". The config can 
          * define a label for the rows in the expression matrix */
         var geneLabel = "Gene";
+        if (db.conf.atacSearch)
+            geneLabel = "Range";
         if (db.conf.geneLabel)
             geneLabel = db.conf.geneLabel;
         return geneLabel;
@@ -4486,11 +4531,16 @@ var cellbrowser = function() {
 
     function buildGeneCombo(htmls, id, left, width) {
         /* Combobox that allows searching for genes */
-        //htmls.push('<div class="tpToolBarItem" style="position:absolute;left:'+left+'px;top:'+toolBarComboTop+'px">');
         htmls.push('<div class="tpToolBarItem" style="padding-left: 3px">');
-        htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">Color by '+getGeneLabel()+'</label>');
+        var title = "Color by "+getGeneLabel();
+        if (db.conf.atacSearch)
+            title = "Find ranges at or close to:"
+        htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">'+title+'</label>');
         var geneLabel = getGeneLabel().toLowerCase();
-        htmls.push('<select style="width:'+width+'px" id="'+id+'" placeholder="search for '+geneLabel+'..." class="tpCombo">');
+        var boxLabel = 'search for '+geneLabel+'...';
+        if (db.conf.atacSearch)
+            boxLabel = "enter gene or chrom:start-end";
+        htmls.push('<select style="width:'+width+'px" id="'+id+'" placeholder="'+boxLabel+'" class="tpCombo">');
         htmls.push('</select>');
         htmls.push('</div>');
         //htmls.push("<button>Multi-Gene</button>");
@@ -4521,18 +4571,206 @@ var cellbrowser = function() {
         $("#"+id).trigger("chosen:updated");
     }
 
-    function geneComboSearch(query, callback) {
-        /* called when the user types something into the gene box, returns matching gene symbols */
+    /* ----- PEAK LIST START ----- */
+
+    function buildPeakList(htmls) {
+        /* add a container for the list of peaks to htmls */
+        htmls.push("<div id='tpPeakListTitle'>Peaks found</div>");
+        htmls.push("<div id='tpPeakList' style='height: 30%'>");
+            htmls.push("<span id='noPeaks'>No active genes or ranges</span>");
+        htmls.push("</div>");
+        htmls.push("<div id='tpPeakListSelector'>");
+        //htmls.push("<input id='tpPeakListAuto' style='margin-right: 3px' type='checkbox' checked>");
+        htmls.push("<label for='tpPeakListAuto' style='display:inline; font-weight:normal'>Select ");
+            htmls.push("<input id='tpPeakListAutoDist' style='width:2em; height:1.3em; margin-right: 0.3em' type='text' value='2'>");
+            htmls.push("kbp upstream</input>");
+            htmls.push("<button id='tpPeakListAutoApply' style='float:right; margin-top: 2px'>Apply</button>");
+        htmls.push("</label>");
+        htmls.push("</div>");
+    }
+
+    function peakListShowTitle(sym, chrom, start) {
+        /* update the peak list box title */
+        var el = document.getElementById("tpPeakListTitle");
+        el.innerHTML = "<b>"+sym+"</b>, TSS at <span id='tpTss'>"+chrom+":"+start+"</span>";
+    }
+
+    function peakListSetStatus(str) {
+        /* given a string like "chr1|1000|2000+chr2|3000|4000" set the corresponding checkboxes */
+        if (!db.conf.atacSearch)
+            return;
+        let activePeaks = str.split("+");
+        let inEls = document.querySelectorAll(".tpPeak > input");
+        for (let el of inEls) {
+            let parts = el.id.split(":");
+            let peakId = parts[1]+"|"+parts[2]+"|"+parts[3];
+            el.checked = (activeRanges.includes(peakId));
+        }
+    }
+
+    function peakListStatus(status) {
+        /* return array of objects , e.g. [ {chrom:"chr1", start:1000, end:2000, dist:-70000, el:<domObject>} ]
+         * status can be "on" or "off" = will only return ranges that are checked or unchecked.
+         * */
+        let ranges = [];
+        let inEls = document.querySelectorAll(".tpPeak > input");
+        for (let el of inEls) {
+            if (status==="on" && !el.checked)
+                continue;
+            else if (status==="off" && el.checked)
+                continue;
+            let parts = el.id.split(":");
+            ranges.push({"chrom":parts[1], start:parseInt(parts[2]), end:parseInt(parts[3]), dist:parseInt(parts[4]), "el":el})
+        }
+        return ranges;
+    }
+
+    function peakListSerialize() {
+        /* return a summary of all currently selected peaks, e.g. "chr1|1000|2000+chr2|3000|4000" */
+        let ranges = [];
+        for (let r of peakListStatus("on")) {
+            let locusId = r.chrom+"|"+r.start+"|"+r.end;
+            ranges.push(locusId);
+        }
+        return ranges.join("+");
+    }
+
+    function onPeakChange(ev) {
+        /* user checks or unchecks a peak */
+        let el = ev.currentTarget.firstChild; // user may have clicked the label
+        var isChecked = el.checked;
+        var peakInfos = el.id.split(":");
+        let chrom = peakInfos[1];
+        let start = peakInfos[2];
+        let end = peakInfos[3];
+        let prefix = "+";
+        if (!isChecked)
+            prefix = "-";
+        let rangeStr = prefix+chrom+"|"+start+"|"+end;
+        colorByLocus(rangeStr);
+    }
+
+    function peakListShowRanges(chrom, foundRanges, searchStart) {
+        var htmls = [];
+        var i = 0;
+        for (let rangeInfo of foundRanges) {
+            let foundStart = rangeInfo[0]; 
+            let foundEnd = rangeInfo[1];
+            //let label = chrom+":"+foundStart+"-"+foundEnd;
+            let dist = foundStart-searchStart;
+            let label = prettySeqDist(dist);
+            let regLen = foundEnd-foundStart;
+            if (regLen!==0)
+                label += " / "+(foundEnd-foundStart)+" bp";
+            let checkBoxId = "range:"+chrom+":"+foundStart+":"+foundEnd+":"+dist;
+            htmls.push("<div class='tpPeak'>");
+            htmls.push("<input style='margin-right: 4px' id='"+checkBoxId+"' type='checkbox'>");
+            htmls.push("<label for='"+checkBoxId+"'>"+label+"</label>");
+            htmls.push("</div>");
+            i++;
+        }
+        var divEl = document.getElementById("tpPeakList");
+        divEl.innerHTML = htmls.join(""); // set the DIV
+
+        classAddListener("tpPeak", "input", onPeakChange);
+    }
+
+    function onPeakAutoApply(ev) {
+        /* select all peaks that are closer than the distance in #tpPeakListAutoDist */
+        let maxDistStr = document.getElementById("tpPeakListAutoDist").value;
+        let maxDist = parseInt(maxDistStr);
+        if (isNaN(maxDist)) {
+            alert(maxDistStr+" is not a number");
+            return;
+        }
+        if (maxDist > 2000) {
+            alert("The distance filter is too high: "+maxDistStr+". It cannot be larger than 2000, = 2Mbp. If you think this is too restrictive, please contact us.");
+            return;
+        }
+        maxDist = -1*maxDist*1000; // needs to be negative
+
+        let addPeaks = [];
+        let peaks = peakListStatus("off");
+        for (let p of peaks) {
+            let dist = p.dist;
+            if (dist < 0 && dist > maxDist) {
+                addPeaks.push(p.chrom+"|"+p.start+"|"+p.end);
+                p.el.checked = true;
+            }
+        }
+
+        if (addPeaks.length===0) {
+            alert("No peaks are at "+maxDist+" bp relative to the TSS");
+            return;
+        }
+
+        let loadStr = addPeaks.join("+")
+
+        colorByLocus(loadStr);
+    }
+
+    /* ----- PEAK LIST END ----- */
+
+    function selectizeSendGenes(arr, callback) {
+        /* given an array of strings s, return an array of objects with id=s and call callback with it.*/
+        let foundArr = [];
+        for (let a of arr) {
+            foundArr.push( {"id": a, "text": a} );
+        }
+        callback(foundArr);
+    }
+
+    function comboLoadGene(query, callback) {
+        /* The load() function for selectize for genes.
+         * called when the user types something into the gene box, returns matching gene symbols */
+        if (!query.length)
+            return callback();
+        var genes = db.findGenesByPrefix(query.toLowerCase());
+        selectizeSendGenes(genes, callback);
+    }
+
+    function comboLoadAtac(query, callback) {
+        /* The load() function for selectize for ATAC datasets.
+         * called when the user types something into the gene box, returns matching gene symbols */
         if (!query.length)
             return callback();
 
-        //var geneList = [];
+        this.clearOptions();  
+        this.renderCache = {};
 
-        //for (var geneSym in db.getGenes()) {
-            //if (geneSym.toLowerCase().startsWith(query.toLowerCase()))
-                //geneList.push({"id":geneSym, "text":geneSym});
-        //}
-        db.searchGenes(query.toLowerCase(), callback);
+        var range = cbUtil.parseRange(query);
+        if (range===null) {
+            if (!db.geneToTss)
+                db.indexGenes();
+            var syms = db.findGenesByPrefix(query);
+            if (syms.length === 0) 
+                return;
+
+            if (syms.length > 1) 
+                selectizeSendGenes(syms, callback);
+            else {
+                var sym = syms[0];
+                var peaksInView = db.findRangesByGene(sym);
+                var geneTss = db.geneToTss[sym];
+                var geneChrom = geneTss[0];
+                var geneStart = geneTss[1];
+                peakListShowTitle(sym, geneChrom, geneStart);
+                peakListShowRanges(geneChrom, peaksInView.ranges, geneStart);
+            }
+        } else {
+            // user entered a range e.g. chr1:0-190k or chr1:1m-2m
+            let searchStart = range.start;
+            let searchEnd = range.end;
+            let foundRanges = db.findRangesByPos(range.chrom, searchStart, searchEnd);
+            peakListShowRanges(foundRanges, searchStart);
+        }
+    }
+
+    function comboRender(item, escape) {
+        if (item.dist)
+            return '<div style="display:block">'+escape(item.text)+'<div style="text-color: darkgrey; font-size:80%;float:right">+'+prettyNumber(item.dist, "bp")+'</div>';
+        else
+            return '<div>'+escape(item.text)+'</div>';
     }
 
     function arrayBufferToString(buf, callback) {
@@ -4735,16 +4973,39 @@ var cellbrowser = function() {
             });
         }
 
+        // selective gene or ATAC Color by search box
+        var comboLoad = comboLoadGene;
+        if (db.conf.atacSearch) {
+            comboLoad = comboLoadAtac;
+            document.getElementById("tpPeakListAutoApply").addEventListener("click", onPeakAutoApply);
+        }
+
+        // This is a hack to deactivate the "sifter" functionality of selectize.
+        // It turns out that selectize is a very bad dropdown choice for us,
+        // as it makes a strong assumption that matching is done on a keyword basis
+        // which is not true for chrom ranges.
+        // https://gist.github.com/rhyzx/2281e8d1662b7be21716
+        Selectize.prototype.search = function (query) { 
+            return {
+                query: query,
+                tokens: [], // disable highlight
+                items: $.map(this.options, function (item, key) {
+                    return {id: key}
+                })
+            }
+        };
+
         var select = $('#tpGeneCombo').selectize({
                 maxItems: 1,
                 valueField : 'id',
                 labelField : 'text',
                 searchField : 'text',
                 closeAfterSelect: true,
-                load : geneComboSearch
+                load : comboLoad,
+                render : {option : comboRender }
         });
-        select.on("change", onGeneChange);
-        //$('#tpGeneCombo').change(onGeneChange);
+
+        select.on("change", onGeneComboChange);
 
         $('#tpCollectionCombo').change(onDatasetChange);
         // update the combobox, select the right dataset
@@ -4877,6 +5138,9 @@ var cellbrowser = function() {
         htmls.push("<div id='tpGeneTab'>");
 
         buildGeneCombo(htmls, "tpGeneCombo", 0, metaBarWidth-10);
+        
+        if (db.conf.atacSearch)
+            buildPeakList(htmls);
 
         var geneLabel = getGeneLabel();
         buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s", "Hover or select cells to update colors", gRecentGenes);
@@ -6073,7 +6337,7 @@ var cellbrowser = function() {
 
     function onHeatCellClick(geneName, clusterName) {
         /* color by gene and select all cells in cluster */
-        loadGeneAndColor(geneName);
+        colorByLocus(geneName);
         // clusterName?
         selectByColor
     }
@@ -6427,7 +6691,7 @@ var cellbrowser = function() {
                         //changeUrl({'select':JSON.stringify(queryList)});
                 });
             }
-            loadGeneAndColor(geneSym);
+            colorByLocus(geneSym);
         }
         // ----
 

@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime, keyword, itertools, os.path
+import hashlib, timeit, datetime, keyword, itertools, os.path, urllib
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -276,8 +276,10 @@ def getStaticPath(relPath):
     return absPath
 
 def getStaticFile(relPath):
-    """ get the full path to a static file in the dataDir directory (~/cellbrowserData or $CBDATA, by default, see above).
-    If the file is not present, it will be downloaded from https://cells.ucsc.edu/downloads/cellbrowserData/<pathParts>
+    """ get the full path to a static file in the dataDir directory
+    (~/cellbrowserData or $CBDATA, by default, see above).  If the file is not
+    present, it will be downloaded from
+    https://cells.ucsc.edu/downloads/cellbrowserData/<pathParts>
     and copied onto the local disk under dataDir
     """
     absPath = getStaticPath(relPath)
@@ -295,6 +297,11 @@ def getGeneSymPath(geneType):
 def getGeneBedPath(db, geneType):
     " return rel path to a tsv file with geneId, sym "
     path = join("genes", db+"."+geneType+".bed.gz")
+    return path
+
+def getGeneJsonPath(db, geneType):
+    " return rel path to a json.gz file with chrom -> list of (start, end, strand, symbol) "
+    path = join("genes", db+"."+geneType+".json")
     return path
 
 def openStaticFile(relPath, mode="r"):
@@ -1909,7 +1916,31 @@ def exprEncode(geneDesc, exprArr, matType):
     logging.debug("raw - compression factor of %s: %f, before %d, after %d"% (geneDesc, fact, len(geneStr), len(geneCompr)))
     return geneCompr, minVal
 
-def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, metaSampleNames, matType=None):
+def indexByChrom(exprIndex):
+    """ given a dict with name -> (offset, len) and name being a string of chrom:start-end,
+    reformat the dict to one with chrom -> [ [start, end, offset, len], ... ] and return it.
+    The positions are sorted.
+    """
+    byChrom = defaultdict(list)
+    for chromRange, (offs, dataLen) in iterItems(exprIndex):
+        # chromRange can be in format chr:start-end or chr_start_end
+        if ":" in chromRange:
+            chrom, startEnd = chromRange.split(":")
+            start, end = startEnd.split("-")
+        else:
+            chrom, start, end = chromRange.split("_")
+
+        start = int(start)
+        end = int(end)
+        byChrom[chrom].append( (start, end, offs, dataLen) )
+
+    # sort by start
+    for chrom, posArr in iterItems(byChrom):
+        posArr.sort()
+
+    return dict(byChrom)
+
+def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJsonFname, metaSampleNames, matType=None, genesAreRanges=False):
     """ convert gene expression vectors to vectors of deciles
         and make json gene symbol -> (file offset, line length)
     """
@@ -1935,7 +1966,6 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         matReader = MatrixTsvReader(geneToSym)
 
     matReader.open(fname, matType=matType)
-
 
     if matType is None:
         matType = matReader.getMatType()
@@ -1970,8 +2000,8 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
                     "The gene ID must be in the first column and "
                     "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % sym)
 
-        #if maxVal(exprArr) > 200:
-            #highCount += 1
+        if maxVal(exprArr) > 100:
+            highCount += 1
 
         logging.debug("Processing %s, symbol %s" % (geneId, sym))
         # filter the row down to the meta-samples
@@ -1993,10 +2023,12 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     discretOfh.close()
     ofh.close()
 
-    #if highCount==0:
-        #logging.warn("No single value in the matrix is > 200. It looks like this matrix has been log'ed before. Our recommendation for visual inspection is to not transform matrices, but that is of course up to you.")
-        #logging.error("Rerun with --skipLog.")
-        #sys.exit(1)
+    if genesAreRanges:
+        exprIndex = indexByChrom(exprIndex)
+
+    if highCount==0:
+        logging.warn("No single value in the matrix is > 100. It looks like this "
+        "matrix has been log'ed. Our recommendation for visual inspection is to not transform matrices")
 
     if len(exprIndex)==0:
         errAbort("No genes from the expression matrix could be mapped to symbols."
@@ -2223,6 +2255,9 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
     logging.info("Checking and reordering meta data to %s" % fixedMetaFname)
     metaSampleNames = readSampleNames(metaFname)
     matrixSampleNames = readMatrixSampleNames(matrixFname)
+
+    if len(matrixSampleNames)==0:
+        errAbort("Could not read a single sample name from the matrix. Internal error")
 
     # check that there is a 1:1 sampleName relationship
     mat = set(matrixSampleNames)
@@ -3237,7 +3272,8 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType)
+    genesAreRanges = inConf["atacSearch"]
+    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
 
     # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
     if matType=="int" or matType=="forceInt":
@@ -3501,7 +3537,7 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
 
     return sampleNames, needFilterMatrix
 
-def readGeneSymbols(geneIdType, matrixFnameOrGeneIds):
+def readGeneSymbols(geneIdType, matrixFnameOrGeneIds=None):
     " return geneToSym, based on gene tables "
     logging.debug("Reading gene symbols, geneIdType %s, example list of symbols: %s" % (geneIdType, matrixFnameOrGeneIds))
     if geneIdType==None or geneIdType=="auto":
@@ -3691,7 +3727,7 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
     nowSize = getsize(inMatrixFname)
 
     # mtx has three files, so have to add their sizes to the total now
-    if isMtx(inMatrix) and "barcodes" in lastConf["fileVersions"]:
+    if isMtx(inMatrixFname) and "barcodes" in lastConf["fileVersions"]:
         oldBarInfo = lastConf["fileVersions"]["barcodes"]
         oldFeatInfo = lastConf["fileVersions"]["features"]
         origSize += oldBarInfo["size"] + oldFeatInfo["size"]
@@ -3812,10 +3848,33 @@ def checkConfig(inConf):
         errAbort("whitespace or slashes in the dataset 'name' in cellbrowser.conf are not allowed")
 
 
+def copyGenes(inConf, outConf, outDir):
+    " handle the ATAC closest-gene search - copy a json.gz file to datasetDir/genes "
+    if not "atacSearch" in inConf:
+        return
+    geneDir = join(outDir, "genes")
+    makeDir(geneDir)
+    dbGene = inConf["atacSearch"]
+    db, geneIdType = dbGene.split(".")
+
+    try:
+        inFname = getStaticFile(getGeneJsonPath(db, geneIdType))
+    except urllib.error.HTTPError as e:
+        errAbort("The gene model file %s could not be found on the UCSC cell browser downloads server. "
+                "This means that at UCSC we do not have a prebuilt gene model file for this genome assembly "
+                "with this name. Check if this name is indeed in the format <assembly>.<geneIdName>, "
+                "then you can either contact us or use cbGenes to build the file yourself. " % dbGene)
+
+    syncFiles([inFname], geneDir)
+    #outFname = join(geneDir, getGeneJsonPath(db, geneIdType).replace(".gz", ""))
+    #open(outFname, "wb").write(gzip.open(inFname).read())
+    outConf["fileVersions"]["geneLocs"] = getFileVersion(inFname)
+    outConf["atacSearch"] = inConf["atacSearch"]
+
 def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     """ convert everything needed for a dataset to datasetDir, write config to outConf.
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
-    it won't be converted again.
+    the matrix won't be converted again, which saves a lot of time.
     """
     checkConfig(inConf)
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
@@ -3861,8 +3920,6 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
     foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles, outMatrixFname)
-    #if not foundConf:
-        #copyDatasetHtmls(inConf["inDir"], outConf, datasetDir)
 
     if geneToSym==-1:
         geneToSym = readGeneSymbols(inConf.get("geneIdType"), inMatrixFname)
@@ -3877,7 +3934,6 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal"]:
         copyConf(inConf, outConf, tag)
-
 
 def writeAnndataCoords(anndata, coordFields, outDir, desc):
     " write all embedding coordinates from anndata object to outDir, the new filename is <coordName>_coords.tsv "
@@ -4478,6 +4534,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             todoConfigs.add(inPath)
         else:
             convertDataset(inDir, inConf, outConf, datasetDir, redo)
+            copyGenes(inConf, outConf, outDir)
 
         # find all parent cellbrowser.conf-files
         if dataRoot is None:
@@ -5902,6 +5959,7 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
     tmpFname = outFname+".tmp"
     # could not find a cross-python way to open ofh for np.savetxt
     # see https://github.com/maximilianh/cellBrowser/issues/73 and numpy ticket referenced therein
+    logging.info("Writing %s" % tmpFname)
     if isPy3:
         ofh = open(tmpFname, "w")
     else:

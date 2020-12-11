@@ -33,6 +33,51 @@ var cbUtil = (function () {
         return allKeys;
     };
 
+    my.parseRange = function(chromPos) {
+        /* parse a string of the format chrom:start-end and return as obj with chrom, start, end 
+         * Tolerates commas and knows about "k" and "m" suffixes".
+         * */
+        if (!chromPos.match(/[a-zA-Z0-9_-]+:[0-9,km]+-[0-9,km]+/))
+            return null;
+        var chromPosArr = chromPos.split(":");
+        var chrom = chromPosArr[0];
+        var startEnd = chromPosArr[1].split("-");
+        var startStr = startEnd[0];
+        var endStr = startEnd[1];
+        startStr = startStr.replace(",", "").replace("k", "000").replace("m", "000000");
+        endStr = endStr.replace(",", "").replace("k", "000").replace("m", "000000");
+
+        var ret = {};
+        ret.chrom = chrom;
+        ret.start = parseInt(startStr);
+        ret.end = parseInt(endStr);
+        return ret;
+    }
+
+    my.rangeToStr = function (o) {
+        /* convert a range object back to a string */
+        return o.chrom+":"+o.start+"-"+o.end;
+    }
+
+    my.rangesToChunks = function(ranges) {
+        /* given an array of [start, end, name], put adjacent elements into separate arrays 
+         * called chunks, e.g. [  [ [1, 10, "name1"], [10, 20, "name2"] ], [ [30, 40, "name3"] ] ] */
+        let chunks = [];
+        let chunk = [ranges[0]];
+        for (let i=1; i < ranges.length; i++) {
+            let left = ranges[i-1];
+            let right = ranges[i];
+            if (left[1] === right[0])
+                chunk.push(right)
+            else {
+                chunks.push(chunk);
+                chunk = [right];
+            }
+        }
+        chunks.push(chunk);
+        return chunks;
+    }
+
     my.loadJson = function(url, onSuccess, silent) {
     /* load json file from url and run onSuccess when done. Alert if it doesn't work. */
         var req = jQuery.ajax({
@@ -156,9 +201,6 @@ var cbUtil = (function () {
             }
         }
 
-        //if (url.endsWith(".gz"))
-            //binData = pako.ungzip(binData);
-
         if (this._arrType) {
             if (this._arrType==="comprText") {
                 var arr = pako.ungzip(binData);
@@ -223,6 +265,24 @@ var cbUtil = (function () {
         return found;
     };
 
+    my.arrAdd = function (a, b) {
+        /* add array b to array a, modifying a in place. Return a. */
+        if (a.length !== b.length)
+            alert("cbUtil.arrAdd: input arrays must have same size");
+        for (var i=0; i < a.length; i++) 
+            a[i] = a[i]+b[i];
+        return a;
+    };
+
+    my.arrSub = function (a, b) {
+        /* substract array b from array a, modifying a in place. Return a. */
+        if (a.length !== b.length)
+            alert("cbUtil.arrAdd: input arrays must have same size");
+        for (var i=0; i < a.length; i++) 
+            a[i] = a[i]-b[i];
+        return a;
+    };
+
     my.baReadOffset = function(ba, o) {
     /* given a byte array, return the long int (little endian) at offset o */
         var offset = ba[o] |  ba[o+1] << 8 | ba[o+2] << 16 | ba[o+3] << 24;
@@ -250,7 +310,7 @@ function CbDbFile(url) {
 
     self.name = url;
     self.url = url;
-    self.geneOffsets = null;
+    self.geneOffsets = null; // object with gene -> [offset in file, data size in bytes]
     self.exprBinCount = 10; 
 
     self.exprCache = {}; // cached compressed expression arrays
@@ -270,8 +330,11 @@ function CbDbFile(url) {
         var doneCount = 0;
         function gotOneFile() {
             doneCount++;
-            if (doneCount===2)
+            if (doneCount===2) {
+                if (self.atacSearch)
+                    self.indexRanges();
                 onDone(self.name);
+            }
         }
 
         // load config and call onDone
@@ -392,7 +455,8 @@ function CbDbFile(url) {
                 }
                 catch(err) {
                     alert("Error when decompressing a file. This has to do with your Apache config or your "+
-                             " internet browser. Please contact cells@ucsc.edu, we can help you solve this. "+err);
+                             " internet browser and incorrect compresssion http headers. "+
+                             "Please contact cells@ucsc.edu, we can help you solve this. "+err);
                 }
             }
 
@@ -400,7 +464,9 @@ function CbDbFile(url) {
             var arr = new ArrType(buffer);
             if (metaInfo.arrType==="float32") {
                 // numeric arrays have to be binned on the client. They are always floats.
+                console.time("discretize "+metaInfo.name);
                 var discRes = discretizeArray(arr, self.exprBinCount, FLOATNAN);
+                console.timeEnd("discretize "+metaInfo.name);
                 metaInfo.origVals = arr; // keep original values, so we can later query for them
                 arr = discRes.dArr;
                 metaInfo.binInfo = discRes.binInfo;
@@ -426,35 +492,6 @@ function CbDbFile(url) {
             self._startMetaLoad(metaInfo, null, onMetaDone, onProgress, metaInfo);
             return;
         }
-    };
-
-    this.loadMetaForCell = function(cellIdx, onDone, onProgress) {
-    /* for a given cell, call onDone with an array of the metadata values, as strings. */
-        // first we need to lookup the offset of the line and its length from the index
-        var url = cbUtil.joinPaths([self.url, "meta.index"]);
-        var start = (cellIdx*6); // four bytes for the offset + 2 bytes for the line length
-        var end   = start+6;
-
-        function lineDone(text) {
-            /* called when the line from meta.tsv has been read */
-            var fields = text.split("\t");
-            fields[fields.length-1] = fields[fields.length-1].trim(); // remove newline
-            onDone(fields);
-        }
-
-        function offsetDone(arr) {
-            /* called when the offset in meta.index has been read */
-            var offset = cbUtil.baReadOffset(arr, 0);
-            var lineLen = cbUtil.baReadUint16(arr, 4);
-            // now get the line from the .tsv file
-            var url = cbUtil.joinPaths([self.url, "meta.tsv"]);
-            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null, 
-                offset, offset+lineLen);
-        }
-
-        // chrome caching sometimes fails with byte range requests, so add cellidx to the URL
-        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); }, 
-            undefined, null, start, end);
     };
 
     function sortArrOfArr(arr, j) {
@@ -619,26 +656,178 @@ function CbDbFile(url) {
         return {"dArr": dArr, "binInfo": binInfo};
     }
 
-    this.loadExprAndDiscretize = function(geneSym, onDone, onProgress) {
-    /* given a geneSym (string), retrieve array of array put into binCount bins
-     * and call onDone with (array, discretizedArray, geneSymbol, geneDesc,
-     * binInfo) */
+    this.locusToOffset = function(name) {
+        /* return an array [start, end, name] given a locus description (=a string, gene symbol or chr|start|end) */
+        var off = null;
+        if (name.includes("|")) {
+            let pos = name.split("|");
+            off = self.findOffsetAtPos(pos[0], parseInt(pos[1]), parseInt(pos[2]));
+        }
+        else
+            off = self.geneOffsets[name];
 
-        var binCount = self.exprBinCount;
+        if (off===null) {
+            alert("internal error: there is no gene/ATAC-peak for "+name+" in the expression matrix");
+            return;
+        }
 
-        function onLoadedVec(exprArr, geneSym, geneDesc) {
-            console.time("discretize "+geneSym);
+        let start = off[0];
+        let len = off[1];
+        let end = start+len;
+        return [start, end, name];
+    }
+
+    this.namesToChunks = function(lociNames) {
+        /* given a list of loci names, return a sorted list of "chunks", 
+         * Each chunk is an array of adjacent ranges.
+         * [ [[offset1, end1, name1], [offset2, end2, name2] ] , ... ] */
+
+        // transform to a flat list of [start, end, name], sorted by start
+        let ranges = [];
+        for (let name of lociNames) {
+            let startEndName = self.locusToOffset(name);
+            ranges.push( startEndName );
+        }
+        ranges.sort(function(a, b) { return b[0] - a[0]; });
+        return cbUtil.rangesToChunks(ranges);
+    }
+
+    function gunzipAndConvert(comprData, ArrType, sampleCount) {
+        /* gunzip and convert the array type, return object with arr and desc */
+        var buf = pako.inflate(comprData);
+        // see python code in cellbrowser.py, function 'exprRowEncode':
+        //# The format of a record is:
+        //# - 2 bytes: length of descStr, e.g. gene identifier or else
+        //# - len(descStr) bytes: the descriptive string descStr
+        //# - array of n*4 bytes, n = number of cells
+        
+        // read the gene description
+        var descLen = cbUtil.baReadUint16(buf, 0);
+        var arr = buf.slice(2, 2+descLen);
+        var geneDesc = String.fromCharCode.apply(null, arr);
+
+        // arrays always use 4 bytes per value.
+        var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
+        var exprArr = new ArrType(arrData.buffer);
+        return {"arr":exprArr, "desc":geneDesc};
+    }
+
+    function sumAllArrs(ArrType, arrs) {
+        /* given an array of arrays, return a new array of ArrType with the sum of these */
+        let arrCount = arrs.length;
+        let arrSize = arrs[0].length;
+        let newArr = new ArrType(arrSize);
+        for (let i=0; i<arrSize; i++) {
+            let sum = 0.0;
+            for (let j=0; j<arrCount; j++) 
+                sum += arrs[j][i];
+            newArr[i] = sum;
+        }
+        return newArr;
+    }
+
+    this.loadExprAndDiscretize = function(locusName, onDone, onProgress) {
+    /* given a locus name, retrieve data from expression matrix
+     * and call onDone with (array, discretizedArray, locusName, geneDesc (or ""),
+     * binInfo).
+     * locus name can be one of these:
+     * - gene symbol
+     * - chr1|1000|2000 chrom range
+     * - sums of either of these, e.g. PITX1+OTX2 or chr1|1000|2000+chr2|1000|2000
+     * - a single gene or locus name, prefixed by "+", to add to the current array
+     * - a single gene or locus name, prefixed by "-", to substract from the current array
+     * */
+
+        var ArrType = cbUtil.makeType(self.conf.matrixArrType); // need this later
+        var sampleCount = self.conf.sampleCount;
+
+        var loadedRanges = []; // arr of objects with .name, .desc and .arr
+
+        let namesToLoad = [];
+        let updateOp = null;
+
+        if (locusName.startsWith("+") || locusName.startsWith("-")) {
+            namesToLoad = [ locusName.substring(1) ]; // strip the first character
+            updateOp = locusName.substring(0, 1);
+        } else {
+
+            locusName = locusName.replace(" ", "+"); // common error: + is "space" in URLs
+            namesToLoad = locusName.split("+");
+        }
+
+        function allRangesDone() {
+            /* sum up all arrays and call the callback */
+            // create a summarized gene desc
+            let geneDescs = [];
+            let arrs = [];
+            for (let r of loadedRanges) {
+                arrs.push(r.arr);
+                if (r.desc!=="")
+                    geneDescs.push(r.desc);
+            }
+            let geneDesc = geneDescs.join("; ");
+
+            // specVal is the value for a special bin, usually 0
             var specVal = 0;
             var matrixMin = self.getMatrixMin();
             if (matrixMin < 0)
                 specVal = null;
 
-            var da = discretizeArray(exprArr, binCount, specVal);
-            console.timeEnd("discretize "+geneSym);
-            onDone(exprArr, da.dArr, geneSym, geneDesc, da.binInfo);
+            let newArr = [];
+            if (updateOp) {
+                if (!self.currExprArr)
+                    newArr = arrs[0]; // first click ever = there is nothing to add to. XX reset ... when?
+                else
+                    if (updateOp==="+")
+                        newArr = cbUtil.arrAdd(self.currExprArr, arrs[0]);
+                    else
+                        newArr = cbUtil.arrSub(self.currExprArr, arrs[0]);
+            } else
+                newArr = sumAllArrs(ArrType, arrs);
+
+            var da = discretizeArray(newArr, self.exprBinCount, specVal);
+            self.currExprArr = newArr; // save it away, we'll need it for the next +<locus> operation
+
+            onDone(newArr, da.dArr, locusName, geneDesc, da.binInfo);
         }
 
-        this.loadExprVec(geneSym, onLoadedVec, onProgress)
+        // this function gets called when a chunk has been loaded
+        function onChunkDone(arr, ranges) {
+            /* slice the buffer by ranges, convert each range and add to loadedRanges */
+            for (let range of ranges) {
+                let start = range[0];
+                let end = range[1];
+                let name = range[2];
+                let comprData = arr.slice(start, end);
+                console.log("Got expression data, size = "+comprData.length+" bytes");
+                let exprInfo = gunzipAndConvert(comprData, ArrType, sampleCount);
+                exprInfo.name = name;
+
+                loadedRanges.push(exprInfo);
+
+                if (loadedRanges.length===namesToLoad.length) {
+                    allRangesDone();
+                }
+            }
+        }
+
+        // start of function
+        let url = cbUtil.joinPaths([self.url, "exprMatrix.bin"]);
+        let chunks = self.namesToChunks(namesToLoad);
+        for (let ranges of chunks) {
+            // submit http request from start of first range to end of last range
+            let minStart = ranges[0][0];
+            let maxEnd = ranges[ranges.length-1][1];
+            let names = [];
+            let relRanges = []
+            for (let r of ranges) {
+                names.push(r[2]);
+                relRanges.push( [ r[0]-minStart, r[1]-minStart, r[2] ] );
+            }
+
+            cbUtil.loadFile(url+"?"+names.join("-"), Uint8Array, onChunkDone, onProgress, relRanges, 
+                minStart, maxEnd);
+        }
     };
 
     this.loadExprVec = function(geneSym, onDone, onProgress, otherInfo) {
@@ -655,8 +844,7 @@ function CbDbFile(url) {
             //# The format of a record is:
             //# - 2 bytes: length of descStr, e.g. gene identifier or else
             //# - len(descStr) bytes: the descriptive string descStr
-            //# - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
-            //# - array of n bytes, n = number of cells
+            //# - array of n*4 bytes, n = number of cells
             
             // read the gene description
             var descLen = cbUtil.baReadUint16(buf, 0);
@@ -669,20 +857,46 @@ function CbDbFile(url) {
             if (matrixType===undefined)
                 alert("dataset JSON config file: missing matrixArrType attribute");
             var ArrType = cbUtil.makeType(matrixType);
+            // currently, all arrays use 4 bytes per value. Compression takes care of the size.
             var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
             var exprArr = new ArrType(arrData.buffer);
 
             onDone(exprArr, geneSym, geneDesc, otherInfo);
         }
 
-        var offsData = self.geneOffsets[geneSym];
-        if (offsData===undefined) {
-            alert("cbData.js: "+geneSym+" is not in the expression matrix");
-            onDone(null);
-        }
+        var start = 0;
+        var lineLen = 0;
 
-        var start = offsData[0];
-        var lineLen = offsData[1];
+        if (self.conf.atacSearch) {
+            let r = cbUtil.parseRange(geneSym);
+            if (r===null) {
+                alert("Cannot color on "+geneSym+". This is an ATAC dataset, but the input does not look like a chromosome region in a format like chr1:1-1000.")
+                    return;
+            }
+            let ranges = self.findOffsetsWithinPos(r.chrom, r.start, r.end);
+            if (ranges.length === 0) {
+                alert("cbData.js: "+geneSym+" does not match a single ATAC region.");
+                onDone(null);
+            }
+            else if (ranges.length > 1) {
+                alert("cbData.js: "+geneSym+" matches more than one ATAC region. Using only first one.");
+            }
+
+            let firstRange = ranges[0];
+            start = firstRange[2];
+            lineLen = firstRange[3];
+
+        } else {
+
+            let offsData = null;
+            offsData = self.geneOffsets[geneSym];
+            if (offsData===undefined) {
+                alert("cbData.js: "+geneSym+" is not in the expression matrix");
+                onDone(null);
+            }
+            start = offsData[0];
+            lineLen = offsData[1];
+        }
 
         var end = start + lineLen - 1; // end pos is inclusive
 
@@ -886,94 +1100,116 @@ function CbDbFile(url) {
 	return lo;
     }
 
-    this.loadExprVec = function(geneSym, onDone, onProgress, otherInfo) {
-    /* given a geneSym (string), retrieve array of values and call onDone with
-     * (array, geneSym, geneDesc) */
-        function onGeneDone(comprData, geneSym) {
-            // decompress data and run onDone when ready
-            self.exprCache[geneSym] = comprData;
+    this.findGenesByPrefix = function(prefix) {
+    /* return an array of gene symbols that start with prefix (case-ins.) */
+        prefix = prefix.toLowerCase();
+        var foundGenes = [];
+        var geneIdx = self.geneOffsets;
+        if (self.geneToTss) 
+            geneIdx = self.geneToTss;
 
-            console.log("Got expression data, size = "+comprData.length+" bytes");
-            var buf = pako.inflate(comprData);
-
-            // see python code in cbAdd, function 'exprRowEncode':
-            //# The format of a record is:
-            //# - 2 bytes: length of descStr, e.g. gene identifier or else
-            //# - len(descStr) bytes: the descriptive string descStr
-            //# - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
-            //# - array of n bytes, n = number of cells
-            
-            // read the gene description
-            var descLen = cbUtil.baReadUint16(buf, 0);
-            var arr = buf.slice(2, 2+descLen);
-            var geneDesc = String.fromCharCode.apply(null, arr);
-
-            // read the expression array
-            var sampleCount = self.conf.sampleCount;
-            var matrixType = self.conf.matrixArrType;
-            if (matrixType===undefined)
-                alert("dataset JSON config file: missing matrixArrType attribute");
-            var ArrType = cbUtil.makeType(matrixType);
-            var arrData = buf.slice(2+descLen, 2+descLen+(4*sampleCount));
-            var exprArr = new ArrType(arrData.buffer);
-
-            onDone(exprArr, geneSym, geneDesc, otherInfo);
+        for (let geneSym in geneIdx) {
+            if (geneSym.toLowerCase().startsWith(prefix))
+                foundGenes.push(geneSym);
         }
 
-        var offsData = self.geneOffsets[geneSym];
-        if (offsData===undefined) {
-            alert("cbData.js: "+geneSym+" is not in the expression matrix");
-            onDone(null);
+        return foundGenes;
+    };
+
+    this.findOffsetAtPos = function(chrom, start, end) {
+        /* return a single arr with [offset, length] into the matrix file that matches chrom, start, end */
+        var chromRanges = self.geneOffsets[chrom];
+        if (chromRanges===undefined) {
+            alert("This gene is on "+chrom+" but there are no peaks at all on this chromosome.")
+            return;
         }
-
-        var start = offsData[0];
-        var lineLen = offsData[1];
-
-        var end = start + lineLen - 1; // end pos is inclusive
-
-        var url = cbUtil.joinPaths([self.url, "exprMatrix.bin"]);
-
-        if (geneSym in this.exprCache)
-            onGeneDone(this.exprCache[geneSym], geneSym);
-        else
-            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
-                start, end);
-    };
-
-    this.loadClusterMarkers = function(markerIndex, clusterName, onDone, onProgress) {
-    /* given the name of a cluster, return an array of rows with the cluster-specific genes */
-        var url = cbUtil.joinPaths([self.url, "markers", "markers_"+markerIndex, clusterName.replace("/", "_")+".tsv"]);
-        cbUtil.loadTsvFile(url, onMarkersDone, {"clusterName":clusterName});
-
-        function onMarkersDone(papaResults, url, otherData) {
-            var rows = papaResults.data;
-            onDone(rows, otherData);
+        for (let rangeArr of chromRanges) {
+            let rangeStart = rangeArr[0]; 
+            let rangeEnd = rangeArr[1];
+            if (start === rangeStart && rangeEnd === end) {
+                return [rangeArr[2], rangeArr[3]];
+            }
         }
-    };
-
-    this.getMetaFields = function() {
-    /* return an array of the meta fields, in the format of the config file:
-     * objects with 'name', 'label', 'valCounts', etc */
-        return self.conf.metaFields;
-    };
-
-    this.getCellIdMeta = function() {
-        /* return the cell ID meta field */
-        for (let metaInfo of self.conf.metaFields)
-            if (!metaInfo.isCustom)
-                return metaInfo;
+        return null;
     }
 
-    this.searchGenes = function(prefix, onDone) {
-    /* call onDone with an array of gene symbols that start with prefix (case-ins.)
-     * returns an array of objects with .id and .text attributes  */
-        var geneList = [];
-        for (var geneSym in self.geneOffsets) {
-            if (geneSym.toLowerCase().startsWith(prefix))
-                geneList.push({"id":geneSym, "text":geneSym});
+    this.findOffsetsWithinPos = function(chrom, start, end) {
+        /* return an array of arrays [start,end,offset,length] about all included atac regions 
+         * that are within chrom:start-end*/
+        var chromRanges = self.geneOffsets[chrom];
+        if (chromRanges===undefined) {
+            alert("This gene is on "+chrom+" but there are no peaks at all on this chromosome.")
+            return;
         }
-        onDone(geneList);
-    };
+
+        var foundArr = [];
+        for (let rangeArr of chromRanges) {
+            let rangeStart = rangeArr[0]; 
+            let rangeEnd = rangeArr[1];
+            if (start <= rangeStart && rangeEnd <= end) {
+                foundArr.push( rangeArr );
+            }
+        }
+        return foundArr;
+    }
+
+    this.findRangesByGene = function(gene) {
+        /* return object with .ranges = all ranges flanking a gene, and .pos = object
+         * with chrom/start/end of area around the gene */
+        // get position of gene
+        var tssInfo = self.geneToTss[gene];
+        var geneChrom = tssInfo[0];
+        var tssStart = tssInfo[1];
+        var geneIdx = tssInfo[2];
+
+        var chromLocs = self.geneLocs[geneChrom];
+
+        // determine TSS of left neighbor
+        var leftTss = 0;
+        if (geneIdx > 0) {
+            var leftSym = chromLocs[geneIdx-1][3]; // 3 = symbol as string
+            leftTss = self.geneToTss[leftSym][1]; // 1 = chrom start position
+        }
+
+        // determine TSS of right neighbor
+        var rightTss = null;
+        if (geneIdx+1 < chromLocs.length) {
+            var rightSym = chromLocs[geneIdx+1][3];
+            rightTss = self.geneToTss[rightSym][1];
+        } else
+            rightTss = 1e10; // I don't have the chrom sizes. 
+
+        var res = {}
+        res.ranges = self.findOffsetsWithinPos(geneChrom, leftTss, rightTss);
+        res.pos = { chrom:geneChrom, start:leftTss, end:rightTss };
+        return res;
+    }
+
+    this.indexGenes = function () {
+        /* db.geneLocs has the genes as chrom -> list of [start, end, strand, symbol] which 
+         * is very compact. Re-arrange them now as symbol -> [chrom, tssStart] for quick search */
+        // XX THIS REQUIRES ES6. Problem?
+        let geneToTss = {}
+        for (let [chrom, vals] of Object.entries(self.geneLocs)) {
+            for (let geneIdx = 0; geneIdx < vals.length; geneIdx++) {
+                let val = vals[geneIdx]
+                let start = val[0];
+                let end = val[1];
+                let strand = val[2];
+                let sym = val[3];
+                if (sym in geneToTss)
+                    sym = sym+"_"+chrom;
+                if (sym in geneToTss)
+                    console.log(sym+" appears twice on the some chromosome. Quick search?");
+                let tss = start;
+                if (strand==="-")
+                    tss = end;
+
+                geneToTss[sym] = [chrom, tss, geneIdx];
+            }
+        }
+        self.geneToTss = geneToTss;
+    }
 
     this.getName = function() {
     /* return name of current dataset*/
@@ -1002,7 +1238,7 @@ function CbDbFile(url) {
     }
 
     this.getMatrixMin = function() {
-        /* return the minimum valu in the matrix */
+        /* return the minimum value in the matrix */
        var validGenes = self.getGenes();
        var matrixMin = 0;
        if ("_range" in validGenes)
@@ -1058,4 +1294,29 @@ function CbDbFile(url) {
         self.conf.metaFields = newMetaInfo;
     }
 
+    this.loadGeneLocs = function(dbAndGene, fileInfo) {
+        /* load genes/dbAndGene.json into db.geneLocs */
+
+        function genesDone(data) {
+            self.geneLocs = data;
+        }
+
+        var addUrl = "";
+        if (fileInfo)
+            addUrl = "#"+fileInfo.md5
+        url = "genes/"+dbAndGene+".json"+addUrl;
+        cbUtil.loadJson(url, genesDone, true);
+    }
+
+}
+
+if (typeof window === 'undefined') {
+    var ranges = [
+            [0, 5, "early start"],
+            [1, 10, "hi"], 
+            [10, 20, "hi2"], 
+            [20, 30, "hi3"],
+            [100, 200, "late  end"] 
+        ]
+    console.log( cbUtil.rangesToChunks( ranges ) ); 
 }

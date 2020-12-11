@@ -89,12 +89,55 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 .tpGeneBarCellSelected { outline: 2px solid black}
 #tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
 
+#tpPeakListTitle { 
+        padding-top: 8px;
+        padding-bottom: 6px;
+        padding-left: 3px;
+}
+
+#tpPeakList { 
+        border-top: 1px solid #CCC; 
+        border-bottom: 1px solid #CCC; 
+        border-left: 1px solid #CCC; 
+        margin-left: 4px;
+        padding: 3px;
+        padding-left: 4px;
+        background-color: #EEE;
+}
+
+.tpPeak > label {
+        font-weight: normal;
+}
+
+#tpPeakList > div { 
+        background-color: #EEE;
+}
+
+input[type=checkbox], input[type=radio] {
+        vertical-align : -2px; // https://stackoverflow.com/a/2806786/233871
+}
+
+
 .tpSidebarHeader { font-weight: bold; padding-left: 4px; font-size: 16px; padding-top: 4px; height: 25px; background-color: white; text-align: center}
-#tpLeftSidebar { overflow-y:scroll; border-right: 1px solid #D7D7D7; height: 100%}
+
+#tpLeftSidebar { 
+        border-right: 1px solid #D7D7D7; 
+        height: 100%
+}
+
 #tpSideMeta { padding-left: 2px}
 #tpMetaPanel { background-color: white;}
-#tpLeftTabs { border: 0}
-#tpGeneTab, #tpAnnotTab { border-top: 1px solid #AAA; padding:0; padding-top: 5px;}
+#tpLeftTabs { 
+        border: 0; 
+        height: 100%;
+}
+
+#tpGeneTab, #tpAnnotTab { 
+        border-top: 1px solid #AAA;
+        padding:0;
+        padding-top: 5px;
+        height: 100%;
+}
 
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }
 .tpMetaHover { color: #FFF; background-color: #666}
