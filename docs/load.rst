@@ -33,7 +33,7 @@ Run these commands if you have downloaded the file as above::
     mat = data.frame(mat[,-1], row.names=genes)
     so <- CreateSeuratObject(counts = mat, project = "adultPancreas", meta.data=meta)
 
-Or you can download directly into R, without wget, by replacing the fread commands with these::
+Or you can download directly into R, without wget, by replacing the fread and read.table commands above with these::
 
     mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
     meta <- data.frame(fread("https://cells.ucsc.edu/adultPancreas/meta.tsv"), row.names=1)

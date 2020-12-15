@@ -6233,6 +6233,11 @@ var cellbrowser = function() {
        if (db.conf.markers!==undefined)
             labelLines.push("Click to show full marker gene list.");
 
+       if (db.conf.clusterPngDir!==undefined) {
+            var fullPath = cbUtil.joinPaths([db.name, db.conf.clusterPngDir, clusterName+".png"]);
+            labelLines.push("<img src='"+fullPath+"'>");
+       }
+
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
         //renderer.canvas.style.cursor = "pointer";
     }
