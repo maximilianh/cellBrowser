@@ -38,6 +38,17 @@ Or you can download directly into R, without wget, by replacing the fread comman
     mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
     meta <- data.frame(fread("https://cells.ucsc.edu/adultPancreas/meta.tsv"), row.names=1)
 
+If the matrix name is not ``exprMatrix.tsv.gz`` but ``matrix.mtx``, you have to use Seurat's MTX loader. 
+In addition to ``matrix.mtx``, make sure to also download the files ``barcodes.tsv`` and ``genes.tsv`` sometimes
+called ``features.tsv``.  If you downloaded these three files and ``meta.tsv`` into a directory ``downloadDir``, 
+load them like this::
+
+    require(Seurat)
+    setwd("downloadDir")
+    mat = Read10X(".")
+    meta = read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
+    so <- CreateSeuratObject(counts = mat, project = "myProjectName", meta.data=meta)
+    
 Scanpy
 ^^^^^^
 
@@ -46,6 +57,14 @@ To create an anndata object in Scanpy::
     import scanpy as sc
     import pandas as pd
     ad = sc.read_text("exprMatrix.tsv.gz")
+    meta = pd.read_csv("meta.tsv", sep="\t")
+    ad.var = meta
+
+If the expression matrix is an MTX file::
+
+    import scanpy as sc
+    import pandas as pd
+    ad = sc.read_mtx("matrix.mtx.gz")
     meta = pd.read_csv("meta.tsv", sep="\t")
     ad.var = meta
 
