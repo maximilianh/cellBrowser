@@ -5428,7 +5428,9 @@ var cellbrowser = function() {
     function onLegendClearClick(ev) {
         /* unselect all checkboxes in the legend and clear the selection */
         if (gLegend.selectionDirection == "all") {
-            onSelectAllClick()
+            clearSelectionState();
+            renderer.selectAll();
+            renderer.drawDots();
         } else {
             onSelectNoneClick();
         }
