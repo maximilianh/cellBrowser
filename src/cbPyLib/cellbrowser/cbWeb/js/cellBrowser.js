@@ -5784,33 +5784,39 @@ var cellbrowser = function() {
 
             var topCount = histoList[0][0];
             var topPerc  = histoList[0][1];
-            var topVal   = histoList[0][2];
+            var topVal   = metaInfo.ui.shortLabels[histoList[0][2]];
             var percStr = (100*topPerc).toFixed(1)+"%";
 
             if (topVal.length > 14)
                 topVal = topVal.substring(0, 14)+"...";
 
             var label = "";
-            if (histoList.length!==1){
-                if (histoList[0][0]===1)
-                    label = "<span class='tpMetaMultiVal'>" + histoList.length + " unique values</span>";
-                else
-                //label = "<span class='tpMetaMultiVal'>" + histoList.length + " values</span><span class='tpMetaHistLabel'> Histogram </span>&nbsp;&nbsp;<span id='tpMetaSpark_"+metaIdx+"'></span>";
-                //label = "<span class='tpMetaMultiVal'>" + histoList.length + " values</span>&nbsp;<span id='tpMetaSpark_"+metaIdx+"'></span>";
-                label = "<span class='tpMetaMultiVal'>" + percStr + " " +topVal+"</span>&nbsp;<span class='tpMetaSpark' id='tpMetaSpark_"+metaIdx+"'></span>";
-            }
-            else
+            if (histoList.length === 1) {
                 label = topVal;
+            } else {
+                // numeric type, calculate mean and sd
+                if (metaInfo.origVals && (metaInfo.type === "float" || metaInfo.type === "int")) {
+                    var sum = 0;
+                    for (var i = 0, I = cellIds.length; i < I; i++) {
+                        sum += metaInfo.origVals[cellIds[i]];
+                    }
+                    var mean = sum / cellIds.length;
+                    sum = 0;
+                    for (i = 0, I = cellIds.length; i < I; i++) {
+                        sum += (metaInfo.origVals[cellIds[i]] - mean)**2;
+                    }
+                    var sd = Math.sqrt(sum / cellIds.length);
+                    label = "<span class='tpMetaMultiVal'>mean = " + mean.toFixed(2) + "; sd = " + sd.toFixed(2) + "</span>";
+                } else {
+                    if (histoList[0][0] === 1) {
+                        label = "<span class='tpMetaMultiVal'>" + histoList.length + " unique values</span>";
+                    } else {
+                        label = "<span class='tpMetaMultiVal'>" + percStr + " " +topVal+"</span>";
+                    }
+                }
+            }
 
-            $('#tpMeta_'+metaInfo.name).html(label);
-            $('#tpMetaSpark_'+metaInfo.name).sparkline(countList, {type:"bar", barSpacing:0, disableTooltips:true});
-
-            //var topCount = countList[0][0];
-            //var topPerc  = countList[0][1];
-            //var topVal   = countList[0][2];
-            //$('#tpMeta_'+metaIdx).text(topVal);
-            //var label = metaFieldToLabel(metaFields[metaIdx]);
-            //$('#tpMetaLabel_'+metaIdx).html(label+"<span class='tpMetaPerc'>"+(100*topPerc).toFixed(1)+"%</span>");
+            $('#tpMeta_' + metaIdx).html(label);
         }
         db.metaHist = metaHist;
     }
