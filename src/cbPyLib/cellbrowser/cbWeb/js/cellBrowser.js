@@ -4207,8 +4207,6 @@ var cellbrowser = function() {
         //$(metaSel).css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().css({color: foreCol, backgroundColor: backCol});
         //$(metaSel).children().children().css({color: foreCol, backgroundColor: backCol});
-        $('.tpMetaBox').removeClass("tpMetaHover");
-        $('.tpMetaBox .tpMetaValue').removeClass("tpMetaHover");
         $(metaSel).addClass("tpMetaHover");
         $(metaSel+" .tpMetaValue").addClass("tpMetaHover");
 
@@ -4803,7 +4801,11 @@ var cellbrowser = function() {
         $(".tpMetaLabel").click( onMetaClick );
         $(".tpMetaValue").click( onMetaClick );
         $(".tpMetaValue").mouseover( onMetaMouseOver );
-        $(".tpMetaValue").mouseleave ( function() { $('#tpMetaTip').hide()} );
+        $(".tpMetaValue").mouseleave ( function() {
+            $('#tpMetaTip').hide();
+            $('.tpMetaBox').removeClass("tpMetaHover");
+            $('.tpMetaBox .tpMetaValue').removeClass("tpMetaHover");
+        } );
 
         // setup the right-click menu
         //var menuItems = [{name: "Use as cluster label"},{name: "Copy field value to clipboard"}];
