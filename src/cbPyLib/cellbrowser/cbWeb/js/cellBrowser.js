@@ -5727,7 +5727,9 @@ var cellbrowser = function() {
             let frac = (count / cellCount);
             histoList.push([count, frac, intKey]);
         }
-        histoList = histoList.sort(function (a, b) { return b[0] - a[0]; }); // reverse-sort by count
+        if (metaInfo.type !== "float" && metaInfo.type !== "int") {
+            histoList = histoList.sort(function (a, b) { return b[0] - a[0]; }); // reverse-sort by count
+        }
         return histoList;
     }
 
