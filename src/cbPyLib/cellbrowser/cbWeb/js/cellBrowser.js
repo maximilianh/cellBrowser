@@ -3451,13 +3451,12 @@ var cellbrowser = function() {
                 binMin = binMin.toPrecision(4);
             if (Math.abs(binMax) > 1000000)
                 binMax = binMax.toPrecision(4);
-            console.log(binMin, binMax);
             if (typeof(binMin)=== 'number')
                 binMin = binMin.toFixed(minDig);
             if (typeof(binMax)=== 'number')
                 binMax = binMax.toFixed(minDig);
 
-            legLabel = binMin+' - '+binMax;
+            legLabel = binMin+'–'+binMax;
         }
         else
             legLabel = binMin.toFixed(minDig);
