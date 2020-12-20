@@ -4179,9 +4179,9 @@ var cellbrowser = function() {
 
     function metaInfoFromElement(target) {
         /* get the metaInfo object given a DOM element  */
-        if (target.dataset.fieldName==="")
+        if (target.dataset.fieldName === undefined)
             target = target.parentNode;
-        if (target.dataset.fieldName==="")
+        if (target.dataset.fieldName === undefined)
             target = target.parentNode;
         var fieldName = target.dataset.fieldName;
         var metaInfo = db.findMetaInfo(fieldName);
