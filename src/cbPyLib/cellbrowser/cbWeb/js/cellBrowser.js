@@ -1206,14 +1206,19 @@ var cellbrowser = function() {
             clearSelectionState();
             $("#tpSetBackground").parent("li").addClass("disabled");
         } else if (cellIds.length===1) {
+            $("#tpHoverHint").hide();
+            $("#tpSelectHint").show();
             var cellId = cellIds[0];
             var cellCountBelow = cellIds.length-1;
             updateMetaBarCustomFields(cellId);
             db.loadMetaForCell(cellId, function(ci) {
                 updateMetaBarOneCell(ci, cellCountBelow);
             }, onProgress);
-        } else
+        } else {
+            $("#tpHoverHint").hide();
+            $("#tpSelectHint").show();
             updateMetaBarManyCells(cellIds);
+        }
 
         updateGeneTableColors(cellIds);
         if ("geneSym" in gLegend)
