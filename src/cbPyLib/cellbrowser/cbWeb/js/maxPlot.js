@@ -1522,6 +1522,17 @@ function MaxPlot(div, top, left, width, height, args) {
         self._selUpdate();
     };
 
+    this.selectAll = function(cellIdx) {
+        /* add all cells to selection */
+        var selCells = self.selCells;
+        var pxCoords = self.coords.px;
+        for (var i = 0, I = pxCoords.length / 2; i < I; i++) {
+            selCells.add(i);
+        }
+        self.selCells = selCells;
+        self._selUpdate();
+    };
+
     this.selectVisible = function() {
         /* add all visible cells to selection */
         var selCells = self.selCells;
