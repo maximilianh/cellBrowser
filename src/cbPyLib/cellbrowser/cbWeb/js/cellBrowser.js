@@ -5964,9 +5964,11 @@ var cellbrowser = function() {
        if (db.conf.topMarkers!==undefined) {
             labelLines.push("Top markers: "+db.conf.topMarkers[clusterName].join(", "));
         }
+        labelLines.push("");
        if (db.conf.markers!==undefined)
             labelLines.push("Click to show full marker gene list.");
 
+        labelLines.push("Alt-Click to select cluster; Shift-Click to add cluster to selection");
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
         //renderer.canvas.style.cursor = "pointer";
     }
@@ -6190,10 +6192,29 @@ var cellbrowser = function() {
         }
     }
 
-    function onClusterNameClick(clusterName) {
+    function onClusterNameClick(clusterName, _, event) {
         /* build and open the dialog with the marker genes table for a given cluster */
         var metaInfo = getClusterFieldInfo();
         var nameIdx = metaInfo.ui.shortLabels.indexOf(clusterName);
+        if (event.altKey || event.shiftKey) {
+            db.loadMetaVec(metaInfo, function(values) {
+                var clusterCells = [];
+                for (var i = 0, I = values.length; i < I; i++) {
+                    if (values[i] == nameIdx) {
+                        clusterCells.push(i);
+                    }
+                }
+                if (event.altKey) {
+                    renderer.selectSet(clusterCells);
+                } else if (event.shiftKey) {
+                    var selection = renderer.getSelection();
+                    selection = selection.concat(clusterCells);
+                    renderer.selectSet(selection);
+                }
+                renderer.drawDots();
+            });
+            return;
+        }
 
         var tabInfo = db.conf.markers; // list with (label, subdirectory)
 
