@@ -1,7 +1,7 @@
 // scDb: a class accessing single cell data from a URL
 'use strict';
 /*jshint globalstrict: true*/
-/* jshint -W104 */  // allow some es6 parts (const) 
+/* jshint -W104 */  // allow some es6 parts (const)
 /* jshint -W117 */  // ignore undefined classes
 
 /* a module with some helper functions */
@@ -36,7 +36,7 @@ var cbUtil = (function () {
     my.loadJson = function(url, onSuccess, silent) {
     /* load json file from url and run onSuccess when done. Alert if it doesn't work. */
         var req = jQuery.ajax({
-            "url" : url, 
+            "url" : url,
             type : "GET",
             dataType : "json",
             //mimeType : 'text/plain; charset=x-user-defined', // for local files, avoids errors
@@ -50,15 +50,15 @@ var cbUtil = (function () {
                             "contact the administrator of this server, "+
                             "or cells@ucsc.edu if this is running at UCSC. ");
                     else
-                        alert("Could not load "+url); 
+                        alert("Could not load "+url);
                 onSuccess(null);
             }
         });
     };
-    
+
     my.loadFile = function(url, arrType, onDone, onProgress, otherInfo, start, end) {
         /* load text or binary file with HTTP GET into fileData variable and call function
-         * onDone(fileData, otherInfo) when done. 
+         * onDone(fileData, otherInfo) when done.
          * convert the data to arrType. arrType can be either a class like
          * Uint8Array or the value 'string', for normal text or 'comprText'
          * for gzip'ed string.  To switch off type casting, set arrType=null
@@ -113,7 +113,7 @@ var cbUtil = (function () {
             alert("Could not load "+url+", error " + oEvent.statusText);
             return;
         }
-        
+
         var binData = this.response;
 
         if (!binData) {
@@ -123,7 +123,7 @@ var cbUtil = (function () {
 
         // if the user wants only a byte range...
         if (this._start!==undefined) {
-            // check if the expected length is OK. Some webservers don't support byte range 
+            // check if the expected length is OK. Some webservers don't support byte range
             // requests.
             var expLength = this._end-this._start+1; // byte range is inclusive
 
@@ -164,7 +164,7 @@ var cbUtil = (function () {
                 var arr = pako.ungzip(binData);
                 // https://stackoverflow.com/questions/6965107/converting-between-strings-and-arraybuffers
                 // convert byte array to strin
-                // I used the apply() function originally, that's more compatible, but leads to a 
+                // I used the apply() function originally, that's more compatible, but leads to a
                 // stack overflow in bigger datasets
                 //binData = String.fromCharCode.apply(null, arr);
                 var dec = new TextDecoder("utf-8");
@@ -241,17 +241,17 @@ var cbUtil = (function () {
 
 
 function CbDbFile(url) {
-    // a class that loads all data from binary files loading for the cell browser: 
+    // a class that loads all data from binary files loading for the cell browser:
     // loading coordinates, loading meta data, resolve sample names to sample
     // indices, resolve sample indices to sample names load meta for a given
     // cell index
-    var self = this; // this has two conflicting meanings in javascript. 
+    var self = this; // this has two conflicting meanings in javascript.
     // we use 'self' to refer to object variables and 'this' to refer to the calling object
 
     self.name = url;
     self.url = url;
     self.geneOffsets = null;
-    self.exprBinCount = 10; 
+    self.exprBinCount = 10;
 
     self.exprCache = {}; // cached compressed expression arrays
     self.metaCache = {}; // cached compressed meta arrays
@@ -351,7 +351,7 @@ function CbDbFile(url) {
         }
         return null;
     }
-    
+
     this.fieldNameToIndex = function(fieldName) {
         /* given a meta field name, return its meta table index or null */
         var idx = cbUtil.findIdxWhereEq(self.conf.metaFields, "name", fieldName);
@@ -366,21 +366,21 @@ function CbDbFile(url) {
         var binUrl = cbUtil.joinPaths([self.url, "metaFields", fieldName+".bin.gz"]);
         if (metaInfo.md5)
             binUrl += "?"+metaInfo.md5;
-        cbUtil.loadFile(binUrl, arrType, 
+        cbUtil.loadFile(binUrl, arrType,
                 onMetaDone,
                 onProgress, metaInfo);
     }
 
     this.loadMetaVec = function(metaInfo, onDone, onProgress, otherInfo) {
     /* get an array of numbers, one per cell, that reflect the meta field contents
-     * and an object with some info about the field. call onDone(arr, metaInfo) when done. 
+     * and an object with some info about the field. call onDone(arr, metaInfo) when done.
      * Keep all compressed arrays in metaCache;
      * Numerical meta data (int/float) is discretized, binning info is written to metaInfo.binInfo
      * and the original data is added to metaInfo.origVals
      * */
 
         function onMetaDone(comprBytes, metaInfo) {
-            self.metaCache[metaInfo.name] = comprBytes; 
+            self.metaCache[metaInfo.name] = comprBytes;
             var ArrType = cbUtil.makeType(metaInfo.arrType);
 
             var bytes = comprBytes; // some Apache/InternetBrowser combinations silently uncompress
@@ -448,18 +448,18 @@ function CbDbFile(url) {
             var lineLen = cbUtil.baReadUint16(arr, 4);
             // now get the line from the .tsv file
             var url = cbUtil.joinPaths([self.url, "meta.tsv"]);
-            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null, 
+            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null,
                 offset, offset+lineLen);
         }
 
         // chrome caching sometimes fails with byte range requests, so add cellidx to the URL
-        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); }, 
+        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); },
             undefined, null, start, end);
     };
 
     function sortArrOfArr(arr, j) {
         /* sort an array of arrays by the j-th element */
-        arr.sort(function(a, b) { 
+        arr.sort(function(a, b) {
             return a[j] > b[j] ? 1 : -1;
             });
     }
@@ -468,7 +468,7 @@ function CbDbFile(url) {
         /* given an array of numbers, count how often each number appears.
          * return an obj with two keys:
          * - dArr is the new array with the index of each value
-         * - binInfo is an array with for each index a tuple of (value, value, count) 
+         * - binInfo is an array with for each index a tuple of (value, value, count)
          */
         // replace values in array with their enum-index
         // -> make a mapping value -> bin
@@ -503,8 +503,8 @@ function CbDbFile(url) {
     Find the bin index for the break defined by breakVals for every value in numVals.
     The comparison uses "<=" ("left"). Also returns an array with the count for every bin.
     */
-	
-        var dArr = new Uint8Array(numVals.length); 
+
+        var dArr = new Uint8Array(numVals.length);
         var binCounts = new Uint32Array(breakVals.length+1); // bin0 is a special bin, so +1
 
         for (var i=0; i<numVals.length; i++) {
@@ -526,12 +526,12 @@ function CbDbFile(url) {
     NaN is encoded in numVals as nanValues, which has to smaller than any other value.
 
     Find the bin index for the break defined by breakVals for every value in numVals.
-    The comparison uses "<=" ("left"). 
+    The comparison uses "<=" ("left").
     Also returns an array with the count for every bin.
 
     */
-	
-        var dArr = new Uint8Array(numVals.length); 
+
+        var dArr = new Uint8Array(numVals.length);
         var binCounts = new Uint32Array(breakVals.length-1);
         var breaks = breakVals.slice(2);
 
@@ -561,7 +561,7 @@ function CbDbFile(url) {
         // From now on, we treat NAs/0s separately, so remove their counts
         if (counts[0][0]===bin0Val) // NA is always first, as we defined it as -inf
             counts.shift(); // remove first element
-        
+
         // make array of count-indices of the breaks
         // e.g. if maxBinCount=10, breakPercs is [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         var breakPercs = [];
@@ -588,7 +588,7 @@ function CbDbFile(url) {
             var breakVal = counts[breakIdx][0];
             breakValues.push( breakVal );
         }
-        
+
         var fb = findBins(arr, bin0Val, breakValues);
         var dArr = fb.dArr;
         var binCounts = fb.binCounts;
@@ -657,7 +657,7 @@ function CbDbFile(url) {
             //# - len(descStr) bytes: the descriptive string descStr
             //# - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
             //# - array of n bytes, n = number of cells
-            
+
             // read the gene description
             var descLen = cbUtil.baReadUint16(buf, 0);
             var arr = buf.slice(2, 2+descLen);
@@ -691,7 +691,7 @@ function CbDbFile(url) {
         if (geneSym in this.exprCache)
             onGeneDone(this.exprCache[geneSym], geneSym);
         else
-            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
+            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym,
                 start, end);
     };
 
@@ -715,7 +715,7 @@ function CbDbFile(url) {
     this.addCustomMetaField = function(metaInfo) {
         //if (!self.customMeta)
             //self.customMeta = [];
-        //self.customMeta.push(metaInfo); 
+        //self.customMeta.push(metaInfo);
         metaInfo.isCustom = true;
         self.conf.metaFields.unshift(metaInfo);
     }
@@ -746,7 +746,7 @@ function CbDbFile(url) {
 
             var idList = [];
             for (var i=0; i<idxArray.length; i++) {
-                var cellIdx = idxArray[i];  
+                var cellIdx = idxArray[i];
                 idList.push(self.cellIds[cellIdx]);
             }
             return idList;
@@ -779,7 +779,7 @@ function CbDbFile(url) {
             if (hasWildcards) {
                 var foundIds = {}; // = set = removes any duplicates
                 for (var i=0; i<findIds.length; i++) {
-                    var searchId = findIds[i];  
+                    var searchId = findIds[i];
                     var searchRe = new RegExp(searchId);
                     var foundOne = false;
                     for (var cellIdx = 0; cellIdx<cellIds.length; cellIdx++) {
@@ -797,7 +797,7 @@ function CbDbFile(url) {
             }
             else {
                 for (let i=0; i<findIds.length; i++) {
-                    let searchId = findIds[i];  
+                    let searchId = findIds[i];
                     var foundIdx = cellIds.indexOf(searchId);
                     if (foundIdx===-1)
                         notFoundIds.push(searchId);
@@ -815,7 +815,7 @@ function CbDbFile(url) {
             onSearchDone(mapIdsToIdx(findIds));
         }
 
-        if (self.cellIds===undefined) 
+        if (self.cellIds===undefined)
             // trigger the cellId load
             self._startMetaLoad(self.getMetaFields()[0], "comprText", onIdsDone, onProgress)
         else
@@ -842,12 +842,12 @@ function CbDbFile(url) {
             var lineLen = cbUtil.baReadUint16(arr, 4);
             // now get the line from the .tsv file
             var url = cbUtil.joinPaths([self.url, "meta.tsv"]);
-            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null, 
+            cbUtil.loadFile(url+"?"+cellIdx, "string", lineDone, onProgress, null,
                 offset, offset+lineLen);
         }
 
         // chrome caching sometimes fails with byte range requests, so add cellidx to the URL
-        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); }, 
+        cbUtil.loadFile(url+"?"+cellIdx, Uint8Array, function(byteArr) { offsetDone(byteArr); },
             undefined, null, start, end);
     };
 
@@ -875,12 +875,12 @@ function CbDbFile(url) {
 	var i;
 	while(lo <= hi) {
 	    i = ((lo + hi) >> 1);
-	    if(arr[i] >= find) 
+	    if(arr[i] >= find)
 		hi = i - 1;
             else
-	    //if (arr[i] < find) 
+	    //if (arr[i] < find)
 		lo = i + 1;
-	    //else 
+	    //else
 		//{ return lo; }
 	}
 	return lo;
@@ -902,7 +902,7 @@ function CbDbFile(url) {
             //# - len(descStr) bytes: the descriptive string descStr
             //# - 132 bytes: 11 deciles, encoded as 11 * 3 floats (=min, max, count)
             //# - array of n bytes, n = number of cells
-            
+
             // read the gene description
             var descLen = cbUtil.baReadUint16(buf, 0);
             var arr = buf.slice(2, 2+descLen);
@@ -936,7 +936,7 @@ function CbDbFile(url) {
         if (geneSym in this.exprCache)
             onGeneDone(this.exprCache[geneSym], geneSym);
         else
-            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym, 
+            cbUtil.loadFile(url+"?"+geneSym, Uint8Array, onGeneDone, onProgress, geneSym,
                 start, end);
     };
 
@@ -988,7 +988,7 @@ function CbDbFile(url) {
         self.allMeta = {};
 
         function doneMetaVec(arr, metaInfo, otherInfo) {
-            self.allMeta[metaInfo.name] = arr; 
+            self.allMeta[metaInfo.name] = arr;
             delete self.metaCache[fieldIdx];
         }
 
@@ -1024,11 +1024,11 @@ function CbDbFile(url) {
                }
 
                 self.loadExprAndDiscretize(
-                   sym, 
-                   function(exprVec, discExprVec, geneSym, geneDesc, binInfo) { 
+                   sym,
+                   function(exprVec, discExprVec, geneSym, geneDesc, binInfo) {
                        self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
-                       loadCounter++; 
-                       if (loadCounter===geneSyms.length) onDone(); 
+                       loadCounter++;
+                       if (loadCounter===geneSyms.length) onDone();
                    },
                    onProgress);
            }
