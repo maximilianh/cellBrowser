@@ -39,7 +39,7 @@ var cbUtil = (function () {
             "url" : url, 
             type : "GET",
             dataType : "json",
-            mimeType : 'text/plain; charset=x-user-defined', // for local files, avoids errors
+            //mimeType : 'text/plain; charset=x-user-defined', // for local files, avoids errors
             success: function(data) {
                 onSuccess(data);
             },
@@ -129,7 +129,7 @@ var cbUtil = (function () {
 
             var dataLen = binData.byteLength;
             if (!dataLen)
-                dataLen = binData.length;
+                dataLen = new Blob([binData]).size;;
 
             if (dataLen < expLength)
                 alert("internal error cbData.js: chunk is too small. Does the HTTP server really support byte range requests?");
