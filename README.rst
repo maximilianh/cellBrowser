@@ -17,6 +17,10 @@ at http://cellbrowser.rtfd.io
 If you want us to add a single cell dataset to the website http://cells.ucsc.edu, 
 please contact us at cells@ucsc.edu. We are happy to add any dataset.
 
+Before judging this project by the number of issue tickets or PRs, note that at UCSC we use Redmine
+for issue tracking and that a lot of communication with wetlab users is by email at cells@ucsc.edu, as we 
+do not require a Github account for feedback. But we do reply to issues here, as you can see.
+
 This is a viewer for a static, precomputed layout. If you're looking for an interative layout, where you can 
 move the cells around and run some algorithms interactively, try Chan-Zuckerberg's own cellxgene or Spring.
 A website with both datasets and some analysis is `Scope <http://scope.aertslab.org/>`_.
