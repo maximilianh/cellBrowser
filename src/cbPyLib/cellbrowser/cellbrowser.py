@@ -231,14 +231,18 @@ def findCbData():
 
 def downloadUrlBinary(remoteUrl):
     " open URL, slurp in all data and return the resulting binary string "
-    if sys.version_info >= ( 2, 7, 9 ):
-        # newer python versions check the https certificate. It seems that UCSC uses certificates
-        # that are not part of the cert database on some linux distributions.
-        # To avoid any problems, we're switching off cert verification
-        import ssl
-        data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
-    else:
-        data = urlopen(remoteUrl).read()
+    try:
+        if sys.version_info >= ( 2, 7, 9 ):
+            # newer python versions check the https certificate. It seems that UCSC uses certificates
+            # that are not part of the cert database on some linux distributions.
+            # To avoid any problems, we're switching off cert verification
+            import ssl
+            data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
+        else:
+            data = urlopen(remoteUrl).read()
+    except urllib.error.HTTPError:
+        logging.error("Cannot download %s" % remoteUrl)
+        data = None
     return data
 
 def downloadUrlLines(url):
@@ -263,11 +267,15 @@ def downloadStaticFile(remotePath, localPath):
     logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
     data = downloadUrlBinary(remoteUrl)
 
+    if data is None:
+        return False
+
     localTmp = localPath+".download"
     ofh = open(localTmp, "wb")
     ofh.write(data)
     ofh.close()
     renameFile(localTmp, localPath)
+    return Tru
 
 def getStaticPath(relPath):
     " return full path to a static file in the dataDir directory "
@@ -285,7 +293,9 @@ def getStaticFile(relPath):
     absPath = getStaticPath(relPath)
     if not isfile(absPath):
         logging.info("%s not found" % absPath)
-        downloadStaticFile(relPath, absPath)
+        success = downloadStaticFile(relPath, absPath)
+        if not success:
+            return None
 
     return absPath
 
@@ -688,18 +698,19 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
 
     ifh = textFileRows(inFile)
     if noHeaders:
+        # must read first line now to get number of fields
         row1 = nextEl(ifh)
-        savedLines = [row1]
         headers = ["col"+str(i) for i in range(0, len(row1))]
+        Record = namedtuple('tsvCsvRec', headers)
+        savedLines = [Record(*row1)]
     else:
         savedLines = []
         headers = nextEl(ifh)
+        headers = sanitizeHeaders(headers)
+        Record = namedtuple('tsvCsvRec', headers)
 
     if headerIsRow:
         yield headers
-
-    headers = sanitizeHeaders(headers)
-    Record = namedtuple('tsvCsvRec', headers)
 
     lineCount = 0
     for fields in itertools.chain(savedLines, ifh):
@@ -1567,7 +1578,13 @@ class MatrixTsvReader:
                     #try:
                         arr = [int(float(x)) for x in rest.split(sep)]
                 else:
-                    arr = [float(x) for x in rest.split(sep)]
+                    arr = []
+                    for x in rest.split(sep):
+                        if x=="0" or x=="0.0":
+                            arr.append(0.0)
+                        else:
+                            arr.append(float(x))
+                    #arr = [float(x) for x in rest.split(sep)]
                     #arr = map(float, rest.split(sep))
 
             if "|" in gene:
@@ -3538,15 +3555,20 @@ def convertMeta(inDir, inConf, outConf, outDir, finalMetaFname):
     return sampleNames, needFilterMatrix
 
 def readGeneSymbols(geneIdType, matrixFnameOrGeneIds=None):
-    " return geneToSym, based on gene tables "
+    " return geneToSym, based on gene tables. Returns None if no translation is necessary. "
     logging.debug("Reading gene symbols, geneIdType %s, example list of symbols: %s" % (geneIdType, matrixFnameOrGeneIds))
     if geneIdType==None or geneIdType=="auto":
         geneIdType = guessGeneIdType(matrixFnameOrGeneIds)
 
-    if geneIdType.startswith('symbol'):
+    if geneIdType.startswith('symbol') or geneIdType=="raw":
         return None
 
     geneIdTable = getStaticFile(getGeneSymPath(geneIdType))
+
+    if geneIdTable is None:
+        errAbort("The geneIdType setting '%s' is not a table provided by UCSC."
+                "Use 'cbGenes avail' to list all available gene models or create new ones." % geneIdTable)
+
     geneToSym = readGeneToSym(geneIdTable)
 
     if geneIdType=="entrez" and len(geneToSym)<100000:
@@ -5253,12 +5275,16 @@ def parseGeneLocs(db, geneType):
     return dict with geneId -> list of bedRows
     bedRows have (chrom, start, end, geneId, score, strand)
     """
-    fname = getStaticFile(join("genes", db+"."+geneType+".bed.gz"))
+    if isfile(geneType):
+        fname = geneType
+    else:
+        fname = getStaticFile(join("genes", db+"."+geneType+".bed.gz"))
     logging.info("Reading gene locations from %s" % fname)
     ret = defaultdict(list)
     for line in openFile(fname):
         row = line.rstrip("\r\n").split('\t')
         name = row[3].split(".")[0]
+        row = row[:6]
         ret[name].append(row)
     return ret
 

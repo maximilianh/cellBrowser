@@ -23,7 +23,7 @@ def cbGenes_parseArgs():
     fetch <assembly> <geneType> - do both 'syms' and 'locs'
     ls here - list all available gene models on this machine
     ls remote - list all available gene models at UCSC
-    guess <organism> <inFile> - Guess best gene type. Reads the first tab-sep field from inFile and prints genetypes sorted by % of matching unique IDs to inFile
+    guess <inFile> <organism> - Guess best gene type. Reads the first tab-sep field from inFile and prints genetypes sorted by % of matching unique IDs to inFile.
 
     Examples:
     %prog avail
@@ -32,7 +32,7 @@ def cbGenes_parseArgs():
     %prog locs hg38 gencode-34
     %prog locs mm10 gencode-M25
     %prog ls
-    %prog guess mouse genes.txt
+    %prog guess genes.txt mouse
     %prog index # only used at UCSC to prepare the files for 'guess'
     """)
 

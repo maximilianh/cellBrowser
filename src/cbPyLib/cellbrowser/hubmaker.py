@@ -114,10 +114,19 @@ def cbHub_parseArgs():
 def parseClustersFromMeta(metaFname, clusterFieldName, fixDot):
     " parse cluster -> cellId assignment from meta file, return as dict clusterName -> list of cellIds "
     logging.info("Parsing and using first field as the cell ID in file %s" % metaFname)
+
+    # in some scripts, meta.tsv has only two columns and no headers. Use stupid heuristics to detect this
+    noHeader = False
+    for row in lineFileNextRow(metaFname):
+        if len(row)==2 and not row[0]=="" and not "ell" in row[0] and not "rcode" in row[0]:
+            noHeader = True
+        break
+
     clusterToCells = defaultdict(list)
     metaCellIds = set()
     skipCount = 0
-    for row in lineFileNextRow(metaFname):
+
+    for row in lineFileNextRow(metaFname, noHeaders=noHeader):
         clusterName = row._asdict()[clusterFieldName]
         cellId = row[0]
         if fixDot:
@@ -775,31 +784,6 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
     clusterOrder is a list of the clusterNames in the right order
     """
     logging.info("Creating barChartGraph bigbed file: genome %s, geneType %s, geneModel %s" % (genome, geneType, geneModel))
-    #if geneType.startswith("symbol"):
-    #    # create a mapping from symbol -> gene locations
-    #    if "/" in geneType:
-    #        defGenes = geneType.split("/")[1]
-    #    elif genome=="hg38":
-    #        defGenes = "gencode24"
-    #    elif genome=="hg19":
-    #        defGenes = "gencode19"
-    #    elif genome=="mm10":
-    #        defGenes = "gencode-m13"
-    #    else:
-    #        errAbort("Unclear how to map symbols to genome for db %s. Please adapt cellbrowser.py" % genome)
-
-    #    logging.info("Using %s to map symbols to genome" % defGenes)
-
-    #    geneToSym = readGeneSymbols(geneType, inMatrixFname)
-    #    geneLocsId = parseGeneLocs(genome, defGenes)
-    #    geneLocs = {}
-    #    for geneId, locs in iterItems(geneLocsId):
-    #        sym = geneToSym[geneId]
-    #        geneLocs[sym] = locs
-    #else:
-    geneToSym = None
-    #if geneType.startswith("symbol"):
-        #geneType = "gencode-human"
     geneToSym = readGeneSymbols(geneType, inMatrixFname)
     if geneToSym is None:
         geneToSym = readGeneSymbols("gencode-human", inMatrixFname)
@@ -807,9 +791,6 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
         geneToSym = None
 
     geneLocs = parseGeneLocs(genome, geneModel)
-
-    #if geneType.startswith("symbol"):
-        #geneToSym = {v: k for k, v in my_map.items()} # invert the dictionary key->value to value->key
 
     matOfh = open(outMatrixFname, "w")
 
@@ -840,13 +821,12 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
         if geneType.startswith("symbol"):
             # input has symbols
-            if geneId not in symToGene:
+            if symToGene and geneId not in symToGene:
                 logging.warn("Cannot resolve symbol %s to a gene accession" % geneId)
                 continue
             else:
                 geneId = symToGene[geneId]
                 bedRows = geneLocs[geneId]
-
         else:
             # input has accessions
             if geneId not in geneLocs:
@@ -953,6 +933,7 @@ def makeBarGraphBigBed(genome, inMatrixFname, outMatrixFname, geneType, geneMode
 
 def buildTrackHub(db, inMatrixFname, metaFname, clusterFieldName, clusterOrderFile, hubName, bamDir, fixDot, \
         geneType, geneModel, unitName, email, refHtmlFname, hubUrl, skipBarchart, stat, percentile, outDir):
+    " main function: make bigBarChart, trackDb and possibly bigWig and bigBed files "
 
     clusterToCells = parseClustersFromMeta(metaFname, clusterFieldName, fixDot)
 
