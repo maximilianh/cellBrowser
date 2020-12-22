@@ -17,10 +17,6 @@ at http://cellbrowser.rtfd.io
 If you want us to add a single cell dataset to the website http://cells.ucsc.edu, 
 please contact us at cells@ucsc.edu. We are happy to add any dataset.
 
-Before judging this project by the number of issue tickets or PRs, note that at UCSC we use Redmine
-for issue tracking and that a lot of communication with wetlab users is by email at cells@ucsc.edu, as we 
-do not require a Github account for feedback. But we do reply to issues here, as you can see.
-
 This is a viewer for a static, precomputed layout. If you're looking for an interative layout, where you can 
 move the cells around and run some algorithms interactively, try Chan-Zuckerberg's own cellxgene or Spring.
 A website with both datasets and some analysis is `Scope <http://scope.aertslab.org/>`_.
@@ -34,11 +30,17 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 * Bin Ren lab, CAAtlas http://catlas.org/mousebrain/#!/home
 
 These papers have cell browsers made at UCSC:
+
 * organoidatlas: https://www.sciencedirect.com/science/article/pii/S221112472030053X
 * dros-brain: https://elifesciences.org/articles/50354
 * kidney-atlas: https://science.sciencemag.org/content/365/6460/1461.abstract
 * allen-celltypes/mouse-cortex: https://www.biorxiv.org/content/10.1101/2020.03.30.015214v1.full
 * organoidreportcard: https://www.nature.com/articles/s41586-020-1962-0
+
+Before judging this project by the number of issue tickets or PRs, note that at UCSC we use an internal
+ticket system with more features and that a lot of communication with wetlab users is by email at cells@ucsc.edu, as we 
+do not require a Github account for feedback. But we do reply to issues here, as you can see from the Github 
+account and also use Github for source control.
 
 Additional availability
 -----------------------
