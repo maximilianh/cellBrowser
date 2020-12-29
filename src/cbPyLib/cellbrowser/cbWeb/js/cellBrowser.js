@@ -2717,10 +2717,13 @@ var cellbrowser = function() {
         if (yLabel!==null)
             optDict.scales = { yAxes: [{ scaleLabel: { display: true, labelString: yLabel} }] };
 
-	window.violinChart = new Chart(ctx, {
-	    type: 'violin',
-	    data: boxplotData,
-	    options: optDict});
+        window.setTimeout(function() {
+            window.violinChart = new Chart(ctx, {
+                type: 'violin',
+                data: boxplotData,
+                options: optDict
+            });
+        }, 10);
         console.timeEnd("violinDraw");
     }
 
