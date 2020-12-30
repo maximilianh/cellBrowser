@@ -4157,11 +4157,15 @@ var cellbrowser = function() {
         colorByMetaField(fieldName);
     }
 
-    function addMetaTipBar(htmls, valFrac, valStr) {
+    function addMetaTipBar(htmls, valFrac, valStr, valFracCategory) {
         /* add another bar to a simple histogram built from divs */
         htmls.push("<div>&nbsp;");
         htmls.push("<div class='tpMetaTipPerc'>"+(100*valFrac).toFixed(1)+"%</div>");
-        htmls.push("<div class='tpMetaTipName'>"+valStr+"</div>");
+        htmls.push("<div class='tpMetaTipName'>"+valStr);
+        if (valFracCategory !== undefined) {
+            htmls.push(" <small>(" + (100 * valFracCategory).toFixed(1) + "% of it)</small>");
+        }
+        htmls.push("</div>");
         //htmls.push("<span class='tpMetaTipCount'>"+valCount+"</span>");
         var pxSize = (valFrac * metaTipWidth).toFixed(0);
         htmls.push("<div style='width:"+pxSize+"px' class='tpMetaTipBar'>&nbsp</div>");
@@ -4196,6 +4200,7 @@ var cellbrowser = function() {
             var valCount = valInfo[0];
             var valFrac  = valInfo[1];
             var valIdx   = valInfo[2];
+            var valFracCategory = valInfo[3];
             //var valStr   = valCounts[valIdx][0]; // 0 = label, 1 = count
             var label   = shortLabels[valIdx];
 
@@ -4208,7 +4213,7 @@ var cellbrowser = function() {
 
             if (label==="")
                 label = "<span style='color:indigo'>(empty)</span>";
-            addMetaTipBar(htmls, valFrac, label);
+            addMetaTipBar(htmls, valFrac, label, valFracCategory);
         }
 
         if (otherCount!==0) {
@@ -5986,6 +5991,7 @@ var cellbrowser = function() {
                 shortLabels.push(labelForBinMinMax(bin[0], bin[1])); // 0,1 is min,max of the bin
             metaInfo.ui.shortLabels = shortLabels;
         }
+
         var metaCounts = {};
         // make an object with value -> count in the cells
         for (var i = 0; i < cellCount; i++) {
@@ -5993,13 +5999,25 @@ var cellbrowser = function() {
             var metaVal = metaVec[cellId];
             metaCounts[metaVal] = 1 + (metaCounts[metaVal] || 0);
         }
+        var categories = metaInfo.binInfo;
+        var catCountIdx = 2;
+        if (categories === undefined) {
+            categories = metaInfo.valCounts;
+            catCountIdx = 1;
+        }
+
         // convert the object to an array (count, percent, value) and sort it by count
         var histoList = [];
         for (var key in metaCounts) {
             let intKey = parseInt(key);
             let count = metaCounts[key];
             let frac = (count / cellCount);
-            histoList.push([count, frac, intKey]);
+            let fracOfCategory;
+            if (categories) {
+                let catCellCount = categories[intKey][catCountIdx];
+                fracOfCategory = count / catCellCount;
+            }
+            histoList.push([count, frac, intKey, fracOfCategory]);
         }
         histoList = histoList.sort(function (a, b) { return b[0] - a[0]; }); // reverse-sort by count
         return histoList;
