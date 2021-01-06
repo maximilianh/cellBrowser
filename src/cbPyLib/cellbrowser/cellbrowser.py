@@ -254,15 +254,19 @@ def downloadUrlLines(url):
     lines = [l.decode("latin1") for l in lines]
     return lines
 
+def getDownloadsUrl():
+    " return the big static file downloads URL on cells.ucsc.edu "
+    cbHomeUrl = CBHOMEURL
+    if getConfig("useTest"):
+        cbHomeUrl = CBHOMEURL_TEST
+    return cbHomeUrl
+
 def downloadStaticFile(remotePath, localPath):
     " download a file from CBHOMEURL/<remotePath> to localPath "
     localDir = dirname(localPath)
     makeDir(localDir)
 
-    cbHomeUrl = CBHOMEURL
-    if getConfig("useTest"):
-        cbHomeUrl = CBHOMEURL_TEST
-
+    cbHomeUrl = getDownloadsUrl()
     remoteUrl = urljoin(cbHomeUrl, remotePath)
     logging.info("Downloading %s to %s..." % (remoteUrl, localPath))
     data = downloadUrlBinary(remoteUrl)
@@ -275,7 +279,7 @@ def downloadStaticFile(remotePath, localPath):
     ofh.write(data)
     ofh.close()
     renameFile(localTmp, localPath)
-    return Tru
+    return True
 
 def getStaticPath(relPath):
     " return full path to a static file in the dataDir directory "
@@ -283,7 +287,7 @@ def getStaticPath(relPath):
     absPath = join(dataDir, relPath)
     return absPath
 
-def getStaticFile(relPath):
+def getStaticFile(relPath, verbose=False):
     """ get the full path to a static file in the dataDir directory
     (~/cellbrowserData or $CBDATA, by default, see above).  If the file is not
     present, it will be downloaded from
@@ -291,7 +295,10 @@ def getStaticFile(relPath):
     and copied onto the local disk under dataDir
     """
     absPath = getStaticPath(relPath)
-    if not isfile(absPath):
+    if isfile(absPath):
+        if verbose:
+            logging.info("%s already exists" % absPath)
+    else:
         logging.info("%s not found" % absPath)
         success = downloadStaticFile(relPath, absPath)
         if not success:
@@ -384,7 +391,7 @@ def readLines(lines, fname):
             lines.append(line)
     return lines
 
-def loadConfig(fname, addName=False, ignoreName=False, reqTags=[], addTo=None):
+def loadConfig(fname, ignoreName=False, reqTags=[], addTo=None, addName=False):
     """ parse python in fname and return variables as dictionary.
     add the directory of fname to the dict as 'inDir'.
     """
@@ -422,6 +429,10 @@ def loadConfig(fname, addName=False, ignoreName=False, reqTags=[], addTo=None):
 
     if "name" in conf and "/" in conf["name"]:
         errAbort("Config file %s contains a slash in the name. Slashes in names are no allowed" % fname)
+
+    if not fname.endswith(".cellbrowser.conf") and getConfig("onlyLower", False) and "name" in conf and conf["name"].isupper():
+        errAbort("dataset name or directory name should not contain uppercase characters, as these do not work "
+                "if the dataset name is specified in the URL hostname itself (e.g. cortex-dev.cells.ucsc.edu)")
     return conf
 
 def maybeLoadConfig(confFname):
@@ -3289,7 +3300,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretBinMat = join(outDir, "discretMat.bin")
     discretMatrixIndex = join(outDir, "discretMat.json")
 
-    genesAreRanges = inConf["atacSearch"]
+    genesAreRanges = inConf.get("atacSearch")
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
 
     # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
@@ -4799,95 +4810,6 @@ def addMd5(d, fname, keyName="md5", isSmall=False, shortMd5=True):
         md5 = md5[:MD5LEN]
     d[keyName] = md5
 
-#def addCollections(collDir, datasets):
-#    """ get all names of collections, find all their cellbrowser.conf files under collDir,
-#    append to 'datasets', mark datasets with collections as hidden and return new list of datasets
-#    """
-#    # make map from dataset name to dataset info dict
-#    nameToDs = {}
-#    for ds in datasets:
-#        assert(ds["name"] not in nameToDs)
-#        nameToDs[ds["name"]] = ds
-#
-#    # make a map from collName -> dataset info dicts
-#    # and dict with collection name -> list of dataset md5s
-#    collToDatasets = defaultdict(list)
-#    dsMd5s = defaultdict(list)
-#    for ds in datasets:
-#        for collName in ds.get("collections", []):
-#            collToDatasets[collName].append(nameToDs[ds["name"]])
-#            dsMd5s[collName].append(ds["md5"])
-#            # a dataset that is part of a collection is hidden from the main list by default
-#            if not "visibility" in ds:
-#                logging.debug("Setting dataset %s to hide as it's part of collection %s" % (ds["name"], collName))
-#                ds["visibility"] = "hide"
-#
-#    if collDir is None:
-#        if len(collToDatasets)>0:
-#            dsAssignment = {}
-#            for collName, dsList in iterItems(collToDatasets):
-#                dsAssignment[collName] = []
-#                for ds in dsList:
-#                    dsAssignment[collName].append(ds["name"])
-#            errAbort("Some datasets defined collections but collDir is not defined in ~/.cellbrowser.conf. Found collection-dataset assignment: %s" % dsAssignment)
-#        else:
-#            logging.debug("collDir not defined in ~/.cellbrowser.conf, but also no collections used")
-#            return datasets, {}
-#    else:
-#        logging.debug("collDir is set to %s" % collDir)
-#
-#    logging.debug("Scanning %s for collections" % collDir)
-#    collDir = expanduser(collDir)
-#    collLabels = {}
-#    for collName, collDatasets in iterItems(collToDatasets):
-#        datasetNames = [ds["name"] for ds in collDatasets]
-#        subPath = join(collDir, collName)
-#        if not isdir(subPath):
-#            errAbort("%s is not a directory but datasets %s refer to a collection of this name" % (subPath, datasetNames))
-#        fname = join(subPath, "cellbrowser.conf")
-#        if not isfile(fname):
-#            #logging.debug("Cannot find %s" % fname)
-#            errAbort("%s does not exist but datasets %s refer to a collection of this name" % (fname, datasetNames))
-#
-#        conf = loadConfig(fname, requireTags=reqTagsColl)
-#
-#        conf["name"] = collName
-#        conf["isCollection"] = True
-#        conf["datasetCount"] = len(collToDatasets[collName])
-#        if isfile(join(subPath, "desc.conf")) or isfile(join(subPath, "datasetDesc.conf")):
-#            conf["hasFiles"] = ["datasetDesc"]
-#
-#        #if "collections" in conf:
-#            #errAbort("File %s defines a collection but is itself a collection. This is not allowed." % subPath)
-#
-#        fileVersions = {}
-#        fileVersions["config"] = getFileVersion(fname)
-#        conf["fileVersions"] = fileVersions
-#
-#        collLabels[collName] = conf["shortLabel"]
-#        #conf["md5"] = collMd5s[collName]
-#
-#        datasets.append(conf)
-#
-#    # make map from collName -> list of only primary datasets (not others)
-#    primCollDatasets = defaultdict(list)
-#    for ds in datasets:
-#        if "collections" in ds:
-#            primCollName = ds["collections"][0]
-#            primCollDatasets[primCollName].append(ds)
-#
-#    # add info about siblings to all datasets with the same primary collection
-#    # it's easier to have all linked dataset labels in the dataset than having to load these all the time
-#    #dsSiblingLabels = defaultdict(list)
-#    #for collName, dsList in iterItems(primCollDatasets):
-#            #sibInfo = []
-#            #for ds in dsList:
-#                #sibInfo.append({"name":ds["name"], "shortLabel":ds["shortLabel"]})
-#            #for ds in dsList:
-#                #ds["sameCollection"] = sibInfo
-#
-#    return datasets, primCollDatasets
-
 def calcMd5ForDataset(datasetDesc):
     " make a combined md5 for the dataset, based on the config file, meta, expression and the html or dataset descs "
     md5s = []
@@ -5778,17 +5700,11 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
         return
 
     inFname = findPkgFile("sampleConfig/desc.conf")
-    #c = maybeLoadConfig(outFname)
-    #if isfile(outFname):
-        #c = loadConfig(outFname)
-    #else:
-        #c = OrderedDict()
 
     sampleData = open(inFname).read()
     ofh = open(outFname, "wt")
     ofh.write(sampleData)
 
-    #c["title"] = datasetName.replace("_", " ")
     # always overwrite the parameters
     if algParams:
         ofh.write("algParams = %s\n" % repr(dict(algParams)))

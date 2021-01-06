@@ -9,7 +9,7 @@ from os.path import join, basename, dirname, isfile
 
 from .cellbrowser import sepForFile, getStaticFile, openFile, splitOnce, setDebug, getStaticPath
 from .cellbrowser import getGeneSymPath, downloadUrlLines, getSymToGene, getGeneBedPath, errAbort, iterItems
-from .cellbrowser import findCbData, readGeneSymbols, getGeneJsonPath
+from .cellbrowser import findCbData, readGeneSymbols, getGeneJsonPath, getDownloadsUrl
 
 # ==== functions =====
 def cbGenes_parseArgs():
@@ -17,20 +17,22 @@ def cbGenes_parseArgs():
     parser = optparse.OptionParser("""usage: %prog [options] command - download gene model files and auto-detect the version.
 
     Commands:
-    avail - List all gene models that can be downloaded
-    syms <geneType> - Download a table with geneId <-> symbol for a gene model database.
-    locs <assembly> <geneType> - Download a gene model file from UCSC, pick one transcript per gene and save to ~/cellbrowserData/genes/<db>.<geneType>.bed.
-    fetch <assembly> <geneType> - do both 'syms' and 'locs'
-    ls here - list all available gene models on this machine
-    ls remote - list all available gene models at UCSC
+    fetch <geneType> - download pre-built geneId -> symbol table from UCSC
+    fetch <assembly>.<geneType> - download pre-built gene models and symbol table from UCSC
+    build <assembly>.<geneType> - Download a gene model file from UCSC, pick one transcript per gene and save to ~/cellbrowserData/genes/<db>.<geneType>.bed.gz and <geneType>.symbols.tsv.gz
+
+    Run "fetch" or "build" without arguments to list the available files at UCSC.
+
+    ls - list all available (built or downloaded)  gene models on this machine
+
     guess <inFile> <organism> - Guess best gene type. Reads the first tab-sep field from inFile and prints genetypes sorted by % of matching unique IDs to inFile.
 
     Examples:
-    %prog avail
-    %prog syms gencode-34 # for human gencode release 34
-    %prog syms gencode-M25 # for mouse gencode release M25
-    %prog locs hg38 gencode-34
-    %prog locs mm10 gencode-M25
+    %prog fetch                   # show the files that are available
+    %prog fetch gencode-34        # geneId -> symbol mapping for human gencode relase 34
+    %prog fetch hg38.gencode-34   # gene -> chrom mapping for human gencode relase 34
+    %prog build                   # show the files that are available
+    %prog build mm10 gencode-M25
     %prog ls
     %prog guess genes.txt mouse
     %prog index # only used at UCSC to prepare the files for 'guess'
@@ -87,12 +89,13 @@ def parseGenes(fname):
             continue
         geneId = splitOnce(line[:50], sep)[0]
         geneId = geneId.strip("\n").strip("\r").strip()
-        fileGenes.add(geneId.split('.')[0].split("|")[0])
+        #fileGenes.add(geneId.split('.')[0].split("|")[0])
+        fileGenes.add(geneId.split("|")[0])
     logging.info("Read %d genes" % len(fileGenes))
     return fileGenes
 
 def guessGencodeVersion(fileGenes, signGenes):
-    logging.info("Number of genes that are specific for gene model release:")
+    logging.info("Number of genes that are only in a gene model release:")
     diffs = []
     for version, uniqGenes in signGenes.items():
         intersection = list(fileGenes.intersection(uniqGenes))
@@ -105,6 +108,7 @@ def guessGencodeVersion(fileGenes, signGenes):
 
     diffs.sort(reverse=True)
     bestVersion = diffs[0][1]
+
     return bestVersion
 
 def guessGencode(fname, org):
@@ -116,6 +120,11 @@ def guessGencode(fname, org):
     signGenes = parseSignatures(org, geneType)
     bestVersion = guessGencodeVersion(inGenes, signGenes)
     print("Best %s Gencode release\t%s" % (org, bestVersion))
+
+    allIds = readGeneSymbols(bestVersion)
+    notFoundIds = set(allIds) - inGenes
+    print("%d of the genes in the input are not part of %s" % (len(notFoundIds), bestVersion))
+    print("Examples: %s" % " ".join(list(notFoundIds)[:50]))
 
 def buildSymbolTable(geneType):
     if geneType.startswith("gencode"):
@@ -236,13 +245,37 @@ def iterBedRows(db, geneIdType):
 def parseApacheDir(lines):
     fnames = []
     for l in lines:
-        if "<a href" in l:
-            fname = l.split('">')[1].split("<")[0]
+        hrefCount = l.count("<a href=")
+        if hrefCount==1:
+            if "Parent Directory<" in l: 
+                continue
+            fname = l.split('<a href="')[1].split('"')[0]
             fnames.append(fname)
     return fnames
 
-def listModelRemote():
+def listModelRemoteFetch():
     " print all gene models that can be downloaded "
+    url = join(getDownloadsUrl(), "genes")
+    lines = downloadUrlLines(url)
+    fnames = parseApacheDir(lines)
+    geneFnames = [f.replace(".bed.gz","") for f in fnames if f.endswith(".bed.gz")]
+    symFnames = [f.replace(".symbols.tsv.gz", "") for f in fnames if f.endswith(".symbols.tsv.gz")]
+
+    sep = "\n"
+
+    print("Pre-built gene model mapping files available for 'fetch' at %s" % url)
+    print(sep.join(geneFnames))
+    #for g in geneFnames:
+        #print(g.replace(".bed.gz",""))
+
+    print()
+    print("Pre-built geneId/symbol tables available for 'fetch' at %s" % url)
+    print(sep.join(symFnames))
+    #for g in symFnames:
+        #print(g.replace(".symbols.tsv.gz", ""))
+
+def listModelRemoteBuild():
+    sep = "\n"
     urls = [("hg38", "https://hgdownload.cse.ucsc.edu/goldenPath/hg38/database/"),
             ("mm10", "https://hgdownload.cse.ucsc.edu/goldenPath/mm10/database/"),
             ("hg19", "https://hgdownload.cse.ucsc.edu/goldenPath/hg19/database/")
@@ -250,16 +283,19 @@ def listModelRemote():
 
     allNames = defaultdict(list)
     for db, url in urls:
-        logging.info("Downloading %s" % url)
+        print()
+        print("Files available for 'build' for assembly %s (%s)" % (db, url))
         lines = downloadUrlLines(url)
         fnames = parseApacheDir(lines)
         geneFnames = [x for x in fnames if x.startswith("wgEncodeGencodeAttrs") and x.endswith(".txt.gz")]
         relNames = [x.replace("wgEncodeGencodeAttrsV", "gencode-").replace(".txt.gz", "") for x in geneFnames]
         allNames[db].extend(relNames)
+        print(sep.join(relNames))
 
-    for db, names in allNames.items():
-        for name in names:
-            print("%s\t%s" % (db, name))
+    #for db, names in allNames.items():
+        #for name in names:
+            ##print("%s\t%s" % (db, name))
+            #print(name)
 
 def keepOnlyUnique(dictSet):
     """ give a dict with key -> set, return a dict with key -> set, but only with elements in the set that
@@ -366,6 +402,16 @@ def buildGuessIndex():
     uniqueIds("human")
     uniqueIds("mouse")
 
+def fetch(fileDesc):
+    " download symbol or gene files to local dir "
+    if "." in fileDesc:
+        # user wants a gene model file
+        ext = "bed.gz"
+    else:
+        ext = "symbols.tsv.gz"
+    fname = getStaticFile("genes/%s.%s" % (fileDesc, ext), verbose=True)
+    return
+
 def cbGenesCli():
     args, options = cbGenes_parseArgs()
 
@@ -376,23 +422,33 @@ def cbGenesCli():
         if len(args)==3:
             org = args[2]
         guessGencode(fname, org)
-    elif command=="syms":
+
+    elif command=="fetch":
+        if len(args)==1:
+            listModelRemoteFetch()
+        else:
+            arg = args[1]
+            fetch(arg)
+
+    elif command=="syms": # undocumented
         geneType = args[1]
         buildSymbolTable(geneType)
-    elif command=="locs":
-        db, geneType = args[1:]
-        buildLocusBed(db, geneType)
-    elif command=="fetch":
-        db, geneType = args[1:]
-        buildLocusBed(db, geneType)
-        buildSymbolTable(geneType)
-    elif command=="avail":
-        listModelRemote()
+
+    elif command=="build":
+        if len(args)==1:
+            listModelRemoteBuild()
+        else:
+            db, geneType = args[1:]
+            buildSymbolTable(geneType)
+            buildLocusBed(db, geneType)
+
     elif command=="ls":
         listModelsLocal()
+
     elif command=="index":
         buildGuessIndex()
-    elif command=="json":
+
+    elif command=="json": # undocumented
         db, geneType, outFname = args[1:]
         bedToJson(db, geneType, outFname)
     else:
