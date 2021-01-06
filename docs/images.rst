@@ -11,8 +11,15 @@ a JSON file with the description of the images. The Cell Browser then
 shows an overview of the images on the "Info & Downloads" dialog box.
 
 The default filename is ``images.json`` and has to be placed in the same
-directory as the desc.conf file. Here is an example images.json file,
-it should be self-explanatory. Contact us if you have questions.
+directory as the desc.conf file. Here is an example images.json file.
+Contact us if you have questions or feedback on this basic system.
+
+In the example below, there is only one image category called "main category", 
+(there could be several, by duplicating the top-most object and changing
+the categoryLabel in the copy). This category has two categoryImageSets, the first has the
+label "DAPI SOX2 TBR2 DCX CTIP2".  This imageSet offers two files for download
+and one file for display. The next imageSet has the label "AnotherImageSet" and 
+also two files for download and one for display.
 
     [
     {
