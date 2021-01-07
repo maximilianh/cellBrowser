@@ -45,11 +45,53 @@ us to move to our server. These include methods such as:
 
 Other information we want
 ^^^^
+
+Dataset description
+""""
+
 Alongside your submission, it would be great if you filled out a 
 `desc.conf <https://cellbrowser.readthedocs.io/dataDesc.html>`_ file. At
 the very least, it should have the abstract, methods, and title filled out. 
 However, you are welcome to fill out more fields and make it as complete as 
 you would like.
+
+Dataset shortname
+""""
+
+It would be great if you could suggest a dataset shortname at the time of
+your submission, although we're happy to make one up for you. An ideal short
+name fulfills the following requirements
+
+* All lowercase
+* Words separated by dashes ("-")
+* Four words or less (don't be afraid to abreviate words, e.g. development -> dev)
+* Informative
+
+A great example is cortex-dev - it's all lowercase, the two words are separated by 
+dashes, it's only two words long, and informs you that the dataset is focused on 
+cortex development. It fulfills all four points above. 
+
+Other great examples:
+
+* mouse-nervous-system
+* skeletal-muscle
+* mouse-oligo-het
+* covid-hypertension
+
+The short name doesn't have to be perfect, but good enough to communicate something
+about your dataset in a few words. 
+
+Getting your URL
+^^^^
+
+After you submit your dataset to us, we will import the data and make a preliminary
+version available on our development server. We will work with you to iterate and
+make improvements to this version first. Once you give your final approval, we will
+push the data to our main site, cells.ucsc.edu. Once there, you will recieve the 
+final URL, e.g. cortex-dev.cells.ucsc.edu. This is the URL you should place in your
+paper, link to from your lab website, tweet about, etc. Please **do not** put the
+url to our development server in your paper, since it is under active development, 
+we occasionaly break it.
 
 FAQs
 ^^^^
@@ -72,5 +114,3 @@ being list alongside the others we host. This means that someone would need to k
 the URL or dataset name to be able to access your dataset. For example, this means
 that someone would need the URL cells.ucsc.edu/?ds=cortex-dev or know the name
 (cortex-dev) to access the dataset.
-
-Can you host single
