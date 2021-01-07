@@ -7,12 +7,13 @@ regardlessof the library prepartion (10x, Samrt-seq2, etc), organism
 Monocle, etc).
 
 A cell browser requires at minimum three things:
+
 * Expression matrix
 * Metadata with cell names and cluster field
 * 2D Layout coordinates
 
 If you can provide these alongside some description of the dataset,
-we'll host it.
+we'll host it. Contact us at cells@ucsc.edu to get started.
 
 Preparing and sharing your files
 ^^^^
