@@ -4163,7 +4163,7 @@ var cellbrowser = function() {
         htmls.push("<div class='tpMetaTipPerc'>"+(100*valFrac).toFixed(1)+"%</div>");
         htmls.push("<div class='tpMetaTipName'>"+valStr);
         if (valFracCategory !== undefined) {
-            htmls.push(" <small>(" + (100 * valFracCategory).toFixed(1) + "% of it)</small>");
+            htmls.push(" <small>(" + (100 * valFracCategory).toFixed(1) + "% of all cells with this value)</small>");
         }
         htmls.push("</div>");
         //htmls.push("<span class='tpMetaTipCount'>"+valCount+"</span>");
