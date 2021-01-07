@@ -2,7 +2,7 @@ Submitting data to the UCSC Cell Browser
 ----
 
 At this time, we are happy to host pretty much any single-cell dataset,
-regardlessof the library prepartion (10x, Samrt-seq2, etc), organism 
+regardless of the library prepartion (10x, Samrt-seq2, etc), organism 
 (human, mouse, zebrafish, etc), or analysis method (Seurat, Scanpy,
 Monocle, etc).
 
