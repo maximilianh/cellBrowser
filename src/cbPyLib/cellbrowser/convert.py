@@ -535,6 +535,9 @@ def cbImportScanpy_parseArgs(showHelp=False):
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same directory")
 
+    parser.add_option("", "--skipMarkers", dest="skipMarkers", action="store_true",
+            help="do not try to calculate cluster-specific marker genes. Only useful for the rare datasets where a bug in scanpy crashes the marker gene calculation.")
+
     (options, args) = parser.parse_args()
 
     if showHelp:
@@ -586,6 +589,7 @@ def cbImportScanpyCli():
 
     markerField = options.markerField
     clusterField = options.clusterField
+    skipMarkers = options.skipMarkers
 
     if inFname.endswith(".loom"):
         ad = importLoom(inFname)
@@ -594,7 +598,7 @@ def cbImportScanpyCli():
         ad = anndata.read_h5ad(inFname)
 
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
-            markerField=markerField, clusterField=clusterField)
+            markerField=markerField, clusterField=clusterField, skipMarkers=skipMarkers)
     generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:

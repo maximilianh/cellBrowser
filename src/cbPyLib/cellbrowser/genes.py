@@ -222,15 +222,16 @@ def listModelsLocal():
     " print all gene models on local machine "
 
     dataDir = join(findCbData(), "genes")
-    logging.info("Local cell browser genes data directory: %s" % dataDir)
+    print("Local cell browser genes data directory: %s" % dataDir)
     fnames = glob.glob(join(dataDir, "*.symbols.tsv.gz"))
     names = [basename(x).split(".")[0] for x in fnames]
     print("Installed gene/symbol mappings:")
     print("\n".join(names))
+    print()
 
     fnames = glob.glob(join(dataDir, "*.bed.gz"))
     names = [basename(x).replace(".bed.gz","") for x in fnames]
-    print("Installed gene/location mappings:")
+    print("Installed gene/chrom-location mappings:")
     print("\n".join(names))
 
 def iterBedRows(db, geneIdType):

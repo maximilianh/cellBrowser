@@ -581,6 +581,9 @@ def cbScanpy_parseArgs():
     parser.add_option("", "--skipMatrix", dest="skipMatrix", action="store_true",
             help="do not write the scanpy matrix to the destination directory as a file exprMatrix.tsv.gz")
 
+    parser.add_option("", "--skipMarkers", dest="skipMarkers", action="store_true",
+            help="do not try to calculate cluster-specific marker genes. Only useful for the rare datasets where a bug in scanpy crashes the marker gene calculation.")
+
     parser.add_option("", "--copyMatrix", dest="copyMatrix", action="store_true",
             help="Instead of reading the input matrix into scanpy and then writing it back out, just copy the input matrix. Only works if the input matrix is gzipped and in the right format and a tsv or csv file, not mtx or h5-based files.")
 
@@ -4159,9 +4162,33 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     sc.tl.rank_genes_groups(adata, groupby=clusterField)
     return adata
 
+def saveMarkers(adata, nb_marker, fname):
+    " save nb_marker marker genes from adata object to fname , in a reasonable file format "
+    top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
+    top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
+    marker_df= pd.DataFrame()
+    #for i in range(len(top_score.columns)):
+    for clustName in top_score.columns:
+        topScoreCol = top_score[[clustName]]
+        topGeneCol = top_gene[[clustName]]
+        concat=pd.concat([topScoreCol,topGeneCol],axis=1,ignore_index=True)
+        concat['cluster_name']=clustName
+        col=list(concat.columns)
+        col[0],col[-2]='z_score','gene'
+        concat.columns=col
+        marker_df=marker_df.append(concat)
+
+    #Rearranging columns -> Cluster, gene, score
+    cols=marker_df.columns.tolist()
+    cols=cols[::-1]
+    marker_df=marker_df[cols]
+    #Export
+    logging.info("Writing %s" % fname)
+    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
-        markerField='rank_genes_groups'):
+        skipMarkers=False, markerField='rank_genes_groups'):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -4170,7 +4197,10 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     This function export files needed for the ucsc cells viewer from the Scanpy Anndata object
     :param anndata: Scanpy AnnData object where information are stored
     :param path : Path to folder where to save data (tsv tables)
-    :param clusterField: name of cluster field, used for labeling and default coloring, default is 'louvain'
+    :param clusterField: name of cluster name field, used for labeling and default coloring, default is 'louvain'
+            This field is also used to calculate markers, if no marker genes are found in the object.
+    :param markerField: the ad.uns field where the marker
+             gene calculation results are stored. This is not the meta data field used to calculate markers on.
     :param coordFields: list of obsm coordinates to export, default is all
     :param metaFields: list of metadata names (string) to export
     from the AnnData object (other than 'louvain' to also save (eg: batches, ...)).
@@ -4204,11 +4234,10 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
 
     ##Check for cluster markers
-    if markerField not in adata.uns:
+    if markerField not in adata.uns and not skipMarkers:
         logging.warn("Couldnt find list of cluster marker genes in the h5ad file in adata.uns with the key '%s'. "
             "In the future, from Python, try running sc.tl.rank_genes_groups(adata) to "
             "create the cluster annotation and write the h5ad file then." % markerField)
-        addMarkers = False
         logging.info("Filtering for >5 cells then do sc.tl.rank_genes_groups for meta field '%s'" % clusterField)
         if "columns" in dir(adata.obs): # in older scanpy objects obs is not a pandas dataframe
             if clusterField not in adata.obs.columns:
@@ -4231,31 +4260,13 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
                 clusterField = foundField
 
-        adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
+            adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
-    top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
-    top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
-    marker_df= pd.DataFrame()
-    #for i in range(len(top_score.columns)):
-    for clustName in top_score.columns:
-        topScoreCol = top_score[[clustName]]
-        topGeneCol = top_gene[[clustName]]
-        concat=pd.concat([topScoreCol,topGeneCol],axis=1,ignore_index=True)
-        concat['cluster_name']=clustName
-        col=list(concat.columns)
-        col[0],col[-2]='z_score','gene'
-        concat.columns=col
-        marker_df=marker_df.append(concat)
-
-    #Rearranging columns -> Cluster, gene, score
-    cols=marker_df.columns.tolist()
-    cols=cols[::-1]
-    marker_df=marker_df[cols]
-    #Export
-    fname = join(path, "markers.tsv")
-    logging.info("Writing %s" % fname)
-    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
-    addMarkers = True
+    markersExported = False # the quickgenes step later needs to know if a markers.tsv file was created.
+    if not skipMarkers:
+        fname = join(path, "markers.tsv")
+        saveMarkers(adata, markerField, nb_marker, fname)
+        markersExported = True
 
     ##Save metadata
     if metaFields is None:
@@ -4296,14 +4307,14 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
         clusterFieldLabel = metaFields.get(clusterField, clusterField)
         argDict['clusterField'] = clusterFieldLabel
 
-    if addMarkers:
+    if markersExported:
         generateQuickGenes(path)
         argDict['quickGenesFile'] = "quickGenes.tsv"
 
     if isfile(confName):
         logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
     else:
-        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=addMarkers, args=argDict)
+        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=markersExported, args=argDict)
 
 def writeJson(data, outFname, ignoreKeys=None):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -4975,8 +4986,7 @@ def writeVersionedLink(ofh, mask, webDir, relFname, addVersion=True):
 
 def writeGaScript(ofh, gaTag):
     " write Google analytics script to ofh "
-    ofh.write("""
-<!-- Global site tag (gtag.js) - Google Analytics -->
+    ofh.write("""<!-- Global site tag (gtag.js) - Google Analytics -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=%s"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -5793,6 +5803,7 @@ def cbScanpyCli():
     inCluster = options.inCluster
     copyMatrix = options.copyMatrix
     skipMatrix = options.skipMatrix
+    skipMarkers = options.skipMarkers
     datasetName=options.name
 
     if datasetName is None:
@@ -5822,7 +5833,7 @@ def cbScanpyCli():
     logging.info("Writing final result as an anndata object to %s" % adFname)
     adata.write(adFname)
 
-    scanpyToCellbrowser(adata, outDir, datasetName=datasetName,
+    scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMarkers=skipMarkers,
             clusterField=inCluster, skipMatrix=(copyMatrix or skipMatrix), useRaw=True)
 
     if copyMatrix:
