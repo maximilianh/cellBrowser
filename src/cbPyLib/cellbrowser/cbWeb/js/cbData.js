@@ -274,12 +274,28 @@ var cbUtil = (function () {
         return a;
     };
 
+    my.arrAddMult = function (a, bArrs) {
+        /* add all arrays in bArrs to array a, modifying a in place. Return a. */
+        for (var bi=0; bi < bArrs.length; bi++) {
+            var a = cbUtil.arrAdd(a, bArrs[bi]);
+        }
+        return a;
+    };
+
     my.arrSub = function (a, b) {
         /* substract array b from array a, modifying a in place. Return a. */
         if (a.length !== b.length)
             alert("cbUtil.arrAdd: input arrays must have same size");
         for (var i=0; i < a.length; i++) 
             a[i] = a[i]-b[i];
+        return a;
+    };
+
+    my.arrSubMult = function (a, bArrs) {
+        /* substract all arrays in bArrs from array a, modifying a in place. Return a. */
+        for (var bi=0; bi < bArrs.length; bi++) {
+            var a = cbUtil.arrSub(a, bArrs[bi]);
+        }
         return a;
     };
 
@@ -666,7 +682,7 @@ function CbDbFile(url) {
         else
             off = self.geneOffsets[name];
 
-        if (off===null) {
+        if (off===null || off===undefined) {
             alert("internal error: there is no gene/ATAC-peak for "+name+" in the expression matrix");
             return;
         }
@@ -747,16 +763,15 @@ function CbDbFile(url) {
         let updateOp = null;
 
         if (locusName.startsWith("+") || locusName.startsWith("-")) {
-            namesToLoad = [ locusName.substring(1) ]; // strip the first character
             updateOp = locusName.substring(0, 1);
+            namesToLoad = locusName.substring(1).split(updateOp); // strip the first character
         } else {
-
             locusName = locusName.replace(" ", "+"); // common error: + is "space" in URLs
             namesToLoad = locusName.split("+");
         }
 
         function allRangesDone() {
-            /* sum up all arrays and call the callback */
+            /* sum/substract all arrays and call the callback */
             // create a summarized gene desc
             let geneDescs = [];
             let arrs = [];
@@ -779,9 +794,9 @@ function CbDbFile(url) {
                     newArr = arrs[0]; // first click ever = there is nothing to add to. XX reset ... when?
                 else
                     if (updateOp==="+")
-                        newArr = cbUtil.arrAdd(self.currExprArr, arrs[0]);
+                        newArr = cbUtil.arrAddMult(self.currExprArr, arrs);
                     else
-                        newArr = cbUtil.arrSub(self.currExprArr, arrs[0]);
+                        newArr = cbUtil.arrSubMult(self.currExprArr, arrs);
             } else
                 newArr = sumAllArrs(ArrType, arrs);
 

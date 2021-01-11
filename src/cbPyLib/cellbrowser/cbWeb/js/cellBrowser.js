@@ -151,6 +151,10 @@ var cellbrowser = function() {
         alert(msg);
     }
 
+    function getById(query) {
+        return document.getElementById(query);
+    }
+
     function cloneObj(d) {
     /* returns a copy of an object, wasteful */
         // see http://stackoverflow.com/questions/122102/what-is-the-most-efficient-way-to-deep-clone-an-object-in-javascript
@@ -205,6 +209,20 @@ var cellbrowser = function() {
         var allKeys = [];
         for(var k in o) allKeys.push(k);
         return allKeys;
+    }
+
+    function trackEvent(eventName, eventLabel) {
+    /* send an event to google analytics */
+        if (typeof gtag !== 'function')
+            return;
+        gtag('event', eventName, eventLabel);
+    }
+
+    function trackEventObj(eventName, obj) {
+    /* send an event obj to google analytics */
+        if (typeof gtag !== 'function')
+            return;
+        gtag('event', obj);
     }
 
     function classAddListener(className, type, listener) {
@@ -312,7 +330,7 @@ var cellbrowser = function() {
         var ttOpt = {
             "html": true, 
             "animation": false, 
-            "delay": {"show":300, "hide":100}, 
+            "delay": {"show":350, "hide":100}, 
             "trigger" : "hover",
             container:"body"
         };
@@ -359,25 +377,29 @@ var cellbrowser = function() {
          //$("#tpHideLabels").text(SHOWLABELSNAME);
     }
 
-    function prettySeqDist(count) {
+    function prettySeqDist(count, addSign) {
         /* create human-readable string from chrom distance */
         var f = count;
-        if (Math.abs(count)>1000000) {
+        var sign = "";
+        if (addSign && count > 0)
+            sign = "+";
+
+        if (Math.abs(count)>=1000000) {
             f = (count / 1000000);
-            return f.toFixed(3)+"Mbp";
+            return sign+f.toFixed(3)+"Mbp";
         }
-        if (Math.abs(count)>10000) {
+        if (Math.abs(count)>=10000) {
             f = (count / 1000);
-            return f.toFixed(2)+"kbp";
+            return sign+f.toFixed(2)+"kbp";
         }
-        if (Math.abs(count)>1000) {
+        if (Math.abs(count)>=1000) {
             f = (count / 1000);
-            return f.toFixed(2)+"kbp";
+            return sign+f.toFixed(2)+"kbp";
         }
         return f;
     }
 
-    function prettyNumber(/*int*/ count, isBp) /*str*/ {
+    function prettyNumber(count, isBp) /*str*/ {
         /* convert a number to a shorter string, e.g. 1200 -> 1.2k, 1200000 -> 1.2M, etc */
         var f = count;
         if (count>1000000) {
@@ -440,6 +462,7 @@ var cellbrowser = function() {
                   $( "#pane1" ).html(msg);
                   $( "#pane2" ).html(msg);
                   $( "#pane3" ).html(msg);
+                  $( "#pane3" ).show();
               })
               .then(function(desc) { 
                   datasetDescToHtml(datasetInfo, desc); 
@@ -1065,7 +1088,7 @@ var cellbrowser = function() {
                 "Double-click or click 'Open' below.<br>To move between datasets later in the cell browser, " +
                 "use the 'Collection' dropdown. </p>");
 
-            changeUrl({"ds":openDsInfo.name});
+            changeUrl({"ds":openDsInfo.name.replace("/", " ")}); // + is easier to type
         }
 
         let doFaceting = false;
@@ -1139,7 +1162,7 @@ var cellbrowser = function() {
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLink2' data-toggle='tab' href='#pane2'>Methods</a></li>");
-        htmls.push("<li><a class='tpDatasetTab' id='tabLink3' data-toggle='tab' href='#pane3'>Data Download</a></li>");
+        htmls.push("<li><a class='tpDatasetTab' id='tabLink3' data-toggle='tab' style='display:none' href='#pane3'>Data Download</a></li>");
         htmls.push("<li><a class='tpDatasetTab' id='tabLinkImg' data-toggle='tab' href='#paneImg'>Images</a></li>");
         htmls.push("</ul>");
 
@@ -1198,7 +1221,7 @@ var cellbrowser = function() {
             loadCollectionInfo(openDatasetName, function(newCollInfo) {
                 openDatasetDialog(newCollInfo, selDatasetName);
             });
-            changeUrl({"ds":openDatasetName});
+            changeUrl({"ds":openDatasetName.replace("/", " ")});
         });
 
         var focused = document.activeElement;
@@ -2710,7 +2733,7 @@ var cellbrowser = function() {
             labelLines[1].push(dataList[1].length);
         }
 
-        const ctx = document.getElementById("tpViolinCanvas").getContext("2d");
+        const ctx = getById("tpViolinCanvas").getContext("2d");
 
  	var boxplotData = {
           labels : labelLines,
@@ -2868,23 +2891,21 @@ var cellbrowser = function() {
             if (decArr===null)
                 return;
             console.log("Received expression vector, for "+locusStr+", desc: "+geneDesc);
-            _dump(binInfo);
-            makeLegendExpr(locusStr, geneDesc, binInfo, exprArr, decArr);
-
-            renderer.setColors(legendGetColors(gLegend.rows));
-            renderer.setColorArr(decArr);
-            buildLegendBar();
-            onDone();
-
             // update the URL and possibly the gene combo box
+            var fullLocusStr = locusStr;
             if (locusStr.indexOf("|") > -1) {
-                locusStr = peakListSerialize();
+                fullLocusStr = peakListSerialize(); // the locus str can be +chr1:1-1000 to add a single gene, but we want all
                 changeUrl({"locus":locusStr, "meta":null});
             } else {
                 changeUrl({"gene":locusStr, "meta":null});
                 selectizeSetValue("#tpGeneCombo", locusStr);
             }
 
+            makeLegendExpr(fullLocusStr, geneDesc, binInfo, exprArr, decArr);
+            renderer.setColors(legendGetColors(gLegend.rows));
+            renderer.setColorArr(decArr);
+            buildLegendBar(locusStr);
+            onDone();
 
             // update the "recent genes" div
             for (var i = 0; i < gRecentGenes.length; i++) {
@@ -3573,7 +3594,10 @@ var cellbrowser = function() {
         gLegend = {};
         gLegend.type = "expr";
         gLegend.rows = legendRows;
-        gLegend.title = getGeneLabel()+": "+geneSym;
+        if (db.conf.atacSearch)
+            gLegend.title = (geneSym.split("+").length) + " peaks";
+        else
+            gLegend.title = getGeneLabel()+": "+geneSym;
         gLegend.titleHover = geneId;
         gLegend.geneSym = geneSym;
         gLegend.rowType = "range";
@@ -4130,6 +4154,10 @@ var cellbrowser = function() {
         return legend;
     }
 
+    function legendSetTitle(label) {
+        $('#tpLegendTitle').text(label);
+    }
+
     function buildLegendForMeta(metaInfo) {
     /* build the gLegend for a meta field */
         var legend = makeLegendMeta(metaInfo);
@@ -4142,7 +4170,8 @@ var cellbrowser = function() {
         $('#tpMetaBox_'+metaIdx).addClass('tpMetaSelect');
         $('#tpMeta_'+metaIdx).addClass('tpMetaValueSelect');
         $('.tpGeneBarCell').removeClass('tpGeneBarCellSelected');
-        $('#tpLegendTitle').text(legend.metaInfo.label.replace(/_/g, " "));
+        //$('#tpLegendTitle').text(legend.metaInfo.label.replace(/_/g, " "));
+        legendSetTitle(legend.metaInfo.label.replace(/_/g, " "));
 
         return legend;
     }
@@ -4343,12 +4372,9 @@ var cellbrowser = function() {
         var geneSym = ev.target.value;
         if (geneSym==="")
             return; // do nothing if user just deleted the current gene
-        alert("onChange event");
-        //if (db.conf.atacSearch) {
-            //var inView = db.findRangesByGene(geneSym);
-            //peakListShowTitle(geneSym, inView.pos);
-            //peakListShowRanges(geneSym, inView.ranges);
-        //} else
+        if (db.conf.atacSearch) {
+            updatePeakListWithGene(geneSym);
+        } else
             colorByLocus(geneSym);
     }
 
@@ -4442,9 +4468,11 @@ var cellbrowser = function() {
             vars = {};
 
         if (datasetName!=="")
-            changeUrl({"ds":datasetName}, vars);
+            changeUrl({"ds":datasetName.replace("/", " ")}, vars); // + is easier to type than %23
 
         db.loadConfig(onConfigLoaded, md5);
+        trackEvent("open_dataset", datasetName);
+        trackEventObj("select_content", {content_type: "dataset", item_id: datasetName});
     }
 
     function loadCollectionInfo(collName, onDone) {
@@ -4534,7 +4562,7 @@ var cellbrowser = function() {
         htmls.push('<div class="tpToolBarItem" style="padding-left: 3px">');
         var title = "Color by "+getGeneLabel();
         if (db.conf.atacSearch)
-            title = "Find ranges at or close to:"
+            title = "Find peaks at or close to:"
         htmls.push('<label style="display:block; margin-bottom:8px; padding-top: 8px;" for="'+id+'">'+title+'</label>');
         var geneLabel = getGeneLabel().toLowerCase();
         var boxLabel = 'search for '+geneLabel+'...';
@@ -4576,23 +4604,35 @@ var cellbrowser = function() {
     function buildPeakList(htmls) {
         /* add a container for the list of peaks to htmls */
         htmls.push("<div id='tpPeakListTitle'>Peaks found</div>");
+
         htmls.push("<div id='tpPeakList' style='height: 30%'>");
             htmls.push("<span id='noPeaks'>No active genes or ranges</span>");
         htmls.push("</div>");
         htmls.push("<div id='tpPeakListSelector'>");
         //htmls.push("<input id='tpPeakListAuto' style='margin-right: 3px' type='checkbox' checked>");
-        htmls.push("<label for='tpPeakListAuto' style='display:inline; font-weight:normal'>Select ");
-            htmls.push("<input id='tpPeakListAutoDist' style='width:2em; height:1.3em; margin-right: 0.3em' type='text' value='2'>");
-            htmls.push("kbp upstream</input>");
-            htmls.push("<button id='tpPeakListAutoApply' style='float:right; margin-top: 2px'>Apply</button>");
-        htmls.push("</label>");
+        htmls.push("<div id='tpPeakListButtons' style='margin-left: 4px'>");
+        htmls.push('<button title="Select all peaks in the list above" id="tpPeakListAll">All</button>');
+        htmls.push('<button title="Select no peaks in the list above" id="tpPeakListNone">None</button>');
+        htmls.push('<button title="Select only peaks within a certain distance upstream from the TSS. Click on the field to edit the distance. Click the button to select the peaks." id="tpPeakListUpstream">');
+        htmls.push('<input id="tpPeakListAutoDist" type="text" value="2" style="width:2em;border: 0;height: 0.8em;">');
+        htmls.push('kbp upstream</button>');
+        htmls.push("<div id='tpPeakListButtons'>");
+
+        //htmls.push("<label for='tpPeakListAuto' style='display:inline; font-weight:normal'>Peaks ");
+            //htmls.push("<input id='tpPeakListAutoDist' style='width:2em; height:1.3em; margin-right: 0.3em' type='text' value='2'>");
+            //htmls.push("kbp upstream</input>");
+            //htmls.push("<button id='tpPeakListUpstream' style='float:right; margin-top: 2px'>Select</button>");
+        //htmls.push("</label>");
         htmls.push("</div>");
     }
 
-    function peakListShowTitle(sym, chrom, start) {
+    function peakListShowTitle(sym, chrom, start, end) {
         /* update the peak list box title */
-        var el = document.getElementById("tpPeakListTitle");
-        el.innerHTML = "<b>"+sym+"</b>, TSS at <span id='tpTss'>"+chrom+":"+start+"</span>";
+        var el = getById("tpPeakListTitle");
+        if (sym)
+            el.innerHTML = "<b>"+sym+"</b>, TSS at <span id='tpTss'>"+chrom+":"+start+"</span>";
+        else
+            el.innerHTML = "Peaks at <b>"+chrom+":"+prettySeqDist(start)+"-"+prettySeqDist(end)+"</b>";
     }
 
     function peakListSetStatus(str) {
@@ -4608,7 +4648,7 @@ var cellbrowser = function() {
         }
     }
 
-    function peakListStatus(status) {
+    function peakListGetPeaksWith(status) {
         /* return array of objects , e.g. [ {chrom:"chr1", start:1000, end:2000, dist:-70000, el:<domObject>} ]
          * status can be "on" or "off" = will only return ranges that are checked or unchecked.
          * */
@@ -4620,7 +4660,14 @@ var cellbrowser = function() {
             else if (status==="off" && el.checked)
                 continue;
             let parts = el.id.split(":");
-            ranges.push({"chrom":parts[1], start:parseInt(parts[2]), end:parseInt(parts[3]), dist:parseInt(parts[4]), "el":el})
+            ranges.push({
+                "chrom" : parts[1],
+                start : parseInt(parts[2]),
+                end : parseInt(parts[3]), 
+                dist : parseInt(parts[4]), 
+                el : el, 
+                locusName : parts[1]+"|"+parts[2]+"|"+parts[3]
+            });
         }
         return ranges;
     }
@@ -4628,7 +4675,7 @@ var cellbrowser = function() {
     function peakListSerialize() {
         /* return a summary of all currently selected peaks, e.g. "chr1|1000|2000+chr2|3000|4000" */
         let ranges = [];
-        for (let r of peakListStatus("on")) {
+        for (let r of peakListGetPeaksWith("on")) {
             let locusId = r.chrom+"|"+r.start+"|"+r.end;
             ranges.push(locusId);
         }
@@ -4651,6 +4698,7 @@ var cellbrowser = function() {
     }
 
     function peakListShowRanges(chrom, foundRanges, searchStart) {
+        /* load a list of ranges (arrays of [start, end] into the peak list box */
         var htmls = [];
         var i = 0;
         for (let rangeInfo of foundRanges) {
@@ -4658,10 +4706,10 @@ var cellbrowser = function() {
             let foundEnd = rangeInfo[1];
             //let label = chrom+":"+foundStart+"-"+foundEnd;
             let dist = foundStart-searchStart;
-            let label = prettySeqDist(dist);
+            let label = prettySeqDist(dist, true);
             let regLen = foundEnd-foundStart;
             if (regLen!==0)
-                label += " / "+(foundEnd-foundStart)+" bp";
+                label += ", "+(foundEnd-foundStart)+" bp long";
             let checkBoxId = "range:"+chrom+":"+foundStart+":"+foundEnd+":"+dist;
             htmls.push("<div class='tpPeak'>");
             htmls.push("<input style='margin-right: 4px' id='"+checkBoxId+"' type='checkbox'>");
@@ -4671,12 +4719,42 @@ var cellbrowser = function() {
         }
         var divEl = document.getElementById("tpPeakList");
         divEl.innerHTML = htmls.join(""); // set the DIV
-
         classAddListener("tpPeak", "input", onPeakChange);
     }
 
-    function onPeakAutoApply(ev) {
+    function onPeakAll(ev) {
+        /* select all peaks */
+        let peaks = peakListGetPeaksWith("off");
+        let peakNames = [];
+        for (let p of peaks) {
+            peakNames.push(p.locusName);
+            p.el.checked = true;
+        }
+        if (peakNames.length===0)
+            return;
+        let locusStr = "+"+peakNames.join("+");
+        colorByLocus(locusStr);
+    }
+
+    function onPeakNone(ev) {
+        /* unselect all peaks */
+        let peaks = peakListGetPeaksWith("on");
+        let peakNames = [];
+        for (let p of peaks) {
+            peakNames.push(p.locusName);
+            p.el.checked = false;
+        }
+        if (peakNames.length===0)
+            return;
+        let locusStr = "-"+peakNames.join("-");
+        colorByLocus(locusStr);
+    }
+
+    function onPeakUpstream(ev) {
         /* select all peaks that are closer than the distance in #tpPeakListAutoDist */
+        if (ev.target.id==="tpPeakListAutoDist")
+            // user actually clicked the input box = do nothing
+            return;
         let maxDistStr = document.getElementById("tpPeakListAutoDist").value;
         let maxDist = parseInt(maxDistStr);
         if (isNaN(maxDist)) {
@@ -4690,7 +4768,7 @@ var cellbrowser = function() {
         maxDist = -1*maxDist*1000; // needs to be negative
 
         let addPeaks = [];
-        let peaks = peakListStatus("off");
+        let peaks = peakListGetPeaksWith("off");
         for (let p of peaks) {
             let dist = p.dist;
             if (dist < 0 && dist > maxDist) {
@@ -4700,13 +4778,14 @@ var cellbrowser = function() {
         }
 
         if (addPeaks.length===0) {
-            alert("No peaks are at "+maxDist+" bp relative to the TSS");
+            alert("Either there is no active gene search or TSS or no peaks are at "+maxDist+" bp relative to the TSS");
             return;
         }
 
         let loadStr = addPeaks.join("+")
 
         colorByLocus(loadStr);
+        ev.stopPropagation();
     }
 
     /* ----- PEAK LIST END ----- */
@@ -4725,13 +4804,27 @@ var cellbrowser = function() {
          * called when the user types something into the gene box, returns matching gene symbols */
         if (!query.length)
             return callback();
+        this.clearOptions();  
+        //this.clear();  
+        //alert("cleared");
         var genes = db.findGenesByPrefix(query.toLowerCase());
         selectizeSendGenes(genes, callback);
     }
 
+    function updatePeakListWithGene(sym) {
+        /* update the peak list box with all peaks close to a gene's TSS */
+        var peaksInView = db.findRangesByGene(sym);
+        var geneTss = db.geneToTss[sym];
+        var geneChrom = geneTss[0];
+        var geneStart = geneTss[1];
+        peakListShowTitle(sym, geneChrom, geneStart);
+        peakListShowRanges(geneChrom, peaksInView.ranges, geneStart);
+    }
+
     function comboLoadAtac(query, callback) {
         /* The load() function for selectize for ATAC datasets.
-         * called when the user types something into the gene box, returns matching gene symbols */
+         * called when the user types something into the gene box, calls callback with matching gene symbols or peaks 
+         * or shows the peaks in the peakList box */
         if (!query.length)
             return callback();
 
@@ -4750,19 +4843,15 @@ var cellbrowser = function() {
                 selectizeSendGenes(syms, callback);
             else {
                 var sym = syms[0];
-                var peaksInView = db.findRangesByGene(sym);
-                var geneTss = db.geneToTss[sym];
-                var geneChrom = geneTss[0];
-                var geneStart = geneTss[1];
-                peakListShowTitle(sym, geneChrom, geneStart);
-                peakListShowRanges(geneChrom, peaksInView.ranges, geneStart);
+                updatePeakListWithGene(sym);
             }
         } else {
             // user entered a range e.g. chr1:0-190k or chr1:1m-2m
             let searchStart = range.start;
             let searchEnd = range.end;
-            let foundRanges = db.findRangesByPos(range.chrom, searchStart, searchEnd);
-            peakListShowRanges(foundRanges, searchStart);
+            peakListShowTitle(null, range.chrom, range.start, range.end);
+            let foundRanges = db.findOffsetsWithinPos(range.chrom, searchStart, searchEnd);
+            peakListShowRanges(range.chrom, foundRanges, searchStart);
         }
     }
 
@@ -4977,7 +5066,11 @@ var cellbrowser = function() {
         var comboLoad = comboLoadGene;
         if (db.conf.atacSearch) {
             comboLoad = comboLoadAtac;
-            document.getElementById("tpPeakListAutoApply").addEventListener("click", onPeakAutoApply);
+            getById("tpPeakListUpstream").addEventListener("click", onPeakUpstream);
+            getById("tpPeakListAll").addEventListener("click", onPeakAll);
+            getById("tpPeakListNone").addEventListener("click", onPeakNone);
+            activateTooltip("#tpPeakListButtons > button");
+
         }
 
         // This is a hack to deactivate the "sifter" functionality of selectize.
@@ -5147,7 +5240,7 @@ var cellbrowser = function() {
 
         //var myGenes = loadMyGenes();
 
-        var noteStr = "No genes defined. Use the setting quickGenesFile in cellbrowser.conf to add a file with gene symbols that will be shown here";
+        var noteStr = "No genes or peaks defined. Use the setting quickGenesFile in cellbrowser.conf to add a file with gene symbols or peaks that will be shown here";
         buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr);
 
         htmls.push("</div>"); // tpGeneTab
@@ -6788,6 +6881,7 @@ var cellbrowser = function() {
        }
 
        var argStr = jQuery.param(urlVars); // convert to query-like string
+       argStr = argStr.replace("%20", "+");
 
        var dsName = "noname";
        if (db!==null)
@@ -6897,6 +6991,8 @@ var cellbrowser = function() {
         /* search for the "ds" parameter or a DNS hostname that indicates the dataset */
         // if ds=xxx was found in the URL, load the respective dataset
         var datasetName = getVar("ds");
+        if (datasetName)
+            datasetName = datasetName.replace(" ", "/"); // + is easier to type than %23
 
         if (datasetName===undefined)
             datasetName = "";
