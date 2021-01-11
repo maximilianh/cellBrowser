@@ -605,70 +605,73 @@ function CbDbFile(url) {
         /* is bin0Val is null, switch off special bin0Value handling
         /* ported from Python cbAdd:discretizeArray */
         /* supports NaN special values */
-        var counts = countAndSort(arr);
-
-        // if we have just a few values, do not do any binning, just count
-        if (counts.length < maxBinCount)
-            return arrToEnum(arr, counts);
-
-        // From now on, we treat NAs/0s separately, so remove their counts
-        if (counts[0][0]===bin0Val) // NA is always first, as we defined it as -inf
-            counts.shift(); // remove first element
-        
-        // make array of count-indices of the breaks
-        // e.g. if maxBinCount=10, breakPercs is [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-        var breakPercs = [];
-        var binPerc = 1.0/maxBinCount;
-        for (var i=0; i<maxBinCount; i++)
-            breakPercs.push( binPerc*i );
-
-        // for each percentage, get the index
-        var countLen = counts.length;
-        var breakIndices = [];
-        for (let i=0; i < breakPercs.length; i++) {
-            var bp = breakPercs[i];
-            breakIndices.push( Math.round(bp*countLen) );
+        var breaks = [];
+        var arrSorted = arr.slice(); // sort expression values
+        arrSorted.sort();
+        var pos = 0;
+        if (arrSorted[0] == bin0Val) { // skip all bin0Val and remember position
+            var zeros = 0;
+            for (var i = 0, I = arrSorted.length; i < I; i++) {
+                if (arrSorted[i] > bin0Val) {
+                    pos = i;
+                    break;
+                }
+                zeros += 1;
+            }
         }
-        breakIndices.push(countLen-1); // the last break is always a special case. Here we set it to the last element.
-        // now we have 11 breaks for 10 bins
-
-        var minVal = counts[breakIndices[0]][0];
-
-        // make array with values at the break indices except the first one, as comparison is <=
-        var breakValues = [];
-        for (let i=1; i < breakIndices.length; i++) {
-            var breakIdx = breakIndices[i];
-            var breakVal = counts[breakIdx][0];
-            breakValues.push( breakVal );
+        var minVal = arrSorted[pos];
+        // calculate optimal bin size in numbers of cells
+        var desiredBinSize = Math.floor((arrSorted.length - pos) / (maxBinCount - breaks.length));
+        var currentCount = 0;
+        var binMin = arrSorted[pos];
+        var binMax;
+        var lastValue;
+        for (var i = pos, I = arrSorted.length; i < I; i++) {
+            // determine if current value can be used as a break
+            // i.e. it is different from the previous
+            var isBreak = false;
+            if (lastValue !== undefined && arrSorted[i] > lastValue) {
+                isBreak = true;
+            }
+            currentCount += 1;
+            if (currentCount >= desiredBinSize && isBreak) {
+                breaks.push(lastValue);
+                binMin = arrSorted[i];
+                currentCount = 0;
+                if (breaks.length + 1 == maxBinCount + 2) {
+                    breaks.push(binMin);
+                    break;
+                }
+                // recalculate optimal bin size
+                desiredBinSize = Math.floor((arrSorted.length - i) / (maxBinCount - breaks.length));
+            }
+            lastValue = arrSorted[i];
         }
-        
-        var fb = findBins(arr, bin0Val, breakValues);
+        breaks.push(arrSorted[I - 1]);
+
+        var fb = findBins(arr, bin0Val, breaks);
         var dArr = fb.dArr;
         var binCounts = fb.binCounts;
 
-        // we should have 11 breaks/10bins but 12 values in binCounts
-        //assert(len(breakVals)==12));
-        //assert(len(binCounts)==11));
-        //assert((len(binCounts)+1 == len(breakVals)));
-
-        // convert to format (min, max, count)
-        // bin0 has special min/max of "Unknown" or 0
         var binInfo = [];
 
         var bin0MinMax = "Unknown";
-        if (bin0Val===0)
+        if (bin0Val === 0) {
             bin0MinMax = 0;
-        binInfo.push( [bin0MinMax, bin0MinMax, binCounts[0]] );
+        }
+        binInfo.push([bin0MinMax, bin0MinMax, binCounts[0]]);
 
-        for (let i=0; i<breakValues.length; i++) {
-            var binMin = minVal;
-            if (i!==0)
-                binMin = parseFloat(breakValues[i-1]);
-            var binMax = parseFloat(breakValues[i]);
+        var idx = binCounts[0];
+        for (let i=0; i < breaks.length; i++) {
+            // use sorted array of expression values
+            // to get more accurate values
+            var binMin = arrSorted[idx];
             var binCount = binCounts[i+1];
+            idx += binCount - 1;
+            var binMax = arrSorted[idx];
+            idx += 1;
             binInfo.push( [binMin, binMax, binCount] );
         }
-
         return {"dArr": dArr, "binInfo": binInfo};
     }
 
