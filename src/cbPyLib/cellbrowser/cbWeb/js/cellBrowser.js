@@ -6360,7 +6360,7 @@ var cellbrowser = function() {
 
     function sanitizeName(name) {
         /* ported from cellbrowser.py: remove non-alpha, allow underscores */
-        var newName = name.replace(/+/g, "Plus").replace(/-/g, "Minus").replace(/%/g, "Perc");
+        var newName = name.replace(/\+/g, "Plus").replace(/-/g, "Minus").replace(/%/g, "Perc");
         var newName = newName.replace(/[^a-zA-Z_0-9+]/g, "");
         return newName;
     }
