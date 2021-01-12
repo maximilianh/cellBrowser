@@ -6,7 +6,13 @@ canvas { user-select: none }
 
 section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 
-#tpLegendBar { cursor:default; overflow-y: scroll; padding-left: 2px; border-left: 1px solid #D7D7D7; height:100%}
+#tpLegendBar { 
+        cursor:default; 
+        padding-left: 2px; 
+        border-left: 1px solid #D7D7D7; 
+        height:100%;
+}
+
 .tpDatasetPane { 
         padding: 5px !important; 
         padding-left: 10px !important; 
@@ -103,6 +109,8 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
         padding: 3px;
         padding-left: 4px;
         background-color: #EEE;
+        height: 30%;
+        overflow-y: scroll;
 }
 
 .tpPeak > label {
@@ -126,7 +134,13 @@ input[type=checkbox], input[type=radio] {
 }
 
 #tpSideMeta { padding-left: 2px}
-#tpMetaPanel { background-color: white;}
+
+#tpMetaPanel { 
+        background-color: white;
+        height: 100%;
+        overflow-y: auto;
+}
+
 #tpLeftTabs { 
         border: 0; 
         height: 100%;
