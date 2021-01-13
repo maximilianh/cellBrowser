@@ -2,7 +2,7 @@ Submitting data to the UCSC Cell Browser
 ----
 
 At this time, we are happy to host pretty much any single-cell dataset,
-regardless of the library prepartion (10x, Samrt-seq2, etc), organism 
+regardless of the library prepartion (10x, Smart-seq2, etc), organism 
 (human, mouse, zebrafish, etc), or analysis method (Seurat, Scanpy,
 Monocle, etc).
 
@@ -53,7 +53,8 @@ Alongside your submission, it would be great if you filled out a
 `desc.conf <https://cellbrowser.readthedocs.io/dataDesc.html>`_ file. At
 the very least, it should have the abstract, methods, and title filled out. 
 However, you are welcome to fill out more fields and make it as complete as 
-you would like.
+you would like. You can run ``cbBuild --init`` to copy an sample desc.conf
+into your current directory.
 
 Dataset shortname
 """"
