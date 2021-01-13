@@ -369,7 +369,6 @@ function CbDbFile(url) {
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {
     /* load coordinates from URL and call onDone(array of (x,y), coordInfoObj, labelMids) when done */
-        //var coordInfo = cbUtil.findObjWhereEq(self.conf.coords, "name", this.coordName);
         var i = 0;
         var binData = null;
         var meta = null;

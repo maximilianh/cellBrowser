@@ -38,6 +38,8 @@ function MaxPlot(div, top, left, width, height, args) {
     // width and height: integers, in pixels, includes the status line
     
     const HIDCOORD = 12345; // magic value for missing coordinates
+      // In rare instances, coordinates are saved but should not be shown. This way of implementing hiding
+      // may look hacky, but it simplifies the logic and improves performance.
     
     var self = this; // 'this' has two conflicting meanings in javascript. 
     // I use 'self' to refer to object variables, so I can use 'this' to refer to the caller context
@@ -520,7 +522,7 @@ function MaxPlot(div, top, left, width, height, args) {
             var y = annot[1];
             var text = annot[2];
             // XX ignore anything outside of current zoom range. Performance?
-            if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
+            if (isHidden(x,y) || (x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
                 pxLabels.push(null);
             }
             else {
