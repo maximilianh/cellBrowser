@@ -2490,7 +2490,9 @@ var cellbrowser = function() {
        $("#tpToolBar").css("width", rendererWidth+"px");
 
        $("#tpToolBar").css("height", toolBarHeight+"px");
-       //$("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       $("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       if ($('#tpMetaPanel').length!==0)
+           $("#tpMetaPanel").css("height", (window.innerHeight - $('#tpMetaPanel').offset().top)+"px");
        $("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
@@ -2963,7 +2965,6 @@ var cellbrowser = function() {
        opts["lineWidth"] = db.conf.lineWidth;
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
-       //renderer.setLines(clusterInfo.lines, {"lineWidth": db.conf.lineWidth});
    }
 
    function colorByDefaultField(onDone) {
@@ -3026,7 +3027,7 @@ var cellbrowser = function() {
    }
 
     function renderData() {
-    /* init the renderer, start loading and draw data when ready
+    /* init the basic UI parts, the main renderer in the center, start loading and draw data when ready
      */
        var forcePalName = getVar("pal", null);
 
@@ -3113,7 +3114,6 @@ var cellbrowser = function() {
 
        buildLeftSidebar();
        buildToolBar(db.conf.coords, db.conf, metaBarWidth+metaBarMargin, menuBarHeight);
-       //activateMode("move");
 
        db.loadCoords(0, gotFirstCoords, onProgress);
 
@@ -4422,7 +4422,6 @@ var cellbrowser = function() {
                 metaBarWidth = 250;
 
             renderer.setPos(null, metaBarWidth+metaBarMargin);
-            resizeDivs(true);
 
             if (!db.conf.metaFields) {
                 // pablo often has single-dataset installations, there is no need to open the
@@ -4443,6 +4442,7 @@ var cellbrowser = function() {
 
             cartLoad(db);
             renderData();
+            resizeDivs(true);
 
             if (getVar("openDialog"))
                 openDatasetDialog(db.conf, db.name); // open Info dialog
