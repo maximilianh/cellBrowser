@@ -5414,7 +5414,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     sampleCount = len(adata.obs)
 
     bigDataset = False
-    if sampleCount < 140000:
+    if sampleCount > 140000:
         bigDataset = True
 
     #useRaw = conf["useRaw"]
