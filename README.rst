@@ -26,14 +26,22 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
 * Sansom Lab, Oxford, https://sansomlab.github.io for `Croft et al, Nature 2019 <https://www.nature.com/articles/s41586-019-1263-7>`_
-* http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
+* http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors, no reply, new URL seems to be https://www.genomique.eu/cellbrowser/HCA/) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
+* Bin Ren lab, CAAtlas http://catlas.org/mousebrain/#!/home
+* Conrad lab at Charite Berlin: http://singlecell.charite.de/
 
 These papers have cell browsers made at UCSC:
+
 * organoidatlas: https://www.sciencedirect.com/science/article/pii/S221112472030053X
 * dros-brain: https://elifesciences.org/articles/50354
 * kidney-atlas: https://science.sciencemag.org/content/365/6460/1461.abstract
 * allen-celltypes/mouse-cortex: https://www.biorxiv.org/content/10.1101/2020.03.30.015214v1.full
 * organoidreportcard: https://www.nature.com/articles/s41586-020-1962-0
+
+Before judging this project by the number of issue tickets or PRs, note that at UCSC we use an internal
+ticket system with more features and that a lot of communication with wetlab users is by email at cells@ucsc.edu, as we 
+do not require a Github account for feedback. But we do reply to issues here, as you can see from the Github 
+account and also use Github for source control.
 
 Additional availability
 -----------------------
