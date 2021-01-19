@@ -21,6 +21,10 @@ Add a statement like the following to your ``~/.cellbrowser.conf``::
 
     dataRoot='/celldata/'
 
+Alternatively, ``dataRoot`` can be set using the ``CBDATAROOT`` environment variable::
+
+    export CBDATAROOT='/celldata/'
+
 Then, create a "stub" cellbrowser.conf into this directory, it should only contain
 a single line like ``shortLabel="some description"``. 
 You can describe your collection as discussed under the **Describing
