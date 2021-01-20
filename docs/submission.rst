@@ -32,7 +32,7 @@ share the data with us.
 We prefer data to be shared in a way that is easy for us to download
 with something like wget, so the following methods are ideal:
 
-* University or other insitutional server space
+* University or other institutional server space
 * GEO
 * Dropbox (if shared via link, e.g. https://www.dropbox.com/s/NN/my_seurat.rds)
 
