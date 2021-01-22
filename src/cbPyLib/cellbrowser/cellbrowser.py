@@ -4164,6 +4164,7 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
 
 def saveMarkers(adata, markerField, nb_marker, fname):
     " save nb_marker marker genes from adata object to fname , in a reasonable file format "
+    import pandas as pd
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
     top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
     marker_df= pd.DataFrame()
