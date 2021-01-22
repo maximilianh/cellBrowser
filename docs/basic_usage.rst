@@ -44,7 +44,7 @@ features of the cell browser.
 
 First, download and extract it to the directory ``mini`` with::
 
-    curl -s https://cells.ucsc.edu/downloads/samples/mini.tgz | tar xvz
+    curl -ks https://cells.ucsc.edu/downloads/samples/mini.tgz | tar xvz
 
 Next, build a browser consisting of html and other files into the directory
 ~/public_html/cells/ and serve that directory on port 8888::
