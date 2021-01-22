@@ -4162,7 +4162,7 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     sc.tl.rank_genes_groups(adata, groupby=clusterField)
     return adata
 
-def saveMarkers(adata, nb_marker, fname):
+def saveMarkers(adata, markerField, nb_marker, fname):
     " save nb_marker marker genes from adata object to fname , in a reasonable file format "
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
     top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
