@@ -6948,7 +6948,7 @@ var cellbrowser = function() {
        }
 
        var argStr = jQuery.param(urlVars); // convert to query-like string
-       argStr = argStr.replace("%20", "+");
+       argStr = argStr.replace(/%20/g, "+");
 
        var dsName = "noname";
        if (db!==null)
