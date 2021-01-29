@@ -58,6 +58,7 @@ The following tags contain just text:
 - ``submission_date``: ideally in format year-month-day
 - ``rawMatrixNote``: text to describe the raw matrix, see ``rawMatrixFile``
 - ``version``: version of dataset, a simple number (1,2,3,...) that should be increased each time a major change (usually meta data) was received from the lab
+- ``wrangler`` and ``shepherd``: these are mostly used at UCSC. We store the name of the person of our team who loaded the data (wrangler) and sometimes the name of the person who was in contact with the lab and did quality control on the data (shepherd).
 
 The following tags contain key-value information::
 
