@@ -58,3 +58,8 @@ Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/. In 2020, it is funde
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
+
+Citation
+--------
+
+If you use the UCSC Cell Browser in your work, please cite `Speir et al, Biorxiv 2020 <https://www.biorxiv.org/content/10.1101/2020.10.30.361162v1>`
