@@ -62,4 +62,4 @@ ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
 Citation
 --------
 
-If you use the UCSC Cell Browser in your work, please cite `Speir et al, Biorxiv 2020 <https://www.biorxiv.org/content/10.1101/2020.10.30.361162v1>`
+If you use the UCSC Cell Browser in your work, please cite `Speir et al, Biorxiv 2020 <https://www.biorxiv.org/content/10.1101/2020.10.30.361162v1>` 
