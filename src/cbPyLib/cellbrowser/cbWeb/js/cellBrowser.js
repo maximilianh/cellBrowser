@@ -329,15 +329,9 @@ var cellbrowser = function() {
     function activateTooltip(selector) {
         // noconflict in html, I had to rename BS's tooltip to avoid overwrite by jquery
         var ttOpt = {
-<<<<<<< HEAD
             "html": true,
             "animation": false,
             "delay": {"show":350, "hide":100},
-=======
-            "html": true,
-            "animation": false,
-            "delay": {"show":300, "hide":100},
->>>>>>> master
             "trigger" : "hover",
             container:"body"
         };
@@ -2503,9 +2497,17 @@ var cellbrowser = function() {
 
        $("#tpToolBar").css("height", toolBarHeight+"px");
        $("#tpLeftSidebar").css("height", (window.innerHeight - menuBarHeight)+"px");
+
+       // when this is run the first time, these elements don't exist yet.
+       // Note that the whole concept of forcing these DIVs to go up to the screen size is strange, but
+       // I have not found a way in CSS to make them go to the end of the screen. They need to have a fixed size,
+       // as otherwise the scroll bars of tpLegendRows and tpMetaPanel won't appear
        if ($('#tpMetaPanel').length!==0)
            $("#tpMetaPanel").css("height", (window.innerHeight - $('#tpMetaPanel').offset().top)+"px");
-       $("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       //if ($('#tpLegendBar').length!==0)
+           //$("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
+       if ($('#tpLegendRows').length!==0)
+           $("#tpLegendRows").css("height", (window.innerHeight - $('#tpLegendRows').offset().top)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
        if (skipRenderer!==true)
@@ -5885,13 +5887,12 @@ var cellbrowser = function() {
         var rows = gLegend.rows;
 
         var legTitle = gLegend.title;
-        //if (legTitle.indexOf("|")!=-1)
-            //legTitle = legTitle.split("|")[0];
 
         htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+legTitle+"</span>");
         htmls.push('<div class="tpHint">Check boxes below to select '+gSampleDesc+'s</small></div>');
         htmls.push("</div>"); // title
         htmls.push('<div id="tpLegendHeader"><span id="tpLegendCol1"></span><span id="tpLegendCol2"></span></div>');
+        htmls.push('<div id="tpLegendRows">');
 
         // get the sum of all, to calculate frequency
         var sum = 0;
@@ -5949,19 +5950,15 @@ var cellbrowser = function() {
             htmls.push("<span class='"+labelClass+"' id='tpLegendLabel_"+i+"' data-placement='auto top' title='"+mouseOver+"'>");
             htmls.push(label);
             htmls.push("</span>");
-            //htmls.push("<span class='tpLegendCount'>"+count+"</div>");
             var prec = 1;
             if (freq<1)
                 prec = 2;
-            htmls.push("<span class='tpLegendCount' title='"+count+" of "+sum+"'>"+freq.toFixed(prec)+"%</div>");
+            htmls.push("<span class='tpLegendCount' title='"+count+" of "+sum+"'>"+freq.toFixed(prec)+"%</span>");
             htmls.push("</span>");
 
             htmls.push("</div>");
-            //htmls.push("<input class='tpLegendCheckbox' id='tpLegendCheckbox_"+i+"' type='checkbox' checked style='float:right; margin-right: 5px'>");
         }
-
-        //if (gLegend.type=="expr")
-            //buildMinMaxPart(htmls);
+        htmls.push('</div>'); // tpLegendRows
 
         // add the div where the violin plot will later be shown
         htmls.push("<div id='tpViolin'>");
@@ -5971,6 +5968,11 @@ var cellbrowser = function() {
         var htmlStr = htmls.join("");
         $('#tpLegendContent').append(htmlStr);
         setLegendHeaders(gLegend.rowType);
+
+        // tpLegendRows has to go only up to the bottom of the screen.
+        // This is done again in resizeDivs()
+        // I have not found a way to do this in CSS...
+        $("#tpLegendRows").css("height", (window.innerHeight - $('#tpLegendRows').offset().top)+"px");
 
         activateTooltip("#tpResetColors");
         activateTooltip("#tpSortBy");
@@ -5983,8 +5985,6 @@ var cellbrowser = function() {
 
         $('.tpLegend').click( onLegendLabelClick );
         //$('.tpLegendLabel').attr( "title", "Click to select samples with this value. Shift click to select multiple values.");
-        //$('#tpResetColors').click( onResetColorsClick );
-        //$('#tpSortBy').click( onSortByClick );
         activateTooltip(".tpLegendLabel");
         activateTooltip(".tpLegendCount");
 
@@ -6008,7 +6008,7 @@ var cellbrowser = function() {
                 hideAfterPaletteSelect : true,
                 color : hexCode,
                 showPalette: true,
-                //allowEmpty : true,
+                allowEmpty : true,
                 showInput: true,
                 preferredFormat: "hex",
                 change: onColorPickerChange
@@ -6017,7 +6017,6 @@ var cellbrowser = function() {
         }
 
         buildViolinPlot();
-
     }
 
     function onColorPickerChange(color, ev) {
@@ -6367,26 +6366,22 @@ var cellbrowser = function() {
        if (db.conf.topMarkers!==undefined) {
             labelLines.push("Top markers: "+db.conf.topMarkers[clusterName].join(", "));
         }
-        labelLines.push("");
+       labelLines.push("");
+
        if (db.conf.markers!==undefined)
             labelLines.push("Click to show full marker gene list.");
 
-<<<<<<< HEAD
        if (db.conf.clusterPngDir!==undefined) {
             var fullPath = cbUtil.joinPaths([db.name, db.conf.clusterPngDir, clusterName+".png"]);
             labelLines.push("<img src='"+fullPath+"'>");
        }
 
-=======
         labelLines.push("Alt-Click to select cluster; Shift-Click to add cluster to selection");
->>>>>>> master
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
-        //renderer.canvas.style.cursor = "pointer";
     }
 
     function onNoClusterNameHover(ev) {
         hideTooltip();
-        //renderer.canvas.style.cursor = "default";
     }
 
     function sanitizeName(name) {
