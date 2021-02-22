@@ -1089,7 +1089,7 @@ var cellbrowser = function() {
                 "Double-click or click 'Open' below.<br>To move between datasets later in the cell browser, " +
                 "use the 'Collection' dropdown. </p>");
 
-            changeUrl({"ds":openDsInfo.name.replace(/\//g, " ")}); // + is easier to type
+            changeUrl({"ds":openDsInfo.name.replace("/", " ")}); // + is easier to type
         }
 
         let doFaceting = false;
@@ -1222,7 +1222,7 @@ var cellbrowser = function() {
             loadCollectionInfo(openDatasetName, function(newCollInfo) {
                 openDatasetDialog(newCollInfo, selDatasetName);
             });
-            changeUrl({"ds":openDatasetName.replace(/\//g, " ")});
+            changeUrl({"ds":openDatasetName.replace("/", " ")});
         });
 
         var focused = document.activeElement;
@@ -4487,7 +4487,7 @@ var cellbrowser = function() {
             vars = {};
 
         if (datasetName!=="")
-            changeUrl({"ds":datasetName.replace(/\//g, " ")}, vars); // + is easier to type than %23
+            changeUrl({"ds":datasetName.replace("/", " ")}, vars); // + is easier to type than %23
 
         db.loadConfig(onConfigLoaded, md5);
         trackEvent("open_dataset", datasetName);
@@ -6159,10 +6159,8 @@ var cellbrowser = function() {
             else
                 metaVec = db.allMeta[metaInfo.name];
             if (metaVec===undefined) {
-                if (metaInfo.type!=="uniqueString") {
+                if (metaInfo.type!=="uniqueString")
                     alert("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
-                    debugger;
-                }
                 else
                     $('#tpMeta_'+metaIdx).html("(unique identifier field)");
                 continue;
