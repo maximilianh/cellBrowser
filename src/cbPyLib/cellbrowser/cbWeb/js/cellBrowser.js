@@ -3147,7 +3147,7 @@ var cellbrowser = function() {
        var jsonUrl = cbUtil.joinPaths([db.conf.name, "desc.json"]) +"?"+db.conf.md5;
        fetch(jsonUrl);
 
-       if (db.conf.sampleCount < 50000) {
+       //if (db.conf.sampleCount < 50000) {
            if (db.conf.quickGenes)
                db.preloadGenes(db.conf.quickGenes, function() {
                    updateGeneTableColors(null);
@@ -3155,7 +3155,7 @@ var cellbrowser = function() {
                        onHeatClick();
                 }, onProgressConsole);
            db.preloadAllMeta();
-        }
+        //}
     }
 
     function onTransClick(ev) {
