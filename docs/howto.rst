@@ -18,7 +18,7 @@ Step 2: Use cbImportSeurat to export
 
 Next, you will use cbImportSeurat to create the files needed for a cell browser using the data in the RDS file::
 
-  cbImportSeurat -i myDataset.rds -o myRdsImport -n my-dataset
+  cbImportSeurat -i myDataset.rds -o myRdsImport -n seurat-import
 
 Note: cbImportSeurat will work with RDS files from Seurat v2 or v3. When importing data, you need to have installed the same version of Seurat that was used to create the RDS file.
 
@@ -50,18 +50,137 @@ Going from an expression matrix to a cell browser by running our basic Seurat pi
 Step 1: Run cbSeurat on your expression matrix
 """"
 
-First, run Seurat pipeline on your expression matrix using cbSeurat::
+First, run a Seurat pipeline on your expression matrix using ``cbSeurat``::
 
-  cbSeurat --exprMatrix=myExpressionMatrix.tsv.gz --name=myCoolDataset --outDir=seuratOut
+  cbSeurat --exprMatrix=myExpressionMatrix.tsv.gz --name=myDataset --outDir=seurat-out
 
 Step 2: Build a Cell Browser
 """"
 
 Next, go into the output directory specified in the cbImportSeurat command and run cbBuild to create the cell browser::
 
-  cd seuratOut
-  cbBuild -o ~/public_html/cells
+  cd seurat-out
+  cbBuild -o ~/public_html/cb
 
+
+How to configue a basic cbSeurat pipeline
+^^^^
+
+Running ``cbSeurat`` will run a basic Seurat pipeline with the default settings. ``cbSeurat`` can be configured through a `seurat.conf <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/seurat.conf>`_.
+
+Step 1: Copy a seurat.conf 
+""""
+
+cbSeurat can be used to copy down an example seurat.conf::
+ 
+  cbSeurat --init
+
+Step 2: Edit your seurat.conf
+""""
+
+Now that you have a seurat.conf in your current directory, open it up and edit it! If this file is in the same 
+directory where you are running ``cbSeurat``, it will be automatically picked up. 
+
+
+
+How to create a cell browser using a Scanpy h5ad file
+^^^^
+
+Going from an h5ad file to cell browser for a dataset takes two steps:
+
+Step 1: Use cbImportScanpy to export 
+""""
+
+First, you will use cbImportScanpy to create the files needed for a cell browser using the data in the RDS file::
+
+  cbImportScanpy -i myDataset.h5ad -o scanpy-import -n my-dataset
+
+Step 2: Build a Cell Browser
+""""
+
+Then, go into the output directory specified in the cbImportSeurat command and run cbBuild to create the cell browser::
+
+  cd scanpy-import
+  cbBuild -o ~/public_html/cb
+
+You should now be able to access your cell browser from the web.
+
+
+
+How to convert a Scanpy object wihthin Python
+^^^^
+
+It a few simple commands to build a ``cellbrowser.conf`` and all the files you need for a cell
+browser. This is particularly useful for Jupyter notebooks. 
+
+
+Step 1: Export the data needed
+""""
+
+Load the cell browser package and export the files from the scanpy object::
+
+ import cellbrowser.cellbrowser as cb
+ cb.scanpyToCellbrowser(adata, "scanpyOut", "myScanpyDataset")
+
+Step 2: Build the cell browser
+""""
+
+Next, build the dataset::
+
+  cb.build("scanpyOut", "~/public_html/cb")
+
+Step 3: Start (and stop) web server (optional)
+""""
+
+This step is only necessary if you don't already have a web server running that is servering up the output of step 2.
+
+Start the web server::
+
+  cb.serve("~/public_html/cb", 8888)
+
+Stop the webserver when you're done::
+
+  cb.stop()
+
+
+How to run a basic Scanpy pipeline using cbScanpy
+^^^^
+
+Going from an expression matrix to a cell browser by running our basic Scanpy pipeline takes two steps:
+
+Step 1: Run cbScanpy on your expression matrix
+""""
+
+First, run a Scanpy pipeline on your expression matrix using cbSeurat::
+
+  cbScanpy -e myExpressionMatrix.tsv.gz -n my-scanpy-dataset -o scanpy-out -m cell-annotations.tsv
+
+Step 2: Build a Cell Browser
+""""
+
+Next, go into the output directory specified in the ``cbScanpy`` command and build your cell browser::
+
+  cd scanpy-out
+  cbBuild -o ~/public_html/cb
+
+
+How to configue a basic cbScanpy pipeline
+^^^^
+
+Running ``cbSeurat`` will run a basic Scanpy pipeline with the default settings. ``cbScanpy`` can be configured through a `scanpy.conf <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/scanpy.conf>`_.
+
+Step 1: Copy a scanpy.conf 
+""""
+
+cbSeurat can be used to copy down an example scanpy.conf::
+ 
+  cbScanpy --init
+
+Step 2: Edit your seurat.conf
+""""
+
+Now that you have a scanpy.conf in your current directory, open it up and edit it! If this file is in the same 
+directory where you are running ``cbScanpy``, it will be automatically picked up. 
 
 
 
