@@ -1,11 +1,11 @@
-Basic usage
-----------
+Setup your own
+--------------
 
 Overview
 ^^^^^^^^
 
 The UCSC Cell Browser tool set consists of a number of different scripts to help you set up your own. 
-The primiary utility being the Python script ``cbBuild`` that will import a set of existing single-cell
+The primary utility being the Python script ``cbBuild`` that will import a set of existing single-cell
 data from a directory of tab-separated files and configuration files to generate a
 directory of html, json, and css files that can be viewed on the web. The rest of the utilities will
 produce output than can be fed directly into ``cbBuild``.
