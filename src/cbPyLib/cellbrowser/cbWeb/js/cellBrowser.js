@@ -302,7 +302,14 @@ var cellbrowser = function() {
             return val;
     }
 
-
+    function getBaseUrl() {
+       /* return URL of current page, without args or query part */
+       var myUrl = window.location.href;
+       myUrl = myUrl.replace("#", "");
+       var urlParts = myUrl.split("?");
+       var baseUrl = urlParts[0];
+       return baseUrl;
+    }
 
     function copyToClipboard(element) {
     /* https://stackoverflow.com/questions/22581345/click-button-copy-to-clipboard-using-jquery */
@@ -1085,11 +1092,12 @@ var cellbrowser = function() {
         if (datasetList && gOpenDataset.name!=="") {
             let dsCount = datasetList.length;
             title = 'Select one dataset from the collection "'+openDsInfo.shortLabel+'"';
+            title = title.replace(/'/g, "&apos;");
             noteLines.push( "<p>The collection '"+openDsInfo.shortLabel+"' contains "+dsCount+" datasets. " +
                 "Double-click or click 'Open' below.<br>To move between datasets later in the cell browser, " +
                 "use the 'Collection' dropdown. </p>");
 
-            changeUrl({"ds":openDsInfo.name.replace("/", " ")}); // + is easier to type
+            changeUrl({"ds":openDsInfo.name.replace(/\//g, " ")}); // + is easier to type
         }
 
         let doFaceting = false;
@@ -1222,7 +1230,7 @@ var cellbrowser = function() {
             loadCollectionInfo(openDatasetName, function(newCollInfo) {
                 openDatasetDialog(newCollInfo, selDatasetName);
             });
-            changeUrl({"ds":openDatasetName.replace("/", " ")});
+            changeUrl({"ds":openDatasetName.replace(/\//g, " ")});
         });
 
         var focused = document.activeElement;
@@ -4487,7 +4495,7 @@ var cellbrowser = function() {
             vars = {};
 
         if (datasetName!=="")
-            changeUrl({"ds":datasetName.replace("/", " ")}, vars); // + is easier to type than %23
+            changeUrl({"ds":datasetName.replace(/\//g, " ")}, vars); // + is easier to type than %23
 
         db.loadConfig(onConfigLoaded, md5);
         trackEvent("open_dataset", datasetName);
@@ -4958,12 +4966,18 @@ var cellbrowser = function() {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
                 return "";
             }
-            // we also accept just track names
+
             var fullUrl = null;
-            if (hubUrl && hubUrl.indexOf("http")===-1)
+            if (hubUrl && hubUrl.startsWith("http"))
+                // it's not a URL but just a track name (=tabulamuris)
                 fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+hubUrl+"=full&genome="+ucscDb;
-            else
+            else {
+                if (hubUrl.indexOf("/")!==-1)
+                    // relative URL to a hub.txt file -> make absolute now
+                    hubUrl = getBaseUrl()+db.name+"/"+hubUrl
+                // URL is an absolute link to a hub.txt URL
                 fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?hubUrl="+hubUrl+"&genome="+ucscDb;
+            }
 
             if (geneSym)
                 fullUrl += "&position="+geneSym+"&singleSearch=knownCanonical";
