@@ -4,7 +4,8 @@ Describing datasets
 The file ``desc.conf`` is a key-value file, similar to ``cellbrowser.conf``,
 but it describes the dataset.
 
-A sample file can be created with the command ``cbBuild --init``.
+A sample file can be created with the command ``cbBuild --init`` or be copied
+from `our Github repo <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/desc.conf>`_.
 The tags in the file refer to either HTML files or directly 
 contain the relevant text, URL, accession or in rare cases key/value information.
 

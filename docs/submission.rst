@@ -53,8 +53,9 @@ Alongside your submission, it would be great if you filled out a
 `desc.conf <https://cellbrowser.readthedocs.io/dataDesc.html>`_ file. At
 the very least, it should have the abstract, methods, and title filled out. 
 However, you are welcome to fill out more fields and make it as complete as 
-you would like. You can run ``cbBuild --init`` to copy an sample desc.conf
-into your current directory.
+you would like. You can run ``cbBuild --init`` to copy an example desc.conf
+into your current directory or you can copy one from 
+`our Github repo <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/desc.conf>`_.
 
 Dataset shortname
 """"
@@ -104,14 +105,14 @@ If you are going to share the output of one of our cbImport* tools, we prefer
 the directory containing the cellbrowser.conf, desc.conf, etc. The output of 
 cbBuild is optimized for web access and display, which makes it difficult if 
 not impossible to make changes to the cell browser at a later date (e.g. 
-correcting spelling mistakes). If you have access to the desc.conf, cellbrowser.conf, 
+correcting spelling mistakes). If we have access to the desc.conf, cellbrowser.conf, 
 and other files, we can easliy make these changes and rebuild the cell browser
 if needed. 
 
 Can I keep my dataset private until a later date, but still accessible to reviewers?
 """"
 Yes, we offer limited methods for keeping datasets private. We can hide datasets from
-being list alongside the others we host. This means that someone would need to know
+being listed alongside the others we host. This means that someone would need to know
 the URL or dataset name to be able to access your dataset. For example, this means
 that someone would need the URL cells.ucsc.edu/?ds=cortex-dev or know the name
 (cortex-dev) to access the dataset.
