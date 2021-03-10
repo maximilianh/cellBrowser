@@ -4,12 +4,14 @@ Advanced Topics
 Cell browser updates and web server configuration
 ^^^^
 
-New features and bug fixes are being added to the UCSC Cell Browser software all the time. You can update the javascript files and re-create the index.html using the command line tool ``cbUpgrade``.
+New features and bug fixes are being added to the UCSC Cell Browser software all the time. You can update the javascript files and re-create the index.html using the command line tool ``cbUpgrade``. You need to use the ``--code`` option and the ``-o`` to specify the output directory, e.g. 
+``cbUpgrade --code -o /var/www/cellbrowser/``.
 
 Your web server should support byte-range requests. This isn't important for smaller,
 but for datasets with files larger than 30MB, a warning message
-will be shown once. For Apache, byte-range requests are enabled by default
-but may need to be activated in nginx. 
+will be shown once. Most web servers and web hosters support them by default.
+For Apache, byte-range requests are enabled by default but may need to be
+activated in some installations of nginx.
 
 Default output directory for building cell browsers
 ^^^^^
