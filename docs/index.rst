@@ -28,6 +28,7 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
 .. toctree::
    :maxdepth: 1
 
+   interface.rst
    installation
    basic_usage
    internet
