@@ -4423,7 +4423,6 @@ var cellbrowser = function() {
 
     function onConfigLoaded(datasetName) {
             // this is a collection if it does not have any field information
-
             if (db.conf.sampleDesc)
                 gSampleDesc = db.conf.sampleDesc;
             else
@@ -6378,7 +6377,7 @@ var cellbrowser = function() {
        }
 
        if (db.conf.topMarkers!==undefined) {
-            labelLines.push("Top markers: "+db.conf.topMarkers[clusterName].join(", "));
+            labelLines.push("Top enriched/depleted markers: "+db.conf.topMarkers[clusterName].join(", "));
         }
        labelLines.push("");
 
@@ -7069,7 +7068,7 @@ var cellbrowser = function() {
         // if ds=xxx was found in the URL, load the respective dataset
         var datasetName = getVar("ds");
         if (datasetName)
-            datasetName = datasetName.replace(" ", "/"); // + is easier to type than %23
+            datasetName = datasetName.replace(/ /g, "/"); // + is easier to type than %23
 
         if (datasetName===undefined)
             datasetName = "";
@@ -7090,13 +7089,6 @@ var cellbrowser = function() {
         /* start the data loaders, show first dataset. If in  */
         if (redirectIfSubdomain())
             return;
-        //var globalOpts = inConf.opts;
-        //if (globalOpts!==undefined) {
-            //if ("sampleType" in globalOpts)
-                //gSampleDesc = globalOpts["sampleType"];
-            //if ("title" in globalOpts)
-                //gTitle = globalOpts["title"];
-        //}
 
         setupKeyboard();
         buildMenuBar();
@@ -7136,10 +7128,7 @@ var cellbrowser = function() {
         renderer.onSelChange = onSelChange;
         renderer.canvas.addEventListener("mouseleave", hideTooltip);
 
-        //if (datasetName)
         loadDataset(datasetName, false, rootMd5);
-        //else
-            //openDatasetDialog(db.conf; datasetName);
     }
 
     // only export these functions
