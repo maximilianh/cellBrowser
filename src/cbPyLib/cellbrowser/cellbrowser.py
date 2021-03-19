@@ -587,10 +587,10 @@ def sanitizeHeaders(headers):
         logging.error("This often happens with Excel files. Make sure that the conversion from Excel was done correctly. Use cut -f-lastColumn to remove empty trailing columns.")
         errAbort("abort")
 
-    # Python does not accept headers that start with a digit
+    # Python does not accept headers that start with a digit or underscore
     filtHeads = []
     for h in headers:
-        if h[0].isdigit():
+        if h[0].isdigit() or h[0] == '_':
             filtHeads.append("x"+h)
         else:
             filtHeads.append(h)
