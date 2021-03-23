@@ -1954,12 +1954,14 @@ def indexByChrom(exprIndex):
     """
     byChrom = defaultdict(list)
     for chromRange, (offs, dataLen) in iterItems(exprIndex):
-        # chromRange can be in format chr:start-end or chr_start_end
+        # chromRange can be in format chr:start-end or chr_start_end or chr-start-end
         if ":" in chromRange:
             chrom, startEnd = chromRange.split(":")
             start, end = startEnd.split("-")
-        else:
+        elif "_" in chromRange:
             chrom, start, end = chromRange.split("_")
+        else:
+            chrom, start, end = chromRange.split("-")
 
         start = int(start)
         end = int(end)
