@@ -26,20 +26,28 @@ Run these commands if you have downloaded the file as above::
     require(Seurat)
     require(data.table)
     setwd("adultPancreas")
-    mat <- fread("zcat < exprMatrix.tsv.gz")
+    mat <- fread("exprMatrix.tsv.gz")
     meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
     genes = mat[,1][[1]]
     genes = gsub(".+[|]", "", genes)
     mat = data.frame(mat[,-1], row.names=genes)
     so <- CreateSeuratObject(counts = mat, project = "adultPancreas", meta.data=meta)
 
-Or you can download directly into R, without wget, by replacing the fread and read.table commands above with these::
+Or you can download directly into R, without wget, by replacing the fread and read.table commands above in line 4 and 5 with these::
 
-    mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
+    mat <- fread("https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz")
     meta <- data.frame(fread("https://cells.ucsc.edu/adultPancreas/meta.tsv"), row.names=1)
 
-If the matrix name is not ``exprMatrix.tsv.gz`` but ``matrix.mtx``, you have to use Seurat's MTX loader. 
-In addition to ``matrix.mtx``, make sure to also download the files ``barcodes.tsv`` and ``genes.tsv`` sometimes
+If your version of data.tables does not support .gz yet, the fread commands can be changed to this::
+ 
+    # from current directory
+    mat <- fread("zcat < exprMatrix.tsv.gz")
+    # or direct download:
+    mat <- fread("curl https://cells.ucsc.edu/adultPancreas/exprMatrix.tsv.gz | zcat")
+
+If the matrix name is not ``exprMatrix.tsv.gz`` but ``matrix.mtx``, you have to
+use Seurat's MTX loader.  In addition to ``matrix.mtx``, make sure to also
+download the files ``barcodes.tsv`` and ``genes.tsv`` sometimes
 called ``features.tsv``.  If you downloaded these three files and ``meta.tsv`` into a directory ``downloadDir``, 
 load them like this::
 
