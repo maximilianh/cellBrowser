@@ -2018,6 +2018,10 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         logging.debug("Filtering %d matrix samples down to %d" % (len(matrixSet), len(idxList)))
     assert(len(metaSet-matrixSet)==0) # at this stage, samples with meta but not in matrix cannot happen
 
+    dataType = "genes"
+    if genesAreRanges:
+        dataType = "genome-peaks"
+
     symCounts = defaultdict(int)
     geneCount = 0
     allMin = 99999999
@@ -2047,7 +2051,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         ofh.write(exprStr)
 
         if geneCount % 1000 == 0:
-            logging.info("Wrote compressed expression values for %d genes" % geneCount)
+            logging.info("Wrote compressed expression values for %d %s" % (geneCount, dataType))
 
         allMin = min(allMin, minVal)
 
@@ -2055,6 +2059,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     ofh.close()
 
     if genesAreRanges:
+        logging.info("ATAC-mode is one. Assuming that genes are in format chrom:start-end or chrom_start_end")
         exprIndex = indexByChrom(exprIndex)
 
     if highCount==0:
