@@ -478,7 +478,7 @@ var cellbrowser = function() {
         }
         else {
           var message = "This dataset does not seem to have a desc.conf file. Please "+
-              "read https://cellbrowser.readthedocs.io/dataDesc.html or run 'cbBuild --init' to create one";
+              "read https://cellbrowser.readthedocs.io/en/master/dataDesc.html or run 'cbBuild --init' to create one";
           if (datasetInfo.abstract)
               // the top-level non-hierarchy dataset.conf has a message in it. Use it here, as a fallback.
               message = datasetInfo.abstract;
@@ -608,7 +608,7 @@ var cellbrowser = function() {
                     htmls.push("</p>");
                 }
 
-                htmls.push("<p><i><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/load.html'>Help: Load matrix/meta into Seurat or Scanpy</a></i></p>");
+                htmls.push("<p><i><a style='float:right; padding-left: 100px'; target=_blank href='https://cellbrowser.readthedocs.io/en/master/load.html'>Help: Load matrix/meta into Seurat or Scanpy</a></i></p>");
 
                 htmls.push("<p><b>Cell meta annotations:</b> <a target=_blank href='"+datasetInfo.name);
                 htmls.push("/meta.tsv'>meta.tsv</a>");
