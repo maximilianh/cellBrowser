@@ -143,8 +143,8 @@ ExportToCellbrowser <- function(
   message("Seurat Version installed: ", packageVersion("Seurat"))
   message("Object was created with Seurat version ", object@version)
 
-  if (substr(object@version, 1, 1)!='2' && substr(object@version, 1, 1)!='3') {
-          stop("can only process Seurat2 or Seurat3 objects, version of rds is ", object@version)
+  if (substr(object@version, 1, 1)!='2' && substr(object@version, 1, 1)!='3' && substr(object@version, 1, 1)!='4') {
+          stop("can only process Seurat2 or Seurat3 objects or Seurat4 objects, version of rds is ", object@version)
   }
 
   if (substr(object@version, 1, 1)!=substr( packageVersion("Seurat"), 1, 1)) {
