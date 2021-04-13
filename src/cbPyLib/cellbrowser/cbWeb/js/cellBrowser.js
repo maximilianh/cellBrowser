@@ -2509,13 +2509,11 @@ var cellbrowser = function() {
        // when this is run the first time, these elements don't exist yet.
        // Note that the whole concept of forcing these DIVs to go up to the screen size is strange, but
        // I have not found a way in CSS to make them go to the end of the screen. They need to have a fixed size,
-       // as otherwise the scroll bars of tpLegendRows and tpMetaPanel won't appear
+       // as otherwise the scroll bars of tpLegendBar and tpMetaPanel won't appear
        if ($('#tpMetaPanel').length!==0)
            $("#tpMetaPanel").css("height", (window.innerHeight - $('#tpMetaPanel').offset().top)+"px");
-       //if ($('#tpLegendBar').length!==0)
-           //$("#tpLegendBar").css("height", (window.innerHeight - menuBarHeight)+"px");
        if ($('#tpLegendRows').length!==0)
-           $("#tpLegendRows").css("height", (window.innerHeight - $('#tpLegendRows').offset().top)+"px");
+           $("#tpLegendBar").css("height", (window.innerHeight - $('#tpLegendBar').offset().top)+"px");
        $('#tpLegendBar').css('left', legendBarLeft+"px");
 
        if (skipRenderer!==true)
@@ -2740,26 +2738,20 @@ var cellbrowser = function() {
     function buildViolinFromValues(labelList, dataList) {
         /* make a violin plot given the labels and the values for them */
         console.time("violinDraw");
-        //removeViolinPlot();
-        if ("violinChart" in window)
-            window.violinChart.destroy();
-
-        //var htmls = [];
-        //$('#tpLegendContent').append(htmls.join(""));
+        //if ("violinChart" in window)
+            //window.violinChart.destroy();
 
         var labelLines = [];
-        //labelLines.push([labelList[0], dataList[0].length+" cells"]);
         labelLines[0] = labelList[0].split("\n");
         labelLines[0].push(dataList[0].length);
         if (dataList.length > 1) {
-            //labelLines.push([labelList[1], dataList[1].length+" cells"]);
             labelLines[1] = labelList[1].split("\n");
             labelLines[1].push(dataList[1].length);
         }
 
         const ctx = getById("tpViolinCanvas").getContext("2d");
 
- 	var boxplotData = {
+ 	var violinData = {
           labels : labelLines,
 	  datasets: [{
             data : dataList,
@@ -2773,19 +2765,10 @@ var cellbrowser = function() {
 	}]
 	};
 
-	      //scales: {
-		//xAxes: [{
-		    //ticks: {
-			//autoSkip: false,
-			//maxRotation: 40,
-			//minRotation: 40
-		    //}
-		//}],
-	      //},
-	      //responsive: true,
-        var optDict = { maintainAspectRatio: false,
-              legend: { display: false },
-	      title: { display: false }
+        var optDict = { 
+            maintainAspectRatio: false,
+            legend: { display: false },
+	    title: { display: false }
         };
 
         var yLabel = null;
@@ -2795,12 +2778,19 @@ var cellbrowser = function() {
             yLabel = db.conf.unit;
 
         if (yLabel!==null)
-            optDict.scales = { yAxes: [{ scaleLabel: { display: true, labelString: yLabel} }] };
+            optDict.scales = { 
+                yAxes: [{ 
+                    scaleLabel: { 
+                        display: true, 
+                        labelString: yLabel
+                    } 
+                    }] 
+            };
 
         window.setTimeout(function() {
             window.violinChart = new Chart(ctx, {
                 type: 'violin',
-                data: boxplotData,
+                data: violinData,
                 options: optDict
             });
         }, 10);
@@ -2887,7 +2877,7 @@ var cellbrowser = function() {
                 if (background === null) {
                     labelList = ['Selected', 'Others'];
                 } else {
-                    labelList = ['Selected', 'Background\nOthers'];
+                    labelList = ['Selected', 'Background'];
                 }
                 if (dataList[1].length===0) {
                     dataList = [dataList[0]];
@@ -3321,7 +3311,7 @@ var cellbrowser = function() {
         // create an empty right side legend bar
         var htmls = [];
         htmls.push("<div id='tpLegendBar' style='position:absolute;top:"+fromTop+"px;left:"+fromLeft+"px; width:"+legendBarWidth+"px'>");
-        htmls.push("<div class='tpSidebarHeader'>Legend");
+        htmls.push("<div class='tpSidebarHeader'><div style='float:left'>Legend</div>");
 
         //htmls.push("<div id='tpToolbarButtons' style='padding-bottom: 2px'>");
         htmls.push("<div style='float:right' class='btn-group btn-group-xs'>");
@@ -3346,7 +3336,7 @@ var cellbrowser = function() {
 
         htmls.push("</div>"); // tpSidebarHeader
 
-        htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em'>");
+        //htmls.push("<div id='tpLegendTitleBox' style='position:relative; width:100%; height:1.5em'>");
         htmls.push("<div id='tpLegendContent'>");
         htmls.push("</div>"); // content
         htmls.push("</div>"); // bar
@@ -5982,10 +5972,10 @@ var cellbrowser = function() {
         $('#tpLegendContent').append(htmlStr);
         setLegendHeaders(gLegend.rowType);
 
-        // tpLegendRows has to go only up to the bottom of the screen.
+        // tpLegendContent has to go only up to the bottom of the screen.
         // This is done again in resizeDivs()
         // I have not found a way to do this in CSS...
-        $("#tpLegendRows").css("height", (window.innerHeight - $('#tpLegendRows').offset().top)+"px");
+        $("#tpLegendBar").css("height", (window.innerHeight - $('#tpLegendBar').offset().top)+"px");
 
         activateTooltip("#tpResetColors");
         activateTooltip("#tpSortBy");
