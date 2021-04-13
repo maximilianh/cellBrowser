@@ -32,7 +32,8 @@ share the data with us.
 We prefer data to be shared in a way that is easy for us to download
 with something like wget, so the following methods are ideal:
 
-* University or other insitutional server space
+* University or other institutional server space
+* AWS
 * GEO
 * Dropbox (if shared via link, e.g. https://www.dropbox.com/s/NN/my_seurat.rds)
 
@@ -43,7 +44,7 @@ us to move to our server. These include methods such as:
 * Google Drive
 * Dropbox, other methods of sharing data
 
-Other information we want
+Other things we want from you
 ^^^^
 
 Dataset description
@@ -56,6 +57,12 @@ However, you are welcome to fill out more fields and make it as complete as
 you would like. You can run ``cbBuild --init`` to copy an example desc.conf
 into your current directory or you can copy one from 
 `our Github repo <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/desc.conf>`_.
+
+If you have a collection of datasets, please provide basic desc.conf for each of
+the datasets in the collection. These don't have to be as comprehensive as the
+top-level one for the collection itself. At minimum, they should include two tags:
+(1) title and (2) abstract. However, feel free to fill out as many of the desc.conf
+fields as you think is helpful for that dataset.
 
 Dataset shortname
 """"
@@ -70,7 +77,7 @@ name fulfills the following requirements
 * Informative
 
 A great example is cortex-dev - it's all lowercase, the two words are separated by 
-dashes, it's only two words long, and informs you that the dataset is focused on 
+dashes, it's short at only two words long, and informs you that the dataset is focused on 
 cortex development. It fulfills all four points above. 
 
 Other great examples:
@@ -82,6 +89,17 @@ Other great examples:
 
 The short name doesn't have to be perfect, but good enough to communicate something
 about your dataset in a few words. 
+
+"Quick Genes"
+""""
+
+This is a list of 10-15 genes that you think are important to your dataset(s). In
+addition to the list of gene symbols, it is great to have a word or two about why
+it's in the list (e.g. "Fst, Paraxial Mesoderm"; "HES1, Fig1D"). If you have a
+collection of datasets, you can have one set of genes for every dataset in the
+collection or a different set for each. 
+
+This list and descriptions should be in CSV or TSV format. 
 
 Getting your URL
 ^^^^

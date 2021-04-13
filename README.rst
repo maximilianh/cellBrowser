@@ -29,6 +29,8 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 * http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors, no reply, new URL seems to be https://www.genomique.eu/cellbrowser/HCA/) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
 * Bin Ren lab, CAAtlas http://catlas.org/mousebrain/#!/home
 * Conrad lab at Charite Berlin: http://singlecell.charite.de/
+* `STAB: a spatio-temporal cell atlas of the human brain <https://stab.comp-sysbio.org/tool/cellbrowser/index.html>` from  `Song et al NAR 2021 <https://academic.oup.com/nar/article/49/D1/D1029/5911746>`.
+* UCLA: http://mergeomics.research.idre.ucla.edu/PVDSingleCell/
 
 These papers have cell browsers made at UCSC:
 
@@ -57,3 +59,8 @@ Chan-Zuckerberg Initiative https://www.chanzuckerberg.com/. In 2020, it is funde
 
 This is early research software. You are likely to find bugs. Please open a Github
 ticket or email us at cells@ucsc.edu, we can usually fix them quickly.
+
+Citation
+--------
+
+If you use the UCSC Cell Browser in your work, please cite `Speir et al, Biorxiv 2020 <https://www.biorxiv.org/content/10.1101/2020.10.30.361162v1>`_ 
