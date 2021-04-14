@@ -2737,9 +2737,8 @@ var cellbrowser = function() {
 
     function buildViolinFromValues(labelList, dataList) {
         /* make a violin plot given the labels and the values for them */
-        console.time("violinDraw");
-        //if ("violinChart" in window)
-            //window.violinChart.destroy();
+        if ("violinChart" in window)
+            window.violinChart.destroy();
 
         var labelLines = [];
         labelLines[0] = labelList[0].split("\n");
@@ -2755,7 +2754,7 @@ var cellbrowser = function() {
           labels : labelLines,
 	  datasets: [{
             data : dataList,
-	    label: 'Dataset 1',
+	    label: 'Mean',
 	    backgroundColor: 'rgba(255,0,0,0.5)',
 	    borderColor: 'red',
 	    borderWidth: 1,
@@ -2788,13 +2787,14 @@ var cellbrowser = function() {
             };
 
         window.setTimeout(function() {
+            console.time("violinDraw");
             window.violinChart = new Chart(ctx, {
                 type: 'violin',
                 data: violinData,
                 options: optDict
             });
+            console.timeEnd("violinDraw");
         }, 10);
-        console.timeEnd("violinDraw");
     }
 
 

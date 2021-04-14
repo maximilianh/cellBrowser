@@ -1496,11 +1496,11 @@ function MaxPlot(div, top, left, width, height, args) {
 
     // BEGIN SELECTION METHODS (could be an object?)
 
-    this.selectClear = function() {
+    this.selectClear = function(skipNotify) {
         /* clear selection */
         self.selCells.clear();
         setStatus("");
-        if (self.onSelChange!==null)
+        if (self.onSelChange!==null && skipNotify!==true)
             self.onSelChange(self.selCells);
     };
 
@@ -1927,7 +1927,7 @@ function MaxPlot(div, top, left, width, height, args) {
                 var clickedCellIds = self.cellsAt(x2, y2);
                 // click on a cell -> update selection and redraw
                 if (clickedCellIds!==null && self.onCellClick!==null) {
-                    self.selectClear();
+                    self.selectClear(true);
                     for (var i = 0; i < clickedCellIds.length; i++) {
                         self.selCells.add(clickedCellIds[i]);
                     }
@@ -1978,7 +1978,7 @@ function MaxPlot(div, top, left, width, height, args) {
        // marquee select
        else if ((self.dragMode==="select" && !anyKey) || ev.shiftKey ) {
            if (! ev.shiftKey)
-               self.selectClear();
+               self.selectClear(true);
            self.selectInRect(x1, y1, x2, y2);
        }
        else {
