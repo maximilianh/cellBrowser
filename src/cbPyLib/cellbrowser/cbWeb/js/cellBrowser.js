@@ -6161,11 +6161,16 @@ var cellbrowser = function() {
                 metaVec = metaInfo.arr;
             else
                 metaVec = db.allMeta[metaInfo.name];
+
             if (metaVec===undefined) {
-                if (metaInfo.type!=="uniqueString")
-                    alert("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
+                var metaMsg = null;
+                if (metaInfo.type!=="uniqueString") {
+                    console.log("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
+                    metaMsg = "(still loading - please wait and retry)";
+                }
                 else
-                    $('#tpMeta_'+metaIdx).html("(unique identifier field)");
+                    metaMsg = "(unique identifier field)";
+                $('#tpMeta_'+metaIdx).html(metaMsg);
                 continue;
             }
 
