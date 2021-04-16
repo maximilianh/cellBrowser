@@ -4087,13 +4087,24 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
     mat = mat.T
 
+    # when reading 10X files, read_h5 puts the geneIds into a separate field
+    # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
+    if "gene_ids" in var:
+        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
+    elif "gene_symbols" in var:
+        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
+    elif "Accession" in var: # only seen this in the ABA Loom files
+        genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
+    else:
+        genes = var.index.tolist()
+    
     if scipy.sparse.issparse(mat):
         logging.info("Converting csc matrix to row-sparse matrix")
         mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
         logging.info("Converting anndata to pandas dataframe")
-        data_matrix=pd.DataFrame(mat, index=var.index.tolist(), columns=ad.obs.index.tolist())
+        data_matrix=pd.DataFrame(mat, index=genes, columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
         data_matrix.to_csv(tmpFname, sep='\t', index=True)
     else:
@@ -4105,17 +4116,6 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         ofh.write("gene\t")
         ofh.write("\t".join(sampleNames))
         ofh.write("\n")
-
-        # when reading 10X files, read_h5 puts the geneIds into a separate field
-        # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
-        if "gene_ids" in var:
-            genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
-        elif "gene_symbols" in var:
-            genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
-        elif "Accession" in var: # only seen this in the ABA Loom files
-            genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
-        else:
-            genes = var.index.tolist()
 
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
