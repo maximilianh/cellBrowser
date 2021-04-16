@@ -4154,7 +4154,8 @@ def makeDictDefaults(inVar, defaults):
 
 def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     " run scanpy's rank_genes_groups in a way that hopefully doesn't crash "
-    import scanpy as sc
+    importScanpy()
+
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
 
@@ -4784,7 +4785,8 @@ def cbBuildCli():
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
-    import scanpy as sc
+    importScanpy()
+
     if matrixFname.endswith(".mtx.gz"):
         errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
 
@@ -5361,7 +5363,8 @@ def getObsmKeys(adata):
 def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     """ run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data.
     Return an adata object. Optionally keeps a copy of the raw matrix in adata.raw """
-    import scanpy as sc
+    importScanpy()
+
     import pandas as pd
     import numpy as np
     import warnings
@@ -5790,17 +5793,7 @@ def checkDsName(datasetName):
     if match is None:
         errAbort("dataset name can only contain lower or uppercase letters or dash or underscore")
 
-def cbScanpyCli():
-    " command line interface for cbScanpy "
-    mustBePython3()
-
-    global options
-    args, options = cbScanpy_parseArgs()
-
-    if options.init:
-        copyPkgFile("sampleConfig/scanpy.conf")
-        sys.exit(0)
-
+def importScanpy():
     try:
         logging.info("Loading Scanpy libraries")
         import scanpy as sc
@@ -5814,6 +5807,19 @@ def cbScanpyCli():
         print("$ conda install -c conda-forge python-igraph leiden")
         print("Then re-run this command.")
         sys.exit(1)
+
+def cbScanpyCli():
+    " command line interface for cbScanpy "
+    mustBePython3()
+
+    global options
+    args, options = cbScanpy_parseArgs()
+
+    if options.init:
+        copyPkgFile("sampleConfig/scanpy.conf")
+        sys.exit(0)
+
+    importScanpy()
 
     matrixFname = options.exprMatrix
     metaFname = options.meta
