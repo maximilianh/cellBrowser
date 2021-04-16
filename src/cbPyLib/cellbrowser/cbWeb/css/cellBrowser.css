@@ -141,9 +141,14 @@ input[type=checkbox], input[type=radio] {
         overflow-y: auto;
 }
 
-#tpLegendContent { 
+#tpLegendRows {
         width: 100%;
         overflow-y: auto;
+        height: 100%;
+}
+
+#tpLegendContent { 
+        width: 100%;
         height: 100%;
 }
 
