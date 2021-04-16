@@ -1132,10 +1132,9 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "int"
 
-    elif floatCount+unknownCount==len(valList) and not forceType:
-        # field is a floating point number: convert to decile index
+    elif floatCount+unknownCount==len(valList) and not forceType and not unknownCount==len(newVals):
+        # field is a floating point number and not all values are "nan"
         newVals = [float(x) for x in newVals]
-        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
         fieldMeta["arrType"] = "float32"
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "float"
@@ -4780,7 +4779,10 @@ def cbBuildCli():
         else:
             build(confFnames, outDir, port, redo=options.redo)
     except:
-        logging.error("Unexpected error: %s" % sys.exc_info()[0])
+        exc_info = sys.exc_info()
+        logging.error("Unexpected error: %s" % exc_info)
+        import traceback
+        traceback.print_exception(*exc_info)
         sys.exit(1)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
@@ -5046,8 +5048,11 @@ def summarizeDatasets(datasets):
         # these are copied and checked for the correct type
         for optListTag in ["tags", "hasFiles", "body_parts"]:
             if optListTag in ds:
-                assert(type(ds[optListTag])==type([])) # has to be a list
-                summDs[optListTag] = ds[optListTag]
+                if (type(ds[optListTag])==type([])): # has to be a list
+                    summDs[optListTag] = ds[optListTag]
+                else:
+                    logging.error("Dataset: %s" % ds["name"])
+                    logging.error("Setting '%s' must be a list of values, not a number or string." % optListTag)
 
         # these are generated
         if "sampleCount" in ds:
