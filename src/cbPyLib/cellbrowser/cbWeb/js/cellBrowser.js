@@ -69,7 +69,7 @@ var cellbrowser = function() {
     var toolBarComboTop   = 2;
     // width of the collection combobox
     var collectionComboWidth = 200;
-    var layoutComboWidth = 150;
+    var layoutComboWidth = 200;
     // width of a single gene cell in the meta gene bar tables
     var gGeneCellWidth = 66;
 
@@ -5051,8 +5051,11 @@ var cellbrowser = function() {
             nextLeft += 80;
         }
 
-        buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
-        nextLeft += 215;
+        if (coordInfo[coordInfo.length-1].shortLabel.length > 20)
+            //$('.chosen-drop').css({"width": "300px"});
+            layoutComboWidth += 50
+        buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", layoutComboWidth, nextLeft, 2);
+        nextLeft += 65+layoutComboWidth;
 
         var nameParts = dataset.name.split("/");
         var parentName = null;
