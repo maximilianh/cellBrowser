@@ -1,3 +1,4 @@
+# needs work
 mkdir /hive/groups/qa/CB-git-reports-history/v0.7.9
 mv /hive/groups/qa/CB-git-reports/* /hive/groups/qa/CB-git-reports-history/v0.7.9
 git log --tags --simplify-by-decoration --pretty="format:%ai %d"
