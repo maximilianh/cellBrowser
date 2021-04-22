@@ -4944,12 +4944,13 @@ var cellbrowser = function() {
         /* return URL of the hub.txt file, possibly jumping to a given gene  */
             var hubUrl = db.conf.hubUrl;
 
-            // we accept session links in the hubUrl statement and just pass these through
+            if (hubUrl===undefined)
+                return null;
+
+            // we accept full session links in the hubUrl statement and just pass these through
             if (hubUrl && hubUrl.indexOf("genome.ucsc.edu/s/")!==-1)
                 return hubUrl;
 
-            if (hubUrl===undefined)
-                return null;
             var ucscDb = db.conf.ucscDb;
             if (ucscDb===undefined) {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
@@ -4957,11 +4958,13 @@ var cellbrowser = function() {
             }
 
             var fullUrl = null;
-            if (hubUrl && hubUrl.startsWith("http"))
-                // it's not a URL but just a track name (=tabulamuris)
-                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+hubUrl+"=full&genome="+ucscDb;
-            else {
-                if (hubUrl.indexOf("/")!==-1)
+            if (hubUrl.indexOf("/")===-1) {
+                // no slash -> it's not a URL at all but just a track name (e.g. "tabulamuris")
+                var trackName = hubUrl;
+                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+trackName+"=full&genome="+ucscDb;
+            } else {
+                // it's a url to a hub.txt file: either relative or absolute
+                if (!hubUrl.startsWith("http"))
                     // relative URL to a hub.txt file -> make absolute now
                     hubUrl = getBaseUrl()+db.name+"/"+hubUrl
                 // URL is an absolute link to a hub.txt URL
