@@ -4091,6 +4091,8 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
+        # This code is currently not used anywhere by this code. It's still there
+        # so external code that calls this function can use it, if the code below does not work.
         logging.info("Converting anndata to pandas dataframe")
         data_matrix=pd.DataFrame(mat, index=var.index.tolist(), columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
@@ -4153,7 +4155,7 @@ def makeDictDefaults(inVar, defaults):
 
 def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     " run scanpy's rank_genes_groups in a way that hopefully doesn't crash "
-    importScanpy()
+    sc = importScanpy()
 
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
@@ -4787,7 +4789,7 @@ def cbBuildCli():
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
-    importScanpy()
+    sc = importScanpy()
 
     if matrixFname.endswith(".mtx.gz"):
         errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
@@ -5368,7 +5370,7 @@ def getObsmKeys(adata):
 def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     """ run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data.
     Return an adata object. Optionally keeps a copy of the raw matrix in adata.raw """
-    importScanpy()
+    sc = importScanpy()
 
     import pandas as pd
     import numpy as np
@@ -5391,7 +5393,8 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     sys.stdout = Tee(logFname) # we want our log messages and also scanpy messages into one file
 
     pipeLog("cbScanpy $Id$")
-    pipeLog("Input file: %s" % matrixFname)
+    pipeLog("Command: %s" % " ".join(sys.argv))
+    pipeLog("Matrix input file: %s" % matrixFname)
 
     pipeLog("Restricting OPENBLAS to 4 threads")
     os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
@@ -5812,6 +5815,7 @@ def importScanpy():
         print("$ conda install -c conda-forge python-igraph leiden")
         print("Then re-run this command.")
         sys.exit(1)
+    return sc
 
 def cbScanpyCli():
     " command line interface for cbScanpy "

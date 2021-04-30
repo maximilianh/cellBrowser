@@ -41,7 +41,7 @@ def cbGenes_parseArgs():
     parser.add_option("-d", "--debug", dest="debug", action="store_true", help="show debug messages")
     (options, args) = parser.parse_args()
 
-    if args==[]:
+    if args==[] or (args[0]=="guess" and len(args)==1):
         parser.print_help()
         exit(1)
 
@@ -61,18 +61,27 @@ def parseSignatures(org, geneIdType):
         if line.startswith("#"):
             continue
         version, geneIds = line.rstrip("\n").split('\t')
-        geneIds = geneIds.split("|")
+        geneIds = set(geneIds.split("|"))
         verToGenes[version] = geneIds
+
     return verToGenes
         
 def guessGeneIdType(genes):
     " return tuple organism / identifier type "
+    logging.debug("Trying to guess organism and identifier type (syms or ids)")
     gene1 = list(genes)[0]
     if gene1.startswith("ENSG"):
         return "human", "ids"
     if gene1.startswith("ENSMUS"):
         return "mouse", "ids"
-    if gene1.upper()==gene1:
+
+    upCount = 0
+    for g in genes:
+        if g.isupper():
+            upCount += 1
+
+    logging.debug("%d of %d genes are uppercase" % (upCount, len(genes)))
+    if upCount/float(len(genes)) > 0.8:
         return "human", "syms"
     else:
         return "mouse", "syms"
@@ -96,18 +105,28 @@ def parseGenes(fname):
 
 def guessGencodeVersion(fileGenes, signGenes):
     logging.info("Number of genes that are only in a gene model release:")
-    diffs = []
+    #diffs = []
+    infos = []
     for version, uniqGenes in signGenes.items():
         intersection = list(fileGenes.intersection(uniqGenes))
-        infoStr = "release "+version+": %d out of %d" % (len(intersection), len(uniqGenes))
+        share = 100.0 * (float(len(intersection)) / len(uniqGenes))
+        intLen = len(intersection)
+        geneCount = len(uniqGenes)
+        infoStr = "release "+version+": %0.2f%%, %d out of %d" % (share, len(intersection), len(uniqGenes))
         if len(intersection)!=0:
             expStr = ", ".join(intersection[:5])
             infoStr += (" e.g. "+ expStr)
-        logging.info(infoStr)
-        diffs.append((len(intersection), version))
+        #logging.info(infoStr)
+        infos.append((share, version, intLen, geneCount, infoStr))
 
-    diffs.sort(reverse=True)
-    bestVersion = diffs[0][1]
+        #diffs.append((len(intersection), version))
+
+    infos.sort(reverse=True)
+    bestVersion = infos[0][1]
+
+    for info in infos:
+        share, version, intLen, geneCount, infoStr = info
+        print(infoStr)
 
     return bestVersion
 
@@ -122,7 +141,9 @@ def guessGencode(fname, org):
     print("Best %s Gencode release\t%s" % (org, bestVersion))
 
     allIds = readGeneSymbols(bestVersion)
-    notFoundIds = set(allIds) - inGenes
+    if geneType=="syms":
+        allIds = allIds.values()
+    notFoundIds = inGenes - set(allIds)
     print("%d of the genes in the input are not part of %s" % (len(notFoundIds), bestVersion))
     print("Examples: %s" % " ".join(list(notFoundIds)[:50]))
 
@@ -353,6 +374,17 @@ def uniqueIds(org):
             ids.add(geneId)
         allSyms[geneType] = syms
         allIds[geneType] = ids
+
+    # force refseq into this
+    syms = []
+    fname = getStaticFile("genes/entrez-%s.symbols.tsv.gz" % (org))
+    for line in openFile(fname):
+        if line.startswith("#"):
+            continue
+        geneId, sym = line.rstrip("\n").split("\t")
+        syms.append(sym)
+    #verToGenes["refseq"] = set(syms)
+    allSyms["entrez"] = set(syms)
 
     logging.info("Finding unique values")
     uniqSyms, commonSyms = keepOnlyUnique(allSyms)

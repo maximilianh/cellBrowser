@@ -963,6 +963,14 @@ function CbDbFile(url) {
         return self.geneOffsets;
     };
 
+    this.getCellIdMeta = function() {
+    /* return the cell ID meta field */
+        for (let metaInfo of self.conf.metaFields)
+            if (!metaInfo.isCustom)
+                return metaInfo;
+    }
+
+
     this.loadCellIds = function(idxArray, onDone, onProgress) {
         /* Get the cellId strings, the first meta field, for the integer IDs of cells in idxArray.
          * Calls onDone with an array of strings.
@@ -989,6 +997,7 @@ function CbDbFile(url) {
             onDone(mapIdxToId(idxArray));
         }
 
+        // start of loadCellIds
         if (self.cellIds===undefined) {
             // if we haven't loaded them yet, trigger the cellId load
             let cellIdMeta = self.getCellIdMeta();
