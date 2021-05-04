@@ -32,6 +32,7 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
    installation
    basic_usage
    internet
+   howto.rst
    tabsep
    seurat
    scanpy
