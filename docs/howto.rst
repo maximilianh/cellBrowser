@@ -298,7 +298,7 @@ You will still need to set the other `required settings <https://github.com/maxi
 How to visualize single-cell ATAC-seq data in the Cell Browser
 ^^^^
 
-The Cell Browser supports single-cell ATAC-seq data, it requires the same files that a standard dataset needs with the added requirement of knowing the gene models to use. 
+The Cell Browser supports single-cell ATAC-seq data. It requires the same files that a standard dataset needs with the added requirement of knowing the gene models to enable searching for peaks around genes. Typically ATAC-seq data includes inferred gene signal analysis as well, so the gene models used for that should be the same used here.
 
 Step 1: Gather required files
 """"
@@ -308,10 +308,8 @@ You will the following three files:
 * Cell annotations/metadata
 * Layout coordinats (e.g. UMAP)
 
-Step 2: Determine GENCODE Gene Model version
+Step 2: Determine GENCODE Gene Model version (optional)
 """"
-
-To enable searching for peaks around genes, the Cell Browser requires a set of gene models be specified. Typically ATAC-seq includes a gene signal analysis as well, so that should be the set of gene models you declare here. 
 
 If you don't know the GENCODE version used, cbGenes can determine the most likely version used:
 
@@ -340,8 +338,8 @@ You will need to add the following lines to your ``cellbrowser.conf``:
 
 ::
 
-atacSearch = "hg38.gencode-34" # Put here the name of the version downloaded in Step 3 combined with the ucsc assembly name
-geneLabel = "Peak" 
+ atacSearch = "hg38.gencode-34" # Version downloaded in Step 3 combined with the UCSC assembly name
+ geneLabel = "Peak" 
 
 You will still need to set the other `required settings <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf#L1>`_ in your cellbrowser.conf as well
 
@@ -351,4 +349,5 @@ Step 5: Build your Cell Browser
 After all is set up, build your cell browser:
 
 ::
-cbBuild -o alpha
+
+ cbBuild -o alpha
