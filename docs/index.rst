@@ -30,6 +30,7 @@ or email us at cells@ucsc.edu, we can usually fix them quickly.
 
    interface.rst
    installation
+   quick_start.rst
    basic_usage
    internet
    howto.rst
