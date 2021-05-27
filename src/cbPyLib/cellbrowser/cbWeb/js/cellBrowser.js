@@ -7080,7 +7080,7 @@ var cellbrowser = function() {
             datasetName = "cortex-dev";
 
         // adult pancreas is the only dataset with an uppercase letter
-        if (datasetName && datasetName!=="adultPancreas")
+        if (datasetName && datasetName!=="adultPancreas" && !pageAtUcsc())
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }
