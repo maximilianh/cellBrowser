@@ -5780,11 +5780,19 @@ def generateQuickGenes(outDir):
     clusters = parseMarkerTable(markerFname, None)[0]
 
     genesPerCluster = int(round(18 / len(clusters))) # guess a reasonable number of genes per cluster, ~ 18 genes in total
+    maxGenes = None
+    if genesPerCluster == 0:
+        genesPerCluster = 1
+        maxGenes = 30
+
     quickGenes = defaultdict(list)
     for clusterName, rows in iterItems(clusters):
         for row in rows[:genesPerCluster]:
             sym = row[1]
             quickGenes[sym].append(clusterName)
+            if maxGenes is not None and len(quickGenes) > maxGenes:
+                logging.info("Stopping at 30 genes to keep size of quickGenes file reasonable")
+                break
 
     ofh = open(outFname, "w")
     for sym, clusterNames in iterItems(quickGenes):
