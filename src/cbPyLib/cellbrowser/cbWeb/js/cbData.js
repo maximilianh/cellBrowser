@@ -768,7 +768,8 @@ function CbDbFile(url) {
             updateOp = locusName.substring(0, 1);
             namesToLoad = locusName.substring(1).split(updateOp); // strip the first character
         } else {
-            locusName = locusName.replace(" ", "+"); // common error: + is "space" in URLs
+            //locusName = locusName.replace(" ", "+"); // common error: + is "space" in URLs
+            //Had to remove this because engraftable-hsc/adt has spaces in the gene names
             namesToLoad = locusName.split("+");
         }
 
