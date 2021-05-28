@@ -401,8 +401,8 @@ def cbImportSeurat_parseArgs(showHelp=False):
     parser.add_option("-n", "--name", dest="datasetName", action="store",
         help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
 
-    parser.add_option("-f", "--inFormat", dest="inFormat", action="store", 
-            help="the format of the input file. Either 'rds' or 'rdata'. Default %default. If input filename ends with .rdata or .robj, defaults to rdata.", default="rds")
+    parser.add_option("-f", "--inFormat", dest="inFormat", action="store",
+            help="the format of the input file. Either 'rds' or 'rdata'. If nothing is specified and the input filename ends with .rdata or .robj, the option defaults to rdata, otherwise rds is used.")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -505,9 +505,12 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
 
     cmds = readExportScript(cmds)
 
-    inExt = splitext(inFname.lower())[1]
-    if inExt in [".robj", ".rdata"]:
-        inFormat="rdata"
+    if inFormat is None:
+        inExt = splitext(inFname.lower())[1]
+        if inExt in [".robj", ".rdata"]:
+            inFormat="rdata"
+        else:
+            inFormat = "rds"
 
     if inFormat=="rds":
         cmds.append("message('Reading %s as .rds file')" % inFname)
