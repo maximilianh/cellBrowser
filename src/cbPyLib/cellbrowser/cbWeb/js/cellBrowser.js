@@ -2764,7 +2764,7 @@ var cellbrowser = function() {
 	}]
 	};
 
-        var optDict = { 
+        var optDict = {
             maintainAspectRatio: false,
             legend: { display: false },
 	    title: { display: false }
@@ -2777,13 +2777,13 @@ var cellbrowser = function() {
             yLabel = db.conf.unit;
 
         if (yLabel!==null)
-            optDict.scales = { 
-                yAxes: [{ 
-                    scaleLabel: { 
-                        display: true, 
+            optDict.scales = {
+                yAxes: [{
+                    scaleLabel: {
+                        display: true,
                         labelString: yLabel
-                    } 
-                    }] 
+                    }
+                    }]
             };
 
         window.setTimeout(function() {
@@ -2961,19 +2961,15 @@ var cellbrowser = function() {
            var origLabels = [];
            var clusterMids = clusterInfo.labels;
            // old-style files contain just coordinates, no order
-           if (clusterMids===undefined)
+           if (clusterMids === undefined)
                clusterMids = clusterInfo;
 
            for (var i = 0; i < clusterMids.length; i++) {
-               var labelInfo = clusterMids[i];
-               var oldName = labelInfo[2];
-               origLabels.push(oldName);
-               var newName = oldName;
-               labelInfo[2] = newName;
+               origLabels.push(clusterMids[i][2]);
            }
            renderer.origLabels = origLabels;
-           db.clusterOrder = clusterInfo.order;
 
+           clusterMids = [];
         }
 
        opts["lines"] = clusterInfo.lines;
@@ -2981,6 +2977,58 @@ var cellbrowser = function() {
 
        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
    }
+
+    function computeAndSetLabels(values, metaInfo) {
+        var coords = renderer.coords.orig;
+        var names = null;
+        if (metaInfo.type !== "float" && metaInfo.type !== "int") {
+            var names = metaInfo.ui.shortLabels;
+        }
+
+        // console.log(metaInfo);
+
+        console.time("cluster centers");
+        var calc = {};
+        for (var i = 0, I = values.length; i < I; i++) {
+            if (names) {
+                var label = names[values[i]];
+            } else {
+                var label = metaInfo.origVals[i].toFixed(2);
+            }
+            if (calc[label] === undefined) {
+                calc[label] = [[], [], 0]; // all X, all Y, count
+            }
+            calc[label][0].push(coords[i * 2]);
+            calc[label][1].push(coords[i * 2 + 1]);
+            calc[label][2] += 1;
+        }
+        var labelCoords = [];
+        for (label in calc) {
+            var count = calc[label][2];
+            calc[label][0].sort(function(a, b) { return a - b });
+            calc[label][1].sort(function(a, b) { return a - b });
+            var midX = calc[label][0][Math.floor(count / 2)]; // median
+            var midY = calc[label][1][Math.floor(count / 2)];
+            labelCoords.push([midX, midY, label]);
+        }
+        console.timeEnd("cluster centers");
+        var shouldRedraw = renderer.setLabelCoords(labelCoords);
+        if (shouldRedraw) {
+            renderer.drawDots();
+        } else {
+            renderer.redrawLabels();
+        }
+    }
+
+    function setLabelField(labelField) {
+        var metaInfo = db.findMetaInfo(labelField);
+        db.conf.activeLabelField = labelField;
+
+        if (metaInfo.arr) // preloaded
+            computeAndSetLabels(metaInfo.arr, metaInfo);
+        else
+            db.loadMetaVec(metaInfo, computeAndSetLabels);
+    }
 
    function colorByDefaultField(onDone) {
        /* get the default coloring field from the config or the URL and start coloring by it.
@@ -3055,6 +3103,7 @@ var cellbrowser = function() {
            loadsDone +=1;
            if (loadsDone===2) {
                buildLegendBar();
+               setLabelField(db.conf.labelField);
 
                if (forcePalName!==null) {
                    legendChangePaletteAndRebuild(forcePalName);
@@ -4406,6 +4455,14 @@ var cellbrowser = function() {
         colorByMetaField(fieldName);
     }
 
+    function onLabelComboChange(ev, choice) {
+        /* called when user changes the label field combo box */
+        var fieldId = parseInt(choice.selected.split("_")[1]);
+        var fieldName = db.getMetaFields()[fieldId].name;
+
+        setLabelField(fieldName);
+    }
+
     function showCollectionDialog(collName) {
         /* load collection with given name and open dialog box for it */
         loadCollectionInfo(collName, function(collData) { openDatasetDialog(collData)});
@@ -4545,10 +4602,11 @@ var cellbrowser = function() {
         htmls.push('</div>');
     }
 
-    function buildMetaFieldCombo(htmls, idOuter, id, left) {
+    function buildMetaFieldCombo(htmls, idOuter, id, left, selectedField) {
         var metaFieldInfo = db.getMetaFields();
         htmls.push('<div id="'+idOuter+'" style="padding-left:2px; display:inline">');
         var entries = [["_none", ""]];
+        var selIdx = 0;
         for (var i = 1; i < metaFieldInfo.length; i++) { // starts at 1, skip ID field
             var field = metaFieldInfo[i];
             var fieldName = field.label;
@@ -4556,9 +4614,12 @@ var cellbrowser = function() {
             //if (hasTooManyVals)
                 //continue;
             entries.push( ["tpMetaVal_"+i, fieldName] );
+            if (selectedField == fieldName) {
+                selIdx = i;
+            }
         }
 
-        buildComboBox(htmls, id, entries, 0, "select a field...", metaBarWidth+50);
+        buildComboBox(htmls, id, entries, selIdx, "select a field...", metaBarWidth+50);
         htmls.push('</div>');
     }
 
@@ -5251,6 +5312,8 @@ var cellbrowser = function() {
         htmls.push("<div id='tpAnnotTab'>");
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
+        htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="tpLabelCombo">Label by Annotation</label>');
+        buildMetaFieldCombo(htmls, "tpLabelComboBox", "tpLabelCombo", 0, db.conf.labelField);
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" id="tpHoverHint" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px; display: none" id="tpSelectHint" class="tpHint">Cells selected. No update on hover.</div>');
 
@@ -5289,6 +5352,9 @@ var cellbrowser = function() {
 
         activateCombobox("tpMetaCombo", metaBarWidth-10);
         $("#tpMetaCombo").change( onMetaComboChange );
+
+        activateCombobox("tpLabelCombo", metaBarWidth-10);
+        $("#tpLabelCombo").change( onLabelComboChange );
         connectMetaPanel();
     }
 
@@ -5706,7 +5772,7 @@ var cellbrowser = function() {
     }
 
     function getClusterFieldInfo() {
-        var clusterField = db.conf.labelField;
+        var clusterField = db.conf.activeLabelField;
         var clusterMetaInfo = db.findMetaInfo(clusterField);
         return clusterMetaInfo;
     }
@@ -6360,13 +6426,13 @@ var cellbrowser = function() {
     }
 
     function onClusterNameHover(clusterName, nameIdx, ev) {
-       /* user hovers over cluster label */
-       var labelLines = [clusterName];
+        /* user hovers over cluster label */
+        var labelLines = [clusterName];
 
-       var labelField = db.conf.labelField;
-       var metaInfo = db.findMetaInfo(labelField);
-       var longLabels = metaInfo.ui.longLabels;
-       if (longLabels) {
+        var labelField = db.conf.labelField;
+        var metaInfo = db.findMetaInfo(labelField);
+        var longLabels = metaInfo.ui.longLabels;
+        if (longLabels) {
             for (let i=0; i<longLabels.length; i++) {
                 let shortLabel = metaInfo.ui.shortLabels[i];
                 let longLabel = longLabels[i];
@@ -6375,20 +6441,22 @@ var cellbrowser = function() {
                     break;
                 }
             }
-       }
-
-       if (db.conf.topMarkers!==undefined) {
-            labelLines.push("Top enriched/depleted markers: "+db.conf.topMarkers[clusterName].join(", "));
         }
-       labelLines.push("");
 
-       if (db.conf.markers!==undefined)
-            labelLines.push("Click to show full marker gene list.");
+        if (labelField == db.conf.activeLabelField) {
+            if (db.conf.topMarkers!==undefined) {
+                labelLines.push("Top enriched/depleted markers: "+db.conf.topMarkers[clusterName].join(", "));
+            }
+            labelLines.push("");
 
-       if (db.conf.clusterPngDir!==undefined) {
-            var fullPath = cbUtil.joinPaths([db.name, db.conf.clusterPngDir, clusterName+".png"]);
-            labelLines.push("<img src='"+fullPath+"'>");
-       }
+            if (db.conf.markers!==undefined)
+                labelLines.push("Click to show full marker gene list.");
+
+            if (db.conf.clusterPngDir!==undefined) {
+                var fullPath = cbUtil.joinPaths([db.name, db.conf.clusterPngDir, clusterName+".png"]);
+                labelLines.push("<img src='"+fullPath+"'>");
+            }
+        }
 
         labelLines.push("Alt-Click to select cluster; Shift-Click to add cluster to selection");
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
@@ -6615,12 +6683,20 @@ var cellbrowser = function() {
     function onClusterNameClick(clusterName, _, event) {
         /* build and open the dialog with the marker genes table for a given cluster */
         var metaInfo = getClusterFieldInfo();
-        var nameIdx = metaInfo.ui.shortLabels.indexOf(clusterName);
+        var isNumber = false;
+        var nameIdx = null;
+        if (metaInfo.type == "int" || metaInfo.type == "float") {
+            isNumber = true;
+        } else {
+            nameIdx = metaInfo.ui.shortLabels.indexOf(clusterName);
+        }
         if (event.altKey || event.shiftKey) {
             db.loadMetaVec(metaInfo, function(values) {
                 var clusterCells = [];
                 for (var i = 0, I = values.length; i < I; i++) {
-                    if (values[i] == nameIdx) {
+                    if (isNumber && metaInfo.origVals[i].toFixed(2) == clusterName) {
+                        clusterCells.push(i);
+                    } else if (!isNumber && values[i] == nameIdx) {
                         clusterCells.push(i);
                     }
                 }
@@ -6633,6 +6709,9 @@ var cellbrowser = function() {
                 }
                 renderer.drawDots();
             });
+            return;
+        }
+        if (db.conf.labelField != db.conf.activeLabelField) {
             return;
         }
 
