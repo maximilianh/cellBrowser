@@ -432,8 +432,8 @@ def cbImportSeurat_parseArgs(showHelp=False):
     parser.add_option("", "--useMtx", dest="useMtx", action="store_true",
             help="Write a .mtx.gz file, instead of a tsv.gz file. Necessary for big datasets.")
 
-    parser.add_option("-s", "--matrixSlot", dest="matrixSlot", action="store", default="counts",
-            help="Export this slot of the matrix. Can be 'counts', 'data.scale' or 'data'. Default is %default")
+    parser.add_option("-s", "--matrixSlot", dest="matrixSlot", action="store", default="counts,scale.data",
+            help="Export this slot of the matrix. Can be 'counts', 'scale.data' or 'data'. Default is %default")
 
     parser.add_option("", "--assay", dest="assay", action="store",
             help="Select the Seurat3 assay to export.")
@@ -448,21 +448,29 @@ def cbImportSeurat_parseArgs(showHelp=False):
     return args, options
 
 def readExportScript(cmds):
-    " find the ExportToCellbrowser-seurat.R script and add the commands between # --- to cmds "
-    fname = join(dirname(__file__), "R", "ExportToCellbrowser-seurat.R")
+    " find the cellbrowser.R script and add the commands between # --- to cmds "
+    fname = join(dirname(__file__), "R", "cellbrowser.R")
 
     blockFound = False
     for line in open(fname):
-        if line=="# ---\n":
-            blockFound = (not blockFound)
-            continue
-        if blockFound:
-            cmds.append(line.rstrip("\n"))
+        cmds.append(line.rstrip("\n"))
+        #if line=="# ---\n":
+            #blockFound = (not blockFound)
+            #continue
+        #if blockFound:
+            #cmds.append(line.rstrip("\n"))
+
+    cmds.insert(0, "require(Matrix)")
+    cmds.insert(0, "require(R.utils)")
+    cmds.insert(0, "require(reticulate)")
+    #require(Matrix)
+    #require(R.utils)
 
     # the R export function is also part of seurat-wrappers.
     # we want to have only a single source code file, and seurat-wrappers code 
     # cannot use require, so it's commented out there.
-    cmds = [l.replace("#require(", "require(") for l in cmds]
+    #cmds = [l.replace("#require(", "require(") for l in cmds]
+    assert(len(cmds)!=0)
     return cmds
 
 def writeRScript(cmds, scriptPath, madeBy):
@@ -536,7 +544,7 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
     if options.useMtx:
         useMtx = "TRUE"
 
-    matrixSlot = "counts"
+    matrixSlot = "counts,dataScale"
     if options.matrixSlot:
         matrixSlot = options.matrixSlot
 

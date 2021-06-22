@@ -2625,10 +2625,11 @@ def guessMarkerFields(headers):
     # note: with seurat2, field 0 is not the gene ID, it has some weird suffix appended.
     seurat2Headers =  ['', 'p_val', 'avg_logFC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
     seurat3Headers = ["Gene","p-value","log2(FoldChange)","pct.1","pct.2","adjusted p-value","Cluster"]
+    seurat4Headers =  ['', 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
     # the name of the first field varies depending now people use table.write, so we ignore it for the
     # header comparison
-    if headers[1:8] == seurat2Headers[1:]:
-        logging.info("Cluster marker file was recognized to be in Seurat2 format")
+    if headers[1:8] == seurat2Headers[1:8] or headers[1:8]==seurat4Headers[1:8]:
+        logging.info("Cluster marker file was recognized to be in Seurat2/4 format")
         geneIdx = 7 # see note above: field0 is not the actual geneId, but something else, a unique row ID
         scoreIdx = 1
         clusterIdx = 6
@@ -2648,7 +2649,7 @@ def guessMarkerFields(headers):
         otherEnd = len(headers)
 
     else:
-        logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
+        logging.info("Assuming non-Seurat marker file format (cluster, gene, score) + any other fields")
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
@@ -4782,7 +4783,7 @@ def cbBuildCli():
             build(confFnames, outDir, port, redo=options.redo)
     except:
         exc_info = sys.exc_info()
-        logging.error("Unexpected error: %s" % exc_info)
+        logging.error("Unexpected error: %s" % str(exc_info))
         import traceback
         traceback.print_exception(*exc_info)
         sys.exit(1)
