@@ -454,22 +454,13 @@ def readExportScript(cmds):
     blockFound = False
     for line in open(fname):
         cmds.append(line.rstrip("\n"))
-        #if line=="# ---\n":
-            #blockFound = (not blockFound)
-            #continue
-        #if blockFound:
-            #cmds.append(line.rstrip("\n"))
 
+    # the exactly same R export source file is also part of seurat-wrappers now.
+    # we want to have only a single source code file, and seurat-wrappers code 
+    # cannot use require, so we add the require commands here
     cmds.insert(0, "require(Matrix)")
     cmds.insert(0, "require(R.utils)")
-    cmds.insert(0, "require(reticulate)")
-    #require(Matrix)
-    #require(R.utils)
 
-    # the R export function is also part of seurat-wrappers.
-    # we want to have only a single source code file, and seurat-wrappers code 
-    # cannot use require, so it's commented out there.
-    #cmds = [l.replace("#require(", "require(") for l in cmds]
     assert(len(cmds)!=0)
     return cmds
 
@@ -533,7 +524,7 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
     skipMarkerStr = str(skipMarkers).upper()
 
     if isDebugMode():
-        cmds.append("debug(ExportToCellbrowser)")
+        cmds.append("debugonce(ExportToCellbrowser)")
 
     if clusterField is None:
         clusterStr = 'NULL'

@@ -1,10 +1,6 @@
 # Build a UCSC cell browser website from a \code{Seurat} object
 #
 NULL
-#require(reticulate)
-#require(Matrix)
-#require(R.utils)
-
 #' Used by \code{ExportToCellbrowser}:
 #' Write a big sparse matrix to a .tsv.gz file by writing chunks, concating them with the Unix cat command,
 #' then gziping the result. This does not work on Windows, we'd have to use the copy /b command there.
@@ -64,7 +60,6 @@ findMatrices = function(object, slotNames ) {
   slotMatrices = list()
   slots <- list()
   for (slotName in slotNames) {
-      message("!!", slotName)
       mat <- GetAssayData(object = object, slot = slotName)
       if (slotName == "scale.data")
           slotName <- "scale" #  dots in filenames are not good
@@ -88,6 +83,9 @@ saveMatrix <- function(counts, dir, prefix, use.mtx) {
   # Export expression matrix
   message("Writing matrix with prefix ",prefix," to directory ",dir, ", use.mtx is", use.mtx)
   too.big = ((((ncol(counts)/1000)*(nrow(counts)/1000))>2000) && is(counts, 'sparseMatrix'))
+  if (prefix!="" && !endsWith(prefix, "_"))
+      prefix <- paste0(prefix, "_")
+
   if (use.mtx || too.big) {
         # we have to write the matrix to an mtx file
         matrixPath <- file.path(dir, paste(prefix, "matrix.mtx", sep=""))
@@ -349,7 +347,14 @@ ExportToCellbrowser <- function(
     if (length(levels(idents)) > 1) {
       markers.helper <- function(x) {
         partition <- markers[x,]
-        ord <- order(partition$p_val_adj < 0.05, -partition$avg_logFC)
+
+        # Seurat4 has changed the field name! grrrr...
+        if ("avg_log2FC" %in% colnames(markers))
+            avgs <- -partition$avg_log2FC
+        else
+            avgs <- -partition$avg_logFC
+
+        ord <- order(partition$p_val_adj < 0.05, avgs)
         res <- x[ord]
         naCount <- max(0, length(x) - markers.n)
         res <- c(res[1:markers.n], rep(NA, naCount))
@@ -390,6 +395,11 @@ ExportToCellbrowser <- function(
   else
       matSep = "_"
 
+  # we assume that any slotname is possible. (in the wild, only 'counts' and 'scale.data' seem to occur, but we tolerate others)
+  matrixNames <- names(slotMatrices)
+  matrixLabels <- matrixNames
+  matrixLabels[matrixLabels=="counts"] <- "read counts"
+  matrixLabels[matrixLabels=="scale.data"] <- "scaled"
   matrices.conf <- sprintf(" {'label':'%s','fileName':'%s_exprMatrix.tsv.gz'}", names(slotMatrices), names(slotMatrices))
 
   if (length(slotMatrices)==1)
