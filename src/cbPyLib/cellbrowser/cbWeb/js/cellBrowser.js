@@ -2764,7 +2764,7 @@ var cellbrowser = function() {
 	}]
 	};
 
-        var optDict = { 
+        var optDict = {
             maintainAspectRatio: false,
             legend: { display: false },
 	    title: { display: false }
@@ -2777,13 +2777,13 @@ var cellbrowser = function() {
             yLabel = db.conf.unit;
 
         if (yLabel!==null)
-            optDict.scales = { 
-                yAxes: [{ 
-                    scaleLabel: { 
-                        display: true, 
+            optDict.scales = {
+                yAxes: [{
+                    scaleLabel: {
+                        display: true,
                         labelString: yLabel
-                    } 
-                    }] 
+                    }
+                    }]
             };
 
         window.setTimeout(function() {
@@ -6880,8 +6880,6 @@ var cellbrowser = function() {
 
         var ttOpt = {"html": true, "animation": false, "delay":{"show":100, "hide":100} };
         $(".tpPlots").bsTooltip(ttOpt);
-
-        removeFocus();
     }
 
     var digitTest = /^\d+$/,
