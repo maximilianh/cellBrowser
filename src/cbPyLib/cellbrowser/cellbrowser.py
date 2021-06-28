@@ -2436,6 +2436,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
 
     textOfh.close()
     runGzip(textOutTmp, textOutName)
+    coordInfo["textFname"] = basename(textOutName)
 
     logging.debug("Wrote %d coordinates to %s and %s" % (len(sampleNames), coordBinFname, textOutName))
     return coordInfo, xVals, yVals
@@ -2986,11 +2987,11 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
         summInfo = copyImage(inDir, summInfo, datasetDir)
 
     # copy over the imageSet files. This can take a while
-    imageDir = join(datasetDir, "images")
-    makeDir(imageDir)
-
     doneNames = set()
     if "imageSets" in summInfo:
+        imageDir = join(datasetDir, "images")
+        makeDir(imageDir)
+
         for catInfo in summInfo["imageSets"]:
             for imageSet in catInfo["categoryImageSets"]:
                 imageSetFnames = set()
@@ -3333,8 +3334,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     coordFnames = makeAbsDict(inConf, "coords")
     coordFnames = makeAbsDict(inConf, "coords", fnameKey="lineFile")
 
-    flipY = inConf.get("flipY", False)
-    useTwoBytes = True
+    flipY = inConf.get("flipY", False) # R has a bottom screen 0 different than most drawing libraries
+    useTwoBytes = True # to save space, coordinates are reduced to the range 0-65535
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -3348,6 +3349,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
 
     for coordIdx, inCoordInfo in enumerate(coordFnames):
         coordFname = inCoordInfo["file"]
+
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
         # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
@@ -3355,7 +3357,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
 
         hasLines = False
-        # parse lines, updating the max-max ranges
+        # parse lines, updating the min-max ranges
         if "lineFile" in inCoordInfo:
             lineCoords, limits = parseLineInfo(inCoordInfo["lineFile"], limits)
             hasLines = True
@@ -3396,7 +3398,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             clusterInfo["order"] = clusterOrder
         else:
             labelVals = []
-
 
         if hasLabels:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
@@ -3441,7 +3442,7 @@ def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
         if doAbort:
             errAbort(msg)
         else:
-            logging.error(msg)
+            logging.warn(msg)
 
     if len(notInLabels)!=0:
         logging.warn(("%s: the following cluster names are in the marker file but not in the meta file: %s. "+
@@ -3914,6 +3915,21 @@ def copyGenes(inConf, outConf, outDir):
     outConf["fileVersions"]["geneLocs"] = getFileVersion(inFname)
     outConf["atacSearch"] = inConf["atacSearch"]
 
+def makeFilesTxt(outConf, datasetDir):
+    " create a file files.txt with all important download files in the current dataset, for curl "
+    outFname = join(datasetDir, "files.txt")
+    # 'outMatrix': {'fname': '/usr/local/apache/htdocs-cells/mg-models/organoids/exprMatrix.tsv.gz'
+    metaName = basename(outConf["fileVersions"]["outMeta"]["fname"])
+    matrixName = basename(outConf["fileVersions"]["outMatrix"]["fname"])
+
+    with open(outFname, "wt") as ofh:
+        ofh.write(matrixName+"\n")
+        ofh.write(metaName+"\n")
+        ofh.write("dataset.json\n")
+        ofh.write("desc.json\n")
+        for coords in outConf["coords"]:
+            ofh.write(coords["textFname"]+"\n")
+
 def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     """ convert everything needed for a dataset to datasetDir, write config to outConf.
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
@@ -3977,6 +3993,8 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal", "clusterPngDir"]:
         copyConf(inConf, outConf, tag)
+
+    makeFilesTxt(outConf, datasetDir)
 
 def writeAnndataCoords(anndata, coordFields, outDir, desc):
     " write all embedding coordinates from anndata object to outDir, the new filename is <coordName>_coords.tsv "
@@ -5859,7 +5877,6 @@ def cbScanpyCli():
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
     if copyMatrix and matrixFname.endswith(".csv.gz"):
         errAbort("If you use the --copyMatrix option, the input matrix cannot be a .csv.gz file. Please convert to .tsv.gz")
-
 
     makeDir(outDir)
 

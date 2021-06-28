@@ -458,8 +458,10 @@ def readExportScript(cmds):
     # the exactly same R export source file is also part of seurat-wrappers now.
     # we want to have only a single source code file, and seurat-wrappers code 
     # cannot use require, so we add the require commands here
-    cmds.insert(0, "require(Matrix)")
-    cmds.insert(0, "require(R.utils)")
+    cmds.insert(0, "message(R.version$version.string)")
+    cmds.insert(0, "library(Matrix, warn.conflicts=FALSE)")
+    cmds.insert(0, "library(R.utils, warn.conflicts=FALSE)")
+    cmds.insert(0, "library(R.oo, warn.conflicts=FALSE)")
 
     assert(len(cmds)!=0)
     return cmds
@@ -474,6 +476,21 @@ def writeRScript(cmds, scriptPath, madeBy):
         ofh.write("\n")
     ofh.close()
     logging.info("Wrote R script to %s" % scriptPath)
+
+def findObjectVersion(outDir):
+    " look for analysisLog.txt and search for the SeuratObject line in there "
+    logFname = join(outDir, "analysisLog.txt")
+    logging.debug("Checking %s to find the Seurat version used to write the object file" % logFname)
+    if not isfile(logFname):
+        logging.info("Cannot find %, no Seurat version available" % logFname)
+        return ""
+
+    for l in open(logFname):
+        if l.startswith("ObjectVersion"):
+            ver = l.strip().split(" = ")[1].strip()
+            return ver
+
+    return ""
 
 def cbImportSeurat(inFname, outDir, datasetName, options):
     " convert Seurat 2 or 3 .rds/.rdata file to tab-sep directory for cellbrowser "
@@ -554,10 +571,11 @@ def cbImportSeurat(inFname, outDir, datasetName, options):
 
     descDict = None
     if inFormat=="rds":
-        rdsOutPath = join(outDir, "seurat.rds")
+        rdsOutPath = join(outDir, basename(inFname))
         logging.info("Copying %s to %s" % (inFname, rdsOutPath))
         shutil.copyfile(inFname, rdsOutPath)
-        descDict = {"supplFiles": [{"label":"Seurat RDS", "file":"seurat.rds"}]}
+        objectVersion = findObjectVersion(outDir)
+        descDict = {"supplFiles": [{"label":"Seurat %s RDS" % objectVersion, "file":basename(inFname)}]}
 
     cbConfPath = join(outDir, "cellbrowser.conf")
 
