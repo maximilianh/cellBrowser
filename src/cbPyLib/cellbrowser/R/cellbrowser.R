@@ -236,11 +236,10 @@ ExportToCellbrowser <- function(
   reducNames <- reductions
 
   # check input arguments
-  if (is.null(x = cluster.field)) {
-    cluster.field = "Cluster"
-    message("No cluster field specified, using default: ", cluster.field)
+  if (!is.null(x = cluster.field)) {
+    message("A custom cluster field was specified: ", cluster.field)
+    Idents(object) <- object[[cluster.field]]
   }
-  message("Cluster meta field is: ", cluster.field)
 
   if (is.null(x = meta.fields)) {
     meta.fields <- colnames(x = meta)
@@ -352,7 +351,7 @@ ExportToCellbrowser <- function(
       markers.helper <- function(x) {
         partition <- markers[x,]
 
-        # Seurat4 has changed the field name! grrrr...
+        # Seurat4 changed the field name! grrrr...
         if ("avg_log2FC" %in% colnames(markers))
             avgs <- -partition$avg_log2FC
         else
