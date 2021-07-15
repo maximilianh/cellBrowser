@@ -235,11 +235,26 @@ ExportToCellbrowser <- function(
   dr <- object@reductions
   reducNames <- reductions
 
-  # check input arguments
-  if (!is.null(x = cluster.field)) {
+  # Use or find the default cluster field
+  if (is.null(x = cluster.field)) {
+    # find and use the default Idents() field as the cluster field
+    idents <- Idents(object)
+    for (colName in colnames(object@meta.data)) {
+        col = object@meta.data[[colName]]
+        if (identical(idents@.Data,col@.Data)) {
+            message("Default Idents() meta field:",colName) 
+            cluster.field <- colName
+            break
+        }
+    }
+  } else {
     message("A custom cluster field was specified: ", cluster.field)
     Idents(object) <- object[[cluster.field]]
   }
+
+  # make sure that we have a cluster field
+  if (is.null(x = cluster.field))
+      error("There was no cluster field provided and the auto-detection to find one based on Idents() did not work. Please provide a cluster field with cluster.field='xxx' from R or --clusterField=xxx if using cbImportSeurat")
 
   if (is.null(x = meta.fields)) {
     meta.fields <- colnames(x = meta)
