@@ -797,7 +797,7 @@ function MaxPlot(div, top, left, width, height, args) {
                 //}
             //}
             // don't draw labels where the midpoint is off-screen
-            if (x<0 || y<0 || x>winWidth || y>winWidth) {
+            if (x<0 || y<0 || x>winWidth || y>winHeight) {
                 bboxArr.push( null );
                 continue;
             }
