@@ -5773,7 +5773,6 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
             ofh.write("%s = %s\n" % (key, repr(val)))
 
     ofh.close()
-    #writePyConf(c, outFname)
 
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
