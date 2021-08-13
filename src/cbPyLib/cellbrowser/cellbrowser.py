@@ -1920,7 +1920,7 @@ def exprEncode(geneDesc, exprArr, matType):
         if matType=="float":
             exprArr = exprArr.astype("float32")
         elif matType=="int":
-            exprStr = exprArr.astype("uint32")
+            exprArr = exprArr.astype("uint32")
         else:
             assert(False) # internal error
         exprStr = exprArr.tobytes()
