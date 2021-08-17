@@ -1,0 +1,17 @@
+{
+    "hg19gc34": {
+        "label": "hg19 Gencode34backlift",
+        "file": "hg19.json.gz",
+        "md5": "6694ba8893"
+    },
+    "hg38gc38": {
+        "label": "hg38 Gencode34",
+        "file": "hg38.json.gz",
+        "md5": "d5f089477b"
+    },
+    "mm10vm25": {
+        "label": "mm10 GencodeVM25",
+        "file": "mm10.json.gz",
+        "md5": "4e12f8c783"
+    }
+}

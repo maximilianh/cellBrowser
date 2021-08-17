@@ -1,0 +1,3 @@
+hgsql hg19 -NB -e 'select * from wgEncodeGencodeBasicV34lift37' | cut -f2- | cut -f1,2,3,4,5,12 > hg19.tsv
+hgsql hg38 -NB -e 'select * from wgEncodeGencodeBasicV34' | cut -f2- | cut -f1,2,3,4,5,12 > hg38.tsv
+hgsql mm10 -NB -e 'select * from wgEncodeGencodeBasicVM25' | cut -f2- | cut -f1,2,3,4,5,12 > mm10.tsv

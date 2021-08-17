@@ -1257,19 +1257,24 @@ function CbDbFile(url) {
         return foundIds;
     }
 
-    this.findGenes = function(searchStr) {
-    /* searches self.geneSyns. 
-     * for which the name start with searchStr (case-ins.) or end with searchStr .
-     * returns an array of objects with .id and .sym.
-     * There is a version using this for ATAC mode, see findGenesAtac()
-     * */
+    this.findGeneIds = function(searchStr) {
+        /* return an array of matching geneIds for searchStr, uses self.geneSyns */
         searchStr = searchStr.toLowerCase();
         var geneSyns = self.geneSyns;
 
         var foundIds = searchGeneNames(geneSyns, searchStr, true);
         if (foundIds.length===0)
             foundIds = searchGeneNames(geneSyns, searchStr, false);
+        return foundIds;
+    }
 
+    this.findGenes = function(searchStr) {
+    /* searches self.geneSyns. 
+     * for which the name start with searchStr (case-ins.) or end with searchStr .
+     * returns an array of objects with .id and .sym.
+     * There is a version using this for ATAC mode, see findGenesAtac()
+     * */
+        var foundIds = self.findGeneIds(searchStr);
         var geneNameObjs = [];
         for (var geneId of foundIds)
             geneNameObjs.push(self.getGeneInfo(geneId)); // for selectizeSendGenes
@@ -1332,7 +1337,7 @@ function CbDbFile(url) {
     this.findGenesAtac = function(searchStr) {
         /* like findGenes(), but for ATAC mode: return an array of {.id and .sym} given a search string  */
         //var geneInfos = cbUtil.searchKeys(self.geneToTss, searchStr);
-        var geneIds = self.findGenes(searchStr);
+        var geneIds = self.findGeneIds(searchStr);
 
         if (geneIds.length===0)
             return [];
