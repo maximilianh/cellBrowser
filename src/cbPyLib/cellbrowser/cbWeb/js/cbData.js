@@ -219,6 +219,29 @@ var cbUtil = (function () {
         this._onDone(binData, this._otherInfo);
     };
 
+    my.searchKeys = function(geneIdx, searchStr)  {
+        /* search the keys of an object for matches. Uses a strategy adapted for gene identifers and symbols:
+         * - ignore case
+         * - prefix search
+         * - if not match, try suffix search
+         * returns an array of all objects for those keys. */
+        searchStr = searchStr.toLowerCase();
+        var foundGenes = [];
+
+        for (var name in geneIdx)
+            if (name.startsWith(searchStr))
+                foundGenes.push(geneIdx[name]);
+
+        // try a suffix search if the prefix search did not work
+        // This is so people can enter just the last few digits of the ENSG IDS
+        if (foundGenes.length===0) {
+            for (var name in geneIdx)
+                if (name.endsWith(searchStr))
+                    foundGenes.push(geneIdx[name]);
+        }
+        return foundGenes;
+    }
+
     my.makeType = function(typeStr) {
         /* given a string, return the correct type array for it */
         typeStr = typeStr.toLowerCase();
@@ -322,14 +345,26 @@ function CbDbFile(url) {
     // indices, resolve sample indices to sample names load meta for a given
     // cell index
     var self = this; // this has two conflicting meanings in javascript.
-    // we use 'self' to refer to object variables and 'this' to refer to the calling object
+    // To make it a little more readble, we use 'self' to refer to object variables and 'this' to refer to the calling object
 
     self.name = url;
     self.url = url;
-    self.geneOffsets = null; // object with gene -> [offset in file, data size in bytes]
+
     self.exprBinCount = 10;
 
+    // for quick gene name searching
+    self.geneSyns = null; // array of [geneSynonymLowercase, geneId]
+
+    // for normal gene mode
+    self.geneOffsets = null; // object with geneId -> [offset in file, data size in bytes] 
+
+    // for ATAC mode
+    self.peakOffsets = null; // object with chrom -> list of [chromStart, chromEnd, offset in file, data size in bytes]
+    self.geneLocs = null // gene locations as chrom -> list of [start, end, strand, geneId|sym (string) ] 
+    self.geneToTss = null; // object with geneId -> [chrom, chromStart, index into geneLocs[chrom]
+
     self.exprCache = {}; // cached compressed expression arrays
+
     self.metaCache = {}; // cached compressed meta arrays
 
     self.quickExpr = {}; // uncompressed expression arrays
@@ -340,15 +375,22 @@ function CbDbFile(url) {
 
     this.conf = null;
 
+
     this.loadConfig = function(onDone, md5) {
     /* load config and gene offsets from URL and call func when done */
 
         var doneCount = 0;
+        var matrixIndex = null;
+
         function gotOneFile() {
             doneCount++;
             if (doneCount===2) {
-                if (self.atacSearch)
-                    self.indexRanges();
+                if (self.conf.atacSearch) {
+                    self.peakOffsets = matrixIndex;
+                } else {
+                    self.geneOffsets = matrixIndex;
+                    self.indexGenes();
+                }
                 onDone(self.name);
             }
         }
@@ -362,9 +404,9 @@ function CbDbFile(url) {
            dsUrl = dsUrl+"?"+md5;
         cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile();});
 
-        // start loading gene offsets in background, this takes a while
+        // start loading gene offsets in background, because this takes a while
         var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
-        cbUtil.loadJson(osUrl, function(data) { self.geneOffsets = data; gotOneFile();}, true);
+        cbUtil.loadJson(osUrl, function(data) { matrixIndex = data; gotOneFile();}, true);
     };
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {
@@ -675,17 +717,19 @@ function CbDbFile(url) {
     }
 
     this.locusToOffset = function(name) {
-        /* return an array [start, end, name] given a locus description (=a string, gene symbol or chr|start|end) */
+        /* for both gene and ATAC mode: */
+        /* return an array [start, end, name] given a locus description (=a string: gene symbol or chr|start|end) */
         var off = null;
-        if (name.includes("|")) {
+        if (name.includes("|")) { // atac mode: name is chrom|start|end
             let pos = name.split("|");
-            off = self.findOffsetAtPos(pos[0], parseInt(pos[1]), parseInt(pos[2]));
+            off = self.findAtacOffsets(pos[0], parseInt(pos[1]), parseInt(pos[2]));
         }
-        else
+        else {
             off = self.geneOffsets[name];
+        }
 
         if (off===null || off===undefined) {
-            alert("internal error: there is no gene/ATAC-peak for "+name+" in the expression matrix");
+            alert("internal error: there is no gene with the name "+name+" in the expression matrix");
             return;
         }
 
@@ -749,7 +793,8 @@ function CbDbFile(url) {
      * and call onDone with (array, discretizedArray, locusName, geneDesc (or ""),
      * binInfo).
      * locus name can be one of these:
-     * - gene symbol
+     * - geneSym
+     * - geneId=geneSym
      * - chr1|1000|2000 chrom range
      * - sums of either of these, e.g. PITX1+OTX2 or chr1|1000|2000+chr2|1000|2000
      * - a single gene or locus name, prefixed by "+", to add to the current array
@@ -959,10 +1004,35 @@ function CbDbFile(url) {
         return self.conf;
     };
 
-    this.getGenes = function() {
+    this.getMatrixIndex = function() {
     /* return an object with the geneSymbols */
-        return self.geneOffsets;
+        if (self.geneOffsets)
+            return self.geneOffsets;
+        else
+            return self.peakOffsets;
     };
+
+    this.getGeneInfo = function(geneId) {
+        /* given geneId, return an object with .geneId and .sym */
+        var genes = self.geneOffsets;
+        var sym = genes[geneId][2];
+        return {"id":geneId, "sym":sym}; 
+    }
+
+    this.getGeneInfoAtac = function(geneId) {
+        /* in atac mode: given geneId, return an object with .sym, .chrom and .chromStart */
+        var geneTss = self.geneToTss[geneId];
+        // geneLoc is [chrom, tss, geneIds], see indexGenesAtac()
+        var geneChrom = geneTss[0];
+        var tssStart = geneTss[1];
+        var geneIdx = geneTss[2];
+        // geneLocs is [start, end, strand, geneIdAndSymbol], see indexGenesAtac()
+        var sym = self.geneLocs[geneChrom][geneIdx][3];
+        // backwards compatibility: gene names can include symbols
+        if (sym.indexOf("|")!==-1)
+            sym = sym.split("|")[1];
+        return {"chrom" : geneChrom, "chromStart":tssStart, "sym":sym}; 
+    }
 
     this.getCellIdMeta = function() {
     /* return the cell ID meta field */
@@ -1127,25 +1197,157 @@ function CbDbFile(url) {
 	return lo;
     }
 
-    this.findGenesByPrefix = function(prefix) {
-    /* return an array of gene symbols that start with prefix (case-ins.) */
-        prefix = prefix.toLowerCase();
-        var foundGenes = [];
-        var geneIdx = self.geneOffsets;
-        if (self.geneToTss)
-            geneIdx = self.geneToTss;
-
-        for (let geneSym in geneIdx) {
-            if (geneSym.toLowerCase().startsWith(prefix))
-                foundGenes.push(geneSym);
+    function updateGeneSyns(geneSyns, name) {
+        /* given a symbol which can be geneId|sym, append to geneSyn array 1 or 2 tuples with [searchKey, geneId] */
+        if (name.indexOf("|")===-1) {
+            // datasets with only one gene name: old behavior
+            geneSyns.push( [name.toLowerCase(), name] );
+        } else {
+            // dataset with geneId and symbol
+            var parts = name.split("|");
+            var geneId = parts[0];
+            var sym = parts[1];
+            geneSyns.push( [geneId.toLowerCase(), geneId] );
+            geneSyns.push( [sym.toLowerCase(), geneId] );
         }
+    }
 
-        return foundGenes;
+    this.indexGenes = function() {
+    /* for the case of normal gene mode, not ATAC-mode: split geneId from symbol to allow fast lookups of the symbols 
+     * changes self.geneOffsets from geneId|symbol -> [start, end] to geneId -> [start, end, symbol] 
+     * (allows us to use the geneId everywhere instead of a new geneNumber)
+     * Creates self.geneSyns as array of [synonym, geneId]  - for searching, allows 1:many relationships */
+        var newIdx = {};
+        var geneIdx = self.geneOffsets;
+        var geneSyns = [];
+        for (var key in geneIdx) {
+            updateGeneSyns(geneSyns, key);
+
+            var val = geneIdx[key]; // as of 2019, faster than Object.entries()
+            var sym = key;
+            var geneId = key;
+            if (key.indexOf("|")!==-1) {
+                var parts = key.split("|")[0];
+                geneId = parts[0];
+                sym = parts[1];
+            }
+
+            var newVal = [val[0], val[1], sym];
+            newIdx[geneId] = newVal;
+                
+            self.geneOffsets=newIdx;
+            self.geneSyns = geneSyns;
+        }
+    }
+
+    function searchGeneNames(geneSyns, searchStr, doPrefix) {
+        /* search the geneSyns (arr of [syn, geneId]) for matches. Return arr of geneId */
+        var foundIds = [];
+        for (var i=0; i<geneSyns.length; i++) {
+            var synRow = geneSyns[i];
+            var syn = synRow[0];
+            if (doPrefix) {
+                if (syn.startsWith(searchStr))
+                    foundIds.push(synRow[1]);
+            } else {
+                if (syn.endsWith(searchStr))
+                    foundIds.push(synRow[1]);
+            }
+        }
+        return foundIds;
+    }
+
+    this.findGenes = function(searchStr) {
+    /* searches self.geneSyns. 
+     * for which the name start with searchStr (case-ins.) or end with searchStr .
+     * returns an array of objects with .id and .sym.
+     * There is a version using this for ATAC mode, see findGenesAtac()
+     * */
+        searchStr = searchStr.toLowerCase();
+        var geneSyns = self.geneSyns;
+
+        var foundIds = searchGeneNames(geneSyns, searchStr, true);
+        if (foundIds.length===0)
+            foundIds = searchGeneNames(geneSyns, searchStr, false);
+
+        var geneNameObjs = [];
+        for (var geneId of foundIds)
+            geneNameObjs.push(self.getGeneInfo(geneId)); // for selectizeSendGenes
+
+        return geneNameObjs;
     };
 
-    this.findOffsetAtPos = function(chrom, start, end) {
-        /* return a single arr with [offset, length] into the matrix file that matches chrom, start, end */
-        var chromRanges = self.geneOffsets[chrom];
+    function pickTssForGene(loc) {
+        /* given a chromLoc tuple (start, end, strand, sym), return the TSS of the gene (start or end )*/
+        var start = loc[0];
+        var end = loc[1];
+        var strand = loc[2];
+        var sym = loc[3];
+        var tss = start;
+        if (strand==="-")
+            tss = end;
+        return tss;
+    }
+
+    this.indexGenesAtac = function () {
+        /* like indexGenes(), but for ATAC mode.
+         * db.geneLocs has the genes as chrom -> list of [start, end, strand, geneId|sym ( as string ) ] 
+         * where geneName can be geneId|sym or just sym.
+         * create self.geneToTss geneId -> [chrom, tssStart, geneIdx] for TSS lookups
+         * and self.geneSyns = [ [geneSyn, geneId], ... ] for quick search (syn is a symbol or id)
+         * */
+        var geneToTss = {}
+        var geneLocs = self.geneLocs;
+        var geneSyns = [];
+        //for (chrom, chromLocs] of Object.entries(self.geneLocs))  // old-school for... in is faster than .entries !
+        for (var chrom in geneLocs) {
+            var chromLocs = self.geneLocs[chrom];
+            for (var geneIdx = 0; geneIdx < chromLocs.length; geneIdx++) {
+                var geneLoc = chromLocs[geneIdx];
+                var tss = pickTssForGene(geneLoc);
+
+                var sym = geneLoc[3];
+                var geneId = sym;
+                if (sym.indexOf("|")!==-1) {
+                    var parts = sym.split("|");
+                    geneId = parts[0];
+                    sym = parts[1];
+                }
+
+                if (sym in geneToTss)
+                    sym = sym+"_"+chrom; // same symbol, but on two different chromosomes
+                if (sym in geneToTss)
+                    console.log(sym+" appears twice on the some chromosome. Quick search broken?");
+
+                geneToTss[geneId] = [chrom, tss, geneIdx];
+
+                geneSyns.push( [sym.toLowerCase(), geneId] )
+                geneSyns.push( [geneId.toLowerCase(), geneId] )
+            }
+        }
+        self.geneToTss = geneToTss;
+        self.geneSyns = geneSyns;
+    }
+
+    this.findGenesAtac = function(searchStr) {
+        /* like findGenes(), but for ATAC mode: return an array of {.id and .sym} given a search string  */
+        //var geneInfos = cbUtil.searchKeys(self.geneToTss, searchStr);
+        var geneIds = self.findGenes(searchStr);
+
+        if (geneIds.length===0)
+            return [];
+
+        var geneNameObjs = [];
+        for (var geneId of geneIds) {
+            var gene = self.getGeneInfoAtac(geneId);
+            geneNameObjs.push({id:geneId, sym:gene.sym}); // same format as findGenes()
+        }
+        return geneNameObjs;
+    }
+
+    this.findAtacOffsets = function(chrom, start, end) {
+        /* return a single arr with [offset, end] into the matrix file that matches chrom, start, end */
+        var chromRanges = self.peakOffsets[chrom];
         if (chromRanges===undefined) {
             alert("This gene is on "+chrom+" but there are no peaks at all on this chromosome.")
             return;
@@ -1163,7 +1365,7 @@ function CbDbFile(url) {
     this.findOffsetsWithinPos = function(chrom, start, end) {
         /* return an array of arrays [start,end,offset,length] about all included atac regions
          * that are within chrom:start-end*/
-        var chromRanges = self.geneOffsets[chrom];
+        var chromRanges = self.peakOffsets[chrom];
         if (chromRanges===undefined) {
             alert("This gene is on "+chrom+" but there are no peaks at all on this chromosome.")
             return;
@@ -1180,62 +1382,31 @@ function CbDbFile(url) {
         return foundArr;
     }
 
-    this.findRangesByGene = function(gene) {
+    this.findRangesByGene = function(geneId) {
         /* return object with .ranges = all ranges flanking a gene, and .pos = object
          * with chrom/start/end of area around the gene */
         // get position of gene
-        var tssInfo = self.geneToTss[gene];
+        var tssInfo = self.geneToTss[geneId];
         var geneChrom = tssInfo[0];
         var tssStart = tssInfo[1];
         var geneIdx = tssInfo[2];
 
         var chromLocs = self.geneLocs[geneChrom];
 
-        // determine TSS of left neighbor
+        // determine TSS of left and right neighbor gene
         var leftTss = 0;
-        if (geneIdx > 0) {
-            var leftSym = chromLocs[geneIdx-1][3]; // 3 = symbol as string
-            leftTss = self.geneToTss[leftSym][1]; // 1 = chrom start position
-        }
+        if (geneIdx > 0)
+            rightTss = pickTssForGene(chromLocs[geneIdx-1]);
 
-        // determine TSS of right neighbor
-        var rightTss = null;
-        if (geneIdx+1 < chromLocs.length) {
-            var rightSym = chromLocs[geneIdx+1][3];
-            rightTss = self.geneToTss[rightSym][1];
-        } else
-            rightTss = 1e10; // I don't have the chrom sizes.
+        // determine TSS of right neighbor gene
+        var rightTss = 1e10; // = I do not have chrom size date in .js
+        if (geneIdx+1 < chromLocs.length)
+            rightTss = pickTssForGene(chromLocs[geneIdx+1]);
 
         var res = {}
         res.ranges = self.findOffsetsWithinPos(geneChrom, leftTss, rightTss);
         res.pos = { chrom:geneChrom, start:leftTss, end:rightTss };
         return res;
-    }
-
-    this.indexGenes = function () {
-        /* db.geneLocs has the genes as chrom -> list of [start, end, strand, symbol] which
-         * is very compact. Re-arrange them now as symbol -> [chrom, tssStart] for quick search */
-        // XX THIS REQUIRES ES6. Problem?
-        let geneToTss = {}
-        for (let [chrom, vals] of Object.entries(self.geneLocs)) {
-            for (let geneIdx = 0; geneIdx < vals.length; geneIdx++) {
-                let val = vals[geneIdx]
-                let start = val[0];
-                let end = val[1];
-                let strand = val[2];
-                let sym = val[3];
-                if (sym in geneToTss)
-                    sym = sym+"_"+chrom;
-                if (sym in geneToTss)
-                    console.log(sym+" appears twice on the some chromosome. Quick search?");
-                let tss = start;
-                if (strand==="-")
-                    tss = end;
-
-                geneToTss[sym] = [chrom, tss, geneIdx];
-            }
-        }
-        self.geneToTss = geneToTss;
     }
 
     this.getName = function() {
@@ -1266,16 +1437,16 @@ function CbDbFile(url) {
 
     this.getMatrixMin = function() {
         /* return the minimum value in the matrix */
-       var validGenes = self.getGenes();
+       var validNames = self.getMatrixIndex();
        var matrixMin = 0;
-       if ("_range" in validGenes)
-           matrixMin = validGenes["_range"][0];
+       if ("_range" in validNames)
+           matrixMin = validNames["_range"][0];
         return matrixMin;
     }
 
     this.preloadGenes = function(geneSyms, onDone, onProgress) {
        /* start loading the gene expression vectors in the background. call onDone when done. */
-       var validGenes = self.getGenes();
+       var validGenes = self.geneOffsets;
 
        var loadCounter = 0;
        if (geneSyms) {
@@ -1337,6 +1508,8 @@ function CbDbFile(url) {
 
 }
 
+// a few automated test, run via node
+// This should be done with a framework, one day
 if (typeof window === 'undefined') {
     var ranges = [
             [0, 5, "early start"],

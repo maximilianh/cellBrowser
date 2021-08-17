@@ -1977,7 +1977,6 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         and make json gene symbol -> (file offset, line length)
     """
     logging.info("converting %s to %s and writing index to %s, type %s" % (fname, binFname, jsonFname, matType))
-    #logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
     logging.info("Compressing gene expression vectors...")
 
     tmpFname = binFname + ".tmp"
@@ -2029,12 +2028,16 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
 
-        symCounts[sym]+=1
-        if symCounts[sym] > 1000:
-            errAbort("The gene symbol %s appears more than 1000 times in the expression matrix. "
+        key = sym
+        if geneId!=sym:
+            key = geneId+"|"+sym
+
+        symCounts[key]+=1
+        if symCounts[key] > 1000:
+            errAbort("The gene ID/symbol %s appears more than 1000 times in the expression matrix. "
                     "Are you sure that the matrix is in the right format? Each gene should be on a row. "
                     "The gene ID must be in the first column and "
-                    "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % sym)
+                    "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % key)
 
         if maxVal(exprArr) > 100:
             highCount += 1
@@ -2048,7 +2051,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
                 exprArr = [exprArr[i] for i in idxList]
 
         exprStr, minVal = exprEncode(geneId, exprArr, matType)
-        exprIndex[sym] = (ofh.tell(), len(exprStr))
+        exprIndex[key] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
 
         if geneCount % 1000 == 0:

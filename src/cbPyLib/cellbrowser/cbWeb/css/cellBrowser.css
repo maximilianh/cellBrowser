@@ -24,6 +24,7 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
 #tpLegendHeader { background-color:#eee; color: #777 }
 #tpLegendTitle { font-weight: bold }
+#tpLegendSubTitle { font-size: 80%; font-style: italic }
 #tpLegendCol1 { padding-left: 1px}
 #tpLegendCol2 { float: right; padding-right: 2px}
 .tpLegendSelect { outline: 2px solid black }
@@ -131,6 +132,10 @@ input[type=checkbox], input[type=radio] {
 #tpLeftSidebar { 
         border-right: 1px solid #D7D7D7; 
         height: 100%
+}
+#tpLeftSidebar .ui-tabs-anchor {
+        /* jquery UI tabs label */
+        font-size: 14px
 }
 
 #tpSideMeta { padding-left: 2px}

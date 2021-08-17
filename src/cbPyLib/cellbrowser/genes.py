@@ -406,14 +406,16 @@ def bedToJson(db, geneIdType, jsonFname):
         start = int(start)
         end = int(end)
         transLen = end-start
-        bySym[sym].setdefault(chrom, []).append( (transLen, start, end, strand, geneId) )
+        rawGeneId = geneId.split(".")[0] # for lookups, we hopefully will never need the version ID...
+        fullGeneId = rawGeneId+"|"+sym
+        bySym[fullGeneId].setdefault(chrom, []).append( (transLen, start, end, strand, geneId) )
 
     symLocs = defaultdict(list)
-    for sym, chromDict in bySym.items():
+    for geneId, chromDict in bySym.items():
         for chrom, transList in chromDict.items():
             transList.sort(reverse=True) # take longest transcript per chrom
             _, start, end, strand, transId = transList[0]
-            symLocs[chrom].append( (start, end, strand, sym) )
+            symLocs[chrom].append( (start, end, strand, geneId) )
 
     sortedLocs = {}
     for chrom, geneList in symLocs.items():
