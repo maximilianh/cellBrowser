@@ -404,7 +404,7 @@ var cellbrowser = function() {
             f = (count / 1000);
             return sign+f.toFixed(2)+"kbp";
         }
-        return f;
+        return sign+f+"bp";
     }
 
     function prettyNumber(count, isBp) /*str*/ {
@@ -6417,7 +6417,7 @@ var cellbrowser = function() {
             labelLines.push("<img src='"+fullPath+"'>");
        }
 
-        labelLines.push("Alt-Click to select cluster; Shift-Click to add cluster to selection");
+        labelLines.push("Alt/Option-Click to select cluster; Shift-Click to add cluster to selection");
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
     }
 

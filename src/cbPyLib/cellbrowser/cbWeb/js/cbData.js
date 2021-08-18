@@ -1401,7 +1401,7 @@ function CbDbFile(url) {
         // determine TSS of left and right neighbor gene
         var leftTss = 0;
         if (geneIdx > 0)
-            rightTss = pickTssForGene(chromLocs[geneIdx-1]);
+            leftTss = pickTssForGene(chromLocs[geneIdx-1]);
 
         // determine TSS of right neighbor gene
         var rightTss = 1e10; // = I do not have chrom size date in .js
