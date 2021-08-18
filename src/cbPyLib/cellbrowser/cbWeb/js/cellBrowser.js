@@ -69,7 +69,7 @@ var cellbrowser = function() {
     var toolBarComboTop   = 2;
     // width of the collection combobox
     var collectionComboWidth = 200;
-    var layoutComboWidth = 150;
+    var layoutComboWidth = 200;
     // width of a single gene cell in the meta gene bar tables
     var gGeneCellWidth = 66;
 
@@ -404,7 +404,7 @@ var cellbrowser = function() {
             f = (count / 1000);
             return sign+f.toFixed(2)+"kbp";
         }
-        return f;
+        return sign+f+"bp";
     }
 
     function prettyNumber(count, isBp) /*str*/ {
@@ -2764,7 +2764,7 @@ var cellbrowser = function() {
 	}]
 	};
 
-        var optDict = { 
+        var optDict = {
             maintainAspectRatio: false,
             legend: { display: false },
 	    title: { display: false }
@@ -2777,13 +2777,13 @@ var cellbrowser = function() {
             yLabel = db.conf.unit;
 
         if (yLabel!==null)
-            optDict.scales = { 
-                yAxes: [{ 
-                    scaleLabel: { 
-                        display: true, 
+            optDict.scales = {
+                yAxes: [{
+                    scaleLabel: {
+                        display: true,
                         labelString: yLabel
-                    } 
-                    }] 
+                    }
+                    }]
             };
 
         window.setTimeout(function() {
@@ -2899,7 +2899,10 @@ var cellbrowser = function() {
     }
 
     function colorByLocus(locusStr, onDone) {
-        /* color by a gene or peak, load the array into the renderer and call onDone or just redraw */
+        /* color by a gene or peak, load the array into the renderer and call onDone or just redraw 
+         * peak can be in format: +chr1:1-1000
+         * gene can be in format: geneSym or geneSym=geneId
+         * */
         if (onDone===undefined)
             onDone = function() { renderer.drawDots(); };
 
@@ -2915,13 +2918,13 @@ var cellbrowser = function() {
                 changeUrl({"locus":locusStr, "meta":null});
             } else {
                 changeUrl({"gene":locusStr, "meta":null});
-                selectizeSetValue("#tpGeneCombo", locusStr);
+                //selectizeSetValue("#tpGeneCombo", locusStr);
             }
 
             makeLegendExpr(fullLocusStr, geneDesc, binInfo, exprArr, decArr);
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
-            buildLegendBar(locusStr);
+            buildLegendBar();
             onDone();
 
             // update the "recent genes" div
@@ -3597,7 +3600,7 @@ var cellbrowser = function() {
         return legendRows;
     }
 
-    function makeLegendExpr(geneSym, geneId, binInfo, exprVec, decExprVec) {
+    function makeLegendExpr(geneSym, mouseOver, binInfo, exprVec, decExprVec) {
         /* build gLegend object for coloring by expression
          * return the colors as an array of hex codes */
 
@@ -3608,12 +3611,20 @@ var cellbrowser = function() {
         gLegend = {};
         gLegend.type = "expr";
         gLegend.rows = legendRows;
+        var subTitle = null;
         if (db.conf.atacSearch)
-            gLegend.title = (geneSym.split("+").length) + " peaks";
-        else
+            gLegend.title = ("sum of "+geneSym.split("+").length) + " peaks";
+        else {
+            //  make a best effort to find the gene sym and gene ID
+            var geneInfo = db.getGeneInfo(geneSym);
+            geneSym = geneInfo.sym;
+            subTitle = geneInfo.id;
             gLegend.title = getGeneLabel()+": "+geneSym;
-        gLegend.titleHover = geneId;
+        }
+
+        gLegend.titleHover = mouseOver;
         gLegend.geneSym = geneSym;
+        gLegend.subTitle = mouseOver;
         gLegend.rowType = "range";
         gLegend.exprVec = exprVec; // raw expression values, e.g. floats
         gLegend.decExprVec = decExprVec; // expression values as deciles, array of bytes
@@ -4386,13 +4397,21 @@ var cellbrowser = function() {
 
     function onGeneComboChange(ev) {
         /* user changed the gene in the combobox */
-        var geneSym = ev.target.value;
-        if (geneSym==="")
+        var geneId = ev.target.value;
+        if (geneId==="")
             return; // do nothing if user just deleted the current gene
         if (db.conf.atacSearch) {
-            updatePeakListWithGene(geneSym);
-        } else
-            colorByLocus(geneSym);
+            updatePeakListWithGene(geneId);
+        } else {
+            // in the normal, gene-matrix mode.
+            var locusStr = null;
+            var geneInfo = db.getGeneInfo(geneId);
+            //if (geneInfo.id!==geneInfo.sym)
+                //locusStr = geneInfo.id;
+            //else
+                //locusStr = geneInfo.sym
+            colorByLocus(geneInfo.id);
+        }
     }
 
     function onMetaComboChange(ev, choice) {
@@ -4742,12 +4761,17 @@ var cellbrowser = function() {
         /* select all peaks */
         let peaks = peakListGetPeaksWith("off");
         let peakNames = [];
+        if (peaks.length>100) {
+            alert("More than 100 peaks to select. This will take too long. Please contact us if you need this feature.");
+            return;
+        }
         for (let p of peaks) {
             peakNames.push(p.locusName);
             p.el.checked = true;
         }
         if (peakNames.length===0)
             return;
+
         let locusStr = "+"+peakNames.join("+");
         colorByLocus(locusStr);
     }
@@ -4809,8 +4833,11 @@ var cellbrowser = function() {
     function selectizeSendGenes(arr, callback) {
         /* given an array of strings s, return an array of objects with id=s and call callback with it.*/
         let foundArr = [];
-        for (let a of arr) {
-            foundArr.push( {"id": a, "text": a} );
+        for (let o of arr) {
+            var text = o.sym;
+            if (o.sym!==o.id)
+                text = o.sym + " (" + o.id+")";
+            foundArr.push( {"id": o.id, "text": text} );
         }
         callback(foundArr);
     }
@@ -4821,20 +4848,16 @@ var cellbrowser = function() {
         if (!query.length)
             return callback();
         this.clearOptions();
-        //this.clear();
-        //alert("cleared");
-        var genes = db.findGenesByPrefix(query.toLowerCase());
+        var genes = db.findGenes(query);
         selectizeSendGenes(genes, callback);
     }
 
-    function updatePeakListWithGene(sym) {
+    function updatePeakListWithGene(geneId) {
         /* update the peak list box with all peaks close to a gene's TSS */
-        var peaksInView = db.findRangesByGene(sym);
-        var geneTss = db.geneToTss[sym];
-        var geneChrom = geneTss[0];
-        var geneStart = geneTss[1];
-        peakListShowTitle(sym, geneChrom, geneStart);
-        peakListShowRanges(geneChrom, peaksInView.ranges, geneStart);
+        var peaksInView = db.findRangesByGene(geneId);
+        var gene = db.getGeneInfoAtac(geneId);
+        peakListShowTitle(gene.sym, gene.chrom, gene.chromStart);
+        peakListShowRanges(gene.chrom, peaksInView.ranges, gene.chromStart);
     }
 
     function comboLoadAtac(query, callback) {
@@ -4849,17 +4872,19 @@ var cellbrowser = function() {
 
         var range = cbUtil.parseRange(query);
         if (range===null) {
-            if (!db.geneToTss)
-                db.indexGenes();
-            var syms = db.findGenesByPrefix(query);
-            if (syms.length === 0)
+            if (!db.geneToTss || db.geneToTss===undefined)
+                db.indexGenesAtac();
+
+            var geneInfos = db.findGenesAtac(query);
+
+            if (geneInfos.length === 0)
                 return;
 
-            if (syms.length > 1)
-                selectizeSendGenes(syms, callback);
+            if (geneInfos.length > 1)
+                selectizeSendGenes(geneInfos, callback);
             else {
-                var sym = syms[0];
-                updatePeakListWithGene(sym);
+                var geneId = geneInfos[0].id;
+                updatePeakListWithGene(geneId);
             }
         } else {
             // user entered a range e.g. chr1:0-190k or chr1:1m-2m
@@ -4944,12 +4969,13 @@ var cellbrowser = function() {
         /* return URL of the hub.txt file, possibly jumping to a given gene  */
             var hubUrl = db.conf.hubUrl;
 
-            // we accept session links in the hubUrl statement and just pass these through
+            if (hubUrl===undefined)
+                return null;
+
+            // we accept full session links in the hubUrl statement and just pass these through
             if (hubUrl && hubUrl.indexOf("genome.ucsc.edu/s/")!==-1)
                 return hubUrl;
 
-            if (hubUrl===undefined)
-                return null;
             var ucscDb = db.conf.ucscDb;
             if (ucscDb===undefined) {
                 alert("Internal error: ucscDb is not defined in cellbrowser.conf. Example values: hg19, hg38, mm10, etc. You have to set this variable to make track hubs work.");
@@ -4957,11 +4983,13 @@ var cellbrowser = function() {
             }
 
             var fullUrl = null;
-            if (hubUrl && hubUrl.startsWith("http"))
-                // it's not a URL but just a track name (=tabulamuris)
-                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+hubUrl+"=full&genome="+ucscDb;
-            else {
-                if (hubUrl.indexOf("/")!==-1)
+            if (hubUrl.indexOf("/")===-1) {
+                // no slash -> it's not a URL at all but just a track name (e.g. "tabulamuris")
+                var trackName = hubUrl;
+                fullUrl = "https://genome.ucsc.edu/cgi-bin/hgTracks?"+trackName+"=full&genome="+ucscDb;
+            } else {
+                // it's a url to a hub.txt file: either relative or absolute
+                if (!hubUrl.startsWith("http"))
                     // relative URL to a hub.txt file -> make absolute now
                     hubUrl = getBaseUrl()+db.name+"/"+hubUrl
                 // URL is an absolute link to a hub.txt URL
@@ -5051,8 +5079,11 @@ var cellbrowser = function() {
             nextLeft += 80;
         }
 
-        buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", 300, nextLeft, 2);
-        nextLeft += 215;
+        if (coordInfo[coordInfo.length-1].shortLabel.length > 20)
+            //$('.chosen-drop').css({"width": "300px"});
+            layoutComboWidth += 50
+        buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", layoutComboWidth, nextLeft, 2);
+        nextLeft += 65+layoutComboWidth;
 
         var nameParts = dataset.name.split("/");
         var parentName = null;
@@ -5073,7 +5104,7 @@ var cellbrowser = function() {
         activateTooltip('#tpOpenUcsc');
         activateTooltip('#tpOpenDatasetButton');
 
-        $('#tpButtonInfo').click( function() {openDatasetDialog(db.conf, db.name)} );
+        $('#tpButtonInfo').click( function() { openDatasetDialog(db.conf, db.name) } );
 
         activateCombobox("tpLayoutCombo", layoutComboWidth);
 
@@ -5845,7 +5876,6 @@ var cellbrowser = function() {
 
     function onLegendCheckboxClick(ev) {
         /* user clicked the small checkboxes in the legend */
-        //alert(ev);
         var valIdx = parseInt(ev.target.getAttribute("data-value-index"));
         if ($(this).is(':checked'))
             renderer.selectByColor(valIdx);
@@ -5890,8 +5920,11 @@ var cellbrowser = function() {
         var rows = gLegend.rows;
 
         var legTitle = gLegend.title;
+        var subTitle = gLegend.subTitle;
 
         htmls.push('<span id="tpLegendTitle" title="' +gLegend.titleHover+'">'+legTitle+"</span>");
+        if (subTitle)
+            htmls.push('<div id="tpLegendSubTitle" >'+subTitle+"</div>");
         htmls.push('<div class="tpHint">Check boxes below to select '+gSampleDesc+'s</small></div>');
         htmls.push("</div>"); // title
         htmls.push('<div id="tpLegendHeader"><span id="tpLegendCol1"></span><span id="tpLegendCol2"></span></div>');
@@ -6161,11 +6194,16 @@ var cellbrowser = function() {
                 metaVec = metaInfo.arr;
             else
                 metaVec = db.allMeta[metaInfo.name];
+
             if (metaVec===undefined) {
-                if (metaInfo.type!=="uniqueString")
-                    alert("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
+                var metaMsg = null;
+                if (metaInfo.type!=="uniqueString") {
+                    console.log("cellBrowser.js:updateMetaBarManyCells - could not find meta info");
+                    metaMsg = "(still loading - please wait and retry)";
+                }
                 else
-                    $('#tpMeta_'+metaIdx).html("(unique identifier field)");
+                    metaMsg = "(unique identifier field)";
+                $('#tpMeta_'+metaIdx).html(metaMsg);
                 continue;
             }
 
@@ -6379,7 +6417,7 @@ var cellbrowser = function() {
             labelLines.push("<img src='"+fullPath+"'>");
        }
 
-        labelLines.push("Alt-Click to select cluster; Shift-Click to add cluster to selection");
+        labelLines.push("Alt/Option-Click to select cluster; Shift-Click to add cluster to selection");
         showTooltip(ev.clientX+15, ev.clientY, labelLines.join("<br>"));
     }
 
@@ -6869,8 +6907,6 @@ var cellbrowser = function() {
 
         var ttOpt = {"html": true, "animation": false, "delay":{"show":100, "hide":100} };
         $(".tpPlots").bsTooltip(ttOpt);
-
-        removeFocus();
     }
 
     var digitTest = /^\d+$/,
@@ -7069,7 +7105,7 @@ var cellbrowser = function() {
             datasetName = "cortex-dev";
 
         // adult pancreas is the only dataset with an uppercase letter
-        if (datasetName && datasetName!=="adultPancreas")
+        if (datasetName && datasetName!=="adultPancreas" && !pageAtUcsc())
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }

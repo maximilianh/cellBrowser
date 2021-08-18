@@ -1132,10 +1132,9 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "int"
 
-    elif floatCount+unknownCount==len(valList) and not forceType:
-        # field is a floating point number: convert to decile index
+    elif floatCount+unknownCount==len(valList) and not forceType and not unknownCount==len(newVals):
+        # field is a floating point number and not all values are "nan"
         newVals = [float(x) for x in newVals]
-        #newVals, fieldMeta = discretizeNumField(numVals, fieldMeta, "float")
         fieldMeta["arrType"] = "float32"
         fieldMeta["_fmt"] = "<f"
         fieldMeta["type"] = "float"
@@ -1978,7 +1977,6 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
         and make json gene symbol -> (file offset, line length)
     """
     logging.info("converting %s to %s and writing index to %s, type %s" % (fname, binFname, jsonFname, matType))
-    #logging.info("Shall expression values be log-transformed when transforming to deciles? -> %s" % (not skipLog))
     logging.info("Compressing gene expression vectors...")
 
     tmpFname = binFname + ".tmp"
@@ -2030,12 +2028,16 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
 
-        symCounts[sym]+=1
-        if symCounts[sym] > 1000:
-            errAbort("The gene symbol %s appears more than 1000 times in the expression matrix. "
+        key = sym
+        if geneId!=sym:
+            key = geneId+"|"+sym
+
+        symCounts[key]+=1
+        if symCounts[key] > 1000:
+            errAbort("The gene ID/symbol %s appears more than 1000 times in the expression matrix. "
                     "Are you sure that the matrix is in the right format? Each gene should be on a row. "
                     "The gene ID must be in the first column and "
-                    "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % sym)
+                    "can optionally include the gene symbol, e.g. 'ENSG00000142168|SOD1'. " % key)
 
         if maxVal(exprArr) > 100:
             highCount += 1
@@ -2049,7 +2051,7 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
                 exprArr = [exprArr[i] for i in idxList]
 
         exprStr, minVal = exprEncode(geneId, exprArr, matType)
-        exprIndex[sym] = (ofh.tell(), len(exprStr))
+        exprIndex[key] = (ofh.tell(), len(exprStr))
         ofh.write(exprStr)
 
         if geneCount % 1000 == 0:
@@ -2437,6 +2439,7 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
 
     textOfh.close()
     runGzip(textOutTmp, textOutName)
+    coordInfo["textFname"] = basename(textOutName)
 
     logging.debug("Wrote %d coordinates to %s and %s" % (len(sampleNames), coordBinFname, textOutName))
     return coordInfo, xVals, yVals
@@ -2626,10 +2629,11 @@ def guessMarkerFields(headers):
     # note: with seurat2, field 0 is not the gene ID, it has some weird suffix appended.
     seurat2Headers =  ['', 'p_val', 'avg_logFC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
     seurat3Headers = ["Gene","p-value","log2(FoldChange)","pct.1","pct.2","adjusted p-value","Cluster"]
+    seurat4Headers =  ['', 'p_val', 'avg_log2FC', 'pct.1', 'pct.2', 'p_val_adj', 'cluster', 'gene']
     # the name of the first field varies depending now people use table.write, so we ignore it for the
     # header comparison
-    if headers[1:8] == seurat2Headers[1:]:
-        logging.info("Cluster marker file was recognized to be in Seurat2 format")
+    if headers[1:8] == seurat2Headers[1:8] or headers[1:8]==seurat4Headers[1:8]:
+        logging.info("Cluster marker file was recognized to be in Seurat2/4 format")
         geneIdx = 7 # see note above: field0 is not the actual geneId, but something else, a unique row ID
         scoreIdx = 1
         clusterIdx = 6
@@ -2649,7 +2653,7 @@ def guessMarkerFields(headers):
         otherEnd = len(headers)
 
     else:
-        logging.info("Assuming marker file format (cluster, gene, score) + any other fields")
+        logging.info("Assuming non-Seurat marker file format (cluster, gene, score) + any other fields")
         clusterIdx = 0
         geneIdx = 1
         scoreIdx = 2
@@ -2986,11 +2990,11 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
         summInfo = copyImage(inDir, summInfo, datasetDir)
 
     # copy over the imageSet files. This can take a while
-    imageDir = join(datasetDir, "images")
-    makeDir(imageDir)
-
     doneNames = set()
     if "imageSets" in summInfo:
+        imageDir = join(datasetDir, "images")
+        makeDir(imageDir)
+
         for catInfo in summInfo["imageSets"]:
             for imageSet in catInfo["categoryImageSets"]:
                 imageSetFnames = set()
@@ -3333,8 +3337,8 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
     coordFnames = makeAbsDict(inConf, "coords")
     coordFnames = makeAbsDict(inConf, "coords", fnameKey="lineFile")
 
-    flipY = inConf.get("flipY", False)
-    useTwoBytes = True
+    flipY = inConf.get("flipY", False) # R has a bottom screen 0 different than most drawing libraries
+    useTwoBytes = True # to save space, coordinates are reduced to the range 0-65535
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -3348,6 +3352,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
 
     for coordIdx, inCoordInfo in enumerate(coordFnames):
         coordFname = inCoordInfo["file"]
+
         coordLabel = inCoordInfo["shortLabel"]
         logging.info("Parsing coordinates for "+coordLabel)
         # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
@@ -3355,7 +3360,7 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
 
         hasLines = False
-        # parse lines, updating the max-max ranges
+        # parse lines, updating the min-max ranges
         if "lineFile" in inCoordInfo:
             lineCoords, limits = parseLineInfo(inCoordInfo["lineFile"], limits)
             hasLines = True
@@ -3396,7 +3401,6 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             clusterInfo["order"] = clusterOrder
         else:
             labelVals = []
-
 
         if hasLabels:
             clusterLabelFname = join(coordDir, "clusterLabels.json")
@@ -3441,7 +3445,7 @@ def checkClusterNames(markerFname, clusterNames, clusterLabels, doAbort):
         if doAbort:
             errAbort(msg)
         else:
-            logging.error(msg)
+            logging.warn(msg)
 
     if len(notInLabels)!=0:
         logging.warn(("%s: the following cluster names are in the marker file but not in the meta file: %s. "+
@@ -3914,6 +3918,21 @@ def copyGenes(inConf, outConf, outDir):
     outConf["fileVersions"]["geneLocs"] = getFileVersion(inFname)
     outConf["atacSearch"] = inConf["atacSearch"]
 
+def makeFilesTxt(outConf, datasetDir):
+    " create a file files.txt with all important download files in the current dataset, for curl "
+    outFname = join(datasetDir, "files.txt")
+    # 'outMatrix': {'fname': '/usr/local/apache/htdocs-cells/mg-models/organoids/exprMatrix.tsv.gz'
+    metaName = basename(outConf["fileVersions"]["outMeta"]["fname"])
+    matrixName = basename(outConf["fileVersions"]["outMatrix"]["fname"])
+
+    with open(outFname, "wt") as ofh:
+        ofh.write(matrixName+"\n")
+        ofh.write(metaName+"\n")
+        ofh.write("dataset.json\n")
+        ofh.write("desc.json\n")
+        for coords in outConf["coords"]:
+            ofh.write(coords["textFname"]+"\n")
+
 def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     """ convert everything needed for a dataset to datasetDir, write config to outConf.
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
@@ -3977,6 +3996,8 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal", "clusterPngDir"]:
         copyConf(inConf, outConf, tag)
+
+    makeFilesTxt(outConf, datasetDir)
 
 def writeAnndataCoords(anndata, coordFields, outDir, desc):
     " write all embedding coordinates from anndata object to outDir, the new filename is <coordName>_coords.tsv "
@@ -4092,6 +4113,8 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
         mat = mat.tocsr() # makes writing to a file ten times faster, thanks Alex Wolf!
 
     if usePandas:
+        # This code is currently not used anywhere by this code. It's still there
+        # so external code that calls this function can use it, if the code below does not work.
         logging.info("Converting anndata to pandas dataframe")
         data_matrix=pd.DataFrame(mat, index=var.index.tolist(), columns=ad.obs.index.tolist())
         logging.info("Writing pandas dataframe to file (slow?)")
@@ -4154,7 +4177,8 @@ def makeDictDefaults(inVar, defaults):
 
 def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     " run scanpy's rank_genes_groups in a way that hopefully doesn't crash "
-    import scanpy as sc
+    sc = importScanpy()
+
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
 
@@ -4779,12 +4803,16 @@ def cbBuildCli():
         else:
             build(confFnames, outDir, port, redo=options.redo)
     except:
-        logging.error("Unexpected error: %s" % sys.exc_info()[0])
+        exc_info = sys.exc_info()
+        logging.error("Unexpected error: %s" % str(exc_info))
+        import traceback
+        traceback.print_exception(*exc_info)
         sys.exit(1)
 
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
     " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
-    import scanpy as sc
+    sc = importScanpy()
+
     if matrixFname.endswith(".mtx.gz"):
         errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
 
@@ -5044,8 +5072,11 @@ def summarizeDatasets(datasets):
         # these are copied and checked for the correct type
         for optListTag in ["tags", "hasFiles", "body_parts"]:
             if optListTag in ds:
-                assert(type(ds[optListTag])==type([])) # has to be a list
-                summDs[optListTag] = ds[optListTag]
+                if (type(ds[optListTag])==type([])): # has to be a list
+                    summDs[optListTag] = ds[optListTag]
+                else:
+                    logging.error("Dataset: %s" % ds["name"])
+                    logging.error("Setting '%s' must be a list of values, not a number or string." % optListTag)
 
         # these are generated
         if "sampleCount" in ds:
@@ -5361,7 +5392,8 @@ def getObsmKeys(adata):
 def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     """ run expr matrix through scanpy, output a cellbrowser.conf, a matrix and the meta data.
     Return an adata object. Optionally keeps a copy of the raw matrix in adata.raw """
-    import scanpy as sc
+    sc = importScanpy()
+
     import pandas as pd
     import numpy as np
     import warnings
@@ -5383,7 +5415,8 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     sys.stdout = Tee(logFname) # we want our log messages and also scanpy messages into one file
 
     pipeLog("cbScanpy $Id$")
-    pipeLog("Input file: %s" % matrixFname)
+    pipeLog("Command: %s" % " ".join(sys.argv))
+    pipeLog("Matrix input file: %s" % matrixFname)
 
     pipeLog("Restricting OPENBLAS to 4 threads")
     os.environ["OPENBLAS_NUM_THREADS"] = "4" # export OPENBLAS_NUM_THREADS=4 
@@ -5743,7 +5776,6 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
             ofh.write("%s = %s\n" % (key, repr(val)))
 
     ofh.close()
-    #writePyConf(c, outFname)
 
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
@@ -5769,11 +5801,19 @@ def generateQuickGenes(outDir):
     clusters = parseMarkerTable(markerFname, None)[0]
 
     genesPerCluster = int(round(18 / len(clusters))) # guess a reasonable number of genes per cluster, ~ 18 genes in total
+    maxGenes = None
+    if genesPerCluster == 0:
+        genesPerCluster = 1
+        maxGenes = 30
+
     quickGenes = defaultdict(list)
     for clusterName, rows in iterItems(clusters):
         for row in rows[:genesPerCluster]:
             sym = row[1]
             quickGenes[sym].append(clusterName)
+            if maxGenes is not None and len(quickGenes) > maxGenes:
+                logging.info("Stopping at 30 genes to keep size of quickGenes file reasonable")
+                break
 
     ofh = open(outFname, "w")
     for sym, clusterNames in iterItems(quickGenes):
@@ -5790,17 +5830,7 @@ def checkDsName(datasetName):
     if match is None:
         errAbort("dataset name can only contain lower or uppercase letters or dash or underscore")
 
-def cbScanpyCli():
-    " command line interface for cbScanpy "
-    mustBePython3()
-
-    global options
-    args, options = cbScanpy_parseArgs()
-
-    if options.init:
-        copyPkgFile("sampleConfig/scanpy.conf")
-        sys.exit(0)
-
+def importScanpy():
     try:
         logging.info("Loading Scanpy libraries")
         import scanpy as sc
@@ -5814,6 +5844,20 @@ def cbScanpyCli():
         print("$ conda install -c conda-forge python-igraph leiden")
         print("Then re-run this command.")
         sys.exit(1)
+    return sc
+
+def cbScanpyCli():
+    " command line interface for cbScanpy "
+    mustBePython3()
+
+    global options
+    args, options = cbScanpy_parseArgs()
+
+    if options.init:
+        copyPkgFile("sampleConfig/scanpy.conf")
+        sys.exit(0)
+
+    importScanpy()
 
     matrixFname = options.exprMatrix
     metaFname = options.meta
@@ -5835,7 +5879,6 @@ def cbScanpyCli():
         errAbort("If you use the --copyMatrix option, the input matrix must be gzipped. Please run 'gzip %s' and then re-run cbScanpy" % matrixFname)
     if copyMatrix and matrixFname.endswith(".csv.gz"):
         errAbort("If you use the --copyMatrix option, the input matrix cannot be a .csv.gz file. Please convert to .tsv.gz")
-
 
     makeDir(outDir)
 

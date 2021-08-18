@@ -60,7 +60,7 @@ load them like this::
 Scanpy
 ^^^^^^
 
-To create an anndata object in Scanpy::
+To create an anndata object in Scanpy if the expression matrix is a .tsv.gz file::
 
     import scanpy as sc
     import pandas as pd
@@ -76,3 +76,6 @@ If the expression matrix is an MTX file::
     meta = pd.read_csv("meta.tsv", sep="\t")
     ad.var = meta
 
+Some datasets use the format identifier|symbol for the ad.obs gene names (e.g. "ENSG0123123.3|HOX3"). To keep only the symbol:
+
+    ad.obs.index = [x.split("|")[1] for x in ad.obs.index.tolist()]
