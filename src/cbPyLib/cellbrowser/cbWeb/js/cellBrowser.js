@@ -7105,7 +7105,11 @@ var cellbrowser = function() {
             datasetName = "cortex-dev";
 
         // adult pancreas is the only dataset with an uppercase letter
-        if (datasetName && datasetName!=="adultPancreas" && !pageAtUcsc())
+        // make sure that at least at UCSC, dataset names are always lowercased.
+        // The reason is that at UCSC, we the datasetname can be part of the URL,
+        // e.g. cortex-dev.cells.ucsc.edu, which the user could enter as CoRTex-dev.cells.ucsc.edu
+        // On all other servers, this is on an issue
+        if (datasetName && datasetName!=="adultPancreas" && pageAtUcsc())
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }
