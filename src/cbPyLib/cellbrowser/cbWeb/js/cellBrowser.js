@@ -108,7 +108,7 @@ var cellbrowser = function() {
 
     // links to various external databases
     var dbLinks = {
-        "HPO" : "http://compbio.charite.de/hpoweb/showterm?gene=", // entrez ID
+        "HPO" : "https://hpo.jax.org/app/browse/gene/", // entrez ID
         "OMIM" : "https://omim.org/entry/", // OMIM ID
         "COSMIC" : "http://cancer.sanger.ac.uk/cosmic/gene/analysis?ln=", // gene symbol
         "SFARI" : "https://gene.sfari.org/database/human-gene/", // gene symbol
