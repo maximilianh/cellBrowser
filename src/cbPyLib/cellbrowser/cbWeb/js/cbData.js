@@ -176,7 +176,8 @@ var cbUtil = (function () {
             if (!dataLen)
                 dataLen = new Blob([binData]).size;;
 
-            if (dataLen < expLength)
+            if (dataLen < expLength -1) // Yes, the -1 does not make sense. This happens only with https://cells-beta.gi.ucsc.edu/?ds=engraftable-hsc+adt
+                // and I have no idea why.
                 alert("internal error cbData.js: chunk is too small. Does the HTTP server really support byte range requests?");
 
             if (dataLen > expLength) {
