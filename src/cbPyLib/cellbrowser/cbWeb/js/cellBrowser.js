@@ -71,7 +71,7 @@ var cellbrowser = function() {
     var collectionComboWidth = 200;
     var layoutComboWidth = 200;
     // width of a single gene cell in the meta gene bar tables
-    var gGeneCellWidth = 66;
+    //var gGeneCellWidth = 66;
 
     // height of bottom gene bar
     var geneBarHeight = 100;
@@ -3927,7 +3927,7 @@ var cellbrowser = function() {
         }
 
         var tableWidth = metaBarWidth;
-        var cellWidth = gGeneCellWidth;
+        //var cellWidth = gGeneCellWidth;
 
         if (title) {
             htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
@@ -3956,8 +3956,16 @@ var cellbrowser = function() {
         htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
-        var colsPerRow = Math.round(tableWidth / cellWidth);
-        cellWidth = Math.round(tableWidth/colsPerRow);
+        // need max length of gene names to make number of columns
+        var maxLen = 0;
+        for (var i=0; i < geneInfos.length; i++) {
+            var geneId = geneInfos[i][0];
+            maxLen = Math.max(maxLen, geneId.length);
+        }
+
+        var colsPerRow = Math.floor(40.0/maxLen);
+        //var colsPerRow = Math.round(tableWidth / cellWidth);
+        var cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
         var i = 0;
