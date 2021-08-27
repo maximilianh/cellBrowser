@@ -1221,14 +1221,14 @@ function CbDbFile(url) {
         var newIdx = {};
         var geneIdx = self.geneOffsets;
         var geneSyns = [];
-        for (var key in geneIdx) {
+        for (var key in geneIdx) { // as of 2019, faster than Object.entries()
             updateGeneSyns(geneSyns, key);
 
-            var val = geneIdx[key]; // as of 2019, faster than Object.entries()
+            var val = geneIdx[key];
             var sym = key;
             var geneId = key;
             if (key.indexOf("|")!==-1) {
-                var parts = key.split("|")[0];
+                var parts = key.split("|");
                 geneId = parts[0];
                 sym = parts[1];
             }
