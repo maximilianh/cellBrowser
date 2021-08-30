@@ -1,4 +1,4 @@
-#!/bin/sh -ex
+#!/bin/sh -e
 
 directory=/hive/groups/qa/CB-git-reports-history/$CBVERSION
 
@@ -6,7 +6,7 @@ if test -d $directory
 then
     echo "Reports have already been done for $CBVERSION.  If you want to re-do them then:"
     echo "rm -rf /hive/groups/qa/CB-git-reports-history/$CBVERSION"
-    exit 1
+    false
 fi
 
 mkdir  $directory
@@ -24,7 +24,8 @@ echo "</body></html>" >> $indexFile
 
 git-reports $CBLASTVERSION HEAD $CBLASTDATE $CBDATE review .. $directory review
 
-rm -rf /hive/groups/qa/CB-git-reports
-cp -r $directory /hive/groups/qa/CB-git-reports
+rm -rf /hive/groups/qa/CB-git-reports/*
+cp -r $directory/* /hive/groups/qa/CB-git-reports
+find /hive/groups/qa/CB-git-reports -exec touch {} \;
 
 #cp /hive/groups/qa/CB-git-reports-history/v0.7.9/index.html /hive/groups/qa/CB-git-reports
