@@ -71,7 +71,7 @@ var cellbrowser = function() {
     var collectionComboWidth = 200;
     var layoutComboWidth = 200;
     // width of a single gene cell in the meta gene bar tables
-    var gGeneCellWidth = 66;
+    //var gGeneCellWidth = 66;
 
     // height of bottom gene bar
     var geneBarHeight = 100;
@@ -108,7 +108,7 @@ var cellbrowser = function() {
 
     // links to various external databases
     var dbLinks = {
-        "HPO" : "http://compbio.charite.de/hpoweb/showterm?gene=", // entrez ID
+        "HPO" : "https://hpo.jax.org/app/browse/gene/", // entrez ID
         "OMIM" : "https://omim.org/entry/", // OMIM ID
         "COSMIC" : "http://cancer.sanger.ac.uk/cosmic/gene/analysis?ln=", // gene symbol
         "SFARI" : "https://gene.sfari.org/database/human-gene/", // gene symbol
@@ -3927,7 +3927,7 @@ var cellbrowser = function() {
         }
 
         var tableWidth = metaBarWidth;
-        var cellWidth = gGeneCellWidth;
+        //var cellWidth = gGeneCellWidth;
 
         if (title) {
             htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
@@ -3956,8 +3956,16 @@ var cellbrowser = function() {
         htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
-        var colsPerRow = Math.round(tableWidth / cellWidth);
-        cellWidth = Math.round(tableWidth/colsPerRow);
+        // need max length of gene names to make number of columns
+        var maxLen = 0;
+        for (var i=0; i < geneInfos.length; i++) {
+            var geneId = geneInfos[i][0];
+            maxLen = Math.max(maxLen, geneId.length);
+        }
+
+        var colsPerRow = Math.floor(40.0/maxLen);
+        //var colsPerRow = Math.round(tableWidth / cellWidth);
+        var cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
         var i = 0;
@@ -7105,7 +7113,11 @@ var cellbrowser = function() {
             datasetName = "cortex-dev";
 
         // adult pancreas is the only dataset with an uppercase letter
-        if (datasetName && datasetName!=="adultPancreas" && !pageAtUcsc())
+        // make sure that at least at UCSC, dataset names are always lowercased.
+        // The reason is that at UCSC, we the datasetname can be part of the URL,
+        // e.g. cortex-dev.cells.ucsc.edu, which the user could enter as CoRTex-dev.cells.ucsc.edu
+        // On all other servers, this is on an issue
+        if (datasetName && datasetName!=="adultPancreas" && pageAtUcsc())
             datasetName = datasetName.toLowerCase();
         return datasetName;
     }

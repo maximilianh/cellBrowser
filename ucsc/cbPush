@@ -1,0 +1,22 @@
+#!/usr/bin/bash
+
+dsName=$1
+
+if [ -z "$dsName" ] ; then
+        echo You need to specify at least one of the dataset directory names in /usr/local/apache/htdocs-cells/
+        echo example: cbPush bobJonesPancreas
+        exit 1
+fi
+
+inDir=/usr/local/apache/htdocs-cells/$1
+
+if [ ! -e $inDir ] ; then
+        echo $inDir does not exist
+        exit 1
+fi
+
+outDir=/usr/local/apache/htdocs-cells-beta/$1
+
+rsync --delete -avp $inDir/ $outDir/
+rsync --delete -avp /usr/local/apache/htdocs-cells/genes/ /usr/local/apache/htdocs-cells-beta/genes/
+cbUpgrade -o /usr/local/apache/htdocs-cells-beta/
