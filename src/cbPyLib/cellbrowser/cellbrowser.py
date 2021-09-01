@@ -683,7 +683,6 @@ def tsvReader(fh):
 
 def textFileRows(inFile):
     " iterate over lines from tsv or csv file and yield lists "
-
     if isinstance(inFile, str):
         # input file is a string = file name
         fh = openFile(inFile, mode="rtU")
@@ -801,16 +800,16 @@ def parseIntoColumns(fname):
             columns[colIdx].append(row[colIdx])
     return zip(headers, columns)
 
-def openFile(fname, mode="rt"):
+def openFile(fname, mode="rt", encoding="utf8"):
     if fname.endswith(".gz"):
         mode = mode.replace("U", "") # gzip reader does not support Universal newline mode yet, python bug
         if isPy3:
-            fh = gzip.open(fname, mode, encoding="latin1")
+            fh = gzip.open(fname, mode, encoding=encoding)
         else:
             fh = gzip.open(fname, mode)
     else:
         if isPy3:
-            fh = io.open(fname, mode)
+            fh = io.open(fname, mode, encoding=encoding)
         else:
             fh = open(fname, mode)
     return fh
@@ -2596,6 +2595,8 @@ def to_camel_case(snake_str):
     # We capitalize the first letter of each component except the first one                                     # with the 'title' method and join them together.
     return components[0] + ''.join(x.title() for x in components[1:])
 
+nonAscii = re.compile(r'[^a-zA-Z_0-9+]')
+
 def sanitizeName(name):
     " remove all nonalpha chars, allow underscores, special treatment for %, + and -. Makes a valid file name. "
     assert(name!=None)
@@ -2606,7 +2607,9 @@ def sanitizeName(name):
     # name and must return the same results, otherwise the front end can't find the filename
     # for a given cluster name.
     name = name.replace("+", "Plus").replace("-", "Minus").replace("%", "Perc")
-    newName = ''.join([ch for ch in name if (ch.isalnum() or ch=="_")])
+    #newName = ''.join([ch for ch in name if (ord(chr) > 255 or ch.isalnum() or ch=="_")])
+    #newName = ''.join([ch for ch in name if (ord(chr) > 255 or ch.isalnum() or ch=="_")])
+    newName = nonAscii.sub("", name)
     if newName!=name:
         logging.debug("Sanitized %s -> %s" % (repr(name), newName))
     assert(len(newName)!=0)
@@ -2746,10 +2749,11 @@ def splitMarkerTable(filename, geneToSym, outDir):
     for clusterName, rows in iterItems(data):
         logging.debug("Cluster: %s" % clusterName)
         sanName = sanitizeName(clusterName)
-        assert(sanName not in sanNames) # after removing special chars, cluster names must still be unique. this is most likely due to typos in your meta annotation table. 
+        assert(sanName not in sanNames) # after removing special chars, cluster names must still be unique. this is most likely due to typos in your meta annotation table. If it is not, we need to change the code here.
         sanNames.add(sanName)
 
         outFname = join(outDir, sanName+".tsv")
+        print("===", repr(outFname))
         logging.debug("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
@@ -2769,31 +2773,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
         fileCount += 1
     logging.info("Wrote %d .tsv.gz files into directory %s" % (fileCount, outDir))
     return data.keys(), topMarkers
-
-#def guessConfig(options):
-    #" guess reasonable config options from arguments "
-    #conf = {}
-    #conf.name = dirname(options.matrix)
-
-    #if options.inDir:
-        #inDir = options.inDir
-        #metaFname = join(inDir, "meta.tsv")
-        #matrixFname = join(inDir, "exprMatrix.tsv")
-        #coordFnames = [join(inDir, "tsne.coords.tsv")]
-        #markerFname = join(inDir, "markers.tsv")
-        #if isfile(markerFname):
-            #markerFnames = [markerFname]
-        #else:
-            #markerFnames = None
-#
-        #acronymFname = join(inDir, "acronyms.tsv")
-        #if isfile(acronymFname):
-            #otherFiles["acronyms"] = [acronymFname]
-#
-        #markerFname = join(inDir, "markers.tsv")
-        #if isfile(acronymFname):
-            #otherFiles["markerLists"] = [markerFname]
-    #return conf
 
 def syncFiles(inFnames, outDir):
     " compare filesizes and copy to outDir, if needed "
@@ -5478,7 +5457,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         #logging.info("Big dataset: not keeping a .raw copy of the data to save memory during analysis")
 
     if conf["doExp"]:
-        pipeLog("Undoing log2 of data")
+        pipeLog("Undoing log2 of data, by running np.expm1 on the matrix")
         adata.X = np.expm1(adata.X)
 
     pipeLog("Data has %d samples/observations" % len(adata.obs))
@@ -5568,14 +5547,20 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
     if conf.get("doTrimVarGenes", True):
         if not conf["doLog"]:
-            errAbort("you have set the option doLog=False but doTrimGenes is True. In Scanpy 1.4, this is not allowed anymore. If your dataset is already log2'ed, set doExp=True to reverse this and also doLog=True to re-apply it later, if you want to find variable genes.")
+            errAbort("you have set the option doLog=False but doTrimGenes is True. In >= Scanpy 1.4, this is not allowed anymore. If your dataset is already log2'ed, set doExp=True to reverse this and also doLog=True to re-apply it later, if you want to find variable genes.")
 
         minMean = conf["varMinMean"]
         maxMean = conf["varMaxMean"]
         minDisp = conf["varMinDisp"]
         pipeLog('Finding highly variable genes')
-        sc.pp.highly_variable_genes(adata, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
-        sc.pl.highly_variable_genes(adata)
+        try:
+            sc.pp.highly_variable_genes(adata, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
+            sc.pl.highly_variable_genes(adata)
+        except:
+            if doExp==False:
+                pipeLog("An error occurred when finding highly variable genes. This may be due to an input matrix file that is log'ed. Set doExp=True in the cbScanpy config file to undo the logging when the matrix is loaded and rerun the cbScanpy command")
+            raise
+
         adata = adata[:, adata.var['highly_variable']]
         pipeLog("After high-var filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
