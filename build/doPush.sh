@@ -3,6 +3,6 @@
 git checkout master
 git merge develop
 git push
-git tag $CBRELEASE
-git push origin $CBRELEASE
+git tag $CBVERSION
+git push origin $CBVERSION
 make pip
