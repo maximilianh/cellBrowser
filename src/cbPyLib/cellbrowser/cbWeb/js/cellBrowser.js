@@ -51,6 +51,8 @@ var cellbrowser = function() {
     // "sample" or a "cell". This will adapt help menus, menus, etc.
     var gSampleDesc = "cell";
 
+    var gLabelCoordCache = {};
+
     // width of left meta bar in pixels
     var metaBarWidth = 250;
     // margin between left meta bar and drawing canvas
@@ -3026,69 +3028,76 @@ var cellbrowser = function() {
 
     }
 
-   function gotCoords(coords, info, clusterInfo, newRadius) {
-       /* called when the coordinates have been loaded */
-       if (coords.length===0)
-           alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
-       var opts = {};
-       if (newRadius)
-           opts["radius"] = newRadius;
+    function gotCoords(coords, info, clusterInfo, newRadius) {
+        /* called when the coordinates have been loaded */
+        if (coords.length===0)
+            alert("cellBrowser.js/gotCoords: coords.bin seems to be empty");
+        var opts = {};
+        if (newRadius)
+            opts["radius"] = newRadius;
 
-       // label text can be overriden by the user cart
-       var labelField = db.conf.labelField;
+        // label text can be overriden by the user cart
+        var labelField = db.conf.labelField;
 
-       if (clusterInfo) {
-           var origLabels = [];
-           var clusterMids = clusterInfo.labels;
-           // old-style files contain just coordinates, no order
-           if (clusterMids === undefined)
-               clusterMids = clusterInfo;
+        if (clusterInfo) {
+            var origLabels = [];
+            var clusterMids = clusterInfo.labels;
+            // old-style files contain just coordinates, no order
+            if (clusterMids === undefined) {
+                clusterMids = clusterInfo;
+            }
 
-           for (var i = 0; i < clusterMids.length; i++) {
-               origLabels.push(clusterMids[i][2]);
-           }
-           renderer.origLabels = origLabels;
+            gLabelCoordCache[labelField] = clusterMids;
+            for (var i = 0; i < clusterMids.length; i++) {
+                origLabels.push(clusterMids[i][2]);
+            }
+            renderer.origLabels = origLabels;
+            clusterMids = [];
+         }
 
-           clusterMids = [];
-        }
+        opts["lines"] = clusterInfo.lines;
+        opts["lineWidth"] = db.conf.lineWidth;
 
-       opts["lines"] = clusterInfo.lines;
-       opts["lineWidth"] = db.conf.lineWidth;
-
-       renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
-   }
+        renderer.setCoords(coords, clusterMids, info.minX, info.maxX, info.minY, info.maxY, opts);
+    }
 
     function computeAndSetLabels(values, metaInfo) {
-        var coords = renderer.coords.orig;
-        var names = null;
-        if (metaInfo.type !== "float" && metaInfo.type !== "int") {
-            var names = metaInfo.ui.shortLabels;
-        }
-
-        // console.log(metaInfo);
-
-        console.time("cluster centers");
-        var calc = {};
-        for (var i = 0, I = values.length; i < I; i++) {
-            if (names) {
-                var label = names[values[i]];
-            } else {
-                var label = metaInfo.origVals[i].toFixed(2);
+        var labelCoords;
+        if (gLabelCoordCache[metaInfo.label] !== undefined) {
+            labelCoords = gLabelCoordCache[metaInfo.label];
+        } else {
+            var coords = renderer.coords.orig;
+            var names = null;
+            if (metaInfo.type !== "float" && metaInfo.type !== "int") {
+                var names = metaInfo.ui.shortLabels;
             }
-            if (calc[label] === undefined) {
-                calc[label] = [[], [], 0]; // all X, all Y, count
+
+            // console.log(metaInfo);
+
+            console.time("cluster centers");
+            var calc = {};
+            for (var i = 0, I = values.length; i < I; i++) {
+                if (names) {
+                    var label = names[values[i]];
+                } else {
+                    var label = metaInfo.origVals[i].toFixed(2);
+                }
+                if (calc[label] === undefined) {
+                    calc[label] = [[], [], 0]; // all X, all Y, count
+                }
+                calc[label][0].push(coords[i * 2]);
+                calc[label][1].push(coords[i * 2 + 1]);
+                calc[label][2] += 1;
             }
-            calc[label][0].push(coords[i * 2]);
-            calc[label][1].push(coords[i * 2 + 1]);
-            calc[label][2] += 1;
+            labelCoords = [];
+            for (label in calc) {
+                var midX = selectMedian(calc[label][0]);
+                var midY = selectMedian(calc[label][1]);
+                labelCoords.push([midX, midY, label]);
+            }
+            console.timeEnd("cluster centers");
+            gLabelCoordCache[metaInfo.label] = labelCoords;
         }
-        var labelCoords = [];
-        for (label in calc) {
-            var midX = selectMedian(calc[label][0]);
-            var midY = selectMedian(calc[label][1]);
-            labelCoords.push([midX, midY, label]);
-        }
-        console.timeEnd("cluster centers");
         var shouldRedraw = renderer.setLabelCoords(labelCoords);
         if (shouldRedraw) {
             renderer.drawDots();
