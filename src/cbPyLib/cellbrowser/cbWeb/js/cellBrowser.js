@@ -142,6 +142,86 @@ var cellbrowser = function() {
             return str;
         }
 
+    // Median of medians: https://en.wikipedia.org/wiki/Median_of_medians
+    // find median in an unsorted array, worst-case complexity O(n).
+    // from https://gist.github.com/wlchn/ee15de1da59b8d6981a400eee4376ea4
+    const selectMedian = (arr, compare) => {
+        return _selectK(arr, Math.floor(arr.length / 2), compare);
+    };
+
+    const _selectK = (arr, k, compare) => {
+        if (!Array.isArray(arr) || arr.length === 0 || arr.length - 1 < k) {
+            return;
+        }
+        if (arr.length === 1) {
+            return arr[0];
+        }
+        let idx = _selectIdx(arr, 0, arr.length - 1, k, compare || _defaultCompare);
+        return arr[idx];
+    };
+
+    const _partition = (arr, left, right, pivot, compare) => {
+        let temp = arr[pivot];
+        arr[pivot] = arr[right];
+        arr[right] = temp;
+        let track = left;
+        for (let i = left; i < right; i++) {
+            // if (arr[i] < arr[right]) {
+            if (compare(arr[i], arr[right]) === -1) {
+                let t = arr[i];
+                arr[i] = arr[track];
+                arr[track] = t;
+                track++;
+            }
+        }
+        temp = arr[track];
+        arr[track] = arr[right];
+        arr[right] = temp;
+        return track;
+    };
+
+    const _selectIdx = (arr, left, right, k, compare) => {
+        if (left === right) {
+            return left;
+        }
+        let dest = left + k;
+        while (true) {
+            let pivotIndex =
+                right - left + 1 <= 5
+                ? Math.floor(Math.random() * (right - left + 1)) + left
+                : _medianOfMedians(arr, left, right, compare);
+            pivotIndex = _partition(arr, left, right, pivotIndex, compare);
+            if (pivotIndex === dest) {
+                return pivotIndex;
+            } else if (pivotIndex < dest) {
+                left = pivotIndex + 1;
+            } else {
+                right = pivotIndex - 1;
+            }
+        }
+    };
+
+    const _medianOfMedians = (arr, left, right, compare) => {
+        let numMedians = Math.ceil((right - left) / 5);
+        for (let i = 0; i < numMedians; i++) {
+        let subLeft = left + i * 5;
+        let subRight = subLeft + 4;
+        if (subRight > right) {
+            subRight = right;
+        }
+        let medianIdx = _selectIdx(arr, subLeft, subRight, Math.floor((subRight - subLeft) / 2), compare);
+        let temp = arr[medianIdx];
+        arr[medianIdx] = arr[left + i];
+        arr[left + i] = temp;
+        }
+        return _selectIdx(arr, left, left + numMedians - 1, Math.floor(numMedians / 2), compare);
+    };
+
+    const _defaultCompare = (a, b) => {
+        return a < b ? -1 : a > b ? 1 : 0;
+    };
+    // End median of medians
+
     function debug(msg, args) {
         if (DEBUG) {
             console.log(formatString(msg, args));
@@ -3004,11 +3084,8 @@ var cellbrowser = function() {
         }
         var labelCoords = [];
         for (label in calc) {
-            var count = calc[label][2];
-            calc[label][0].sort(function(a, b) { return a - b });
-            calc[label][1].sort(function(a, b) { return a - b });
-            var midX = calc[label][0][Math.floor(count / 2)]; // median
-            var midY = calc[label][1][Math.floor(count / 2)];
+            var midX = selectMedian(calc[label][0]);
+            var midY = selectMedian(calc[label][1]);
             labelCoords.push([midX, midY, label]);
         }
         console.timeEnd("cluster centers");
