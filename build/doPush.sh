@@ -3,6 +3,9 @@
 git checkout master
 git merge develop
 git push
-git tag $CBRELEASE
-git push origin $CBRELEASE
+git tag $CBVERSION
+git push origin $CBVERSION
+
+# this assumes that build is a child of the top level directory
+cd ..
 make pip
