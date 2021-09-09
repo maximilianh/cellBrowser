@@ -90,11 +90,34 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
     font-weight: bold;
 }
 
-.context-menu-item { font-size: 13px; padding: 3px }
-.contextmenu-customwidth { width: 200px !important; min-width: 200px !important}
-.tpGeneBarCell { font-size: 12px; width:58px; color: black; padding-left:1px; padding-right:1px; border: 1px solid #AAA; max-width: 80px; background: #DDDDDD; color:#AAAAAA }
+.context-menu-item { 
+        font-size: 13px; 
+        padding: 3px 
+}
+
+.contextmenu-customwidth { 
+        width: 200px !important; 
+        min-width: 200px !important
+}
+
+.tpGeneBarCell { 
+        font-size: 12px; 
+        color: black; 
+        padding-left:1px; 
+        padding-right:1px; 
+        border: 1px solid #AAA; 
+        background: #DDDDDD; 
+        color:#AAAAAA 
+}
+
 .tpGeneBarCellSelected { outline: 2px solid black}
-#tpGeneTable { table-layout: fixed; background-color: #EEE; white-space: nowrap; border-collapse:collapse }
+
+#tpGeneTable { 
+        table-layout: fixed; 
+        background-color: #EEE; 
+        white-space: nowrap; 
+        border-collapse:collapse 
+}
 
 #tpPeakListTitle { 
         padding-top: 8px;
