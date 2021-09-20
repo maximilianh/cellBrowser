@@ -2715,8 +2715,8 @@ def parseMarkerTable(filename, geneToSym):
     newHeaders = ["id", "symbol", headers[scoreIdx]+"|float"]
     newHeaders.extend(otherHeadersWithType)
 
-    if len(data) > 300:
-        errAbort("Your marker file has more than 300 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
+    if len(data) > 1000:
+        errAbort("Your marker file has more than 1000 clusters. Are you sure that this is correct? The input format is (clusterName, geneSymName, Score), is it possible that you have inversed the order of cluster and gene?")
 
     # determine if the score field is most likely a p-value, needed for sorting
     revSort = True
