@@ -2645,7 +2645,6 @@ var cellbrowser = function() {
             db.loadMetaVec(metaInfo, onMetaArrLoaded, onProgress);
 
 
-       //changeUrl({"gene":null, "meta":fieldName});
        changeUrl({"pal":null});
        // clear the gene search box
        var select = $('#tpGeneCombo')[0].selectize.clear();
@@ -2918,7 +2917,6 @@ var cellbrowser = function() {
                 changeUrl({"locus":locusStr, "meta":null});
             } else {
                 changeUrl({"gene":locusStr, "meta":null});
-                //selectizeSetValue("#tpGeneCombo", locusStr);
             }
 
             makeLegendExpr(fullLocusStr, geneDesc, binInfo, exprArr, decArr);
@@ -3957,13 +3955,14 @@ var cellbrowser = function() {
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         // need max length of gene names to make number of columns
-        var maxLen = 0;
+        var maxColLen = 0;
         for (var i=0; i < geneInfos.length; i++) {
             var geneId = geneInfos[i][0];
-            maxLen = Math.max(maxLen, geneId.length);
+            maxColLen = Math.max(maxColLen, geneId.length);
         }
 
-        var colsPerRow = Math.floor(40.0/maxLen);
+        var lineLen = 38;
+        var colsPerRow = Math.floor(lineLen/maxColLen);
         //var colsPerRow = Math.round(tableWidth / cellWidth);
         var cellWidth = Math.round(tableWidth/colsPerRow);
 
@@ -3973,11 +3972,14 @@ var cellbrowser = function() {
             var geneInfo = geneInfos[i];
             var geneId   = geneInfo[0];
             var geneDesc = geneInfo[1];
+            if (geneDesc===undefined)
+                geneDesc = geneId;
+
             if (((i % colsPerRow) === 0) && (i!==0)) {
                 htmls.push("</tr><tr>");
             }
             if (geneId in db.geneOffsets)
-                htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</td>');
+                htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="width:'+cellWidth+'px">'+geneId+'</td>');
             i++;
         }
         htmls.push("</tr></table>");
@@ -6130,7 +6132,6 @@ var cellbrowser = function() {
 	    if (isDark(color))
 		fontColor = "white";
             $("#tpGeneBarCell_"+onlyAlphaNum(sym)).css({"background-color": "#"+color, "color" : fontColor});
-	    //$("#tpGeneBarCell_"+i).css("color", fontColor);
         }
         console.timeEnd("avgCalc");
     }
