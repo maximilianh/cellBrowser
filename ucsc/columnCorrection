@@ -28,10 +28,10 @@ else:
 if repFtype == ".csv":
     rsep = ","
 elif repFtype == ".tsv":
+    rsep = "\t"
 else:
     print("replaceFile must have tsv or csv file extension")
     exit(1)
-    rsep = "\t"
 
 # Build a dict of old -> new values from file
 rfh=open(args.replaceFile, "r")
