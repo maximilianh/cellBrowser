@@ -12,7 +12,7 @@
 
 import logging, sys, optparse, struct, json, os, string, shutil, gzip, re, unicodedata
 import zlib, math, operator, doctest, copy, bisect, array, glob, io, time, subprocess
-import hashlib, timeit, datetime, keyword, itertools, os.path, urllib
+import hashlib, timeit, datetime, keyword, itertools, os.path, urllib, platform
 from distutils import spawn
 from collections import namedtuple, OrderedDict
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
@@ -2519,14 +2519,20 @@ def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, outC
 
         # XX no happy: stupid .gz filename heuristics
         if inFname.endswith(".gz"):
-            cmd = "cp \"%s\" \"%s\"" % (inFname, outFname)
+            shutil.copyfile(inFname, outFname)
         else:
-            cmd = "cat \"%s\" | gzip -c > %s" % (inFname, outFname)
-        ret = runCommand(cmd)
-
-        if ret!=0 and isfile(outFname):
-            os.remove(outFname)
-            sys.exit(1)
+            if platform.system()=="Windows":
+                # slow but quick hack for Github #229
+                tmpFname = outFname+".tmp"
+                shutil.copyfile(inFname, tmpFname)
+                runGzip(tmpFname, outFname)
+            else:
+                # faster, but works only on Linux/OSX
+                cmd = "cat \"%s\" | gzip -c > %s" % (inFname, outFname)
+                ret = runCommand(cmd)
+                if ret!=0 and isfile(outFname):
+                    os.remove(outFname)
+                    sys.exit(1)
         return matType
 
     sep = "\t"
@@ -2794,7 +2800,6 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
         if not isfile(inFname):
             logging.debug("%s does not exist" % inFname)
         else:
-            #copyFiles.append( (fname, "summary.html") )
             outPath = join(datasetDir, fileBase)
             logging.debug("Copying %s -> %s" % (inFname, outPath))
             shutil.copyfile(inFname, outPath)
@@ -5557,7 +5562,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
             sc.pp.highly_variable_genes(adata, min_mean=minMean, max_mean=maxMean, min_disp=minDisp)
             sc.pl.highly_variable_genes(adata)
         except:
-            if doExp==False:
+            if conf.get("doExp")!=True:
                 pipeLog("An error occurred when finding highly variable genes. This may be due to an input matrix file that is log'ed. Set doExp=True in the cbScanpy config file to undo the logging when the matrix is loaded and rerun the cbScanpy command")
             raise
 
