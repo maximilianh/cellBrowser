@@ -3980,6 +3980,8 @@ def writeAnndataCoords(anndata, coordFields, outDir, desc):
     if coordFields=="all" or coordFields is None:
         coordFields = getObsmKeys(anndata)
 
+    coordFields.sort(reverse=True) # umap first, then t-sne, then PCA... sorting works to make a good order!
+
     for fieldName in coordFields:
         # examples:
         # X_draw_graph_tsne - old versions
