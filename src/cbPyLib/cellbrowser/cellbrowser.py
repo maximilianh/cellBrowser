@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# this library mostly contains functions that convert tab-sep files
+# this library mostly contains functions that convert tab-sep/loom/h5ad/mtx files
 # (=single cell expression matrix and meta data) into the binary format that is read by the
 # javascript viewer cbWeb/js/cellbrowser.js and cbData.js.
 # Helper functions here allow importing data from other tools, e.g. cellranger or scanpy.
@@ -1054,16 +1054,6 @@ emptyVals = ["", "null", "none", "None", "unknown", "nd", "n.d.", "Unknown", "Na
 def likeEmptyString(val):
     " returns true if string is a well-known synonym of 'unknown' or 'NaN'. ported from cellbrowser.js "
     return val.strip() in emptyVals
-
-#def floatToIntList(vals):
-#    " convert a list of floats to integers, take care of -inf values "
-#    newVals = []
-#    for x in vals:
-#        if x==FLOATNAN:
-#            newVals.append(INTNAN)
-#        else:
-#            newVals.append(int(x))
-#    return newVals
 
 def itemsInOrder(valDict, keyOrder):
     """ given a dict key->val and a list of keys, return (key, val) in the order of the list
@@ -4012,8 +4002,10 @@ def writeAnndataCoords(anndata, coordFields, outDir, desc):
         desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
-    for c in name:
-        assert(c.isalnum() or c in ["-", "_"]) # only digits and letters are allowed in dataset names
+    checkDsName(name)
+    #kddfor c in name:
+        #if not (c.isalnum() or c in ["-", "_"]):
+            # only digits and letters are allowed in dataset names
 
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
@@ -4036,6 +4028,7 @@ labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
 #alpha=0.3
+#bodyParts=["embryo", "heart", "brain"]
 #radius=2
 """ % locals()
 
@@ -4793,15 +4786,49 @@ def cbBuildCli():
         traceback.print_exception(*exc_info)
         sys.exit(1)
 
-def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
-    " read an expression matrix and return an adata object. Supports .mtx, .h5 and .tsv (not .tsv.gz) "
+def importLoom(inFname, reqCoords=False):
+    " load a loom file with anndata and if reqCoords is true, fix up the obsm attributes "
+    import pandas as pd
+    import anndata
+    ad = anndata.read_loom(inFname)
+
+    if not reqCoords:
+        return ad
+
+    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"], ["UMAP1","UMAP2"], \
+            ['Main_cluster_umap_1', 'Main_cluster_umap_2'])
+    obsKeys = getObsKeys(ad)
+    foundCoords = False
+    for coordKeys in coordKeyList:
+        if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
+            logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
+            newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
+            ad.obsm["tsne"] = newObj
+            del ad.obs[coordKeys[0]]
+            del ad.obs[coordKeys[1]]
+            foundCoords = True
+            break
+
+    if not foundCoords:
+        logging.warn("Did not find any keys like %s in anndata.obs, cannot import coordinates" % repr(coordKeyList))
+
+    return ad
+
+def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38", reqCoords=False):
+    """ read an expression matrix and return an adata object. Supports .mtx.h5 and .tsv (not .tsv.gz)
+    If reqCoords is True, will try to find and convert dim. reduc. coordinates in a file (loom).
+    """
     sc = importScanpy()
 
     if matrixFname.endswith(".mtx.gz"):
         errAbort("For cellranger3-style .mtx files, please specify the directory, not the .mtx.gz file name")
 
     if matrixFname.endswith(".h5ad"):
-        adata = sc.read(matrixFname, cache=False)
+        logging.info("File name ends with .h5ad: Loading %s using sc.read" % matrixFname)
+        adata = sc.read_h5ad(matrixFname)
+
+    elif matrixFname.endswith(".loom"):
+        adata = importLoom(matrixFname, reqCoords=reqCoords)
 
     elif isMtx(matrixFname):
         import pandas as pd
@@ -4832,7 +4859,7 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38"):
         adata = sc.read_10x_h5(matrixFname, genome=genome)
 
     else:
-        logging.info("Loading expression matrix: scanpy-supported format, like loom, tab-separated, etc.")
+        logging.info("Loading expression matrix: Filename does not end with h5ad/mtx/loom, so trying sc.read for any other scanpy-supported format, like tab-separated, etc.")
         if matrixFname.endswith(".loom"):
             logging.info("This is a loom file: activating --samplesOnRows")
             samplesOnRows = True
@@ -5812,13 +5839,18 @@ def generateQuickGenes(outDir):
 
 def checkDsName(datasetName):
     " make sure that datasetName contains only ASCII chars and - or _, errAbort if not "
+    msg = "The dataset name '%s' is not a valid name . " \
+        "Valid names can only contain letters, numbers and dashes. " \
+        "If this dataset was imported from a h5ad or a Seurat object, which can provide dataset names, " \
+        "you can use the option -n of the command line tools to override the name. " % datasetName
+
     if datasetName.startswith("-"):
-        errAbort("dataset name cannot start with a dash. (forgot to supply an argument for -n?)")
+        errAbort(msg+"Dataset name cannot start with a dash. (forgot to supply an argument for -n?)")
     if "/" in datasetName:
-        errAbort("dataset name cannot contain slashes, these are reserved for collections")
+        errAbort(msg+"Dataset name cannot contain slashes, these are reserved for collections")
     match = re.match("^[a-z0-9A-Z-_]*$", datasetName)
     if match is None:
-        errAbort("dataset name can only contain lower or uppercase letters or dash or underscore")
+        errAbort(msg+"Dataset name can only contain lower or uppercase letters or dash or underscore")
 
 def importScanpy():
     try:

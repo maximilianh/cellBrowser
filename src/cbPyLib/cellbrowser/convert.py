@@ -547,29 +547,6 @@ def cbImportScanpy_parseArgs(showHelp=False):
     setDebug(options.debug)
     return args, options
 
-def importLoom(inFname):
-    " load a loom file with anndata and fix up the obsm attributes "
-    import pandas as pd
-    import anndata
-    ad = anndata.read_loom(inFname)
-
-    coordKeyList = (["_tSNE1", "_tSNE2"], ["_X", "_Y"], ["UMAP1","UMAP2"], ['Main_cluster_umap_1', 'Main_cluster_umap_2'])
-    obsKeys = getObsKeys(ad)
-    foundCoords = False
-    for coordKeys in coordKeyList:
-        if coordKeys[0] in obsKeys and coordKeys[1] in obsKeys:
-            logging.debug("Found %s in anndata.obs, moving these fields into obsm" % repr(coordKeys))
-            newObj = pd.concat([ad.obs[coordKeys[0]], ad.obs[coordKeys[1]]], axis=1)
-            ad.obsm["tsne"] = newObj
-            del ad.obs[coordKeys[0]]
-            del ad.obs[coordKeys[1]]
-            foundCoords = True
-            break
-
-    if not foundCoords:
-        logging.warn("Did not find any keys like %s in anndata.obs, cannot import coordinates" % repr(coordKeyList))
-    return ad
-
 def cbImportScanpyCli():
     " convert h5ad to directory "
     args, options = cbImportScanpy_parseArgs()
@@ -591,11 +568,7 @@ def cbImportScanpyCli():
     clusterField = options.clusterField
     skipMarkers = options.skipMarkers
 
-    if inFname.endswith(".loom"):
-        ad = importLoom(inFname)
-    else:
-        import anndata
-        ad = anndata.read_h5ad(inFname)
+    ad = readMatrixAnndata(inFname, reqCoords=True)
 
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
             markerField=markerField, clusterField=clusterField, skipMarkers=skipMarkers)
