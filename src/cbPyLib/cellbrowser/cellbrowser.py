@@ -4258,6 +4258,14 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
                         logging.info("Found field '%s', using it as the cell cluster field." % fieldName)
                         foundField = fieldName
                 if foundField is None:
+                    logging.info("No exact match found, searching for first field that contains 'luste' or 'ype'")
+                    for fieldName in adata.obs.columns:
+                        if "luste" in fieldName or "ype" in fieldName:
+                            logging.info("Found field %s" % fieldName)
+                            foundField = fieldName
+                            break
+
+                if foundField is None:
                     errAbort("Could not find field '%s' in the scanpy object. To make a cell browser, you should have a "
                     " field like 'cluster' or "
                     "'celltype' or 'louvain' in your object. The available fields are: %s ."
