@@ -497,7 +497,7 @@ def cbCellrangerCli_parseArgs(showHelp=False):
 
 def cbImportScanpy_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] inFilename outDir datasetName - convert Scanpy AnnData object to cellbrowser. inFilename can be an .h5ad or .loom file.
+    parser = optparse.OptionParser("""usage: %prog [options] -i inFilename -o outDir - convert Scanpy AnnData object to cellbrowser. inFilename can be an .h5ad or .loom file.
 
     Example:
     - %prog -i pbmc3k.h5ad -o pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
@@ -516,7 +516,7 @@ def cbImportScanpy_parseArgs(showHelp=False):
         help="Output directory. Required parameter")
 
     parser.add_option("-n", "--name", dest="datasetName", action="store",
-        help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used.")
+        help="Dataset name for generated cellbrowser.conf. If not specified, the last component of -o will be used")
 
     parser.add_option("", "--htmlDir", dest="htmlDir", action="store",
         help="do not only convert to tab-sep files but also run cbBuild to"
@@ -562,7 +562,7 @@ def cbImportScanpyCli():
 
     datasetName = options.datasetName
     if datasetName is None:
-        datasetName = basename(outDir.rstrip("/"))
+        datasetName = basename(abspath(outDir))
 
     markerField = options.markerField
     clusterField = options.clusterField
