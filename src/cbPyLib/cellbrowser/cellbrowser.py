@@ -1440,18 +1440,37 @@ class MatrixMtxReader:
         " yield (geneId, symbol, array) tuples from gene expression file. "
         mat = self.mat
         genes = self.genes
-        for i in range(0, len(self.genes)):
-            geneId = genes[i]
-            geneSym = geneId
+
+        if len(genes) != len(set(genes)):
+            logging.warning('duplicate geneIds present')
+
+        skipIds = 0
+        # for i in range(0, len(self.genes)):
+        for i, geneId in enumerate(self.genes):
             if "|" in geneId:
                 geneId, geneSym = geneId.split("|")[:2]
-            if self.geneToSym and geneSym is not None:
-                geneSym = self.geneToSym.get(geneId)
+            else:
+                if self.geneToSym is None:
+                    geneSym = geneId
+                else:
+                    geneSym = self.geneToSym.get(geneId.split(".")[0])
+                    logging.debug("%s -> %s" % (geneId, geneSym))
 
-            if i%1000==0:
+                    if geneSym is None:
+                        skipIds += 1
+                        logging.warning("line %d: could not find symbol for ID %s, looks like it is not a valid gene ID, check geneIdType setting in cellbrowser.conf or gene symbol mapping tables" % (i, geneId))
+                        geneSym = geneId
+
+                    if geneSym.isdigit():
+                        logging.warning("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (i, geneSym))
+
+            if i % 1000 == 0:
                 logging.info("%d genes written..." % i)
             arr = mat.getrow(i).toarray()
-            yield (geneId, geneSym, arr)
+            yield geneId, geneSym, arr
+
+        if skipIds != 0:
+            logging.warning("Kept %d genes as original IDs, due to duplication or unknown ID" % skipIds)
 
 class MatrixTsvReader:
     " open a .tsv or .csv file and yield rows via iterRows. gz and csv OK."
