@@ -3757,6 +3757,9 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         oldBarInfo = lastConf["fileVersions"]["barcodes"]
         oldFeatInfo = lastConf["fileVersions"]["features"]
         origSize += oldBarInfo["size"] + oldFeatInfo["size"]
+        if 'fileVersions' not in outConf:
+            logging.debug("fileVersions doesn't exist in outConf. Creating it!")
+            outConf["fileVersions"] = {}
         outConf["fileVersions"]["barcodes"] = oldBarInfo
         outConf["fileVersions"]["features"] = oldFeatInfo
 
@@ -4104,7 +4107,6 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
         genes = var.index.tolist()
 
     mtxfile = join(path, 'matrix.mtx')
-    logging.info(f"Writing matrix to {mtxfile}") # necessary, as scanpy has the samples on the rows
 
     """
     this is stupid: if mat is dense, mmwrite skrews up the header:
@@ -4115,7 +4117,10 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
+    logging.info(f"Writing matrix to {mtxfile}") # necessary, as scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
+
+    logging.info(f"Compressing matrix to {mtxfile}.gz") # necessary, as scanpy has the samples on the rows
     # runGzip(mtxfile, mtxfile)  # this is giving me trouble with the same filename
     with open(mtxfile,'rb') as mtx_in:
         with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
