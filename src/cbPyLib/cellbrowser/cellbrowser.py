@@ -1440,18 +1440,37 @@ class MatrixMtxReader:
         " yield (geneId, symbol, array) tuples from gene expression file. "
         mat = self.mat
         genes = self.genes
-        for i in range(0, len(self.genes)):
-            geneId = genes[i]
-            geneSym = geneId
+
+        if len(genes) != len(set(genes)):
+            logging.warning('duplicate geneIds present')
+
+        skipIds = 0
+        # for i in range(0, len(self.genes)):
+        for i, geneId in enumerate(self.genes):
             if "|" in geneId:
                 geneId, geneSym = geneId.split("|")[:2]
-            if self.geneToSym and geneSym is not None:
-                geneSym = self.geneToSym.get(geneId)
+            else:
+                if self.geneToSym is None:
+                    geneSym = geneId
+                else:
+                    geneSym = self.geneToSym.get(geneId.split(".")[0])
+                    logging.debug("%s -> %s" % (geneId, geneSym))
 
-            if i%1000==0:
+                    if geneSym is None:
+                        skipIds += 1
+                        logging.warning("line %d: could not find symbol for ID %s, looks like it is not a valid gene ID, check geneIdType setting in cellbrowser.conf or gene symbol mapping tables" % (i, geneId))
+                        geneSym = geneId
+
+                    if geneSym.isdigit():
+                        logging.warning("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (i, geneSym))
+
+            if i % 1000 == 0:
                 logging.info("%d genes written..." % i)
             arr = mat.getrow(i).toarray()
-            yield (geneId, geneSym, arr)
+            yield geneId, geneSym, arr
+
+        if skipIds != 0:
+            logging.warning("Kept %d genes as original IDs, due to duplication or unknown ID" % skipIds)
 
 class MatrixTsvReader:
     " open a .tsv or .csv file and yield rows via iterRows. gz and csv OK."
@@ -3757,6 +3776,9 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         oldBarInfo = lastConf["fileVersions"]["barcodes"]
         oldFeatInfo = lastConf["fileVersions"]["features"]
         origSize += oldBarInfo["size"] + oldFeatInfo["size"]
+        if 'fileVersions' not in outConf:
+            logging.debug("fileVersions doesn't exist in outConf. Creating it!")
+            outConf["fileVersions"] = {}
         outConf["fileVersions"]["barcodes"] = oldBarInfo
         outConf["fileVersions"]["features"] = oldFeatInfo
 
@@ -4013,7 +4035,7 @@ def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
     coordStr = json.dumps(coordsList, indent=4)
-    matrixFname = args.get("exprMatrix", "exprMatrix.tsv.gz")
+    matrixFname = args.get("exprMatrix", "matrix.mtx.gz")
 
     conf = """
 # This is a bare-bones, auto-generated Cell Browser config file.
@@ -4062,6 +4084,76 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False):
         geneIdAndSyms = list(zip(geneIdSeries.values, geneIdSeries.index))
     genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
     return genes
+
+def anndataMatrixToMtx(ad, path, useRaw=False):
+    """
+    write the ad expression matrix into a sparse mtx.gz file (matrix-market format)
+
+    to test:
+    cbImportScanpy -i /home/michi/ms_python_packages/cellBrowser/sampleData/pbmc_small/anndata.h5ad -o /tmp/cbtest
+    cbBuild -i /tmp/cbtest/cellbrowser.conf -o /tmp/cb_html/
+    """
+
+    import scipy.io
+
+    if useRaw and ad.raw is None:
+        logging.warning("The option to export raw expression data is set, but the scanpy object has no 'raw' attribute. Exporting the processed scanpy matrix. Some genes may be missing.")
+
+    if useRaw and ad.raw is not None:
+        mat = ad.raw.X
+        var = ad.raw.var
+        logging.info("Processed matrix has size (%d cells, %d genes)" % (mat.shape[0], mat.shape[1]))
+        logging.info("Using raw expression matrix")
+    else:
+        mat = ad.X
+        var = ad.var
+
+    rowCount, colCount = mat.shape
+    logging.info("Writing SPARSE scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, path))
+
+    logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
+    mat = mat.T
+
+    # gathering cell-Ids and gene names
+    sampleNames = ad.obs.index.tolist()
+    if "gene_ids" in var:
+        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
+    elif "gene_symbols" in var:
+        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
+    elif "Accession" in var:  # only seen this in the ABA Loom files
+        genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
+    else:
+        genes = var.index.tolist()
+
+    mtxfile = join(path, 'matrix.mtx')
+
+    """
+    this is stupid: if mat is dense, mmwrite skrews up the header:
+    the header is supposed to contain a line with `rows cols nonzero_elements`.
+    If mat is dense, it skips the nonzero_elements, which leads to an error reading the matrix later on.
+    actaully it stores it as "array" rather than matrix %%MatrixMarket matrix coordinate real general
+    """
+    if ~scipy.sparse.issparse(mat):
+        mat = scipy.sparse.csr_matrix(mat)
+
+    logging.info(f"Writing matrix to {mtxfile}") # necessary, as scanpy has the samples on the rows
+    scipy.io.mmwrite(mtxfile, mat, precision=7)
+
+    logging.info(f"Compressing matrix to {mtxfile}.gz") # necessary, as scanpy has the samples on the rows
+    # runGzip(mtxfile, mtxfile)  # this is giving me trouble with the same filename
+    with open(mtxfile,'rb') as mtx_in:
+        with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
+            shutil.copyfileobj(mtx_in, mtx_gz)
+    os.remove(mtxfile)
+
+    genes_file = join(path, 'genes.tsv.gz')
+    with gzip.open(genes_file, 'wt') as f:
+        f.write("\n".join(genes))
+
+    bc_file = join(path, 'barcodes.tsv.gz')
+    with gzip.open(bc_file, 'wt') as f:
+        f.write("\n".join(sampleNames))
+
 
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
@@ -4234,8 +4326,9 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     import anndata
 
     if not skipMatrix:
-        matFname = join(path, 'exprMatrix.tsv.gz')
-        anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
+        # matFname = join(path, 'exprMatrix.tsv.gz')
+        # anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
+        anndataMatrixToMtx(adata, path, useRaw=useRaw)
 
     coordDescs = []
 
