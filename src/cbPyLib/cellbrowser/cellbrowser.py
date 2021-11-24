@@ -4013,7 +4013,7 @@ def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
     coordStr = json.dumps(coordsList, indent=4)
-    matrixFname = args.get("exprMatrix", "matrix.mtx.gz")
+    matrixFname = args.get("exprMatrix", "exprMatrix.tsv.gz")
 
     conf = """
 # This is a bare-bones, auto-generated Cell Browser config file.
@@ -4062,74 +4062,6 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False):
         geneIdAndSyms = list(zip(geneIdSeries.values, geneIdSeries.index))
     genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
     return genes
-
-def anndataMatrixToMtx(ad, path, useRaw=False):
-    """
-    write the ad expression matrix into a sparse mtx.gz file (matrix-market format)
-
-    to test:
-    cbImportScanpy -i /home/michi/ms_python_packages/cellBrowser/sampleData/pbmc_small/anndata.h5ad -o /tmp/cbtest
-    cbBuild -i /tmp/cbtest/cellbrowser.conf -o /tmp/cb_html/
-    """
-
-    import scipy.io
-
-    if useRaw and ad.raw is None:
-        logging.warning("The option to export raw expression data is set, but the scanpy object has no 'raw' attribute. Exporting the processed scanpy matrix. Some genes may be missing.")
-
-    if useRaw and ad.raw is not None:
-        mat = ad.raw.X
-        var = ad.raw.var
-        logging.info("Processed matrix has size (%d cells, %d genes)" % (mat.shape[0], mat.shape[1]))
-        logging.info("Using raw expression matrix")
-    else:
-        mat = ad.X
-        var = ad.var
-
-    rowCount, colCount = mat.shape
-    logging.info("Writing SPARSE scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, path))
-
-    logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
-    mat = mat.T
-
-    # gathering cell-Ids and gene names
-    sampleNames = ad.obs.index.tolist()
-    if "gene_ids" in var:
-        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
-    elif "gene_symbols" in var:
-        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
-    elif "Accession" in var:  # only seen this in the ABA Loom files
-        genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
-    else:
-        genes = var.index.tolist()
-
-    mtxfile = join(path, 'matrix.mtx')
-    logging.info(f"Writing matrix to {mtxfile}") # necessary, as scanpy has the samples on the rows
-
-    """
-    this is stupid: if mat is dense, mmwrite skrews up the header:
-    the header is supposed to contain a line with `rows cols nonzero_elements`.
-    If mat is dense, it skips the nonzero_elements, which leads to an error reading the matrix later on.
-    actaully it stores it as "array" rather than matrix %%MatrixMarket matrix coordinate real general
-    """
-    if ~scipy.sparse.issparse(mat):
-        mat = scipy.sparse.csr_matrix(mat)
-
-    scipy.io.mmwrite(mtxfile, mat, precision=7)
-    # runGzip(mtxfile, mtxfile)  # this is giving me trouble with the same filename
-    with open(mtxfile,'rb') as mtx_in:
-        with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
-            shutil.copyfileobj(mtx_in, mtx_gz)
-    os.remove(mtxfile)
-
-    genes_file = join(path, 'genes.tsv.gz')
-    with gzip.open(genes_file, 'wt') as f:
-        f.write("\n".join(genes))
-
-    bc_file = join(path, 'barcodes.tsv.gz')
-    with gzip.open(bc_file, 'wt') as f:
-        f.write("\n".join(sampleNames))
-
 
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
@@ -4302,9 +4234,8 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     import anndata
 
     if not skipMatrix:
-        # matFname = join(path, 'exprMatrix.tsv.gz')
-        # anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
-        anndataMatrixToMtx(adata, path, useRaw=useRaw)
+        matFname = join(path, 'exprMatrix.tsv.gz')
+        anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
 
     coordDescs = []
 
