@@ -4109,7 +4109,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
         var = ad.var
 
     rowCount, colCount = mat.shape
-    logging.info("Writing SPARSE scanpy matrix (%d cells, %d genes) to %s" % (rowCount, colCount, path))
+    logging.info("Writing scanpy matrix (%d cells, %d genes) to %s in mtx.gz format" % (rowCount, colCount, path))
 
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
     mat = mat.T
@@ -4128,10 +4128,10 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     mtxfile = join(path, 'matrix.mtx')
 
     """
-    this is stupid: if mat is dense, mmwrite skrews up the header:
+    this is stupid: if mat is dense, mmwrite screws up the header:
     the header is supposed to contain a line with `rows cols nonzero_elements`.
     If mat is dense, it skips the nonzero_elements, which leads to an error reading the matrix later on.
-    actaully it stores it as "array" rather than matrix %%MatrixMarket matrix coordinate real general
+    actually it stores it as "array" rather than matrix %%MatrixMarket matrix coordinate real general
     """
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
@@ -4146,7 +4146,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
             shutil.copyfileobj(mtx_in, mtx_gz)
     os.remove(mtxfile)
 
-    genes_file = join(path, 'genes.tsv.gz')
+    genes_file = join(path, 'features.tsv.gz')
     with gzip.open(genes_file, 'wt') as f:
         f.write("\n".join(genes))
 
@@ -4291,7 +4291,7 @@ def saveMarkers(adata, markerField, nb_marker, fname):
 
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
-        skipMarkers=False, markerField='rank_genes_groups'):
+        skipMarkers=False, markerField='rank_genes_groups', matrixFormat="tsv"):
     """
     Mostly written by Lucas Seninge, lucas.seninge@etu.unistra.fr
 
@@ -4326,9 +4326,13 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     import anndata
 
     if not skipMatrix:
-        # matFname = join(path, 'exprMatrix.tsv.gz')
-        # anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
-        anndataMatrixToMtx(adata, path, useRaw=useRaw)
+        if matrixFormat=="tsv" or matrixFormat is None:
+            matFname = join(path, 'exprMatrix.tsv.gz')
+            anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
+        elif matrixFormat=="mtx":
+            anndataMatrixToMtx(adata, path, useRaw=useRaw)
+        else:
+            assert(False) # invalid value for 'matrixFormat'
 
     coordDescs = []
 
@@ -5971,6 +5975,14 @@ def importScanpy():
         sys.exit(1)
     return sc
 
+def getMatrixFormat(options):
+    " return matrix format, either from options object or from config file "
+    matrixFormat = options.matrixFormat
+    # command line has priority
+    if matrixFormat is None:
+        matrixFormat = getConfig("matrixFormat", matrixFormat)
+    return matrixFormat
+
 def cbScanpyCli():
     " command line interface for cbScanpy "
     mustBePython3()
@@ -5998,6 +6010,8 @@ def cbScanpyCli():
         datasetName = basename(dirname(abspath(outDir)))
         logging.info("no dataset name provided, using '%s' as dataset name" % datasetName)
 
+    matrixFormat = getMatrixFormat(options)
+
     checkDsName(datasetName)
 
     if copyMatrix and not matrixFname.endswith(".gz"):
@@ -6021,7 +6035,8 @@ def cbScanpyCli():
     adata.write(adFname)
 
     scanpyToCellbrowser(adata, outDir, datasetName=datasetName, skipMarkers=skipMarkers,
-            clusterField=inCluster, skipMatrix=(copyMatrix or skipMatrix), useRaw=True)
+            clusterField=inCluster, skipMatrix=(copyMatrix or skipMatrix), matrixFormat=matrixFormat,
+            useRaw=True)
 
     if copyMatrix:
         outMatrixFname = join(outDir, "exprMatrix.tsv.gz")

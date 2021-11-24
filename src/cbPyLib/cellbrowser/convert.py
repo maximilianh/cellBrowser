@@ -7,7 +7,7 @@ from collections import defaultdict
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
 from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
-from .cellbrowser import generateHtmls, getObsKeys, renameFile
+from .cellbrowser import generateHtmls, getObsKeys, renameFile, getMatrixFormat
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -531,6 +531,9 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser.add_option("", "--clusterField", dest="clusterField", action="store",
             help="if no marker genes are present, use this field to calculate them. Default is to try a list of common field names, like 'Cluster' or 'louvain' and a few others")
 
+    parser.add_option("-f", "--matrixFormat", dest="matrixFormat", action="store",
+            help="Output matrix file format. 'mtx' or 'tsv'. default: tsv",)
+
     parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
         help="do not convert the matrix, saves time if the same one has been exported before to the "
         "same directory")
@@ -567,11 +570,12 @@ def cbImportScanpyCli():
     markerField = options.markerField
     clusterField = options.clusterField
     skipMarkers = options.skipMarkers
+    matrixFormat = getMatrixFormat(options)
 
     ad = readMatrixAnndata(inFname, reqCoords=True)
 
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
-            markerField=markerField, clusterField=clusterField, skipMarkers=skipMarkers)
+            markerField=markerField, clusterField=clusterField, skipMarkers=skipMarkers, matrixFormat=matrixFormat)
     generateHtmls(datasetName, outDir)
 
     if options.port and not options.htmlDir:
