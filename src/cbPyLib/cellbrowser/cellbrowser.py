@@ -3799,12 +3799,8 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 
     metaSampleNames = readOldSampleNames(datasetDir, lastConf)
 
-    #if isfile(outMatrixFname):
     matrixSampleNames = readMatrixSampleNames(outMatrixFname)
     assert(len(matrixSampleNames)!=0)
-    #else:
-    #outFeatsName = join(datasetDir, "features.tsv.gz")
-    #matrixSampleNames = gzip.open(outFeatsName).read().splitlines()
 
     if set(metaSampleNames)!=set(matrixSampleNames):
         logging.info("meta sample samples from previous run are different from sample names in current matrix, have to reindex the matrix. Counts: %d vs. %d" % (len(metaSampleNames), len(matrixSampleNames)))
@@ -4078,13 +4074,25 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def geneSeriesToStrings(geneIdSeries, indexFirst=False):
+def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
     " convert a pandas data series to a list of |-separated strings "
     if indexFirst:
         geneIdAndSyms = list(zip(geneIdSeries.index, geneIdSeries.values))
     else:
         geneIdAndSyms = list(zip(geneIdSeries.values, geneIdSeries.index))
-    genes = [str(x)+"|"+str(y) for (x,y) in geneIdAndSyms]
+    genes = [str(x)+sep+str(y) for (x,y) in geneIdAndSyms]
+    return genes
+
+def geneStringsFromVar(var, sep):
+    " return a list of strings in format geneId<sep>geneSymbol "
+    if "gene_ids" in var:
+        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False, sep=sep)
+    elif "gene_symbols" in var:
+        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True, sep=sep)
+    elif "Accession" in var:  # only seen this in the ABA Loom files
+        genes = geneSeriesToStrings(var["Accession"], indexFirst=False, sep=sep)
+    else:
+        genes = var.index.tolist()
     return genes
 
 def anndataMatrixToMtx(ad, path, useRaw=False):
@@ -4116,17 +4124,6 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
     mat = mat.T
 
-    # gathering cell-Ids and gene names
-    sampleNames = ad.obs.index.tolist()
-    if "gene_ids" in var:
-        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
-    elif "gene_symbols" in var:
-        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
-    elif "Accession" in var:  # only seen this in the ABA Loom files
-        genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
-    else:
-        genes = var.index.tolist()
-
     mtxfile = join(path, 'matrix.mtx')
 
     """
@@ -4148,11 +4145,13 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
             shutil.copyfileobj(mtx_in, mtx_gz)
     os.remove(mtxfile)
 
+    geneLines = geneStringsFromVar(var, sep="\t")
     genes_file = join(path, 'features.tsv.gz')
     with gzip.open(genes_file, 'wt') as f:
-        f.write("\n".join(genes))
+        f.write("\n".join(geneLines))
 
     bc_file = join(path, 'barcodes.tsv.gz')
+    sampleNames = ad.obs.index.tolist()
     with gzip.open(bc_file, 'wt') as f:
         f.write("\n".join(sampleNames))
 
@@ -4204,14 +4203,7 @@ def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
 
         # when reading 10X files, read_h5 puts the geneIds into a separate field
         # and uses only the symbol. We prefer ENSGxxxx|<symbol> as the gene ID string
-        if "gene_ids" in var:
-            genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False)
-        elif "gene_symbols" in var:
-            genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True)
-        elif "Accession" in var: # only seen this in the ABA Loom files
-            genes = geneSeriesToStrings(var["Accession"], indexFirst=False)
-        else:
-            genes = var.index.tolist()
+        genes = geneStringsFromVar(var)
 
         logging.info("Writing %d genes in total" % len(genes))
         for i, geneName in enumerate(genes):
