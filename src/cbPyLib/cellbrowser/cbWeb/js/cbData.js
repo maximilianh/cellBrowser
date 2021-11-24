@@ -120,7 +120,10 @@ var cbUtil = (function () {
 
         oReq.onload = cbUtil.onDoneBinaryData;
         oReq.onprogress = onProgress;
-        oReq.onerror = function(e) { alert("Could not load file "+url); };
+        oReq.onerror = function(e) { 
+            // Github rejects accept-encoding: headers coming from Firefox at the moment.
+            alert("Could not load file "+url+". If this is Firefox and running on Github, please contact us."); 
+        };
         oReq._onDone = onDone; // keep this for the callback
         oReq._otherInfo = otherInfo; // keep this for the callback
         oReq._arrType = arrType; // keep this for the callback casting
