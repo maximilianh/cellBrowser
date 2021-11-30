@@ -4132,10 +4132,14 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     If mat is dense, it skips the nonzero_elements, which leads to an error reading the matrix later on.
     actually it stores it as "array" rather than matrix %%MatrixMarket matrix coordinate real general
     """
+    dataType = "float"
+    if ad.X.dtype.kind=="i":
+        dataType = "integer"
+
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
-    logging.info(f"Writing matrix to {mtxfile}") # necessary, as scanpy has the samples on the rows
+    logging.info(f"Writing matrix to {mtxfile}, type={dataType}") # necessary, as scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
 
     logging.info(f"Compressing matrix to {mtxfile}.gz") # necessary, as scanpy has the samples on the rows
