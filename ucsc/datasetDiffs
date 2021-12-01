@@ -2,47 +2,47 @@
 
 import json, sys, operator, argparse, os, urllib.request, subprocess
 
-def print_diffs(key, beta_val, test_val):
+def print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val):
     """Print out values for cells-beta and cells-test"""
-    print(key, "\n", "cells-beta:", beta_val, "\n", "cells-test:", test_val)
+    print(key, "\n", mach1_name + ": ", mach1_val, "\n", mach2_name + ": ", mach2_val)
 
-def process_dict(betaDict, testDict):
+def process_dict(mach1_name, mach1_dict, mach2_name, mach2_dict):
     """Processes a dictionary, printing out differenting values if needed.
        Or continuing to process if it finds another dictionary."""
-    for key in betaDict.keys():
-        beta_val = betaDict[key]
-        test_val = testDict[key]
-        if isinstance(beta_val, dict):
-            process_dict(beta_val, test_val)
+    for key in mach1_dict.keys():
+        mach1_val = mach1_dict[key]
+        mach2_val = mach2_dict[key]
+        if isinstance(mach1_val, dict):
+            process_dict(mach1_name, mach1_val, mach2_name, mach2_val)
         else:
-            if beta_val != test_val:
-                print_diffs(key, beta_val, test_val)
+            if mach1_val != mach2_val:
+                print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val)
 
-def compare_machines(mach1, mach1_name, mach2, mach2_name, verbose=False):
+def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name, verbose=False):
     """
     """
     print(f'\nDatasets with diffs between {mach1_name} + {mach2_name}:')
-    for dataset in mach2:
+    for dataset in mach2_dict:
         # Check if the overall dicts are the same for a dataset on test/beta
         # If not, we'll go through and print out only those values that are different
         try:
-            if not operator.eq(mach1[dataset], mach2[dataset]):
+            if not operator.eq(mach1_dict[dataset], mach2_dict[dataset]):
                 # Print dataset name
                 print("\n" + dataset)
 
                 # Script has option to print only names of datasets that have diffs
                 # This whole chunk gets skipped if that's the case
                 if verbose:
-                    for key in mach2[dataset].keys():
+                    for key in mach2_dict[dataset].keys():
                         # Check if current value is a dict and if so, process that a certain way
-                        if isinstance(mach2[dataset][key], dict):
-                            process_dict(mach2[dataset][key], mach1[dataset][key])
+                        if isinstance(mach2_dict[dataset][key], dict):
+                            process_dict(mach2_name, mach2_dict[dataset][key], mach1_name, mach1_dict[dataset][key])
                         # Otherwise check to see if values for test/beta are different
                         # and print only the diffs
                         else:
                             try:
-                                val1 = mach2[dataset][key]
-                                val2 = mach1[dataset][key]
+                                val1 = mach1_dict[dataset][key]
+                                val2 = mach2_dict[dataset][key]
                                 if val1 != val2:
                                     # The value for this keys if often large and bloats the results
                                     # making it difficult to actually see the diffs. Only print a
@@ -52,7 +52,7 @@ def compare_machines(mach1, mach1_name, mach2, mach2_name, verbose=False):
                                     # Otherwise print out the field that differs and what the values
                                     # are for test/beta
                                     else:
-                                        print_diffs(key, val1, val2)
+                                        print_diffs(key, mach2_name, val2, mach1_name, val1)
                             except KeyError:
                                 print(key, f'present on {mach1_name}, but not on {mach2_name} or vice versa')
         except KeyError:
@@ -67,6 +67,8 @@ parser.add_argument("-r","--run", action='store_true',
     help='run script to looks for diffs')
 parser.add_argument("-v","--verbose", action='store_true',
     help='Show fields in dataset.json that are different rather than just those datasets that have differences')
+parser.add_argument("-b","--betarr", action='store_true',
+    help='Print diffs between cells-beta and cells')
 parser.add_argument("-s","--stats", action='store_true',
     help='Print stats about the number of datasets/collections on each machine')
 parser.add_argument("-d","--hidden", action='store_true',
@@ -197,6 +199,7 @@ def main():
         print("Datasets on cells-beta, but not on RR:")
         print(beta_only,"\n")
 
+
         # First pass of processing dicts to find collections and add subdatasets to main dict
         n_cb_collections = 0 # count up number of collections on cells-beta so that we can exclude these from calcs later on
         cb_subdirs = dict()
@@ -233,14 +236,14 @@ def main():
         rr_subdirs = dict()
         for dataset in rr_djson:
             # Collections have "datasets" somewhere in their keys
-            if "datasets" in ct_djson[dataset].keys():
-                subdirs = ct_djson[dataset]["datasets"]
+            if "datasets" in rr_djson[dataset].keys():
+                subdirs = rr_djson[dataset]["datasets"]
                 n_rr_collections += 1
                 for subdir in subdirs:
                     # Save info about rr version of dataset
                     subname = subdir["name"]
                     rrpath = rrdir + subname + "/dataset.json"
-                    with urllib.request.urlopen(dpath) as url:
+                    with urllib.request.urlopen(rrpath) as url:
                         rrjson = json.loads(url.read().decode())
                         rr_subdirs[subname] = rrjson
 
@@ -254,7 +257,8 @@ def main():
         compare_machines(ct_djson, "cells-test", cb_djson, "cells-beta", args.verbose)
         # This line would do the same for cells and cells-beta, but it seems to show diffs for all datasets?
         # Not sure what's going on with this, but will need to check with Max
-        #compare_machines(cb_djson, "cells-beta", rr_djson, "cells", args.verbose)
+        if args.betarr:
+            compare_machines(cb_djson, "cells-beta", rr_djson, "cells", args.verbose)
 
         # Print stats about number of datasets on each machine if arg set
         if args.stats:
