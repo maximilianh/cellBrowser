@@ -184,7 +184,7 @@ directory where you are running ``cbScanpy``, it will be automatically picked up
 
 How to export the data from Monocle for use in the Cell Browser
 ^^^^
-`Monocle <https://cole-trapnell-lab.github.io/monocle3/>`_ is an R package that can be used to reconstruct 
+`Monocle <https://cole-trapnell-lab.github.io/monocle-release/>`_ is an R package that can be used to reconstruct 
 transcriptional trajectories. You can export the coordinates, expression data, and metadata from a
 Monocle object and then use those files to build a cell browser. These steps assume that you have your Monocle
 object loaded into R already. 
