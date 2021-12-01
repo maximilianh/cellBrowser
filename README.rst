@@ -12,7 +12,10 @@ To look at a list of selected single cell datasets, see http://cells.ucsc.edu
 
 To setup your own cell browser, from Cellranger, Seurat, Scanpy or text files 
 (tsv/csv), or just a single cell expression matrix, read the documentation
-at http://cellbrowser.rtfd.io
+at http://cellbrowser.rtfd.io. If you use the UCSC Cell Browser in your research, please cite
+`our Bioinformatics paper <https://dx.doi.org/10.1093/bioinformatics/btab503>`_.
+If you are also using data from a specific dataset we host, please also cite
+the original authors of that dataset (visible under 'Info & Download' while viewing that dataset).
 
 If you want us to add a single cell dataset to the website http://cells.ucsc.edu, 
 please contact us at cells@ucsc.edu. We are happy to add any dataset.
