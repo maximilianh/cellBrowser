@@ -3,7 +3,7 @@ Loading a dataset
 
 Once you have found a dataset of interest on https://cells.ucsc.edu, it is
 very easy to load it into your favorite analysis environment. (Let us know if 
-something if we are missing one below.)
+the commands below do not work in your environment.)
 
 First, download the expression matrix and the meta data, usually in a Unix terminal::
 
