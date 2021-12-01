@@ -1,0 +1,121 @@
+#! /usr/bin/env python3
+
+import json, sys, operator, argparse, os, urllib.request, subprocess
+from datetime import datetime, timedelta, date
+
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Update 'News' section in desc.conf and update sitemap.txt for RR")
+parser.add_argument("-r","--run", action='store_true',
+    help='run script to update news and sitemap')
+args = parser.parse_args()
+
+def parseRRdatasets():
+    # Builds dictionary of datasets currently on the RR
+    rr = dict() # will contain rr dataset.json file
+    rr_info = dict() # a smaller dict that contains only name/shortLabel
+    with urllib.request.urlopen("https://cells.ucsc.edu/dataset.json") as url:
+        rr = json.loads(url.read().decode())
+    for dataset in rr["datasets"]:
+        dname = dataset["name"]
+        dshort = dataset["shortLabel"]
+        rr_info[dname] = dshort
+    
+    return rr_info
+
+def main():
+    if args.run == True:
+        # From https://stackoverflow.com/questions/19216334/python-give-start-and-end-of-week-data-from-a-given-date
+        # and https://www.programiz.com/python-programming/datetime/current-datetime
+        # Get date for Monday, so that all datasets added in the last week show up under the same date
+        today = date.today()
+        start = today - timedelta(days=today.weekday())
+        #end = start + timedelta(days=6)
+        start = start.strftime('%d-%b-%Y')
+        #end = end.strftime('%d-%b-%Y')
+
+        # File should contain RR datasets
+        # First run of this script will generate this file, 
+        # move it out of the way to regenerate, though this means that
+        # everything will be noted as being released on the same day
+        rr_datasets_path = "/hive/data/inside/cells/rr.datasets.txt"
+
+        # This should only happen if this is the first time the script is run
+        # or if previous version is moved/deleted
+        if not os.path.exists(rr_datasets_path):
+            rr_info = parseRRdatasets()
+            for dataset in rr_info.keys():
+                shortLabel = rr_info[dataset]
+                line =  start + "\t" + dataset + "\t" + shortLabel + "\n"
+                with open(rr_datasets_path, "a") as rr_datasets:
+                    rr_datasets.write(line)
+            rr_datasets.close()
+        else: # This is the main part of the function that prints out the html for a news update
+            rr_info = parseRRdatasets()
+
+            # Parse the old rr.datasets.txt file so we know what's already out there
+            old_names = set()
+            old_datasets = open(rr_datasets_path,"r")
+            for line in old_datasets:
+                splitLine = line.strip().split("\t")
+                name = splitLine[1]
+                old_date = splitLine[0]
+                # Remove entry from rr_info dict if it existed in rr_datasets_file
+                # and if the date in the first col of the file is older than the current Monday
+                if name in rr_info.keys() and old_date < start:
+                    del rr_info[name]
+                old_names.add(name) 
+            old_datasets.close()
+
+            sitemap = open("/hive/data/inside/cells/sitemap.cells.txt", "r")
+            sitemap_set = set()
+            for line in sitemap:
+                sitemap_set.add(line)
+            sitemap.close()
+
+            if len(rr_info) > 0:
+                # Print out HTML to be put into the /hive/data/inside/cells/datasets/desc.conf 
+                old_datasets = open(rr_datasets_path,"a")
+                sitemap = open("/hive/data/inside/cells/sitemap.cells.txt", "a")
+                #html_out = open("/hive/data/inside/cells/news/datasets.html", "w")
+                #basic_header = open("/hive/data/inside/cells/news/basic.html", "r")
+                date_out = "/hive/data/inside/cells/news/perDate/" + start + ".html"
+                html_out = open(date_out, "w")
+                
+
+                #html_out.write(basic_header.read())
+
+                month=start.split("-")[1]
+                day=start.split("-")[0]
+                year=start.split("-")[2]
+                day_to_print=month + " " + day + ", " + year
+                #print("<p><b>" + day_to_print + "</b></p>")
+                html_out.write("<p><b>" + day_to_print + "</b></p>\n")
+                #print("<p>These datasets are now available:</p>\n<ul>")
+                html_out.write("<p>These datasets are now available:</p>\n<ul>\n")
+                for entry in rr_info:
+                    label = rr_info[entry]
+                    line = start + "\t" + entry + "\t" + label + "\n"
+                    if entry not in old_names:
+                        old_datasets.write(line)
+                    #print("  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>")
+                    html_out.write("  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>\n")
+
+                    urlline = "https://" + entry + ".cells.ucsc.edu\n"
+                    if urlline not in sitemap_set:
+                        sitemap.write(urlline)
+
+                #print("</ul>")
+                html_out.write("</ul>\n")
+                html_out.close()
+
+                # From https://stackoverflow.com/questions/13613336/how-do-i-concatenate-text-files-in-python
+                filenames = ['/hive/data/inside/cells/news/basic.html', date_out] #'/hive/data/inside/cells/news/datasets.html', '/hive/data/inside/cells/news/datasets_old.html']
+                with open('/hive/data/inside/cells/news/combined.html','w') as outfile:
+                    for fname in filenames:
+                        print(fname)
+                        with open(fname) as infile:
+                            outfile.write(infile.read())
+
+if __name__ == "__main__":
+    main()
