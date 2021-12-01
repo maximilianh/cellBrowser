@@ -11,6 +11,10 @@ There is a UCSC Cell Browser website available at http://cells.ucsc.edu, which i
 a handful of datasets from repositories like HCA, CIRM, and GEO as well as user
 contributed ones. We are happy to add your favorite dataset to this, you will just need
 to send us the files or a link to where we can download them to cells@ucsc.edu. 
+If you use the UCSC Cell Browser in your research, please cite
+`our Bioinformatics paper <https://dx.doi.org/10.1093/bioinformatics/btab503>`_.
+If you are also using data from a specific dataset we host, please also cite
+the original authors of that dataset (visible under 'Info & Download').
 
 The documentation on this website describes how you can create a Cell Browser for
 your own data and make it available through your own web server.
