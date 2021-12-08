@@ -2498,7 +2498,8 @@ var cellbrowser = function() {
          htmls.push('<a href="#" class="dropdown-toggle" data-toggle="dropdown" data-submenu role="button" aria-haspopup="true" aria-expanded="false">Help</a>');
          htmls.push('<ul class="dropdown-menu">');
          htmls.push('<li><a href="#" id="tpAboutButton">About</a></li>');
-         htmls.push('<li><a href="#" id="tpTutorialButton">Tutorial</a></li>');
+         htmls.push('<li><a href="https://cellbrowser.readthedocs.io/en/master/interface.html" target=_blank id="tpQuickstartButton">How to use this website</a></li>');
+         htmls.push('<li><a href="#" id="tpTutorialButton">Interactive Tutorial</a></li>');
          htmls.push('<li><a target=_blank href="https://github.com/maximilianh/cellBrowser#readme" id="tpGithubButton">Setup your own cell browser</a></li>');
          htmls.push('</ul>'); // Help dropdown-menu
          htmls.push('</li>'); // Help dropdown container
