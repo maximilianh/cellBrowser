@@ -2387,9 +2387,9 @@ var cellbrowser = function() {
         htmls.push("<p><b>Written by:</b> Maximilian Haeussler, Nikolay Markov (U Northwestern), Brian Raney, Lucas Seninge</p>");
         htmls.push("<p><b>Testing / User interface / Documentation / Data import / User support:</b> Matt Speir, Brittney Wick</p>");
         htmls.push("<p><b>Code contributions by:</b> Pablo Moreno (EBI, UK)</p>");
-        htmls.push("<p><b>Documentation:</b> <a target=_blank href='https://cellbrowser.readthedocs.io/'>Readthedocs</a></p>");
-        htmls.push("<p><b>Github Repo: </b><a target=_blank href='https://github.com/maximilianh/cellBrowser/'>cellBrowser</a></p>");
-        htmls.push("<p><b>Paper: </b><a target=_blank href='https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btab503/6318386'>Speir et al, Bioinformatics 2021, DOI:10.1093/bioinformatics/btab503/6318386</a></p>");
+        htmls.push("<p><b>Documentation:</b> <a class='link' target=_blank href='https://cellbrowser.readthedocs.io/'>Readthedocs</a></p>");
+        htmls.push("<p><b>Github Repo: </b><a class='link' target=_blank href='https://github.com/maximilianh/cellBrowser/'>cellBrowser</a></p>");
+        htmls.push("<p><b>Paper: </b><a class='link' target=_blank href='https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btab503/6318386'>Speir et al, Bioinformatics 2021, DOI:10.1093/bioinformatics/btab503/6318386</a></p>");
 
         showDialogBox(htmls, title, {showClose:true, height:dlgHeight, width:500});
     }
