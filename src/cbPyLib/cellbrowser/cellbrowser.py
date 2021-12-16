@@ -714,16 +714,17 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
         # must read first line now to get number of fields
         row1 = nextEl(ifh)
         headers = ["col"+str(i) for i in range(0, len(row1))]
+        rawHeaders = headers
         Record = namedtuple('tsvCsvRec', headers)
         savedLines = [Record(*row1)]
     else:
         savedLines = []
-        headers = nextEl(ifh)
-        headers = sanitizeHeaders(headers)
+        rawHeaders = nextEl(ifh)
+        headers = sanitizeHeaders(rawHeaders)
         Record = namedtuple('tsvCsvRec', headers)
 
     if headerIsRow:
-        yield headers
+        yield rawHeaders # the calling script wants the *real* headers, e.g. "my.name", not "my_name" instead
 
     lineCount = 0
     for fields in itertools.chain(savedLines, ifh):
