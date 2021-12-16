@@ -860,6 +860,7 @@ var cellbrowser = function() {
         let topName = datasetInfo.name.split("/")[0];
         if (pageAtUcsc()) {
             if (datasetInfo.name!=="") {
+                // Only do this if this is not the root dataset
                 if ((datasetInfo.parents) && (datasetInfo.parents.length > 1)) {
                     // if the dataset is a collection
                     htmls.push("<b>Direct link to this collection for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
@@ -869,9 +870,18 @@ var cellbrowser = function() {
                     htmls.push("<b>Direct link to this plot for manuscripts: </b> https://"+topName+".cells.ucsc.edu");
                     htmls.push("<br>");
                 }
+
+            console.log(datasetInfo);
+
+            if ( datasetInfo.atacSearch) {
+                    htmls.push("<b>Gene model set for ATAC-seq peak search: </b>" + datasetInfo.atacSearch);
+                    htmls.push("<br>");
+            }
+
+            htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+
+                    "</small></p>");
             }
         }
-        htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+"</small></p>");
 
         $( "#pane1" ).html(htmls.join(""));
 

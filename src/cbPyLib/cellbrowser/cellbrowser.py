@@ -2892,6 +2892,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
     if not isfile(confFname):
         confFname = join(inDir, "desc.conf")
 
+    # old files don't have the outConf object yet
     if "fileVersions" not in outConf:
         outConf["fileVersions"] = {}
 
@@ -2938,6 +2939,10 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
     # import the unit description from cellbrowser.conf
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
+
+    # import the atachSearch attribute from cellbrowser.conf
+    if "atacSearch" in outConf and not "atacSearch" in summInfo:
+        summInfo["atacSearch"] = outConf["atacSearch"]
 
     # copy over the raw matrix file, usually this is a zip or gzip file
     if "rawMatrixFile" in summInfo:
@@ -2990,15 +2995,8 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
 
     writeJson(summInfo, outPath)
 
-    #if "descMd5s" not in outConf:
-        #outConf["descMd5s"] = {}
-
-    #outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
-
     # it's easier to have a single field that tells us if the desc.json is present
     if not "hasFiles" in outConf:
-        outConf["hasFiles"] = {}
-    #if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
         outConf["hasFiles"] = ["datasetDesc"]
 
     logging.debug("Wrote dataset description to %s" % outPath)
@@ -3294,6 +3292,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretMatrixIndex = join(outDir, "discretMat.json")
 
     genesAreRanges = inConf.get("atacSearch")
+
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
 
     # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
@@ -3757,6 +3756,9 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         oldBarInfo = lastConf["fileVersions"]["barcodes"]
         oldFeatInfo = lastConf["fileVersions"]["features"]
         origSize += oldBarInfo["size"] + oldFeatInfo["size"]
+        # very old files do not have a fileVersions object
+        if not "fileVersions" in outConf:
+            outConf["fileVersions"] = {}
         outConf["fileVersions"]["barcodes"] = oldBarInfo
         outConf["fileVersions"]["features"] = oldFeatInfo
 
@@ -4585,6 +4587,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         datasets.append(dsName)
 
         outConf = OrderedDict()
+        outConf["fileVersions"] = dict()
 
         todoConfigs = set()
 
@@ -4595,8 +4598,8 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             logging.debug("Adding %s" % inPath)
             todoConfigs.add(inPath)
         else:
-            convertDataset(inDir, inConf, outConf, datasetDir, redo)
             copyGenes(inConf, outConf, outDir)
+            convertDataset(inDir, inConf, outConf, datasetDir, redo)
 
         # find all parent cellbrowser.conf-files
         if dataRoot is None:
