@@ -716,16 +716,17 @@ def lineFileNextRow(inFile, headerIsRow=False, noHeaders=False) :
         # must read first line now to get number of fields
         row1 = nextEl(ifh)
         headers = ["col"+str(i) for i in range(0, len(row1))]
+        rawHeaders = headers
         Record = namedtuple('tsvCsvRec', headers)
         savedLines = [Record(*row1)]
     else:
         savedLines = []
-        headers = nextEl(ifh)
-        headers = sanitizeHeaders(headers)
+        rawHeaders = nextEl(ifh)
+        headers = sanitizeHeaders(rawHeaders)
         Record = namedtuple('tsvCsvRec', headers)
 
     if headerIsRow:
-        yield headers
+        yield rawHeaders # the calling script wants the *real* headers, e.g. "my.name", not "my_name" instead
 
     lineCount = 0
     for fields in itertools.chain(savedLines, ifh):
@@ -1432,37 +1433,18 @@ class MatrixMtxReader:
         " yield (geneId, symbol, array) tuples from gene expression file. "
         mat = self.mat
         genes = self.genes
-
-        if len(genes) != len(set(genes)):
-            logging.warning('duplicate geneIds present')
-
-        skipIds = 0
-        # for i in range(0, len(self.genes)):
-        for i, geneId in enumerate(self.genes):
+        for i in range(0, len(self.genes)):
+            geneId = genes[i]
+            geneSym = geneId
             if "|" in geneId:
                 geneId, geneSym = geneId.split("|")[:2]
-            else:
-                if self.geneToSym is None:
-                    geneSym = geneId
-                else:
-                    geneSym = self.geneToSym.get(geneId.split(".")[0])
-                    logging.debug("%s -> %s" % (geneId, geneSym))
+            if self.geneToSym and geneSym is not None:
+                geneSym = self.geneToSym.get(geneId)
 
-                    if geneSym is None:
-                        skipIds += 1
-                        logging.warning("line %d: could not find symbol for ID %s, looks like it is not a valid gene ID, check geneIdType setting in cellbrowser.conf or gene symbol mapping tables" % (i, geneId))
-                        geneSym = geneId
-
-                    if geneSym.isdigit():
-                        logging.warning("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (i, geneSym))
-
-            if i % 1000 == 0:
+            if i%1000==0:
                 logging.info("%d genes written..." % i)
             arr = mat.getrow(i).toarray()
-            yield geneId, geneSym, arr
-
-        if skipIds != 0:
-            logging.warning("Kept %d genes as original IDs, due to duplication or unknown ID" % skipIds)
+            yield (geneId, geneSym, arr)
 
 class MatrixTsvReader:
     " open a .tsv or .csv file and yield rows via iterRows. gz and csv OK."
@@ -2908,6 +2890,7 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
     if not isfile(confFname):
         confFname = join(inDir, "desc.conf")
 
+    # old files don't have the outConf object yet
     if "fileVersions" not in outConf:
         outConf["fileVersions"] = {}
 
@@ -2954,6 +2937,10 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
     # import the unit description from cellbrowser.conf
     if "unit" in outConf and not "unitDesc" in summInfo:
         summInfo["unitDesc"] = outConf["unit"]
+
+    # import the atachSearch attribute from cellbrowser.conf
+    if "atacSearch" in outConf and not "atacSearch" in summInfo:
+        summInfo["atacSearch"] = outConf["atacSearch"]
 
     # copy over the raw matrix file, usually this is a zip or gzip file
     if "rawMatrixFile" in summInfo:
@@ -3006,15 +2993,8 @@ def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=No
 
     writeJson(summInfo, outPath)
 
-    #if "descMd5s" not in outConf:
-        #outConf["descMd5s"] = {}
-
-    #outConf["descMd5s"]["datasetDesc"] = md5ForFile(confFname)[:MD5LEN]
-
     # it's easier to have a single field that tells us if the desc.json is present
     if not "hasFiles" in outConf:
-        outConf["hasFiles"] = {}
-    #if ("descMd5s" in outConf) and ("datasetDesc" in outConf["descMd5s"]):
         outConf["hasFiles"] = ["datasetDesc"]
 
     logging.debug("Wrote dataset description to %s" % outPath)
@@ -3310,6 +3290,7 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
     discretMatrixIndex = join(outDir, "discretMat.json")
 
     genesAreRanges = inConf.get("atacSearch")
+
     matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
 
     # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
@@ -3776,8 +3757,8 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
         oldBarInfo = lastConf["fileVersions"]["barcodes"]
         oldFeatInfo = lastConf["fileVersions"]["features"]
         origSize += oldBarInfo["size"] + oldFeatInfo["size"]
-        if 'fileVersions' not in outConf:
-            logging.debug("fileVersions doesn't exist in outConf. Creating it!")
+        # very old files do not have a fileVersions object
+        if not "fileVersions" in outConf:
             outConf["fileVersions"] = {}
         outConf["fileVersions"]["barcodes"] = oldBarInfo
         outConf["fileVersions"]["features"] = oldFeatInfo
@@ -4032,7 +4013,7 @@ def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
     coordStr = json.dumps(coordsList, indent=4)
-    matrixFname = args.get("exprMatrix", "matrix.mtx.gz")
+    matrixFname = args.get("exprMatrix", "exprMatrix.tsv.gz")
 
     conf = """
 # This is a bare-bones, auto-generated Cell Browser config file.
@@ -4158,7 +4139,6 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     sampleNames = ad.obs.index.tolist()
     with gzip.open(bc_file, 'wt') as f:
         f.write("\n".join(sampleNames))
-
 
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
@@ -4688,6 +4668,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         datasets.append(dsName)
 
         outConf = OrderedDict()
+        outConf["fileVersions"] = dict()
 
         todoConfigs = set()
 
@@ -4698,8 +4679,8 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             logging.debug("Adding %s" % inPath)
             todoConfigs.add(inPath)
         else:
-            convertDataset(inDir, inConf, outConf, datasetDir, redo)
             copyGenes(inConf, outConf, outDir)
+            convertDataset(inDir, inConf, outConf, datasetDir, redo)
 
         # find all parent cellbrowser.conf-files
         if dataRoot is None:
