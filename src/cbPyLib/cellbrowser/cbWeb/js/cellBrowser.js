@@ -956,7 +956,7 @@ var cellbrowser = function() {
             console.log(datasetInfo);
 
             if ( datasetInfo.atacSearch) {
-                    htmls.push("<b>Gene model set for ATAC-seq peak search: </b>" + datasetInfo.atacSearch);
+                    htmls.push("<b>ATAC-seq search gene models: </b>" + datasetInfo.atacSearch);
                     htmls.push("<br>");
             }
 
