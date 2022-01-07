@@ -4120,10 +4120,10 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
-    logging.info(f"Writing matrix to {mtxfile}, type={dataType}") # necessary, as scanpy has the samples on the rows
+    logging.info("Writing matrix to %s, type=%s" % (mtxfile, dataType)) # scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
 
-    logging.info(f"Compressing matrix to {mtxfile}.gz") # necessary, as scanpy has the samples on the rows
+    logging.info("Compressing matrix to %s.gz" % mtxfile) # necessary, as scanpy has the samples on the rows
     # runGzip(mtxfile, mtxfile)  # this is giving me trouble with the same filename
     with open(mtxfile,'rb') as mtx_in:
         with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
