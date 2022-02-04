@@ -372,6 +372,7 @@ Step 1: Gather required files
 """"
 
 You will the following three files:
+
 * Expression matrix with cell names as columns and peak ranges as rows. 
 * Cell annotations/metadata
 * Layout coordinats (e.g. UMAP)
