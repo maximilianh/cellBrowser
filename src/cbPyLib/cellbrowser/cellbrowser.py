@@ -2453,7 +2453,7 @@ def runCommand(cmd, verbose=False):
     return 0
 
 def readMtxDims(fname):
-    " return the x,y dimensions of the mtx file "
+    " return the rowCount,colCount dimensions of the mtx file. Usually columns = cells "
     logging.debug("Opening MTX file %s" % fname)
     headerFound = False
     for line in openFile(fname):
@@ -2478,19 +2478,26 @@ def readMtxDims(fname):
 def checkMtx(mtxFname, geneFname, barcodeFname):
     " make sure that the dimensions of the mtx file match the sizes of the barcodes and genes files "
     logging.debug("Checking %s" % mtxFname)
-    geneCount, cellCount = readMtxDims(mtxFname)
+    rowCount, colCount = readMtxDims(mtxFname)
+    # usually columns = number of cells
     geneIds, barcodes = readGenesBarcodes(geneFname, barcodeFname)
     logging.debug("%d geneIds, %d barcodes" % (len(geneIds), len(barcodes)))
-    if len(geneIds) != geneCount:
+    if len(geneIds) == colCount:
+        errAbort("Looks like this MTX file has the genes on the columns. Please transpose the matrix, "
+        "then re-run this command.")
+
+    if len(geneIds) != rowCount:
         errAbort("The number of rows in the file %s (%d) is different from the number of lines in the file %s (%d). "
                 "The number should be identical and usually is the number of genes/features. "
                 "This suggests a problem in the way the data was exported. You may want to remove header lines. "
-                % (mtxFname, len(geneIds), geneFname, geneCount))
-    if len(barcodes) != cellCount:
+                % (mtxFname, len(geneIds), geneFname, rowCount))
+    if len(barcodes) != colCount:
         errAbort("The number of columns in the file %s is different from the number of lines in the file %s. "
                 "The number should be identical and usually is the number of genes/features. "
                 "This suggests a problem in the way the data was exported. You may want to remove header lines. "
                 % (mtxFname, barcodeFname))
+
+    return False
 
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, outConf, matType):
     """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
@@ -4690,7 +4697,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             if not "fileVersions" in outConf:
                 outConf = loadConfig(inConfFname, ignoreName=True)
                 outConf["fileVersions"] = {}
-            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, outConf["name"])
+            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, dsName)
             todoConfigs.update(parentFnames)
             outConf["parents"] = parentInfos
             if "name" in outConf:
