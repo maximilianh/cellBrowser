@@ -2759,7 +2759,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
         sanNames.add(sanName)
 
         outFname = join(outDir, sanName+".tsv")
-        print("===", repr(outFname))
         logging.debug("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
@@ -3941,6 +3940,10 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     needFilterMatrix = True
 
+    oldConfFname = join(datasetDir, "dataset.json")
+    logging.info("Loading old config from %s" % oldConfFname)
+    oldConf = readJson(oldConfFname, keepOrder=True)
+
     if doMeta or doMatrix or redo in ["meta", "matrix"]:
         # convertMeta also compares the sample IDs between meta and matrix to determine if the meta file 
         # needs reordering or trimming (=if the meta contains more cells than the matrix)
@@ -3948,9 +3951,6 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     else:
         sampleNames = readSampleNames(outMetaFname)
         needFilterMatrix = False
-        oldConfFname = join(datasetDir, "dataset.json")
-        logging.info("Loading old config from %s" % oldConfFname)
-        oldConf = readJson(oldConfFname, keepOrder=True)
         outConf.update(oldConf)
 
     if doMatrix or redo=='matrix':
@@ -3978,6 +3978,14 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal", "clusterPngDir"]:
         copyConf(inConf, outConf, tag)
+
+    # for the news generator and for future logging, note when this dataset was built for the first time into this directory
+    # and also when it was built most recently
+    if "firstBuildTime" in oldConf:
+        outConf["firstBuildTime"] = oldConf["firstBuildTime"]
+    else:
+        outConf["firstBuildTime"] = datetime.datetime.now().isoformat()
+    outConf["lastBuildTime"] = datetime.datetime.now().isoformat()
 
     makeFilesTxt(outConf, datasetDir)
 
@@ -4071,7 +4079,7 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
     genes = [str(x)+sep+str(y) for (x,y) in geneIdAndSyms]
     return genes
 
-def geneStringsFromVar(var, sep):
+def geneStringsFromVar(var, sep="|"):
     " return a list of strings in format geneId<sep>geneSymbol "
     if "gene_ids" in var:
         genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False, sep=sep)
