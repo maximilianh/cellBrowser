@@ -3799,6 +3799,10 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 def readJson(fname, keepOrder=False):
     " read .json and return as a dict "
     logging.debug("parsing json file %s" % fname)
+    if not isfile(fname):
+        logging.debug("%s does not exist, returning empty dict" % fname)
+        return OrderedDict()
+
     if keepOrder:
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         inStr = readFile(fname)
@@ -3811,8 +3815,6 @@ def readJson(fname, keepOrder=False):
 
 def orderClusters(labelCoords, outConf):
     " given the cluster label coordinates, order them by similarity "
-    #labelCoords = readJson(clusterLabelFname)
-
     # create dict with label1 -> list of (dist, label2)
     dists = defaultdict(list)
     for i, (x1, y1, label1) in enumerate(labelCoords):

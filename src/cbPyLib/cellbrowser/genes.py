@@ -428,6 +428,7 @@ def bedToJson(db, geneIdType, jsonFname):
     ofh.write(outs)
     ofh.close()
     logging.info("Wrote %s" % jsonFname)
+    logging.info("If this is a new .json file and you are on hgwdev, copy it now to /usr/local/apache/htdocs-cells/downloads/cellbrowserData/genes/ and note this directory for the dataset release push to the RR. The reason is that users may want to cbBuild using this gene transcript set and that is easier if we provide the .json file")
 
     #fileInfo[code] = {"label":label, "file" : jsonFname, "md5" :md5}
 
