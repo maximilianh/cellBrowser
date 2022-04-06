@@ -1859,8 +1859,16 @@ def digitize_np(arr, matType):
     return digArr, bins
 
 def maxVal(a):
-    if numpyLoaded or ('numpy' in sys.modules and isinstance(a, np.ndarray)): # second part is for the case that an old numpy is loaded isNumpy is false but still an ndarray
+    if numpyLoaded:
         return np.amax(a)
+    # if MTX old old numpy is loaded, so isNumpy is false but var is still an ndarray - weird construct to avoid syntax error on undefined "np"
+    elif 'np' in dir():
+        if isinstance(a, np.ndarray):
+            return np.amax(a)
+    elif 'numpy' in sys.modules:
+        import numpy
+        if isinstance(a, numpy.ndarray):
+            return numpy.amax(a)
     else:
         return max(a)
 
@@ -1924,7 +1932,8 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
 
-        if ('numpy' in sys.modules and isinstance(exprArr, np.ndarray)): # old numpy is loaded isNumpy is false but still an ndarray
+        # if an old numpy version is loaded isNumpy is false, but the type may still be a numpy array -> force to a list
+        if str(type(exprArr))=="<type 'numpy.ndarray'>":
             exprArr = exprArr.tolist()[0]
         exprStr = array.array(arrType, exprArr).tostring()
         minVal = min(exprArr)
