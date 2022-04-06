@@ -1936,6 +1936,13 @@ def exprEncode(geneDesc, exprArr, matType):
         if str(type(exprArr))=="<type 'numpy.ndarray'>":
             exprArr = exprArr.tolist()[0]
         exprStr = array.array(arrType, exprArr).tostring()
+
+        # Python 3.9 removed tostring()
+        if sys.version_info >= (3, 2):
+            exprStr = array.array(arrType, exprArr).tobytes()
+        else:
+            exprStr = array.array(arrType, exprArr).tostring()
+
         minVal = min(exprArr)
 
     if isPy3:
