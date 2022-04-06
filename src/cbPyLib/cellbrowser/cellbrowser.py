@@ -1923,10 +1923,12 @@ def exprEncode(geneDesc, exprArr, matType):
             arrType = "L"
         else:
             assert(False) # internal error
-
-        if ('numpy' in sys.modules and isinstance(exprArr, np.ndarray)): # old numpy is loaded isNumpy is false but still an ndarray
-            exprArr = exprArr.tolist()[0]
-        exprStr = array.array(arrType, exprArr).tostring()
+        
+        if sys.version_info >= (3, 2):
+            exprStr = array.array(arrType, exprArr).tobytes()
+        else:
+            exprStr = array.array(arrType, exprArr).tostring()
+        
         minVal = min(exprArr)
 
     if isPy3:
