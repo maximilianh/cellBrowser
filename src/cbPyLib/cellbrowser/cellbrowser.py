@@ -1859,7 +1859,7 @@ def digitize_np(arr, matType):
     return digArr, bins
 
 def maxVal(a):
-    if numpyLoaded:
+    if numpyLoaded or ('numpy' in sys.modules and isinstance(a, np.ndarray)): # second part is for the case that an old numpy is loaded isNumpy is false but still an ndarray
         return np.amax(a)
     else:
         return max(a)
@@ -1924,6 +1924,8 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
 
+        if ('numpy' in sys.modules and isinstance(exprArr, np.ndarray)): # old numpy is loaded isNumpy is false but still an ndarray
+            exprArr = exprArr.tolist()[0]
         exprStr = array.array(arrType, exprArr).tostring()
         minVal = min(exprArr)
 
@@ -4137,10 +4139,10 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
-    logging.info(f"Writing matrix to {mtxfile}, type={dataType}") # necessary, as scanpy has the samples on the rows
+    logging.info("Writing matrix to %s, type=%s" % (mtxfile, dataType)) # necessary, as scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
 
-    logging.info(f"Compressing matrix to {mtxfile}.gz") # necessary, as scanpy has the samples on the rows
+    logging.info("Compressing matrix to %s.gz" % mtxfile) # necessary, as scanpy has the samples on the rows
     # runGzip(mtxfile, mtxfile)  # this is giving me trouble with the same filename
     with open(mtxfile,'rb') as mtx_in:
         with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
@@ -5610,10 +5612,18 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
     pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
+    sampleCountPostFilter = len(adata.obs)
+
     if len(list(adata.obs_names))==0:
         errAbort("No cells left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
     if len(list(adata.var_names))==0:
         errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
+
+    removedRatio = 1.0 - (float(sampleCountPostFilter) / float(sampleCount))
+    if removedRatio > 0.5:
+        logging.warn("!! The filtering removed more than 50% of cells - are you sure this is intentional? Consider lowering minGenes/minCells in scanpy.conf")
+    if removedRatio > 0.9:
+        errAbort("More than 90% of cells were filtered out, this is unlikely to make sense")
 
     if not "n_counts" in list(adata.obs.columns.values):
         logging.debug("Adding obs.n_counts")
