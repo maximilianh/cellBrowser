@@ -338,7 +338,7 @@ def cbSeuratCli():
 
     writeCellbrowserConf(datasetName, coords, cbConfPath, args=confArgs)
 
-    generateHtmls(datasetName, outDir, desc = {"supplFiles": [{"label":"Seurat RDS", "file":inMatrix}]})
+    generateHtmls(datasetName, outDir, desc = {"supplFiles": [{"label":"Seurat RDS", "file":basename(rdsPath)}]})
     copyPkgFile("sampleConfig/desc.conf", outDir)
 
 def cbImportSeurat_parseArgs(showHelp=False):
