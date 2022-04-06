@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+import argparse, pathlib
+
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Creates blocks of html code for colors on track description pages.")
+parser.add_argument('colorFile', type=str, help='Two column file (csv or tsv), can be same as \
+    used in cell browser. Column 1 is metadata value (e.g. cortex-dev). Column 2 is a hex color.')
+
+args = parser.parse_args()
+
+#colors = dict()
+
+# From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+fileType = pathlib.Path(args.colorFile).suffix
+
+# It's assumed that the colors file contains hexcodes, though maybe we should detect that
+# and convert via webcolors if needed
+dfh = open(args.colorFile, 'r')
+
+print("<p>\n<ul>")
+for line in dfh:
+    if fileType == ".csv":
+        splitLine = line.strip().split(",", 1)
+    if fileType == ".tsv" or fileType == '.tab':
+        splitLine = line.strip().split("\t", 1)
+    name = splitLine[0]
+    color = splitLine[1]
+    print("<li><span style='border: 2px inset #000000;\n",
+    "background-color:" + color + ";'>&nbsp;&nbsp;</span> - " + name)
+print("</ul>")

@@ -4548,6 +4548,7 @@ var cellbrowser = function() {
         loadCoordSet(coordIdx);
         changeUrl({"layout":coordIdx, "zoom":null});
         renderer.coordIdx = coordIdx;
+        setLabelField(fieldName);
         // remove the focus from the combo box
         removeFocus();
     }
