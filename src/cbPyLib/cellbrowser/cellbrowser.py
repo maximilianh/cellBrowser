@@ -2708,6 +2708,7 @@ def parseMarkerTable(filename, geneToSym):
     for row in reader:
         clusterName = row[clusterIdx]
         geneId = row[geneIdx]
+
         scoreVal = float(row[scoreIdx])
         otherFields = row[otherStart:otherEnd]
 
@@ -2715,6 +2716,9 @@ def parseMarkerTable(filename, geneToSym):
             otherColumns[colIdx].append(val)
 
         geneSym = convIdToSym(geneToSym, geneId, printWarning=False)
+
+        if "|" in geneId:
+            geneId = geneId.split("|")[0]
 
         newRow = []
         newRow.append(geneId)

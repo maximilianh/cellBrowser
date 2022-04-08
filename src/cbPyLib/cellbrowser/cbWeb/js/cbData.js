@@ -724,7 +724,8 @@ function CbDbFile(url) {
         /* for both gene and ATAC mode: */
         /* return an array [start, end, name] given a locus description (=a string: gene symbol or chr|start|end) */
         var off = null;
-        if (name.includes("|")) { // atac mode: name is chrom|start|end
+        //if (name.includes("|")) { // atac mode: name is chrom|start|end
+        if (self.peakOffsets !== null) { // atac mode: name is chrom|start|end
             let pos = name.split("|");
             off = self.findAtacOffsets(pos[0], parseInt(pos[1]), parseInt(pos[2]));
         }
