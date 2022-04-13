@@ -3189,6 +3189,7 @@ def parseGeneInfo(geneToSym, fname):
             continue
         row = line.rstrip("\r\n").split(sep)
         sym = row[0]
+
         if validSyms is not None and sym not in validSyms:
             sym = geneToSym.get(sym)
             if sym is None:
@@ -3239,7 +3240,7 @@ def guessGeneIdType(inputObj):
             matIter.open(matrixFname, usePyGzip=True)
             geneId, sym, exprArr = nextEl(matIter.iterRows())
             matIter.close()
-            geneIds = [geneId]
+            geneIds = [geneId] # only use the first geneId for the guessing
 
     geneId = geneIds[0]
 
@@ -3492,13 +3493,36 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
+def readValidGenes(outDir):
+    " the output directory contains an exprMatrix.json file that contains all valid gene symbols. We're reading those here "
+    matrixJsonFname = join(outDir, "exprMatrix.json")
+    validGenes = list(readJson(matrixJsonFname))
+
+    if "|" in validGenes[0]:
+        newSyms = []
+        geneToSym = {}
+        for g in validGenes:
+            if "|" in g:
+                parts = g.split("|")
+                geneId = parts[0]
+                sym = parts[1]
+
+            newSyms.append( sym )
+            geneToSym[geneId] = sym
+
+        return newSyms, geneToSym
+
+    return validGenes, None
+
 def readQuickGenes(inConf, geneToSym, outDir, outConf):
     " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
 
-        matrixJsonFname = join(outDir, "exprMatrix.json")
-        validGenes = set(readJson(matrixJsonFname))
+        validGenes, geneToSymFromMatrix = readValidGenes(outDir)
+
+        if geneToSymFromMatrix is not None:
+            geneToSym = geneToSymFromMatrix
 
         fname = getAbsPath(inConf, "quickGenesFile")
         quickGenes = parseGeneInfo(geneToSym, fname)
@@ -3512,6 +3536,9 @@ def readQuickGenes(inConf, geneToSym, outDir, outConf):
                 logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
             else:
                 validQuickGenes.append(quickGeneInfo)
+
+        if len(validQuickGenes)==0:
+            errAbort("No single gene in the quickGenes file is a valid identifier. Did you really use the gene symbol, not the ID? If unsure, please contact us at cells@ucsc.edu")
 
         outConf["quickGenes"] = validQuickGenes
         logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
