@@ -4108,7 +4108,7 @@ var cellbrowser = function() {
             maxColLen = Math.max(maxColLen, geneId.length);
         }
 
-        var lineLen = 38;
+        var lineLen = 34; // this is a very rough number. It depends on the size of the characters. 37 seems to work OK for us on Chrome and Firefox.
         var colsPerRow = Math.floor(lineLen/maxColLen);
         //var colsPerRow = Math.round(tableWidth / cellWidth);
         var cellWidth = Math.round(tableWidth/colsPerRow);
