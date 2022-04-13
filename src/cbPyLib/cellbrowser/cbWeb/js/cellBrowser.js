@@ -4098,22 +4098,22 @@ var cellbrowser = function() {
             return;
         }
 
-        htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
+        //htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         // need max length of gene names to make number of columns
-        var maxColLen = 0;
-        for (var i=0; i < geneInfos.length; i++) {
-            var geneId = geneInfos[i][0];
-            maxColLen = Math.max(maxColLen, geneId.length);
-        }
+        //var maxColLen = 0;
+        //for (var i=0; i < geneInfos.length; i++) {
+            //var geneId = geneInfos[i][0];
+            //maxColLen = Math.max(maxColLen, geneId.length);
+        //}
 
-        var lineLen = 34; // this is a very rough number. It depends on the size of the characters. 37 seems to work OK for us on Chrome and Firefox.
-        var colsPerRow = Math.floor(lineLen/maxColLen);
+        //var lineLen = 34; // this is a very rough number. It depends on the size of the characters. 37 seems to work OK for us on Chrome and Firefox.
+        //var colsPerRow = Math.floor(lineLen/maxColLen);
         //var colsPerRow = Math.round(tableWidth / cellWidth);
-        var cellWidth = Math.round(tableWidth/colsPerRow);
+        //var cellWidth = Math.round(tableWidth/colsPerRow);
 
-        var currWidth = 1;
+        //var currWidth = 1;
         var i = 0;
         while (i < geneInfos.length) {
             var geneInfo = geneInfos[i];
@@ -4122,18 +4122,31 @@ var cellbrowser = function() {
             if (geneDesc===undefined)
                 geneDesc = geneId;
 
-            if (((i % colsPerRow) === 0) && (i!==0)) {
-                htmls.push("</tr><tr>");
-            }
+            //if (((i % colsPerRow) === 0) && (i!==0)) {
+                //htmls.push("</tr><tr>");
+            //}
             if (geneId in db.geneOffsets)
-                htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="width:'+cellWidth+'px">'+geneId+'</td>');
+                //htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="width:'+cellWidth+'px">'+geneId+'</td>');
+                htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</span>');
             i++;
         }
-        htmls.push("</tr></table>");
+        //htmls.push("</tr></table>");
         htmls.push("</div>"); // divId
 
         if (doUpdate) {
             $('#'+divId).html(htmls.join(""));
+        }
+    }
+
+    function resizeGeneTableDivs() {
+        /* the size of the DIVs in the gene table depends on the size of the longest DIV in pixels and we know that only once the table is shown. so resize here now */
+        var tdEls = document.getElementById("tpGenes").querySelectorAll("span");
+        var maxWidth = 0;
+        for (var el of tdEls) {
+            maxWidth = Math.max(maxWidth, el.offsetWidth);
+        }
+        for (var el of tdEls) {
+            el.style.minWidth = maxWidth+"px";
         }
     }
 
@@ -5477,6 +5490,8 @@ var cellbrowser = function() {
         htmls.push("</div>"); // tpLeftSidebar
 
         $(document.body).append(htmls.join(""));
+
+        resizeGeneTableDivs();
 
         $("#tpLeftTabs").tabs();
         $('#tpLeftTabs').tabs("option", "active", 0); // open the first tab
