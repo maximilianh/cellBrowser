@@ -107,7 +107,8 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
         padding-right:1px; 
         border: 1px solid #AAA; 
         background: #DDDDDD; 
-        color:#AAAAAA 
+        color:#AAAAAA;
+        display: inline-block;
 }
 
 .tpGeneBarCellSelected { outline: 2px solid black}
