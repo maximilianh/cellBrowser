@@ -4108,7 +4108,7 @@ var cellbrowser = function() {
             maxColLen = Math.max(maxColLen, geneId.length);
         }
 
-        var lineLen = 38;
+        var lineLen = 34; // this is a very rough number. It depends on the size of the characters. 37 seems to work OK for us on Chrome and Firefox.
         var colsPerRow = Math.floor(lineLen/maxColLen);
         //var colsPerRow = Math.round(tableWidth / cellWidth);
         var cellWidth = Math.round(tableWidth/colsPerRow);
@@ -7035,8 +7035,13 @@ var cellbrowser = function() {
 
             htmls.push("<tr>");
             var geneId = row[0];
+
+            // old marker files still have the format geneId|sym, so tolerate this here
+            if (geneId.indexOf("|") > -1)
+                geneId = geneId.split("|")[0];
+
             var geneSym = row[1];
-            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
+            htmls.push("<td><a data-gene='"+geneId+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
             if (hubUrl!==null) {
                 var fullHubUrl = hubUrl+"&position="+geneSym+"&singleSearch=knownCanonical";
                 htmls.push("<a target=_blank class='link' style='margin-left: 10px; font-size:80%; color:#AAA' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>Genome</a>");

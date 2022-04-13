@@ -412,6 +412,9 @@ ExportToCellbrowser <- function(
   }
 
   firstPrefix <- names(slotMatrices)[1]
+  if (firstPrefix=="###")
+      firstPrefix = ""
+
   if (length(slotMatrices)==1)
       matSep = ""
   else

@@ -1859,8 +1859,16 @@ def digitize_np(arr, matType):
     return digArr, bins
 
 def maxVal(a):
-    if numpyLoaded or ('numpy' in sys.modules and isinstance(a, np.ndarray)): # second part is for the case that an old numpy is loaded isNumpy is false but still an ndarray
+    if numpyLoaded:
         return np.amax(a)
+    # if MTX old old numpy is loaded, so isNumpy is false but var is still an ndarray - weird construct to avoid syntax error on undefined "np"
+    elif 'np' in dir():
+        if isinstance(a, np.ndarray):
+            return np.amax(a)
+    elif 'numpy' in sys.modules:
+        import numpy
+        if isinstance(a, numpy.ndarray):
+            return numpy.amax(a)
     else:
         return max(a)
 
@@ -1923,12 +1931,18 @@ def exprEncode(geneDesc, exprArr, matType):
             arrType = "L"
         else:
             assert(False) # internal error
-        
+
+        # if an old numpy version is loaded isNumpy is false, but the type may still be a numpy array -> force to a list
+        if str(type(exprArr))=="<type 'numpy.ndarray'>":
+            exprArr = exprArr.tolist()[0]
+        exprStr = array.array(arrType, exprArr).tostring()
+
+        # Python 3.9 removed tostring()
         if sys.version_info >= (3, 2):
             exprStr = array.array(arrType, exprArr).tobytes()
         else:
             exprStr = array.array(arrType, exprArr).tostring()
-        
+
         minVal = min(exprArr)
 
     if isPy3:
@@ -2694,6 +2708,7 @@ def parseMarkerTable(filename, geneToSym):
     for row in reader:
         clusterName = row[clusterIdx]
         geneId = row[geneIdx]
+
         scoreVal = float(row[scoreIdx])
         otherFields = row[otherStart:otherEnd]
 
@@ -2701,6 +2716,9 @@ def parseMarkerTable(filename, geneToSym):
             otherColumns[colIdx].append(val)
 
         geneSym = convIdToSym(geneToSym, geneId, printWarning=False)
+
+        if "|" in geneId:
+            geneId = geneId.split("|")[0]
 
         newRow = []
         newRow.append(geneId)
@@ -3171,6 +3189,7 @@ def parseGeneInfo(geneToSym, fname):
             continue
         row = line.rstrip("\r\n").split(sep)
         sym = row[0]
+
         if validSyms is not None and sym not in validSyms:
             sym = geneToSym.get(sym)
             if sym is None:
@@ -3221,7 +3240,7 @@ def guessGeneIdType(inputObj):
             matIter.open(matrixFname, usePyGzip=True)
             geneId, sym, exprArr = nextEl(matIter.iterRows())
             matIter.close()
-            geneIds = [geneId]
+            geneIds = [geneId] # only use the first geneId for the guessing
 
     geneId = geneIds[0]
 
@@ -3474,13 +3493,36 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
+def readValidGenes(outDir):
+    " the output directory contains an exprMatrix.json file that contains all valid gene symbols. We're reading those here "
+    matrixJsonFname = join(outDir, "exprMatrix.json")
+    validGenes = list(readJson(matrixJsonFname))
+
+    if "|" in validGenes[0]:
+        newSyms = []
+        geneToSym = {}
+        for g in validGenes:
+            if "|" in g:
+                parts = g.split("|")
+                geneId = parts[0]
+                sym = parts[1]
+
+            newSyms.append( sym )
+            geneToSym[geneId] = sym
+
+        return newSyms, geneToSym
+
+    return validGenes, None
+
 def readQuickGenes(inConf, geneToSym, outDir, outConf):
     " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
 
-        matrixJsonFname = join(outDir, "exprMatrix.json")
-        validGenes = set(readJson(matrixJsonFname))
+        validGenes, geneToSymFromMatrix = readValidGenes(outDir)
+
+        if geneToSymFromMatrix is not None:
+            geneToSym = geneToSymFromMatrix
 
         fname = getAbsPath(inConf, "quickGenesFile")
         quickGenes = parseGeneInfo(geneToSym, fname)
@@ -3494,6 +3536,9 @@ def readQuickGenes(inConf, geneToSym, outDir, outConf):
                 logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
             else:
                 validQuickGenes.append(quickGeneInfo)
+
+        if len(validQuickGenes)==0:
+            errAbort("No single gene in the quickGenes file is a valid identifier. Did you really use the gene symbol, not the ID? If unsure, please contact us at cells@ucsc.edu")
 
         outConf["quickGenes"] = validQuickGenes
         logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
