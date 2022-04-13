@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 import anndata as ad
 import pandas as pd
-import csv
-import argparse
+import csv, sys, argparse
 
 def main():
 	parser=argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,description="Fetch colors from h5ad")
 	parser.add_argument('-i','--input_h5ad', help='input h5ad file')
 	parser.add_argument('-o','--output_file', help='output filename in .tsv format')
-	parser.add_argument('-c', '--color_names', help='tab-separated file of metadata keys and corresponding color values')
+	parser.add_argument('-c', '--color_names', help='tab-separated file of metadata keys and corresponding color values. Only needed if metadata field names do not match color values in uns.')
 	args=parser.parse_args()
+
+	# Print help message if no arguments are supplied
+	if len(sys.argv) == 1:
+		parser.print_help(sys.stderr)
+		sys.exit(1)
+
+
 	a=ad.read_h5ad(args.input_h5ad)
 	colornames={}
 	with open(args.color_names) as colorfile:
@@ -28,7 +34,6 @@ def main():
 		for key in colornames:
 			for key,value in {**dict(zip(a.obs[key].cat.categories,a.uns[str(colornames[key])]))}.items():
 				writer.writerow([key,value])
-										        
+
 if __name__ == "__main__":
 	main()
-											        
