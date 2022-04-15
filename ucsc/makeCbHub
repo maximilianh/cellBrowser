@@ -125,7 +125,10 @@ for ds in dsList:
         print("  parent", dirName, "on")
         # If someone specified short labels, use those
         if len(shortLabels) != 0:
-            shortLabel = shortLabels[f]
+            try:
+                shortLabel = shortLabels[f]
+            except KeyError:
+                shortLabel = cluster
         # Otherwise just use the file name
         else:
             shortLabel = cluster
@@ -136,7 +139,7 @@ for ds in dsList:
             # otherwise you get a KeyError and the script just crashes
             try:
                 longLabel = shortLabel + " - " + longLabels[shortLabel]
-            except:
+            except KeyError:
                 longLabel = shortLabel
         # If no long labels specified, just use the short label
         else:
