@@ -668,22 +668,22 @@ var cellbrowser = function() {
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
                 if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
-                    htmls.push("<p><b>Expression in MTX format:</b> <a href='"+datasetInfo.name);
+                    htmls.push("<p><b>Matrix in MTX format:</b> <a href='"+datasetInfo.name);
                     htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
                     htmls.push(", <a href='"+datasetInfo.name);
                     htmls.push("/features.tsv.gz'>features.tsv.gz</a>");
                     htmls.push(", <a href='"+datasetInfo.name);
                     htmls.push("/barcodes.tsv.gz'>barcodes.tsv.gz</a>");
                 } else {
-                htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
+                htmls.push("<p><b>Matrix:</b> <a href='"+datasetInfo.name);
                 htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
                 }
                 if (desc.unitDesc)
-                    htmls.push("<br>Values are: "+desc.unitDesc);
+                    htmls.push("<br>Values in matrix are: "+desc.unitDesc);
                 htmls.push("</p>");
 
                 if (desc.rawMatrixFile) {
-                    htmls.push("<p><b>Raw expression matrix:</b> <a href='"+datasetInfo.name);
+                    htmls.push("<p><b>Raw count matrix:</b> <a href='"+datasetInfo.name);
                     htmls.push("/"+desc.rawMatrixFile+"'>"+desc.rawMatrixFile+"</a>");
                     if (desc.rawMatrixNote)
                         htmls.push("<br>"+desc.rawMatrixNote);
