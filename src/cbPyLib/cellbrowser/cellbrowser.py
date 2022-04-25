@@ -1387,15 +1387,29 @@ def findMtxFiles(fname):
     else:
         matDir = dirname(fname)
 
-    mtxFname = join(matDir, "matrix.mtx.gz")
-    if not isfile(mtxFname):
-        errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
-                "Please rename the file, adapt cellbrowser.conf and rerun the command.")
+    #mtxFname = join(matDir, "matrix.mtx.gz")
+    #if not isfile(mtxFname):
+        #errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
+                #"Please rename the file, adapt cellbrowser.conf and rerun the command.")
+    mtxFname = fname
 
-    genesFname = join(matDir, "genes.tsv.gz")
+    if not isfile(mtxFname):
+        errAbort("Could not find %s" % mtxFname)
+
+    prefix = ""
+    if "_" in basename(mtxFname):
+        prefix = basename(mtxFname).split("_")[0]+"_"
+        logging.debug("Basename-prefix of mtx is: %s")
+
+    genesFname = join(matDir, prefix+"genes.tsv.gz")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
-        genesFname = join(matDir, "features.tsv.gz")
-    barcodeFname = join(matDir, "barcodes.tsv.gz")
+        genesFname = join(matDir, prefix+"features.tsv.gz")
+    barcodeFname = join(matDir, prefix+"barcodes.tsv.gz")
+
+    if not isfile(genesFname):
+        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, genesFname))
+    if not isfile(barcodeFname):
+        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, barcodeFname))
 
     logging.debug("mtx filename: %s, %s and %s" % (mtxFname, genesFname, barcodeFname))
     return mtxFname, genesFname, barcodeFname
@@ -2287,7 +2301,7 @@ def readMatrixSampleNames(fname):
     " return a list of the sample names of a matrix fname "
     if fname.endswith(".mtx.gz"):
         matrixPath = dirname(fname)
-        barcodePath = join(matrixPath, "barcodes.tsv.gz")
+        barcodePath = findMtxFiles(fname)[2]
         logging.info("Reading sample names for %s -> %s" % (matrixPath, barcodePath))
         lines = openFile(barcodePath).read().splitlines()
         ret = []
@@ -3974,7 +3988,13 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
     if isMtx(inMatrixFname):
-        outMatrixFname = join(datasetDir, "matrix.mtx.gz")
+        baseName = basename(inMatrixFname)
+        # our cbImportSeurat script uses the format <slotName>_matrix.mtx.gz, keep this format internally
+        if baseName.endswith("_matrix.mtx.gz") and len(baseName.split("_"))==2:
+            baseName = basename(findMtxFiles(inMatrixFname)[0])
+            outMatrixFname = join(datasetDir, baseName)
+        else:
+            outMatrixFname = join(datasetDir, "matrix.mtx.gz")
     else:
         outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
 
