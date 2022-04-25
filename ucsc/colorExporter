@@ -17,11 +17,12 @@ def main():
 
 
 	a=ad.read_h5ad(args.input_h5ad)
-	colornames={}
-	with open(args.color_names) as colorfile:
-		for line in colorfile:
-			line=line.strip().split('\t')
-			colornames[line[0]]=line[1]
+	if args.color_names:
+		colornames={}
+		with open(args.color_names) as colorfile:
+			for line in colorfile:
+				line=line.strip().split('\t')
+				colornames[line[0]]=line[1]
 
 
 	with open(args.output_file,"w") as csv_file:
@@ -30,10 +31,10 @@ def main():
 			if str(metavalue+'_colors') in a.uns.keys():
 				for key,value in {**dict(zip(a.obs[metavalue].cat.categories,a.uns[str(metavalue+'_colors')]))}.items():
 					writer.writerow([key,value])
-
-		for key in colornames:
-			for key,value in {**dict(zip(a.obs[key].cat.categories,a.uns[str(colornames[key])]))}.items():
-				writer.writerow([key,value])
+		if args.color_names:
+			for key in colornames:
+				for key,value in {**dict(zip(a.obs[key].cat.categories,a.uns[str(colornames[key])]))}.items():
+					writer.writerow([key,value])
 
 if __name__ == "__main__":
 	main()

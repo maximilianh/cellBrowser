@@ -408,9 +408,13 @@ function CbDbFile(url) {
            dsUrl = dsUrl+"?"+md5;
         cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile();});
 
-        // start loading gene offsets in background, because this takes a while
-        var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
-        cbUtil.loadJson(osUrl, function(data) { matrixIndex = data; gotOneFile();}, true);
+        if (self.name!='') {
+            // start loading gene offsets in the background now, because this takes a while
+            var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
+            cbUtil.loadJson(osUrl, function(data) { matrixIndex = data; gotOneFile();}, true);
+        } else {
+            gotOneFile();
+        }
     };
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {
