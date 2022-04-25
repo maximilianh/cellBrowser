@@ -653,6 +653,24 @@ var cellbrowser = function() {
         htmls.push("<br>");
     }
 
+    function buildLinkToMatrix(htmls, dsName, matFname, label) {
+        /* link to a matrix file for download, handles mtx.gz */
+        if (label)
+            htmls.push("<b> Matrix for "+label+":</b> ");
+
+        htmls.push("<a href='"+dsName+"/"+matFname+"'>"+matFname+"</a>");
+        if (matFname.endsWith(".mtx.gz")) {
+            var prefix = "";
+            if (matFname.indexOf("_")!==-1)
+                prefix = matFname.split("_")[0]+"_";
+            var ftName = prefix+"features.tsv.gz";
+            htmls.push(", <a href='"+dsName+"/"+ftName+"'>"+ftName+"</a>");
+            var barName = prefix+"barcodes.tsv.gz";
+            htmls.push(", <a href='"+dsName+"/"+barName+"'>"+barName+"</a>");
+        }
+        htmls.push("<br>");
+    }
+
     function buildDownloadsPane(datasetInfo, desc) {
         var htmls = [];
         if (datasetInfo.name==="") { // the top-level desc page has no methods/downloads, it's just a dataset list
@@ -667,16 +685,21 @@ var cellbrowser = function() {
                 htmls.push("The downloads section has been deactivated by the authors.");
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
-                if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
-                    htmls.push("<p><b>Matrix in MTX format:</b> <a href='"+datasetInfo.name);
-                    htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
-                    htmls.push(", <a href='"+datasetInfo.name);
-                    htmls.push("/features.tsv.gz'>features.tsv.gz</a>");
-                    htmls.push(", <a href='"+datasetInfo.name);
-                    htmls.push("/barcodes.tsv.gz'>barcodes.tsv.gz</a>");
+                if (desc.matrices) {
+                    htmls.push("<p>");
+                    for (var key in desc.matrices) {
+                        var mat = desc.matrices[key];
+                        buildLinkToMatrix(htmls, datasetInfo.name, mat.fileName, mat.label);
+                    }
+                    htmls.push("</p>");
+                } else if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
+                    htmls.push("<p>");
+                    var matBaseName = desc.matrixFile.split("/").pop();
+                    buildLinkToMatrix(htmls, datasetInfo.name, matBaseName, "dataset");
+                    htmls.push("</p>");
                 } else {
-                htmls.push("<p><b>Matrix:</b> <a href='"+datasetInfo.name);
-                htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
+                    htmls.push("<p><b>Matrix:</b> <a href='"+datasetInfo.name);
+                    htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
                 }
                 if (desc.unitDesc)
                     htmls.push("<br>Values in matrix are: "+desc.unitDesc);
