@@ -23,10 +23,13 @@ try:
     # python3
     from urllib.parse import urljoin
     from urllib.request import urlopen
+    HTTPERR = urllib.error.HTTPError
 except ImportError:
     # python2
     from urlparse import urljoin
     from urllib2 import urlopen
+    import urllib2
+    HTTPERR = urllib2.URLError
 
 try:
     # > python3.3
@@ -240,7 +243,7 @@ def downloadUrlBinary(remoteUrl):
             data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
         else:
             data = urlopen(remoteUrl).read()
-    except urllib.error.HTTPError:
+    except HTTPERR:
         logging.error("Cannot download %s" % remoteUrl)
         data = None
     return data
@@ -248,6 +251,9 @@ def downloadUrlBinary(remoteUrl):
 def downloadUrlLines(url):
     " open URL, slurp in all data and return a list of the text lines "
     data = downloadUrlBinary(url)
+    if data is None:
+        errAbort("Cannot download %s" % url)
+
     if url.endswith(".gz"):
         data = gzip.decompress(data)
     lines = data.splitlines()
@@ -2752,7 +2758,6 @@ def splitMarkerTable(filename, geneToSym, outDir):
         sanNames.add(sanName)
 
         outFname = join(outDir, sanName+".tsv")
-        print("===", repr(outFname))
         logging.debug("Writing %s" % outFname)
         ofh = open(outFname, "w")
         ofh.write("\t".join(newHeaders))
@@ -3879,11 +3884,11 @@ def copyGenes(inConf, outConf, outDir):
     dbGene = inConf["atacSearch"]
     db, geneIdType = dbGene.split(".")
 
-    try:
-        inFname = getStaticFile(getGeneJsonPath(db, geneIdType))
-    except urllib.error.HTTPError as e:
+    inFname = getStaticFile(getGeneJsonPath(db, geneIdType))
+    if inFname is None:
         errAbort("The gene model file %s could not be found on the UCSC cell browser downloads server. "
-                "This means that at UCSC we do not have a prebuilt gene model file for this genome assembly "
+                "Unless your internet is down, this means that at UCSC we do not have a prebuilt "
+                "gene model file for this genome assembly "
                 "with this name. Check if this name is indeed in the format <assembly>.<geneIdName>, "
                 "then you can either contact us or use cbGenes to build the file yourself. " % dbGene)
 
@@ -3969,7 +3974,8 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc", "geneLabel",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal", "clusterPngDir"]:
+        "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
+        "body_parts", "organisms", "diseases", "projects" ]:
         copyConf(inConf, outConf, tag)
 
     makeFilesTxt(outConf, datasetDir)
@@ -5167,7 +5173,7 @@ def summarizeDatasets(datasets):
                 #summDs[t] = ds[t]
 
         # these are copied and checked for the correct type
-        for optListTag in ["tags", "hasFiles", "body_parts"]:
+        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects"]:
             if optListTag in ds:
                 if (type(ds[optListTag])==type([])): # has to be a list
                     summDs[optListTag] = ds[optListTag]

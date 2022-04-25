@@ -525,8 +525,6 @@ var cellbrowser = function() {
         //var md5 = datasetInfo.md5;
         // the UCSC apache serves latin1, so we force it back to utf8
         gOpenDataset = datasetInfo; // for click handlers in the right panel
-        var thumbUrl = cbUtil.joinPaths([datasetInfo.name, "thumb.png"]);
-        preloadImage(thumbUrl); // many datasets have thumb.png, so preload it now
 
         $.ajaxSetup({
             'beforeSend' : function(xhr) {
@@ -983,9 +981,9 @@ var cellbrowser = function() {
 
     }
 
-    function buildListPanel(datasetList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName) {
+    function buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName) {
         /* make a dataset list and append its html lines to htmls */
-        htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; position:absolute; top:"+noteSpace+"; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
+        htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; float: left; margin-top: 1em; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
         if (!datasetList || datasetList.length===0) {
             alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
                 " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
@@ -1005,11 +1003,29 @@ var cellbrowser = function() {
             }
 
             var bodyPartStr = "";
+            var disStr = "";
+            var orgStr = "";
+            var projStr = "";
+
             if (dataset.body_parts) {
                 bodyPartStr = dataset.body_parts.join("|");
             }
+            if (dataset.diseases) {
+                disStr = dataset.diseases.join("|");
+            }
+            if (dataset.organisms) {
+                orgStr = dataset.organisms.join("|");
+            }
+            if (dataset.projects) {
+                projStr = dataset.projects.join("|");
+            }
 
-            var line = "<a id='tpDatasetButton_"+i+"' data-body-parts='"+bodyPartStr+"' role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+            //var line = "<a id='tpDatasetButton_"+i+"' data-body-parts='"+bodyPartStr+"' role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
+            var line = "<a id='tpDatasetButton_"+i+"' "+"data-bodyparts='"+bodyPartStr+"' "+
+                "data-diseases='"+disStr+"' "+
+                "data-organisms='"+orgStr+"' "+
+                "data-projects='"+projStr+"' "+
+                "role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
             if (!dataset.isSummary)
@@ -1035,35 +1051,33 @@ var cellbrowser = function() {
                 }
             }
             htmls.push(dataset.shortLabel+"</a>");
-            //if (db!==null && db.name===dataset.name)
-                //activeIdx = i;
         }
         htmls.push("</div>"); // list-group
         return selIdx;
     }
 
-    function getBodyParts(datasets) {
+    function getDatasetAttrs(datasets, attrName) {
         /* return list of body_parts given a dataset array */
         var bpObj = {};
         for (let i=0; i < datasets.length; i++) {
             let ds = datasets[i];
-            if (ds.body_parts===undefined)
+            if (ds[attrName]===undefined)
                 continue
-            for (let bp of ds.body_parts)
+            for (let bp of ds[attrName])
                 bpObj[bp] = true;
         }
 
-        let bodyParts = keys(bpObj);
-        bodyParts.sort();
-        return bodyParts;
+        let allValues = keys(bpObj);
+        allValues.sort();
+        return allValues;
     }
 
     function filterDatasetsDom(onlyBps) {
-        /* keep only datasets with a a body_tag in filtNames */
+        /* keep only datasets that fulfill the filters */
 
         let elList = $(".tpListItem");
         for (let el of elList) {
-            let bpStr = el.getAttribute("data-body-parts");
+            let bpStr = el.getAttribute("data-bodyparts");
             let found = false;
             if (!onlyBps || onlyBps.length==0)
                 // if no filtering is specified just show everything
@@ -1107,7 +1121,6 @@ var cellbrowser = function() {
         var listGroupHeight = 0;
         var leftPaneWidth = 400;
         var title = "Choose Cell Browser Dataset";
-        var noteSpace = "3em"; // space from top of dialog to info pane and tabs
 
         // inline functions
         function openCollOrDataset(selDatasetIdx) {
@@ -1120,6 +1133,21 @@ var cellbrowser = function() {
                 loadDataset(datasetName, true, dsInfo.md5);
             $(".ui-dialog-content").dialog("close");
             //changeUrl({"bp":null});
+        }
+
+        function buildFilter(html, filterVals, filterLabel, urlVar, comboId, comboLabel) {
+            /* build html for a faceting filter */
+            if (filterVals.length==0)
+                return false;
+            html.push("<span style='margin-right:5px'>"+filterLabel+":</span>");
+            doFaceting = true;
+            // some mirrors don't use the "body_parts" statement and don't need the faceting
+            let selPar = getVarSafe(urlVar);
+            if (selPar && selPar!=="")
+                filtList = selPar.split("_");
+            buildComboBox(html, comboId, filterVals, filtList, comboLabel, 200, {multi:true});
+            html.push("&nbsp;&nbsp;");
+            return true;
         }
 
         function connectOpenPane(selDatasetIdx, datasetList) {
@@ -1158,8 +1186,8 @@ var cellbrowser = function() {
             });
         }
 
-        function onBodyPartChange(ev) {
-            /* called when user changes body part list */
+        function onFilterChange(ev) {
+            /* called when user changes a filter: updates list of datasets shown */
             let filtNames = $("#tpBodyCombo").val();
             // change the URL
             let filtArg = filtNames.join("_");
@@ -1194,19 +1222,27 @@ var cellbrowser = function() {
 
         let doFaceting = false;
         let filtList = [];
+        let bodyParts = null;
+        let diseases = null;
+        let organisms = null;
+        let projects = null;
         if (openDsInfo.parents === undefined && openDsInfo.datasets !== undefined) {
             //noteLines.push("<span>Filter:</span>");
-            let bodyParts = getBodyParts(openDsInfo.datasets);
-            if (bodyParts.length!==0) {
-                noteLines.push("<span style='margin-right:5px'>Filter datasets by organ:</span>");
-                doFaceting = true;
-                // some mirrors don't use the "body_parts" statement and don't need the faceting
-                let selPar = getVarSafe("bp");
-                if (selPar && selPar!=="")
-                    filtList = selPar.split("_");
+            bodyParts = getDatasetAttrs(openDsInfo.datasets, "body_parts");
+            diseases = getDatasetAttrs(openDsInfo.datasets, "diseases");
+            organisms = getDatasetAttrs(openDsInfo.datasets, "organisms");
+            projects = getDatasetAttrs(openDsInfo.datasets, "projects");
 
-                buildComboBox(noteLines, "tpBodyCombo", bodyParts, filtList, "select organs...", 200, {multi:true});
-            }
+            if (bodyParts.length!==0 || disease.length!==0 || organisms.length!==0 || projects.length!==0)
+                doFaceting = true;
+
+            if (doFaceting)
+                noteLines.push("<div style='margin-right: 10px; font-weight: bold'>Filters:</div>");
+
+            buildFilter(noteLines, bodyParts, "Organ", "bp", "tpBodyCombo", "select organs...");
+            buildFilter(noteLines, diseases, "Disease", "dis", "tpDisCombo", "select diseases...");
+            buildFilter(noteLines, organisms, "Species", "org", "tpOrgCombo", "select species...");
+            buildFilter(noteLines, projects, "Project", "org", "tpProjCombo", "select project...");
         }
 
         // create links to the parents of the dataset
@@ -1228,7 +1264,6 @@ var cellbrowser = function() {
                 backLinks.push("<span class='tpBackLink link' data-open-dataset='"+parName+"' data-sel-dataset='"+childName+"'>"+parLabel+"</span>");
             }
             noteLines.push(backLinks.join("&nbsp;&gt;&nbsp;"));
-            noteSpace = "5em"; // TODO: redesign dialog to not have hard-coded spacing
         }
 
         if (onlyInfo)
@@ -1246,19 +1281,21 @@ var cellbrowser = function() {
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
-        var tabsWidth = winWidth - leftPaneWidth - 70;
+        var tabsWidth = winWidth - leftPaneWidth - 40;
         listGroupHeight = winHeight - 100;
 
         var htmls = ["<div style='line-height: 1.1em'>"];
         htmls.push(noteLines.join(""));
         htmls.push("</div>");
 
+        htmls.push("<div id='tpDatasetBrowser'>");
+
         if (onlyInfo)
             leftPaneWidth = 0;
         else
-            activeIdx = buildListPanel(datasetList, noteSpace, listGroupHeight, leftPaneWidth, htmls, selName);
+            activeIdx = buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName);
 
-        htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; position:absolute; left: " + (leftPaneWidth + 20) + "px; top: "+noteSpace+"; border: 0'>");
+        htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; float:right; left: " + (leftPaneWidth + 20) + "px; margin-top: 1em; border: 0'>");
         htmls.push("<div id='tpOpenDialogTabs' style='border: 0'>");
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
@@ -1288,6 +1325,8 @@ var cellbrowser = function() {
         htmls.push("</div>"); // tpOpenDialogDatasetDesc
 
         //htmls.push("<div id='tpSelectedId' data-selectedid='0'>"); // store the currently selected datasetId in the DOM
+        htmls.push("</div>"); // tpDatasetBrowser
+
         var selDatasetIdx = 0;
 
         var buttons = [];
@@ -1312,8 +1351,22 @@ var cellbrowser = function() {
         $("#tpOpenDialogTabs").tabs();
 
         if (doFaceting) {
-            activateCombobox("tpBodyCombo", 200);
-            $("#tpBodyCombo").change( onBodyPartChange );
+            if (bodyParts) {
+                activateCombobox("tpBodyCombo", 200);
+                $("#tpBodyCombo").change( onFilterChange );
+            }
+            if (diseases) {
+                activateCombobox("tpDisCombo", 200);
+                $("#tpDisCombo").change( onFilterChange );
+            }
+            if (organisms) {
+                activateCombobox("tpOrgCombo", 200);
+                $("#tpOrgCombo").change( onFilterChange );
+            }
+            if (projects) {
+                activateCombobox("tpProjCombo", 200);
+                $("#tpProjCombo").change( onFilterChange );
+            }
         }
 
         $('.tpBackLink').click( function(ev) {
@@ -3805,6 +3858,7 @@ var cellbrowser = function() {
         var saneSym = event.target.id.split("_")[1]; // the symbol of the gene, as only-alphaNum chars
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass("tpGeneBarCellSelected");
+        // XX TODO: How find all the elements with this ID?
         $('#tpGeneBarCell_'+saneSym).addClass("tpGeneBarCellSelected");
 
         // search through both quick and recent gene lists to find the real gene symbol
@@ -4102,16 +4156,16 @@ var cellbrowser = function() {
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         // need max length of gene names to make number of columns
-        var maxColLen = 0;
+        var maxGeneLen = 0;
         for (var i=0; i < geneInfos.length; i++) {
             var geneId = geneInfos[i][0];
-            maxColLen = Math.max(maxColLen, geneId.length);
+            maxGeneLen = Math.max(maxGeneLen, geneId.length);
         }
 
         var lineLen = 38;
-        var colsPerRow = Math.floor(lineLen/maxColLen);
+        var colsPerRow = Math.floor(lineLen/maxGeneLen);
         //var colsPerRow = Math.round(tableWidth / cellWidth);
-        var cellWidth = Math.round(tableWidth/colsPerRow);
+        //var cellWidth = Math.round(tableWidth/colsPerRow);
 
         var currWidth = 1;
         var i = 0;
@@ -4122,11 +4176,11 @@ var cellbrowser = function() {
             if (geneDesc===undefined)
                 geneDesc = geneId;
 
-            if (((i % colsPerRow) === 0) && (i!==0)) {
-                htmls.push("</tr><tr>");
-            }
+            //if (((i % colsPerRow) === 0) && (i!==0)) {
+                //htmls.push("</tr><tr>");
+            //}
             if (geneId in db.geneOffsets)
-                htmls.push('<td title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="width:'+cellWidth+'px">'+geneId+'</td>');
+                htmls.push('<span title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="display: inline-block; width:'+(maxGeneLen*9)+'px">'+geneId+'</span> ');
             i++;
         }
         htmls.push("</tr></table>");
@@ -5464,11 +5518,13 @@ var cellbrowser = function() {
             buildPeakList(htmls);
 
         var geneLabel = getGeneLabel();
-        buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s", "Hover or select cells to update colors", gRecentGenes);
+        buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s",
+            "Hover or select cells to update colors", gRecentGenes);
 
-        //var myGenes = loadMyGenes();
+        // var myGenes = loadMyGenes();
 
-        var noteStr = "No genes or peaks defined. Use the setting quickGenesFile in cellbrowser.conf to add a file with gene symbols or peaks that will be shown here";
+        var noteStr = "No genes or peaks defined. Use the setting quickGenesFile in "
+            "cellbrowser.conf to add a file with gene symbols or peaks that will be shown here";
         buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr);
 
         htmls.push("</div>"); // tpGeneTab
