@@ -1,121 +1,267 @@
 #! /usr/bin/env python3
 
-import json, sys, operator, argparse, os, urllib.request, subprocess
+import json, sys, operator, argparse, os, urllib.request, subprocess, time, glob
 from datetime import datetime, timedelta, date
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Update 'News' section in desc.conf and update sitemap.txt for RR")
+    description="Update 'News' section in desc.conf. Also updates sitemap and list of datasets currently on the RR.")
 parser.add_argument("-r","--run", action='store_true',
-    help='run script to update news and sitemap')
+    help='run script to update news, rr datasets list, and sitemap.')
 args = parser.parse_args()
 
-def parseRRdatasets():
-    # Builds dictionary of datasets currently on the RR
-    rr = dict() # will contain rr dataset.json file
-    rr_info = dict() # a smaller dict that contains only name/shortLabel
-    with urllib.request.urlopen("https://cells.ucsc.edu/dataset.json") as url:
-        rr = json.loads(url.read().decode())
-    for dataset in rr["datasets"]:
-        dname = dataset["name"]
-        dshort = dataset["shortLabel"]
-        rr_info[dname] = dshort
-    
-    return rr_info
+def buildSitemapSet():
+    """Builds a set of all URLs currently in the sitemap."""
+
+    sitemapPath = "/hive/data/inside/cells/sitemap.cells.txt"
+    sitemapSet = set()
+
+    # If the sitemap file exists, then open it and add each line to a new set
+    if os.path.exists(sitemapPath):
+        sitemap = open(sitemapPath, "r")
+        for line in sitemap:
+            sitemapSet.add(line)
+        sitemap.close()
+    # Otherwise, just make an empty file?
+    # Maybe I should try/except here instead?
+    else:
+        sitemap = open(sitemapPath, "w")
+        sitemap.close()
+
+    return sitemapSet
+
+def addSiteToSitemap(entry, sitemapSet):
+    """Writes an entry out to the sitemap if it's not already there."""
+
+    # Open sitemap file
+    with open("/hive/data/inside/cells/sitemap.cells.txt", "a") as sitemap:
+        urlline = "https://" + entry + ".cells.ucsc.edu\n"
+        if urlline not in sitemapSet:
+            sitemap.write(urlline)
+
+def makeDate(aDate):
+    """Will turn a string date separated by "-" into a date object."""
+
+    # to make a date object, we need at least the year, month, and day
+    splitDate = aDate.split("-")
+    year = int(splitDate[0])
+    month = int(splitDate[1])
+    day = int(splitDate[2])
+    dateObj = date(year, month, day)
+
+    return dateObj
+
+def mondayBefore(aDate):
+    """Returns the date of the monday before a given date."""
+
+    # Use makeDate function to make input date into a datetime object
+    dateObj = makeDate(aDate)
+    # From https://www.programiz.com/python-programming/datetime
+    # Basically allows us to get the date for the monday in which
+    # a given date falls
+    monday = dateObj - timedelta(days=dateObj.weekday())
+
+    return monday
+
+def processDataset(dataset, rootDir):
+    """Processes a single dataset and returns the shortname and a list of info about that dataset."""
+
+    name = dataset["name"]
+    # 'firstBuildTime was added by Max in early 2022, so not all datasets have it
+    # Need to be resistant to it not being there
+    try:
+        lastmtime = dataset["firstBuildTime"]
+    except KeyError:
+        lastmtime = time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(os.path.join(rootDir, name, "exprMatrix.bin"))))
+    monday = mondayBefore(lastmtime)
+
+    # Collect info for dataset to return at end of function
+    short = dataset["shortLabel"]
+    count = str(dataset["sampleCount"])
+    dList = [short, count, monday]
+
+    return name, dList
+
+def processCollection(collection, rootDir):
+    """Processes a collection and returns a list of info about that collection.
+       If it runs into a nested collection, will also process that."""
+
+    collInfo = list()
+
+    name = collection["name"]
+    cjson = json.load(open(os.path.join(rootDir, name, "dataset.json"), "r"))
+    subdirs = cjson["datasets"]
+
+    for sub in subdirs:
+        if 'isCollection' in sub.keys():
+            # If we run into another collection, process it in the same way
+            subCollInfo = processCollection(sub, rootDir)
+            # Need to do this appending here otherwise subcollection info disappears
+            collInfo = collInfo + subCollInfo
+
+        else:
+            # Otherwise, process each dataset in a collection as a normal dataset
+            subInfo = processDataset(sub, rootDir)
+            subDict = {subInfo[0]:subInfo[1]}
+            collInfo.append(subDict)
+
+    return collInfo
+
+def parseBetaDatasets():
+    """Parses dataset.json for cells-beta to get a current list of datasets."""
+
+    # Builds dictionary of datasets currently on the beta, assuming it's a proxy of the RR
+    betaInfo = dict() # a smaller dict that contains only name/shortLabel/count/release date
+    bdir = "/usr/local/apache/htdocs-cells-beta/"
+    cellsBeta =  json.load(open(os.path.join(bdir, "dataset.json"), "r"))
+    for dataset in cellsBeta["datasets"]:
+        if "isCollection" in dataset.keys():
+            collectionInfo = processCollection(dataset, bdir)
+            cname = dataset["name"]
+            cshort = dataset["shortLabel"]
+
+            oldDate = date.today()
+            collCellCount = 0
+            # After we process the collection, we want to add the info for that
+            # to the betaInfo dictionary
+            for d in collectionInfo:
+                dname = list(d.keys())[0]
+                info = d[dname]
+                betaInfo[dname] = info
+
+                collCellCount += int(info[1])
+                day = info[2]
+                # Do some comparison to see if data for current dataset in collection
+                # is older than the last
+                if day < oldDate:
+                    oldDate = day
+            # Also add an entry to betaInfo that covers the collection as a whole
+            # Cell count for this one is the sum of the cell counts for all subdatasets
+            # Date is that for the oldest dataset in the collection
+            betaInfo[cname] = [cshort, str(collCellCount), oldDate]
+        else:
+            dname, bList = processDataset(dataset, bdir)
+            betaInfo[dname] = bList
+
+    return betaInfo
+
+def writeNewsHtml(toPrint, dateDir):
+    """Takes a list of datasets and writes out an html file per day that lists
+       all datasets released that day."""
+
+    for day in toPrint:
+        dateOut = dateDir + str(day) + ".html"
+        if os.path.exists(dateOut):
+            htmlOut = open(dateOut, "a")
+        else:
+            htmlOut = open(dateOut, "w")
+
+        # Do some work to get the date into something we can easily grab pieces of
+        betterDate = time.strftime('%d-%b-%Y', day.timetuple())
+        splitDay = betterDate.split("-")
+        # Separate vars for month/day/year
+        month=splitDay[1]
+        dayNum=splitDay[0]
+        year=splitDay[2]
+
+        # Write bits out to the news file for the specific day
+        htmlOut.write("<p><b>" + month + " " + dayNum + ", " + year + "</b></p>\n")
+        htmlOut.write("<p>New datasets:</p>\n<ul>\n")
+        for line in toPrint[day]:
+            htmlOut.write(line)
+        htmlOut.write("</ul>\n")
+        htmlOut.close()
+    # From https://stackoverflow.com/questions/3207219/how-do-i-list-all-files-of-a-directory
+    newsFiles = sorted(glob.glob("/hive/data/inside/cells/news/perDate/*.html"), reverse=True)
+    # Basically, we're gathering up all of the individual news files to combine them into one
+    filenames = ['/hive/data/inside/cells/news/basic.html'] + newsFiles
+    with open('/hive/data/inside/cells/news/combined.html','w') as outfile:
+        for fname in filenames:
+            with open(fname) as infile:
+                outfile.write(infile.read())
 
 def main():
     if args.run == True:
         # From https://stackoverflow.com/questions/19216334/python-give-start-and-end-of-week-data-from-a-given-date
         # and https://www.programiz.com/python-programming/datetime/current-datetime
         # Get date for Monday, so that all datasets added in the last week show up under the same date
-        today = date.today()
-        start = today - timedelta(days=today.weekday())
-        #end = start + timedelta(days=6)
-        start = start.strftime('%d-%b-%Y')
-        #end = end.strftime('%d-%b-%Y')
+        start = mondayBefore(date.today().strftime('%Y-%m-%d'))
 
         # File should contain RR datasets
-        # First run of this script will generate this file, 
+        # First run of this script will generate this file,
         # move it out of the way to regenerate, though this means that
         # everything will be noted as being released on the same day
-        rr_datasets_path = "/hive/data/inside/cells/rr.datasets.txt"
+        rrDatasetsPath = "/hive/data/inside/cells/rr.datasets.txt"
+        dateDir = "/hive/data/inside/cells/news/perDate/"
+
+        sitemapSet = buildSitemapSet()
 
         # This should only happen if this is the first time the script is run
         # or if previous version is moved/deleted
-        if not os.path.exists(rr_datasets_path):
-            rr_info = parseRRdatasets()
-            for dataset in rr_info.keys():
-                shortLabel = rr_info[dataset]
-                line =  start + "\t" + dataset + "\t" + shortLabel + "\n"
-                with open(rr_datasets_path, "a") as rr_datasets:
-                    rr_datasets.write(line)
-            rr_datasets.close()
+        if not os.path.exists(rrDatasetsPath):
+            betaInfo = parseBetaDatasets()
+            toPrint = dict()
+            for entry in betaInfo.keys():
+                label = betaInfo[entry][0]
+                count = betaInfo[entry][1]
+                day = betaInfo[entry][2]
+                line =  str(day) + "\t" + entry + "\t" + label + "\t" + count + "\n"
+                with open(rrDatasetsPath, "a") as rrDatasets:
+                    rrDatasets.write(line)
+                # Check if '/' in shortname, if so means it's a dataset in a collection
+                # and we're not outputting it to the sitemap or to the announcements
+                if "/" not in entry:
+                    addSiteToSitemap(entry, sitemapSet)
+                    outLine = "  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>\n"
+                    if day not in toPrint.keys():
+                        toPrint[day] = [outLine]
+                    else:
+                        toPrint[day].append(outLine)
+
+            writeNewsHtml(toPrint, dateDir)
+
         else: # This is the main part of the function that prints out the html for a news update
-            rr_info = parseRRdatasets()
+            betaInfo = parseBetaDatasets()
 
             # Parse the old rr.datasets.txt file so we know what's already out there
-            old_names = set()
-            old_datasets = open(rr_datasets_path,"r")
-            for line in old_datasets:
+            oldNames = set()
+            oldDatasets = open(rrDatasetsPath,"r")
+            for line in oldDatasets:
                 splitLine = line.strip().split("\t")
                 name = splitLine[1]
-                old_date = splitLine[0]
-                # Remove entry from rr_info dict if it existed in rr_datasets_file
-                # and if the date in the first col of the file is older than the current Monday
-                if name in rr_info.keys() and old_date < start:
-                    del rr_info[name]
-                old_names.add(name) 
-            old_datasets.close()
+                oldDate = makeDate(splitLine[0])
+                # Remove entry from betaInfo dict if it existed in rrDatasetsFile
+                if name in betaInfo.keys():
+                    del betaInfo[name]
+                oldNames.add(name)
+            oldDatasets.close()
 
-            sitemap = open("/hive/data/inside/cells/sitemap.cells.txt", "r")
-            sitemap_set = set()
-            for line in sitemap:
-                sitemap_set.add(line)
-            sitemap.close()
+            sitemapSet = buildSitemapSet()
 
-            if len(rr_info) > 0:
-                # Print out HTML to be put into the /hive/data/inside/cells/datasets/desc.conf 
-                old_datasets = open(rr_datasets_path,"a")
-                sitemap = open("/hive/data/inside/cells/sitemap.cells.txt", "a")
-                #html_out = open("/hive/data/inside/cells/news/datasets.html", "w")
-                #basic_header = open("/hive/data/inside/cells/news/basic.html", "r")
-                date_out = "/hive/data/inside/cells/news/perDate/" + start + ".html"
-                html_out = open(date_out, "w")
-                
+            if len(betaInfo) > 0:
+                allDatasets = open(rrDatasetsPath,"a")
+                # Go through and determine which datasets need to be added to the news announcements
+                toPrint = dict()
+                for entry in betaInfo:
+                    label = betaInfo[entry][0]
+                    count = betaInfo[entry][1]
+                    day = betaInfo[entry][2]
+                    line = str(day) + "\t" + entry + "\t" + label + "\t" + count + "\n"
+                    if entry not in oldNames:
+                        allDatasets.write(line)
+                    # Check if '/' in shortname, if so means it's a dataset in a collection
+                    # and we're not outputting it to the sitemap or to the announcements
+                    if "/" not in entry:
+                        addSiteToSitemap(entry, sitemapSet)
+                        outLine = "  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>\n"
+                        # If doesn't already in exist in toPrint, add it
+                        if day not in toPrint.keys():
+                            toPrint[day] = [outLine]
+                        else:
+                            toPrint[day].append(outLine)
 
-                #html_out.write(basic_header.read())
-
-                month=start.split("-")[1]
-                day=start.split("-")[0]
-                year=start.split("-")[2]
-                day_to_print=month + " " + day + ", " + year
-                #print("<p><b>" + day_to_print + "</b></p>")
-                html_out.write("<p><b>" + day_to_print + "</b></p>\n")
-                #print("<p>These datasets are now available:</p>\n<ul>")
-                html_out.write("<p>These datasets are now available:</p>\n<ul>\n")
-                for entry in rr_info:
-                    label = rr_info[entry]
-                    line = start + "\t" + entry + "\t" + label + "\n"
-                    if entry not in old_names:
-                        old_datasets.write(line)
-                    #print("  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>")
-                    html_out.write("  <li><a href='?ds=" + entry + "' target='_blank'>" + label + "</a>\n")
-
-                    urlline = "https://" + entry + ".cells.ucsc.edu\n"
-                    if urlline not in sitemap_set:
-                        sitemap.write(urlline)
-
-                #print("</ul>")
-                html_out.write("</ul>\n")
-                html_out.close()
-
-                # From https://stackoverflow.com/questions/13613336/how-do-i-concatenate-text-files-in-python
-                filenames = ['/hive/data/inside/cells/news/basic.html', date_out] #'/hive/data/inside/cells/news/datasets.html', '/hive/data/inside/cells/news/datasets_old.html']
-                with open('/hive/data/inside/cells/news/combined.html','w') as outfile:
-                    for fname in filenames:
-                        print(fname)
-                        with open(fname) as infile:
-                            outfile.write(infile.read())
+                # Print out HTML for new datasets to be put into /hive/data/inside/cells/datasets/desc.conf
+                writeNewsHtml(toPrint, dateDir)
 
 if __name__ == "__main__":
     main()

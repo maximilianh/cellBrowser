@@ -64,8 +64,9 @@ findMatrices = function(object, slotNames ) {
       if (slotName == "scale.data")
           slotName <- "scale" #  dots in filenames are not good
       # do not use any prefixes if we export just a single matrix (stay compatible with old code)
+      # empty string didn't work with R names(), so using special value "###" now
       if (length(slotNames)==1)
-          slotName <- ""
+         slotName <- "###"
       slotMatrices [[slotName]] <- mat
   }
   return(slotMatrices)
@@ -83,8 +84,11 @@ saveMatrix <- function(counts, dir, prefix, use.mtx) {
   # Export expression matrix
   message("Writing matrix with prefix ",prefix," to directory ",dir, "(use.mtx is ", use.mtx, ")")
   too.big = ((((ncol(counts)/1000)*(nrow(counts)/1000))>2000) && is(counts, 'sparseMatrix'))
-  if (prefix!="" && !endsWith(prefix, "_"))
+  if (prefix=="###")
+      prefix <- ""
+  else if (prefix!="" && !endsWith(prefix, "_"))
       prefix <- paste0(prefix, "_")
+
 
   if (use.mtx || too.big) {
         # we have to write the matrix to an mtx file
@@ -408,6 +412,9 @@ ExportToCellbrowser <- function(
   }
 
   firstPrefix <- names(slotMatrices)[1]
+  if (firstPrefix=="###")
+      firstPrefix = ""
+
   if (length(slotMatrices)==1)
       matSep = ""
   else

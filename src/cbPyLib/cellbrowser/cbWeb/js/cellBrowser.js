@@ -666,22 +666,22 @@ var cellbrowser = function() {
                 htmls.push("Please contact the dataset authors to get access.");
             } else {
                 if (desc.matrixFile!==undefined && desc.matrixFile.endsWith(".mtx.gz")) {
-                    htmls.push("<p><b>Expression in MTX format:</b> <a href='"+datasetInfo.name);
+                    htmls.push("<p><b>Matrix in MTX format:</b> <a href='"+datasetInfo.name);
                     htmls.push("/matrix.mtx.gz'>matrix.mtx.gz</a>");
                     htmls.push(", <a href='"+datasetInfo.name);
                     htmls.push("/features.tsv.gz'>features.tsv.gz</a>");
                     htmls.push(", <a href='"+datasetInfo.name);
                     htmls.push("/barcodes.tsv.gz'>barcodes.tsv.gz</a>");
                 } else {
-                htmls.push("<p><b>Expression matrix:</b> <a href='"+datasetInfo.name);
+                htmls.push("<p><b>Matrix:</b> <a href='"+datasetInfo.name);
                 htmls.push("/exprMatrix.tsv.gz'>exprMatrix.tsv.gz</a>");
                 }
                 if (desc.unitDesc)
-                    htmls.push("<br>Values are: "+desc.unitDesc);
+                    htmls.push("<br>Values in matrix are: "+desc.unitDesc);
                 htmls.push("</p>");
 
                 if (desc.rawMatrixFile) {
-                    htmls.push("<p><b>Raw expression matrix:</b> <a href='"+datasetInfo.name);
+                    htmls.push("<p><b>Raw count matrix:</b> <a href='"+datasetInfo.name);
                     htmls.push("/"+desc.rawMatrixFile+"'>"+desc.rawMatrixFile+"</a>");
                     if (desc.rawMatrixNote)
                         htmls.push("<br>"+desc.rawMatrixNote);
@@ -4152,22 +4152,11 @@ var cellbrowser = function() {
             return;
         }
 
-        htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
+        //htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
         //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
 
         // need max length of gene names to make number of columns
-        var maxGeneLen = 0;
-        for (var i=0; i < geneInfos.length; i++) {
-            var geneId = geneInfos[i][0];
-            maxGeneLen = Math.max(maxGeneLen, geneId.length);
-        }
-
-        var lineLen = 38;
-        var colsPerRow = Math.floor(lineLen/maxGeneLen);
-        //var colsPerRow = Math.round(tableWidth / cellWidth);
-        //var cellWidth = Math.round(tableWidth/colsPerRow);
-
-        var currWidth = 1;
+        //var currWidth = 1;
         var i = 0;
         while (i < geneInfos.length) {
             var geneInfo = geneInfos[i];
@@ -4176,18 +4165,27 @@ var cellbrowser = function() {
             if (geneDesc===undefined)
                 geneDesc = geneId;
 
-            //if (((i % colsPerRow) === 0) && (i!==0)) {
-                //htmls.push("</tr><tr>");
-            //}
             if (geneId in db.geneOffsets)
-                htmls.push('<span title="'+geneDesc+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell" style="display: inline-block; width:'+(maxGeneLen*9)+'px">'+geneId+'</span> ');
+                htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</span>');
             i++;
         }
-        htmls.push("</tr></table>");
+        //htmls.push("</tr></table>");
         htmls.push("</div>"); // divId
 
         if (doUpdate) {
             $('#'+divId).html(htmls.join(""));
+        }
+    }
+
+    function resizeGeneTableDivs() {
+        /* the size of the DIVs in the gene table depends on the size of the longest DIV in pixels and we know that only once the table is shown. so resize here now */
+        var tdEls = document.getElementById("tpGenes").querySelectorAll("span");
+        var maxWidth = 0;
+        for (var el of tdEls) {
+            maxWidth = Math.max(maxWidth, el.offsetWidth);
+        }
+        for (var el of tdEls) {
+            el.style.minWidth = maxWidth+"px";
         }
     }
 
@@ -4602,6 +4600,7 @@ var cellbrowser = function() {
         loadCoordSet(coordIdx);
         changeUrl({"layout":coordIdx, "zoom":null});
         renderer.coordIdx = coordIdx;
+        setLabelField(fieldName);
         // remove the focus from the combo box
         removeFocus();
     }
@@ -5532,6 +5531,8 @@ var cellbrowser = function() {
         htmls.push("</div>"); // tpLeftSidebar
 
         $(document.body).append(htmls.join(""));
+
+        resizeGeneTableDivs();
 
         $("#tpLeftTabs").tabs();
         $('#tpLeftTabs').tabs("option", "active", 0); // open the first tab
@@ -7090,8 +7091,13 @@ var cellbrowser = function() {
 
             htmls.push("<tr>");
             var geneId = row[0];
+
+            // old marker files still have the format geneId|sym, so tolerate this here
+            if (geneId.indexOf("|") > -1)
+                geneId = geneId.split("|")[0];
+
             var geneSym = row[1];
-            htmls.push("<td><a data-gene='"+geneSym+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
+            htmls.push("<td><a data-gene='"+geneId+"' class='link tpLoadGeneLink'>"+geneSym+"</a>");
             if (hubUrl!==null) {
                 var fullHubUrl = hubUrl+"&position="+geneSym+"&singleSearch=knownCanonical";
                 htmls.push("<a target=_blank class='link' style='margin-left: 10px; font-size:80%; color:#AAA' title='link to UCSC Genome Browser' href='"+fullHubUrl+"'>Genome</a>");

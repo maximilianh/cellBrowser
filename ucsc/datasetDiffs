@@ -184,20 +184,20 @@ def main():
 
         if args.hidden:
             print("cells-test hidden datasets:")
-            print(ct_hide.keys(),"\n")
+            print(sorted(list(ct_hide.keys())),"\n")
             print("cells-beta hidden datasets:")
-            print(cb_hide.keys(),"\n")
+            print(sorted(list(cb_hide.keys())),"\n")
             print("cells hidden datasets:")
-            print(rr_hide.keys(),"\n")
+            print(sorted(list(rr_hide.keys())),"\n")
 
         # Print out only datasets on cells-test only
         dev_only = ct_datasets.difference(cb_datasets)
         print("Datasets on cells-test only:")
-        print(dev_only,"\n")
+        print(sorted(list(dev_only)),"\n")
 
         beta_only = cb_datasets.difference(rr_datasets)
         print("Datasets on cells-beta, but not on RR:")
-        print(beta_only,"\n")
+        print(sorted(list(beta_only)),"\n")
 
 
         # First pass of processing dicts to find collections and add subdatasets to main dict

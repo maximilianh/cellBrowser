@@ -1867,6 +1867,14 @@ def digitize_np(arr, matType):
 def maxVal(a):
     if numpyLoaded:
         return np.amax(a)
+    # if MTX old old numpy is loaded, so isNumpy is false but var is still an ndarray - weird construct to avoid syntax error on undefined "np"
+    elif 'np' in dir():
+        if isinstance(a, np.ndarray):
+            return np.amax(a)
+    elif 'numpy' in sys.modules:
+        import numpy
+        if isinstance(a, numpy.ndarray):
+            return numpy.amax(a)
     else:
         return max(a)
 
@@ -1930,7 +1938,17 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
 
+        # if an old numpy version is loaded isNumpy is false, but the type may still be a numpy array -> force to a list
+        if str(type(exprArr))=="<type 'numpy.ndarray'>":
+            exprArr = exprArr.tolist()[0]
         exprStr = array.array(arrType, exprArr).tostring()
+
+        # Python 3.9 removed tostring()
+        if sys.version_info >= (3, 2):
+            exprStr = array.array(arrType, exprArr).tobytes()
+        else:
+            exprStr = array.array(arrType, exprArr).tostring()
+
         minVal = min(exprArr)
 
     if isPy3:
@@ -2459,7 +2477,7 @@ def runCommand(cmd, verbose=False):
     return 0
 
 def readMtxDims(fname):
-    " return the x,y dimensions of the mtx file "
+    " return the rowCount,colCount dimensions of the mtx file. Usually columns = cells "
     logging.debug("Opening MTX file %s" % fname)
     headerFound = False
     for line in openFile(fname):
@@ -2484,19 +2502,26 @@ def readMtxDims(fname):
 def checkMtx(mtxFname, geneFname, barcodeFname):
     " make sure that the dimensions of the mtx file match the sizes of the barcodes and genes files "
     logging.debug("Checking %s" % mtxFname)
-    geneCount, cellCount = readMtxDims(mtxFname)
+    rowCount, colCount = readMtxDims(mtxFname)
+    # usually columns = number of cells
     geneIds, barcodes = readGenesBarcodes(geneFname, barcodeFname)
     logging.debug("%d geneIds, %d barcodes" % (len(geneIds), len(barcodes)))
-    if len(geneIds) != geneCount:
+    if len(geneIds) == colCount:
+        errAbort("Looks like this MTX file has the genes on the columns. Please transpose the matrix, "
+        "then re-run this command.")
+
+    if len(geneIds) != rowCount:
         errAbort("The number of rows in the file %s (%d) is different from the number of lines in the file %s (%d). "
                 "The number should be identical and usually is the number of genes/features. "
                 "This suggests a problem in the way the data was exported. You may want to remove header lines. "
-                % (mtxFname, len(geneIds), geneFname, geneCount))
-    if len(barcodes) != cellCount:
+                % (mtxFname, len(geneIds), geneFname, rowCount))
+    if len(barcodes) != colCount:
         errAbort("The number of columns in the file %s is different from the number of lines in the file %s. "
                 "The number should be identical and usually is the number of genes/features. "
                 "This suggests a problem in the way the data was exported. You may want to remove header lines. "
                 % (mtxFname, barcodeFname))
+
+    return False
 
 def copyMatrixTrim(inFname, outFname, filtSampleNames, doFilter, geneToSym, outConf, matType):
     """ copy matrix and compress it. If doFilter is true: keep only the samples in filtSampleNames
@@ -2689,6 +2714,7 @@ def parseMarkerTable(filename, geneToSym):
     for row in reader:
         clusterName = row[clusterIdx]
         geneId = row[geneIdx]
+
         scoreVal = float(row[scoreIdx])
         otherFields = row[otherStart:otherEnd]
 
@@ -2696,6 +2722,9 @@ def parseMarkerTable(filename, geneToSym):
             otherColumns[colIdx].append(val)
 
         geneSym = convIdToSym(geneToSym, geneId, printWarning=False)
+
+        if "|" in geneId:
+            geneId = geneId.split("|")[0]
 
         newRow = []
         newRow.append(geneId)
@@ -3166,6 +3195,7 @@ def parseGeneInfo(geneToSym, fname):
             continue
         row = line.rstrip("\r\n").split(sep)
         sym = row[0]
+
         if validSyms is not None and sym not in validSyms:
             sym = geneToSym.get(sym)
             if sym is None:
@@ -3216,7 +3246,7 @@ def guessGeneIdType(inputObj):
             matIter.open(matrixFname, usePyGzip=True)
             geneId, sym, exprArr = nextEl(matIter.iterRows())
             matIter.close()
-            geneIds = [geneId]
+            geneIds = [geneId] # only use the first geneId for the guessing
 
     geneId = geneIds[0]
 
@@ -3469,13 +3499,36 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
+def readValidGenes(outDir):
+    " the output directory contains an exprMatrix.json file that contains all valid gene symbols. We're reading those here "
+    matrixJsonFname = join(outDir, "exprMatrix.json")
+    validGenes = list(readJson(matrixJsonFname))
+
+    if "|" in validGenes[0]:
+        newSyms = []
+        geneToSym = {}
+        for g in validGenes:
+            if "|" in g:
+                parts = g.split("|")
+                geneId = parts[0]
+                sym = parts[1]
+
+            newSyms.append( sym )
+            geneToSym[geneId] = sym
+
+        return newSyms, geneToSym
+
+    return validGenes, None
+
 def readQuickGenes(inConf, geneToSym, outDir, outConf):
     " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
 
-        matrixJsonFname = join(outDir, "exprMatrix.json")
-        validGenes = set(readJson(matrixJsonFname))
+        validGenes, geneToSymFromMatrix = readValidGenes(outDir)
+
+        if geneToSymFromMatrix is not None:
+            geneToSym = geneToSymFromMatrix
 
         fname = getAbsPath(inConf, "quickGenesFile")
         quickGenes = parseGeneInfo(geneToSym, fname)
@@ -3489,6 +3542,9 @@ def readQuickGenes(inConf, geneToSym, outDir, outConf):
                 logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
             else:
                 validQuickGenes.append(quickGeneInfo)
+
+        if len(validQuickGenes)==0:
+            errAbort("No single gene in the quickGenes file is a valid identifier. Did you really use the gene symbol, not the ID? If unsure, please contact us at cells@ucsc.edu")
 
         outConf["quickGenes"] = validQuickGenes
         logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
@@ -3798,6 +3854,10 @@ def matrixOrSamplesHaveChanged(datasetDir, inMatrixFname, outMatrixFname, outCon
 def readJson(fname, keepOrder=False):
     " read .json and return as a dict "
     logging.debug("parsing json file %s" % fname)
+    if not isfile(fname):
+        logging.debug("%s does not exist, returning empty dict" % fname)
+        return OrderedDict()
+
     if keepOrder:
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         inStr = readFile(fname)
@@ -3810,8 +3870,6 @@ def readJson(fname, keepOrder=False):
 
 def orderClusters(labelCoords, outConf):
     " given the cluster label coordinates, order them by similarity "
-    #labelCoords = readJson(clusterLabelFname)
-
     # create dict with label1 -> list of (dist, label2)
     dists = defaultdict(list)
     for i, (x1, y1, label1) in enumerate(labelCoords):
@@ -3939,6 +3997,10 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     needFilterMatrix = True
 
+    oldConfFname = join(datasetDir, "dataset.json")
+    logging.info("Loading old config from %s" % oldConfFname)
+    oldConf = readJson(oldConfFname, keepOrder=True)
+
     if doMeta or doMatrix or redo in ["meta", "matrix"]:
         # convertMeta also compares the sample IDs between meta and matrix to determine if the meta file 
         # needs reordering or trimming (=if the meta contains more cells than the matrix)
@@ -3946,9 +4008,6 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     else:
         sampleNames = readSampleNames(outMetaFname)
         needFilterMatrix = False
-        oldConfFname = join(datasetDir, "dataset.json")
-        logging.info("Loading old config from %s" % oldConfFname)
-        oldConf = readJson(oldConfFname, keepOrder=True)
         outConf.update(oldConf)
 
     if doMatrix or redo=='matrix':
@@ -3977,6 +4036,14 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
         "body_parts", "organisms", "diseases", "projects" ]:
         copyConf(inConf, outConf, tag)
+
+    # for the news generator and for future logging, note when this dataset was built for the first time into this directory
+    # and also when it was built most recently
+    if "firstBuildTime" in oldConf:
+        outConf["firstBuildTime"] = oldConf["firstBuildTime"]
+    else:
+        outConf["firstBuildTime"] = datetime.datetime.now().isoformat()
+    outConf["lastBuildTime"] = datetime.datetime.now().isoformat()
 
     makeFilesTxt(outConf, datasetDir)
 
@@ -4070,7 +4137,7 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
     genes = [str(x)+sep+str(y) for (x,y) in geneIdAndSyms]
     return genes
 
-def geneStringsFromVar(var, sep):
+def geneStringsFromVar(var, sep="|"):
     " return a list of strings in format geneId<sep>geneSymbol "
     if "gene_ids" in var:
         genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False, sep=sep)
@@ -4696,7 +4763,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
             if not "fileVersions" in outConf:
                 outConf = loadConfig(inConfFname, ignoreName=True)
                 outConf["fileVersions"] = {}
-            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, outConf["name"])
+            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, dsName)
             todoConfigs.update(parentFnames)
             outConf["parents"] = parentInfos
             if "name" in outConf:
@@ -5599,10 +5666,18 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
     pipeLog("After filtering: Data has %d samples/observations and %d genes/variables" % (len(adata.obs), len(adata.var)))
 
+    sampleCountPostFilter = len(adata.obs)
+
     if len(list(adata.obs_names))==0:
         errAbort("No cells left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
     if len(list(adata.var_names))==0:
         errAbort("No genes left after filtering. Consider lowering the minGenes/minCells cutoffs in scanpy.conf")
+
+    removedRatio = 1.0 - (float(sampleCountPostFilter) / float(sampleCount))
+    if removedRatio > 0.5:
+        logging.warn("!! The filtering removed more than 50% of cells - are you sure this is intentional? Consider lowering minGenes/minCells in scanpy.conf")
+    if removedRatio > 0.9:
+        errAbort("More than 90% of cells were filtered out, this is unlikely to make sense")
 
     if not "n_counts" in list(adata.obs.columns.values):
         logging.debug("Adding obs.n_counts")
