@@ -587,6 +587,7 @@ var cellbrowser = function() {
         "doi" : "Publication Fulltext",
         "arrayexpress" : "ArrayExpress",
         "ena_project" : "European Nucleotide Archive",
+        "hca_dcp" : "Human Cell Atlas DCP",
         "cirm_dataset" : "California Institute of Regenerative Medicine Dataset",
     };
 
@@ -602,6 +603,7 @@ var cellbrowser = function() {
         "ena_project" : "https://www.ebi.ac.uk/ena/data/view/",
         "cirm_dataset" : "https://cirm.ucsc.edu/d/",
         "arrayexpress" : "https://www.ebi.ac.uk/arrayexpress/experiments/",
+        "hca_dcp" : "https://data.humancellatlas.org/explore/projects/",
     }
 
     function htmlAddLink(htmls, desc, key, linkLabel) {
