@@ -1045,11 +1045,10 @@ var cellbrowser = function() {
                 projStr = dataset.projects.join("|");
             }
 
-            //var line = "<a id='tpDatasetButton_"+i+"' data-body-parts='"+bodyPartStr+"' role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
-            var line = "<a id='tpDatasetButton_"+i+"' "+"data-bodyparts='"+bodyPartStr+"' "+
-                "data-diseases='"+disStr+"' "+
-                "data-organisms='"+orgStr+"' "+
-                "data-projects='"+projStr+"' "+
+            var line = "<a id='tpDatasetButton_"+i+"' "+"data-body='"+bodyPartStr+"' "+
+                "data-dis='"+disStr+"' "+
+                "data-org='"+orgStr+"' "+
+                "data-proj='"+projStr+"' "+
                 "role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
@@ -1071,8 +1070,10 @@ var cellbrowser = function() {
 
             if (dataset.tags!==undefined) {
                 for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
-                var tag = dataset.tags[tagI];
-                htmls.push("<span class='badge'>"+tag+"</span>");
+                    var tag = dataset.tags[tagI];
+                    if (tag==="smartseq2" || tag==="ATAC" || tag==="10x")
+                        continue
+                    htmls.push("<span class='badge'>"+tag+"</span>");
                 }
             }
             htmls.push(dataset.shortLabel+"</a>");
@@ -1097,40 +1098,45 @@ var cellbrowser = function() {
         return allValues;
     }
 
-    function filterDatasetsDom(onlyBps) {
+    function filterDatasetsDom() {
         /* keep only datasets that fulfill the filters */
 
-        var onlyBps = $("#tp
+        // read the current filter values of the dropboxes
+        var categories = ["Body", "Dis", "Org", "Proj"];
+        var filtVals = {};
+        for (var category of categories)
+            filtVals[category] = $("#tp"+category+"Combo").val();
+
         let elList = $(".tpListItem");
         for (let el of elList) {
-            let bpStr = el.getAttribute("data-bodyparts");
-            let found = false;
-            if (!onlyBps || onlyBps.length==0)
-                // if no filtering is specified just show everything
-                found = true;
-            else
-                if (bpStr && bpStr!=="") {
-                    let bps = bpStr.split("|");
-                    if (onlyBps.length===0)
-                        found = true;
-                    else {
-                        if (bps.indexOf("summary")!==-1) { // never filter the summary
-                            found = true;
-                        }
-                        //if (bps.indexOf("all")!==-1) { // always match datasets with "all"
-                            //found = true;
-                        //}
-                        else
-                            for (let bp of onlyBps) {
-                                if (bps.indexOf(bp)!==-1) {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                    }
-                }
+            // never touch the first/summary element
+            if (el.getAttribute("data-body")==="summary")
+                continue
+            // read the values of the current DOM element
+            var domVals = {};
+            for (var category of categories)
+                domVals[category] = el.getAttribute("data-"+category.toLowerCase());
 
-            if (found)
+            var isShown = true;
+            // now compare filtVals and domVals
+            for (var category of categories) {
+                var filtList = filtVals[category];
+                var domList = domVals[category];
+
+                let found = false;
+                if (filtList.length===0)
+                    found = true;
+                for (var filtVal of filtList)
+                    if (domList.indexOf(filtVal)!=-1)
+                        found = true;
+
+                if (!found) {
+                    isShown = false;
+                    break;
+                }
+            }
+            
+            if (isShown)
                 el.style.display="";
             else
                 el.style.display="none";
@@ -1214,21 +1220,23 @@ var cellbrowser = function() {
 
         function onFilterChange(ev) {
             /* called when user changes a filter: updates list of datasets shown */
-            let filtNames = $(this).val();
+            var filtNames = $(this).val();
 
-            let param = null;
+            var param = null;
             if (this.id==="tpBodyCombo")
                 param = "bp";
             else if (this.id=="tpDisCombo")
                 param = "dis";
-            else if (this.id=="tpOrgCombo)
+            else if (this.id=="tpOrgCombo")
                 param = "org";
             else if (this.id=="tpProjCombo")
                 param = "proj";
 
             // change the URL
-            let filtArg = filtNames.join("|");
-            changeUrl({param:filtArg});
+            var filtArg = filtNames.join("~");
+            var urlArgs = {}
+            urlArgs[param] = filtArg;
+            changeUrl(urlArgs);
             filterDatasetsDom();
         }
 
@@ -1276,10 +1284,10 @@ var cellbrowser = function() {
             if (doFaceting)
                 noteLines.push("<div style='margin-right: 10px; font-weight: bold'>Filters:</div>");
 
-            buildFilter(noteLines, bodyParts, "Organ", "bp", "tpBodyCombo", "select organs...");
+            buildFilter(noteLines, bodyParts, "Organ", "body", "tpBodyCombo", "select organs...");
             buildFilter(noteLines, diseases, "Disease", "dis", "tpDisCombo", "select diseases...");
             buildFilter(noteLines, organisms, "Species", "org", "tpOrgCombo", "select species...");
-            buildFilter(noteLines, projects, "Project", "org", "tpProjCombo", "select project...");
+            buildFilter(noteLines, projects, "Project", "proj", "tpProjCombo", "select project...");
         }
 
         // create links to the parents of the dataset
@@ -1429,7 +1437,7 @@ var cellbrowser = function() {
         }
 
         if (getVarSafe("ds")===undefined) // only filter on the top level
-            filterDatasetsDom(filtList);
+            filterDatasetsDom();
         connectOpenPane(selDatasetIdx, datasetList);
         // finally, activate the default pane and load its html
         openDatasetLoadPane(openDsInfo);

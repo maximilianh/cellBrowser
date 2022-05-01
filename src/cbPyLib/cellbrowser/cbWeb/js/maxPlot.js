@@ -596,6 +596,8 @@ function MaxPlot(div, top, left, width, height, args) {
      * Canvas origin is top-left, but usually plotting origin is bottom-left,
      * so also flip the Y axis. sets invisible coords to HIDCOORD
      * */
+        if (coords===null)
+            return;
         console.time("scale");
         var minX = zoomRange.minX;
         var maxX = zoomRange.maxX;
