@@ -1100,6 +1100,7 @@ var cellbrowser = function() {
     function filterDatasetsDom(onlyBps) {
         /* keep only datasets that fulfill the filters */
 
+        var onlyBps = $("#tp
         let elList = $(".tpListItem");
         for (let el of elList) {
             let bpStr = el.getAttribute("data-bodyparts");
@@ -1169,7 +1170,7 @@ var cellbrowser = function() {
             // some mirrors don't use the "body_parts" statement and don't need the faceting
             let selPar = getVarSafe(urlVar);
             if (selPar && selPar!=="")
-                filtList = selPar.split("_");
+                filtList = selPar.split("|");
             buildComboBox(html, comboId, filterVals, filtList, comboLabel, 200, {multi:true});
             html.push("&nbsp;&nbsp;");
             return true;
@@ -1213,11 +1214,22 @@ var cellbrowser = function() {
 
         function onFilterChange(ev) {
             /* called when user changes a filter: updates list of datasets shown */
-            let filtNames = $("#tpBodyCombo").val();
+            let filtNames = $(this).val();
+
+            let param = null;
+            if (this.id==="tpBodyCombo")
+                param = "bp";
+            else if (this.id=="tpDisCombo")
+                param = "dis";
+            else if (this.id=="tpOrgCombo)
+                param = "org";
+            else if (this.id=="tpProjCombo")
+                param = "proj";
+
             // change the URL
-            let filtArg = filtNames.join("_");
-            changeUrl({"bp":filtArg});
-            filterDatasetsDom(filtNames);
+            let filtArg = filtNames.join("|");
+            changeUrl({param:filtArg});
+            filterDatasetsDom();
         }
 
         // -- end inline functions
