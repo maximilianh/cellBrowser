@@ -1008,7 +1008,7 @@ var cellbrowser = function() {
 
     function buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName) {
         /* make a dataset list and append its html lines to htmls */
-        htmls.push("<div id='tpDatasetList' class='list-group' style='width:400px; float: left; margin-top: 1em; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
+        htmls.push("<div id='tpDatasetList' class='list-group' style='width:385px; float: left; margin-top: 1em; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
         if (!datasetList || datasetList.length===0) {
             alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
                 " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
@@ -2428,7 +2428,7 @@ var cellbrowser = function() {
             }
         ];
 
-        htmls.push("<textarea id='tpIdList' style='height:320px;width:385px;display:block'>");
+        htmls.push("<textarea id='tpIdList' style='height:320px;width:400px;display:block'>");
         htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
         htmls.push("<input id='tpHasWildcard' type='checkbox' style='margin-right: 10px' /> Allow RegEx search, e.g. enter '^TH' to find all IDs that <br>start with 'TH' or '-1$' to find all IDs that end with '-1'");
         var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
