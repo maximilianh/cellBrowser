@@ -1008,7 +1008,7 @@ var cellbrowser = function() {
 
     function buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName) {
         /* make a dataset list and append its html lines to htmls */
-        htmls.push("<div id='tpDatasetList' class='list-group' style='width:385px; float: left; margin-top: 1em; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
+        htmls.push("<div id='tpDatasetList' class='list-group' style='float: left; margin-top: 1em; height:"+listGroupHeight+"px; overflow-y:scroll; width:"+leftPaneWidth+"px'>");
         if (!datasetList || datasetList.length===0) {
             alert("No datasets are available. Please make sure that at least one dataset does not set visibility=hide "+
                 " or that at least one collection is defined. Problems? -> cells@ucsc.edu");
@@ -1326,7 +1326,7 @@ var cellbrowser = function() {
 
         var winWidth = window.innerWidth - 0.05*window.innerWidth;
         var winHeight = window.innerHeight - 0.05*window.innerHeight;
-        var tabsWidth = winWidth - leftPaneWidth - 40;
+        var tabsWidth = winWidth - leftPaneWidth - 50;
         listGroupHeight = winHeight - 100;
 
         var htmls = ["<div style='line-height: 1.1em'>"];
@@ -1340,7 +1340,7 @@ var cellbrowser = function() {
         else
             activeIdx = buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName);
 
-        htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; float:right; left: " + (leftPaneWidth + 20) + "px; margin-top: 1em; border: 0'>");
+        htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; float:right; left: " + (leftPaneWidth + 10) + "px; margin-top: 1em; border: 0'>");
         htmls.push("<div id='tpOpenDialogTabs' style='border: 0'>");
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
