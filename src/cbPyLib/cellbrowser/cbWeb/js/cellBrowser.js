@@ -2428,7 +2428,7 @@ var cellbrowser = function() {
             }
         ];
 
-        htmls.push("<textarea id='tpIdList' style='height:320px;width:400px;display:block'>");
+        htmls.push("<textarea id='tpIdList' style='height:320px;width:385px;display:block'>");
         htmls.push("</textarea><div id='tpNotFoundIds'></div><div id='tpNotFoundHint'></div>");
         htmls.push("<input id='tpHasWildcard' type='checkbox' style='margin-right: 10px' /> Allow RegEx search, e.g. enter '^TH' to find all IDs that <br>start with 'TH' or '-1$' to find all IDs that end with '-1'");
         var title = "Paste a list of IDs (one per line) to select "+gSampleDesc+"s";
