@@ -497,7 +497,8 @@ def cbCellrangerCli_parseArgs(showHelp=False):
 
 def cbImportScanpy_parseArgs(showHelp=False):
     " setup logging, parse command line arguments and options. -h shows auto-generated help page "
-    parser = optparse.OptionParser("""usage: %prog [options] -i inFilename -o outDir - convert Scanpy AnnData object to cellbrowser. inFilename can be an .h5ad or .loom file.
+    parser = optparse.OptionParser("""usage: %prog [options] -i inFilename -o outDir - convert Scanpy AnnData object to cellbrowser. inFilename can be an .h5ad or .loom file. 
+    Exports raw.X by default, or .X alternatively, see --proc. Exports all meta data. Writes .tsv by default, or alternatively .mtx.gz
 
     Example:
     - %prog -i pbmc3k.h5ad -o pbmc3kScanpy - convert pbmc3k to directory with tab-separated files
