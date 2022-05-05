@@ -1383,11 +1383,11 @@ def findMtxFiles(fname):
     logging.debug("Finding mtx/features/barcode filenames for mtx file %s" % fname)
     if isdir(fname):
         matDir = fname
-        mtxFname = join(matDir, "matrix.mtx.gz")
+        mtxFname = join(matDir, "counts_exprMatrix.mtx.gz")
     else:
         matDir = dirname(fname)
 
-    mtxFname = join(matDir, "matrix.mtx.gz")
+    mtxFname = join(matDir, "counts_exprMatrix.mtx.gz")
     if not isfile(mtxFname):
         errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
                 "Please rename the file, adapt cellbrowser.conf and rerun the command.")
@@ -3974,7 +3974,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
     if isMtx(inMatrixFname):
-        outMatrixFname = join(datasetDir, "matrix.mtx.gz")
+        outMatrixFname = join(datasetDir, "counts_exprMatrix.mtx.gz")
     else:
         outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
 
@@ -4171,7 +4171,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     logging.info("Transposing matrix") # necessary, as scanpy has the samples on the rows
     mat = mat.T
 
-    mtxfile = join(path, 'matrix.mtx')
+    mtxfile = join(path, 'counts_exprMatrix.mtx')
 
     """
     this is stupid: if mat is dense, mmwrite screws up the header:

@@ -40,7 +40,7 @@ var cellbrowser = function() {
     var gRecentGenes = [];
 
     // -- CONSTANTS
-    var gTitle = "UCSC Cell Browser";
+    var gTitle = "Amaranth Medical Analytics";
     var COL_PREFIX = "col_";
 
     var gOpenDataset = null; // while navigating the open dataset dialog, this contains the current name
