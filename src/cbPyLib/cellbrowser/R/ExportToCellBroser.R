@@ -227,7 +227,7 @@ coords=%s
 
 #Example Input
 exportData(object = "../ExportToCellbrowser/rosmap_fib.rds",dataName = "ROSMAP_fib",
-           outputDir = "K:/placement/Amaranth/UCSC_out/ExportToCellBrowser/check",
+           outputDir = "../ExportToCellBrowser/check",
            markerField = c("Level_1","subtype"),clusterField = "Level_1",use.scaleData = FALSE)
 
 
