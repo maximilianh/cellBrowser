@@ -1,0 +1,61 @@
+#! /usr/bin/env python3
+
+import sys,argparse,pathlib,re
+from os import path
+
+# Set up script arguments
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Get all values for a list of datasets for specified cellbrowser.conf tag")
+parser.add_argument('datasetFile', type=str, help='file containing list of datasets in first column')
+parser.add_argument('tag', type=str, help='cellbrowser.conf tag you want values for, e.g. body_parts')
+args = parser.parse_args()
+
+# From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+dFtype = pathlib.Path(args.datasetFile).suffix
+
+if dFtype == ".csv":
+    dsep = ","
+elif dFtype == ".tsv":
+    dsep = "\t"
+else:
+    print("datasetFile must have tsv or csv file extension")
+    exit(1)
+
+dfh = open(args.datasetFile)
+
+# If datasets file has info for the tag already
+# get column num so we can replace it
+header = dfh.readline().rstrip().split(dsep)
+try:
+    n = header.index(args.tag)
+# If it's not there, we'll just tack it on to the end
+except:
+    header.append(args.tag)
+    n = len(header)
+# Want the header in the output file so print that here
+print(*header, sep=dsep)
+
+# Now process rest of datasetFile
+for line in dfh:
+    splitLine = line.rstrip().split(dsep)
+    dname = splitLine[0]
+    # For some reason, not every dataset in my input file had a cellbrowser.conf
+    # try/except to get around that, though should probably investigate why
+    try:
+        for confTag in open(path.join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")):
+            # Tag name is part before the "="
+            splitTag = confTag.strip().split("=")
+            if splitTag[0] == args.tag:
+                # remove all the extra characters from the line
+                tagVal = re.sub('[\[\]\'",]','',splitTag[1])
+                # Case where we're tacking the tag onto the end of our file
+                if n == len(header):
+                    splitLine.append(tagVal)
+                    print(*splitLine, sep=dsep)
+                # Case where we're replacing what's there
+                else:
+                    splitLine[n] = tagVal
+                    print(*splitLine, sep=dsep)
+    except:
+        continue
