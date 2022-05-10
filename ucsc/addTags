@@ -2,9 +2,10 @@
 
 import sys,argparse
 from collections import OrderedDict
-from os.path import join, basename, abspath, dirname
+from os.path import join, basename, dirname
 from pathlib import Path
 
+# These two functions copied and modified from cellbrowser.py
 def readLines(lines, fname):
     " recursively read lines from fname, understands lines like #include 'filename.conf' "
     for line in open(fname):
@@ -30,8 +31,6 @@ def loadConfig(fname):
 
     lines = readLines([], fname)
     exec("\n".join(lines), g, conf)
-
-    #conf["inDir"] = dirname(fname)
 
     return conf
 
@@ -68,55 +67,22 @@ for line in dfh:
     tagsAdded = set()
     confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
     conf = loadConfig(confName)
-    #print(conf,"\n")
     for tag in header:
         if tag != "dataset":
             n = header.index(tag)
             if tag not in conf.keys():
-                #print(n)
                 vals = splitLine[n].strip().split(' ')
-                #print(tag + "=" + str(vals))
                 with open(confName,"a") as f:
                     f.write(tag + "=" + str(vals) + "\n")
             else:
-                #outConf = list()
                 outConf = ""
                 for tagLine in open(confName):
-                    #cleanTagLine = tagLine.strip("\n")
                     splitTag = tagLine.strip().split("=")
                     confTag = splitTag[0]
                     if confTag == tag:
                         vals = splitLine[n].strip().split(' ')
-                        #print(tag + "=" + str(vals))
-                        #outConf.append(tag + "=" + str(vals))
                         outConf += tag + "=" + str(vals) + "\n"
                     else:
-                        #outConf.append(cleanTagLine)
                         outConf += tagLine
                 with open(confName,"w") as f:
                     f.write(outConf)
-                #print(*outConf, sep="\n")
-
-
-
-#    for confTag in open(join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")):
-#        print(header)
-#        print(confTag)
-#        print(join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf"))
-#        # Tag name is part before the "="
-#        splitTag = confTag.strip().split("=")
-#        print(splitTag[0])
-#        if splitTag[0] in header:
-#            print("here")
-#            n = header.index(splitTag[0])
-#            vals = splitLine[n].strip().split(' ')
-#            print(splitTag[0] + "=" + vals)
-#            tagsAdded.add(splitTag[0])
-#        toAdd = tagNames - tagsAdded
-#        print(toAdd)
-#        for tag in toAdd:
-#            print("here2")
-#            n = header.index(splitTag[0])
-#            vals = splitLine[n].strip().split(' ')
-#            print(tag + "=" + vals)
-#            tagsAdded.add(tag)
