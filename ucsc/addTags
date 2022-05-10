@@ -41,6 +41,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument('datasetFile', type=str, help='file containing list of datasets in first column \
 and any tags to add/update in subsequent columns. Header should contain tag names that should match \
 those in the example cellbrowser.conf, e.g. body_parts.')
+parser.add_argument("-u","--update", action='store_true',
+    help='if a tag already exists in the cellbrowser.conf, update it with value from datasetsFile')
 args = parser.parse_args()
 
 # From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
@@ -56,33 +58,49 @@ else:
 
 dfh = open(args.datasetFile)
 
-# If datasets file has info for the tag already
-# get column num so we can replace it
+# Peel off header so we can know which tags we're working with
 header = dfh.readline().rstrip().split(dsep)
 
 # Now process rest of datasetFile
 for line in dfh:
     splitLine = line.rstrip().split(dsep)
     dname = splitLine[0]
-    tagsAdded = set()
     confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
+    # Turn conf into dict
     conf = loadConfig(confName)
+
+    # go through each tag in the header
     for tag in header:
+        # Skip first column
         if tag != "dataset":
+            # Get index of tag in the header so that we can use position to get values
+            # for the current tag of our current dataset later
             n = header.index(tag)
+
+            # Case where we're dealing with a new tag
             if tag not in conf.keys():
+                # Turn vals into a list
                 vals = splitLine[n].strip().split(' ')
+                # Append to file
                 with open(confName,"a") as f:
                     f.write(tag + "=" + str(vals) + "\n")
-            else:
+            # Case where tag already exists in conf file, so we're updating it
+            if args.update:
+                # empty string to hold outConf if we're dealing with updates to current tags
+                # doing it this way should keep the formatting of the lines we're not changing intact
                 outConf = ""
+                # go through line by line
                 for tagLine in open(confName):
                     splitTag = tagLine.strip().split("=")
                     confTag = splitTag[0]
+                    # find those tags we've referenced in the header
                     if confTag == tag:
+                        # take the values from datasetFile and add to output string
                         vals = splitLine[n].strip().split(' ')
                         outConf += tag + "=" + str(vals) + "\n"
+                    # Just add other lines to the output string
                     else:
                         outConf += tagLine
+                # Write output string to our conf file
                 with open(confName,"w") as f:
                     f.write(outConf)
