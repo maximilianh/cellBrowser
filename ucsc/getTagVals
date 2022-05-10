@@ -1,7 +1,38 @@
 #! /usr/bin/env python3
 
-import sys,argparse,pathlib,re
-from os import path
+import sys,argparse,re
+from collections import OrderedDict
+from os.path import join, basename, dirname
+from pathlib import Path
+
+# These two functions copied and modified from cellbrowser.py
+def readLines(lines, fname):
+    " recursively read lines from fname, understands lines like #include 'filename.conf' "
+    for line in open(fname):
+        line = line.rstrip("\r\n")
+        if line.startswith("#include"):
+            newFname = splitOnce(line, " ")[1]
+            newFname = newFname.strip('"').strip("'")
+            lines.extend(readLines(lines, newFname))
+        else:
+            lines.append(line)
+    return lines
+
+def loadConfig(fname):
+    """ parse python in fname and return variables as dictionary.
+    add the directory of fname to the dict as 'inDir'.
+    """
+
+    conf = OrderedDict()
+
+    g = {}
+    g["fileBase"] = basename(fname).split('.')[0]
+    g["dirName"] = basename(dirname(fname))
+
+    lines = readLines([], fname)
+    exec("\n".join(lines), g, conf)
+
+    return conf
 
 # Set up script arguments
 parser = argparse.ArgumentParser(
@@ -12,7 +43,7 @@ parser.add_argument('tag', type=str, help='cellbrowser.conf tag you want values 
 args = parser.parse_args()
 
 # From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
-dFtype = pathlib.Path(args.datasetFile).suffix
+dFtype = Path(args.datasetFile).suffix
 
 if dFtype == ".csv":
     dsep = ","
@@ -30,7 +61,7 @@ header = dfh.readline().rstrip().split(dsep)
 try:
     n = header.index(args.tag)
 # If it's not there, we'll just tack it on to the end
-except:
+except ValueError:
     header.append(args.tag)
     n = len(header)
 # Want the header in the output file so print that here
@@ -40,22 +71,20 @@ print(*header, sep=dsep)
 for line in dfh:
     splitLine = line.rstrip().split(dsep)
     dname = splitLine[0]
-    # For some reason, not every dataset in my input file had a cellbrowser.conf
-    # try/except to get around that, though should probably investigate why
-    try:
-        for confTag in open(path.join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")):
-            # Tag name is part before the "="
-            splitTag = confTag.strip().split("=")
-            if splitTag[0] == args.tag:
+    confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
+    conf = loadConfig(confName)
+    for tag in header:
+        if tag != "dataset":
+            n = header.index(tag)
+            if tag in conf.keys():
+                tagVal = str(conf[tag])
                 # remove all the extra characters from the line
-                tagVal = re.sub('[\[\]\'",]','',splitTag[1])
+                tagVal = re.sub('[\[\]\'",]','',tagVal)
                 # Case where we're tacking the tag onto the end of our file
-                if n == len(header):
+                if n == len(header) - 1:
                     splitLine.append(tagVal)
                     print(*splitLine, sep=dsep)
                 # Case where we're replacing what's there
                 else:
                     splitLine[n] = tagVal
                     print(*splitLine, sep=dsep)
-    except:
-        continue
