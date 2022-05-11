@@ -3187,16 +3187,16 @@ def readHeaders(fname):
     return row
 
 def parseGeneInfo(geneToSym, fname):
-    """ parse a file with three columns: symbol, desc (optional), pmid (optional).
-    Return as a dict symbol -> [description, pmid] """
+    """ parse a file with three columns: symbol or geneId, desc (optional), pmid (optional).
+    Return as a dict geneId|symbol -> [description, pmid] """
     if fname is None:
         return {}
     logging.debug("Parsing %s" % fname)
-    validSyms = None
+    symToGene = None
     if geneToSym is not None:
-        validSyms = set()
+        symToGene = dict()
         for gene, sym in iterItems(geneToSym):
-            validSyms.add(sym)
+            symToGene[sym] = gene
 
     sep = sepForFile(fname)
     geneInfo = []
@@ -3208,20 +3208,38 @@ def parseGeneInfo(geneToSym, fname):
         if line.startswith("symbol"):
             continue
         row = line.rstrip("\r\n").split(sep)
-        sym = row[0]
+        geneOrSym = row[0]
 
-        if validSyms is not None and sym not in validSyms:
-            sym = geneToSym.get(sym)
-            if sym is None:
-                logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
-                continue
+        if "|" in geneOrSym:
+            # may be necessary in rare cases when symbol <-> geneId is not unique
+            geneId, sym = geneOrSym.split("|")
+        # one can provide either geneIDs or symbols in the quick genes file
+        elif geneOrSym in geneToSym:
+            geneId = geneOrSym
+            sym = geneToSym[geneId]
+        elif geneOrSym in symToGene:
+            sym = geneOrSym
+            geneId = symToGene[sym]
+        else:
+            errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId")
 
-        info = [sym]
+        #if symToGene is not None and sym not in symToGene:
+            #sym = geneToSym.get(sym)
+            #if sym is None:
+                #logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
+                #continue
+
+        if geneId==sym:
+            info = [sym]
+        else:
+            info = [geneId+"|"+sym]
+
         if len(row)>1:
             info.append(row[1])
         if len(row)>2:
             info.append(row[2])
         geneInfo.append(info)
+
     return geneInfo
 
 def readSampleNames(fname):

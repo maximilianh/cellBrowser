@@ -51,8 +51,6 @@ var cellbrowser = function() {
     // "sample" or a "cell". This will adapt help menus, menus, etc.
     var gSampleDesc = "cell";
 
-    var gLabelCoordCache = {};
-
     // width of left meta bar in pixels
     var metaBarWidth = 250;
     // margin between left meta bar and drawing canvas
@@ -1337,10 +1335,13 @@ var cellbrowser = function() {
 
         if (onlyInfo)
             leftPaneWidth = 0;
+            htmls.push("<div></div>"); // keep structure of the page the same, skip the left pane
         else
+        {
             activeIdx = buildListPanel(datasetList, listGroupHeight, leftPaneWidth, htmls, selName);
+            htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; float:right; left: " + (leftPaneWidth + 10) + "px; margin-top: 1em; border: 0'>");
+        }
 
-        htmls.push("<div id='tpOpenDialogDatasetDesc' style='width:"+tabsWidth+"px; float:right; left: " + (leftPaneWidth + 10) + "px; margin-top: 1em; border: 0'>");
         htmls.push("<div id='tpOpenDialogTabs' style='border: 0'>");
         htmls.push("<ul class='nav nav-tabs'>");
         htmls.push("<li class='active'><a class='tpDatasetTab' id='tabLink1' data-toggle='tab' href='#pane1'>Abstract</a></li>");
@@ -1545,15 +1546,6 @@ var cellbrowser = function() {
         htmls.push('</input>');
 
         htmls.push('<select style="max-width: 300px" id="tpSelectMetaValueEnum_'+rowIdx+'" name="metaValue">');
-        // if ("m" in queryExpr) {
-          //   var op = getQueryOp(queryExpr);
-            // var fieldName = query["m"];
-            //var fieldValue = queryExpr[op];
-            //var metaInfo = findMetaInfo(fieldName);
-            //for (var valIdx = 0; valIdx < metaInfo.valCounts.length; valIdx++) {
-            //    htmls.push('<option value="'+valIdx+'">'+metaInfo.valCounts[i][0]+'</option>');
-           // }
-       // }
         htmls.push('</select>');
         htmls.push('</div>'); // tpSelectRow_<rowIdx>
 
@@ -2765,7 +2757,7 @@ var cellbrowser = function() {
 
 
     function colorByMetaField(fieldName, doneLoad) {
-        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad */
+        /* load the meta data for a field, setup the colors, send it all to the renderer and call doneLoad. if doneLoad is undefined, redraw everything  */
 
         function onMetaArrLoaded(metaArr, metaInfo) {
             gLegend = buildLegendForMeta(metaInfo);
@@ -3125,6 +3117,7 @@ var cellbrowser = function() {
                     break;
                 }
             }
+
             gRecentGenes.unshift([locusStr, geneDesc]); // insert at position 0
             gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
             buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
@@ -3150,6 +3143,9 @@ var cellbrowser = function() {
         // label text can be overriden by the user cart
         var labelField = db.conf.labelField;
 
+        if (! db.gLabelCoordCache )
+            db.gLabelCoordCache = {};
+
         if (clusterInfo) {
             var origLabels = [];
             var clusterMids = clusterInfo.labels;
@@ -3158,7 +3154,7 @@ var cellbrowser = function() {
                 clusterMids = clusterInfo;
             }
 
-            gLabelCoordCache[labelField] = clusterMids;
+            db.gLabelCoordCache[labelField] = clusterMids;
             for (var i = 0; i < clusterMids.length; i++) {
                 origLabels.push(clusterMids[i][2]);
             }
@@ -3173,9 +3169,10 @@ var cellbrowser = function() {
     }
 
     function computeAndSetLabels(values, metaInfo) {
+        /* recompute the label positions and redraw everything. Uses a cache for the label positions */
         var labelCoords;
-        if (gLabelCoordCache[metaInfo.label] !== undefined) {
-            labelCoords = gLabelCoordCache[metaInfo.label];
+        if (db.gLabelCoordCache[metaInfo.label] !== undefined) {
+            labelCoords = db.gLabelCoordCache[metaInfo.label];
         } else {
             var coords = renderer.coords.orig;
             var names = null;
@@ -3207,14 +3204,9 @@ var cellbrowser = function() {
                 labelCoords.push([midX, midY, label]);
             }
             console.timeEnd("cluster centers");
-            gLabelCoordCache[metaInfo.label] = labelCoords;
+            db.gLabelCoordCache[metaInfo.label] = labelCoords;
         }
-        var shouldRedraw = renderer.setLabelCoords(labelCoords);
-        if (shouldRedraw) {
-            renderer.drawDots();
-        } else {
-            renderer.redrawLabels();
-        }
+        renderer.setLabelCoords(labelCoords);
     }
 
     function setLabelField(labelField) {
@@ -4171,7 +4163,6 @@ var cellbrowser = function() {
         }
 
         var tableWidth = metaBarWidth;
-        //var cellWidth = gGeneCellWidth;
 
         if (title) {
             htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
@@ -4197,24 +4188,32 @@ var cellbrowser = function() {
             return;
         }
 
-        //htmls.push('<table style="margin-top:10px" id="tpGeneTable"><tr>');
-        //htmls.push('<td><button id="tpChangeGenes" title="Change the list of genes that are displayed in this table" class = "ui-button ui-widget ui-corner-all" style="width:95%">Change</button></td>');
-
         // need max length of gene names to make number of columns
         //var currWidth = 1;
         var i = 0;
         while (i < geneInfos.length) {
             var geneInfo = geneInfos[i];
-            var geneId   = geneInfo[0];
+            var geneIdOrSym   = geneInfo[0];
             var geneDesc = geneInfo[1];
             if (geneDesc===undefined)
                 geneDesc = geneId;
 
-            if (geneId in db.geneOffsets)
-                htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+geneId+'</span>');
+            // geneIdOrSym can be just the symbol (if we all we have is symbols) or geneId|symbol
+            var geneId
+            var sym;
+            if (geneIdOrSym.indexOf("|")!==-1) {
+                var parts = geneIdOrSym.split("|");
+                geneId = parts[0];
+                sym = parts[1];
+            } else {
+                geneId = geneIdOrSym;
+                sym = geneId;
+            }
+
+            //if (geneId in db.geneOffsets)
+            htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+sym+'</span>');
             i++;
         }
-        //htmls.push("</tr></table>");
         htmls.push("</div>"); // divId
 
         if (doUpdate) {
@@ -4623,7 +4622,7 @@ var cellbrowser = function() {
         htmls.push('</select>');
     }
 
-    function loadCoordSet(coordIdx) {
+    function loadCoordSet(coordIdx, labelFieldName) {
         /* load coordinates and color by meta data */
         var newRadius = db.conf.coords[coordIdx].radius;
         var colorOnMetaField = db.conf.coords[coordIdx].colorOnMeta;
@@ -4631,8 +4630,11 @@ var cellbrowser = function() {
         db.loadCoords(coordIdx,
                 function(coords, info, clusterMids) {
                     gotCoords(coords,info,clusterMids, newRadius);
+
+                    setLabelField(labelFieldName);
+
                     if (colorOnMetaField!==undefined)
-                        colorByMetaField(colorOnMetaField);
+                        colorByMetaField(colorOnMetaField, undefined);
                     else
                         renderer.drawDots();
                 },
@@ -4642,10 +4644,15 @@ var cellbrowser = function() {
     function onLayoutChange(ev, params) {
         /* user changed the layout in the combobox */
         var coordIdx = parseInt(params.selected);
-        loadCoordSet(coordIdx);
+
+        var labelFieldIdx = parseInt($("#tpLabelCombo").val().split("_")[1]);
+        var labelFieldName = db.getMetaFields()[labelFieldIdx].name;
+
+        loadCoordSet(coordIdx, labelFieldName);
+
         changeUrl({"layout":coordIdx, "zoom":null});
         renderer.coordIdx = coordIdx;
-        setLabelField(fieldName);
+
         // remove the focus from the combo box
         removeFocus();
     }
@@ -4835,9 +4842,11 @@ var cellbrowser = function() {
         for (var i = 1; i < metaFieldInfo.length; i++) { // starts at 1, skip ID field
             var field = metaFieldInfo[i];
             var fieldName = field.label;
-            //var hasTooManyVals = (field.diffValCount>100);
-            //if (hasTooManyVals)
-                //continue;
+            // cannot label on something that is a number or has a ton of values
+            var hasTooManyVals = (field.diffValCount>100 || field.type==="int" || field.type==="float");
+            if (hasTooManyVals)
+                continue;
+
             entries.push( ["tpMetaVal_"+i, fieldName] );
             if (selectedField == fieldName) {
                 selIdx = i;
@@ -5541,10 +5550,12 @@ var cellbrowser = function() {
         htmls.push("</ul>");
 
         htmls.push("<div id='tpAnnotTab'>");
+
         htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="'+"tpMetaCombo"+'">Color by Annotation</label>');
         buildMetaFieldCombo(htmls, "tpMetaComboBox", "tpMetaCombo", 0);
-        htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="tpLabelCombo">Label by Annotation</label>');
+        htmls.push('<label style="padding-left: 2px; margin-bottom:8px; padding-top:8px" for="tpLabelCombo">Label by non-num. Annotation</label>');
         buildMetaFieldCombo(htmls, "tpLabelComboBox", "tpLabelCombo", 0, db.conf.labelField);
+
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px" id="tpHoverHint" class="tpHint">Hover over a '+gSampleDesc+' to update data below</div>');
         htmls.push('<div style="padding-top:4px; padding-bottom: 4px; padding-left:2px; display: none" id="tpSelectHint" class="tpHint">Cells selected. No update on hover.</div>');
 
