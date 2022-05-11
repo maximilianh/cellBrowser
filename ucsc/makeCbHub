@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(
     one per directory. If no subdirs/dataset names provided, then will make a single composite.")
 parser.add_argument('fileDir', type=str, help='name of directory where bw files are')
 parser.add_argument("-d","--datasetList", type=str , help='dataset name or list of datasets. If list,\
-    then dataset name should be enclosed in a a set of quotes and space separated, e.g. "H3K27me3 \
+    then dataset names should be enclosed in a set of quotes and space separated, e.g. "H3K27me3 \
     H3K36me3". These names should match the names of directories in fileDir. Will be used as composite track names.')
 parser.add_argument("-c","--colors", type=str , help='file containing color associations. \
     Names in file should match those of the file names minus the file extension or match \
@@ -49,7 +49,7 @@ if args.colors:
     elif cFtype == ".tsv":
         csep = "\t"
     else:
-        print("trackNames file must have tsv or csv file extension")
+        print("colors file must have tsv or csv file extension")
         exit(1)
     #cfh = open(args.colors, "r")
     for line in open(args.colors, "r"):
