@@ -1413,7 +1413,7 @@ var cellbrowser = function() {
 
         $("#tpOpenDialogTabs").tabs();
 
-        if (doFaceting) {
+        if (doFilters) {
             if (bodyParts) {
                 activateCombobox("tpBodyCombo", 200);
                 $("#tpBodyCombo").change( onFilterChange );
