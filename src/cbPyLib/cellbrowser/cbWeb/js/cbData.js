@@ -1465,14 +1465,16 @@ function CbDbFile(url) {
        var loadCounter = 0;
        if (geneSyms) {
            for (var i=0; i<geneSyms.length; i++) {
-               var sym = geneSyms[i][0];
-               if (! (sym in validGenes)) {
-                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
-                  continue;
-               }
+               var geneId = geneSyms[i][0];
+               //if (! (sym in validGenes)) {
+                  //alert("Error: "+sym+" is in quick genes list but is not a valid gene");
+                  //continue;
+               //}
+               if (geneId.indexOf("|")!==-1)
+                   geneId = geneId.split("|")[0];
 
                 self.loadExprAndDiscretize(
-                   sym,
+                   geneId,
                    function(exprVec, discExprVec, geneSym, geneDesc, binInfo) {
                        self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
                        loadCounter++;

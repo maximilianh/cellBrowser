@@ -1223,9 +1223,10 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.setLabelCoords = function(labelCoords) {
-        var prevLabels = self.coords.labels.length > 0;
+        /* set the label coords and return true if there were any labels before */
+        var hadLabelsBefore = self.coords.labels.length > 0;
         self.coords.labels = labelCoords;
-        return prevLabels;
+        return hadLabelsBefore;
     };
 
     this.setColorArr = function(colorArr) {
@@ -1326,6 +1327,7 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.redrawLabels = function() {
+        /* draw only the labels */
         self.coords.pxLabels = scaleLabels(
             self.coords.labels,
             self.port.zoomRange,

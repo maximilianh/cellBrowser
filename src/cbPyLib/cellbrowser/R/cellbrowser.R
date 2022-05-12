@@ -427,10 +427,7 @@ ExportToCellbrowser <- function(
   matrixLabels[matrixLabels=="scale.data"] <- "scaled"
   matrices.conf <- sprintf(" {'label':'%s','fileName':'%s_exprMatrix.tsv.gz'}", names(slotMatrices), names(slotMatrices))
 
-  if (length(slotMatrices)==1)
-     matrices.string <- ""
-  else
-     matrices.string <- paste0("matrices=[", paste(matrices.conf, collapse = ",\n"), "]" )
+  matrices.string <- paste0("matrices=[", paste(matrices.conf, collapse = ",\n"), "]" )
 
   matrixOutPath <- sprintf("%s%sexprMatrix.tsv.gz", firstPrefix, matSep)
   if (use.mtx) {
