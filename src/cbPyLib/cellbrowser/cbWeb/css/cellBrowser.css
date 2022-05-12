@@ -105,9 +105,10 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
         color: black; 
         padding-left:1px; 
         padding-right:1px; 
-        border: 1px solid #AAA; 
+        /* border: 1px solid #AAA; */
         background: #DDDDDD; 
-        color:#AAAAAA 
+        color:#AAAAAA;
+        display: inline-block;
 }
 
 .tpGeneBarCellSelected { outline: 2px solid black}
@@ -191,6 +192,7 @@ input[type=checkbox], input[type=radio] {
         padding:0;
         padding-top: 5px;
         height: 100%;
+        overflow-y: scroll;
 }
 
 .tpMetaBox { font-size: 13px; cursor:default; overflow:hidden }

@@ -170,7 +170,9 @@ def iterGencodePairs(release, doTransGene=False):
     url = "https://hgdownload.cse.ucsc.edu/goldenPath/%s/database/wgEncodeGencodeAttrsV%s.txt.gz" %  (db, release)
     logging.info("Downloading %s" % url)
     doneIds = set()
-    for line in downloadUrlLines(url):
+
+    lines = downloadUrlLines(url)
+    for line in lines:
         row = line.rstrip("\n").split("\t")
 
         if doTransGene:

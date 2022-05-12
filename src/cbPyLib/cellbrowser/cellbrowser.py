@@ -23,10 +23,13 @@ try:
     # python3
     from urllib.parse import urljoin
     from urllib.request import urlopen
+    HTTPERR = urllib.error.HTTPError
 except ImportError:
     # python2
     from urlparse import urljoin
     from urllib2 import urlopen
+    import urllib2
+    HTTPERR = urllib2.URLError
 
 try:
     # > python3.3
@@ -240,7 +243,7 @@ def downloadUrlBinary(remoteUrl):
             data = urlopen(remoteUrl, context=ssl._create_unverified_context()).read()
         else:
             data = urlopen(remoteUrl).read()
-    except urllib.error.HTTPError:
+    except HTTPERR:
         logging.error("Cannot download %s" % remoteUrl)
         data = None
     return data
@@ -248,6 +251,9 @@ def downloadUrlBinary(remoteUrl):
 def downloadUrlLines(url):
     " open URL, slurp in all data and return a list of the text lines "
     data = downloadUrlBinary(url)
+    if data is None:
+        errAbort("Cannot download %s" % url)
+
     if url.endswith(".gz"):
         data = gzip.decompress(data)
     lines = data.splitlines()
@@ -1387,15 +1393,29 @@ def findMtxFiles(fname):
     else:
         matDir = dirname(fname)
 
-    mtxFname = join(matDir, "matrix.mtx.gz")
-    if not isfile(mtxFname):
-        errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
-                "Please rename the file, adapt cellbrowser.conf and rerun the command.")
+    #mtxFname = join(matDir, "matrix.mtx.gz")
+    #if not isfile(mtxFname):
+        #errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
+                #"Please rename the file, adapt cellbrowser.conf and rerun the command.")
+    mtxFname = fname
 
-    genesFname = join(matDir, "genes.tsv.gz")
+    if not isfile(mtxFname):
+        errAbort("Could not find %s" % mtxFname)
+
+    prefix = ""
+    if "_" in basename(mtxFname):
+        prefix = basename(mtxFname).split("_")[0]+"_"
+        logging.debug("Basename-prefix of mtx is: %s")
+
+    genesFname = join(matDir, prefix+"genes.tsv.gz")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
-        genesFname = join(matDir, "features.tsv.gz")
-    barcodeFname = join(matDir, "barcodes.tsv.gz")
+        genesFname = join(matDir, prefix+"features.tsv.gz")
+    barcodeFname = join(matDir, prefix+"barcodes.tsv.gz")
+
+    if not isfile(genesFname):
+        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, genesFname))
+    if not isfile(barcodeFname):
+        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, barcodeFname))
 
     logging.debug("mtx filename: %s, %s and %s" % (mtxFname, genesFname, barcodeFname))
     return mtxFname, genesFname, barcodeFname
@@ -2287,7 +2307,7 @@ def readMatrixSampleNames(fname):
     " return a list of the sample names of a matrix fname "
     if fname.endswith(".mtx.gz"):
         matrixPath = dirname(fname)
-        barcodePath = join(matrixPath, "barcodes.tsv.gz")
+        barcodePath = findMtxFiles(fname)[2]
         logging.info("Reading sample names for %s -> %s" % (matrixPath, barcodePath))
         lines = openFile(barcodePath).read().splitlines()
         ret = []
@@ -3167,16 +3187,16 @@ def readHeaders(fname):
     return row
 
 def parseGeneInfo(geneToSym, fname):
-    """ parse a file with three columns: symbol, desc (optional), pmid (optional).
-    Return as a dict symbol -> [description, pmid] """
+    """ parse a file with three columns: symbol or geneId, desc (optional), pmid (optional).
+    Return as a dict geneId|symbol -> [description, pmid] """
     if fname is None:
         return {}
     logging.debug("Parsing %s" % fname)
-    validSyms = None
+    symToGene = None
     if geneToSym is not None:
-        validSyms = set()
+        symToGene = dict()
         for gene, sym in iterItems(geneToSym):
-            validSyms.add(sym)
+            symToGene[sym] = gene
 
     sep = sepForFile(fname)
     geneInfo = []
@@ -3188,20 +3208,38 @@ def parseGeneInfo(geneToSym, fname):
         if line.startswith("symbol"):
             continue
         row = line.rstrip("\r\n").split(sep)
-        sym = row[0]
+        geneOrSym = row[0]
 
-        if validSyms is not None and sym not in validSyms:
-            sym = geneToSym.get(sym)
-            if sym is None:
-                logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
-                continue
+        if "|" in geneOrSym:
+            # may be necessary in rare cases when symbol <-> geneId is not unique
+            geneId, sym = geneOrSym.split("|")
+        # one can provide either geneIDs or symbols in the quick genes file
+        elif geneOrSym in geneToSym:
+            geneId = geneOrSym
+            sym = geneToSym[geneId]
+        elif geneOrSym in symToGene:
+            sym = geneOrSym
+            geneId = symToGene[sym]
+        else:
+            errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId")
 
-        info = [sym]
+        #if symToGene is not None and sym not in symToGene:
+            #sym = geneToSym.get(sym)
+            #if sym is None:
+                #logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
+                #continue
+
+        if geneId==sym:
+            info = [sym]
+        else:
+            info = [geneId+"|"+sym]
+
         if len(row)>1:
             info.append(row[1])
         if len(row)>2:
             info.append(row[2])
         geneInfo.append(info)
+
     return geneInfo
 
 def readSampleNames(fname):
@@ -3936,11 +3974,11 @@ def copyGenes(inConf, outConf, outDir):
     dbGene = inConf["atacSearch"]
     db, geneIdType = dbGene.split(".")
 
-    try:
-        inFname = getStaticFile(getGeneJsonPath(db, geneIdType))
-    except urllib.error.HTTPError as e:
+    inFname = getStaticFile(getGeneJsonPath(db, geneIdType))
+    if inFname is None:
         errAbort("The gene model file %s could not be found on the UCSC cell browser downloads server. "
-                "This means that at UCSC we do not have a prebuilt gene model file for this genome assembly "
+                "Unless your internet is down, this means that at UCSC we do not have a prebuilt "
+                "gene model file for this genome assembly "
                 "with this name. Check if this name is indeed in the format <assembly>.<geneIdName>, "
                 "then you can either contact us or use cbGenes to build the file yourself. " % dbGene)
 
@@ -3974,7 +4012,13 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
     if isMtx(inMatrixFname):
-        outMatrixFname = join(datasetDir, "matrix.mtx.gz")
+        baseName = basename(inMatrixFname)
+        # our cbImportSeurat script uses the format <slotName>_matrix.mtx.gz, keep this format internally
+        if baseName.endswith("_matrix.mtx.gz") and len(baseName.split("_"))==2:
+            baseName = basename(findMtxFiles(inMatrixFname)[0])
+            outMatrixFname = join(datasetDir, baseName)
+        else:
+            outMatrixFname = join(datasetDir, "matrix.mtx.gz")
     else:
         outMatrixFname = join(datasetDir, "exprMatrix.tsv.gz")
 
@@ -4027,7 +4071,8 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc", "geneLabel",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "body_parts", "defQuantPal", "defCatPal", "clusterPngDir"]:
+        "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
+        "body_parts", "organisms", "diseases", "projects" ]:
         copyConf(inConf, outConf, tag)
 
     # for the news generator and for future logging, note when this dataset was built for the first time into this directory
@@ -4186,7 +4231,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
-    logging.info("Writing matrix to %s, type=%s" % (mtxfile, dataType)) # necessary, as scanpy has the samples on the rows
+    logging.info("Writing matrix to %s, type=%s" % (mtxfile, dataType)) # scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
 
     logging.info("Compressing matrix to %s.gz" % mtxfile) # necessary, as scanpy has the samples on the rows
@@ -5233,7 +5278,7 @@ def summarizeDatasets(datasets):
                 #summDs[t] = ds[t]
 
         # these are copied and checked for the correct type
-        for optListTag in ["tags", "hasFiles", "body_parts"]:
+        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects"]:
             if optListTag in ds:
                 if (type(ds[optListTag])==type([])): # has to be a list
                     summDs[optListTag] = ds[optListTag]
