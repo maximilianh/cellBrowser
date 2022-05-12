@@ -1033,6 +1033,7 @@ var cellbrowser = function() {
             var orgStr = "";
             var projStr = "";
             var domStr = "";
+            var lifeStr = "";
 
             if (dataset.body_parts) {
                 bodyPartStr = dataset.body_parts.join("|");
