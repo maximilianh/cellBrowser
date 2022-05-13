@@ -3926,6 +3926,15 @@ var cellbrowser = function() {
         if (geneSym===null)
             geneSym = alphaNumSearch(gRecentGenes, saneSym);
 
+        // if the gene symbol was actually a gene identifier, than no search will have succeeded
+        // This is the more "modern" way of doing things: the ID will have a gene identifier
+        // and the tag will have been the symbol. This is because most modern matrices have both
+        // gene ID and symbol and the index will also have both and so the user can search for both.
+        // (in the old days, see code above, there were only symbols)
+        // So in this case, fall back to the identifier
+        if (geneSym===null)
+            geneSym = saneSym;
+
         colorByLocus(geneSym);
         event.stopPropagation();
     }

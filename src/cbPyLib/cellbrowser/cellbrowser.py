@@ -2656,7 +2656,8 @@ def sanitizeName(name):
     newName = nonAscii.sub("", name)
     if newName!=name:
         logging.debug("Sanitized %s -> %s" % (repr(name), newName))
-    assert(len(newName)!=0)
+    if (len(newName)==0):
+        errAbort("Field name %s has only special chars?" % name)
     return newName
 
 def nonAlphaToUnderscores(name):
@@ -2727,6 +2728,10 @@ def parseMarkerTable(filename, geneToSym):
     otherColumns = defaultdict(list)
     for row in reader:
         clusterName = row[clusterIdx]
+
+        if clusterName=="":
+            errAbort("Found empty string as cluster name in cluster marker file. Please fix the marker file.")
+
         geneId = row[geneIdx]
 
         scoreVal = float(row[scoreIdx])
@@ -3186,8 +3191,8 @@ def readHeaders(fname):
         errAbort("Could not read headers from file %s" % fname)
     return row
 
-def parseGeneInfo(geneToSym, fname):
-    """ parse a file with three columns: symbol or geneId, desc (optional), pmid (optional).
+def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
+    """ parse quick genes file with three columns: symbol or geneId, desc (optional), pmid (optional).
     Return as a dict geneId|symbol -> [description, pmid] """
     if fname is None:
         return {}
@@ -3210,29 +3215,47 @@ def parseGeneInfo(geneToSym, fname):
         row = line.rstrip("\r\n").split(sep)
         geneOrSym = row[0]
 
+        # case 1: user provides both geneId and symbol. Rare.
+        # Necessary when symbol <-> geneId is not unique
         if "|" in geneOrSym:
-            # may be necessary in rare cases when symbol <-> geneId is not unique
             geneId, sym = geneOrSym.split("|")
-        # one can provide either geneIDs or symbols in the quick genes file
-        elif geneOrSym in geneToSym:
+            if geneId not in matrixGeneIds:
+                errAbort("geneId %s in quickgenes file is not in expression matrix" % geneId)
+            geneStr = geneOrSym
+
+        # case 2: matrix has only symbols and user provides symbol. legacy format.
+        # store only the symbol. We could look up the geneId but that's data inference, 
+        # which we try not to do. The lookup could be wrong.
+        elif geneOrSym in matrixSyms and len(matrixGeneIds)==0:
+            geneStr = geneOrSym
+
+        # case 3: matrix has geneIds and user provides a geneId. add the symbol from our mapping
+        # that's a data inference that should not be wrong
+        elif geneOrSym in matrixGeneIds:
             geneId = geneOrSym
             sym = geneToSym[geneId]
-        elif geneOrSym in symToGene:
-            sym = geneOrSym
-            geneId = symToGene[sym]
-        else:
-            errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId")
+            geneStr = geneId+"|"+sym
 
-        #if symToGene is not None and sym not in symToGene:
-            #sym = geneToSym.get(sym)
-            #if sym is None:
-                #logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
-                #continue
+        # case 4: matrix has geneIds and user provides geneId or symbol. Store both.
+        elif geneToSym:
+            # if we have a gene symbol mapping, we can resolve the symbols to geneIds
+            # one can provide either geneIDs or symbols in the quick genes file
+            if geneOrSym in geneToSym:
+                geneId = geneOrSym
+                sym = geneToSym[geneId]
+            elif geneOrSym in symToGene:
+                sym = geneOrSym
+                geneId = symToGene[sym]
+            else:
+                errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId" % geneOrSym)
+            geneStr = geneId+"|"+sym
 
-        if geneId==sym:
-            info = [sym]
         else:
-            info = [geneId+"|"+sym]
+            errAbort("Gene %s in quickgenes file is not in expr matrix and there is no geneId<->symbol mapping to resolve it to a geneId in the expression matrix" % geneOrSym)
+
+        # if we had no geneToSym, we'll check the symbol later if it's valid
+
+        info = [geneStr]
 
         if len(row)>1:
             info.append(row[1])
@@ -3531,55 +3554,69 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
+def areProbablyGeneIds(ids):
+    " if 90% of the identifiers start with the same letter, they are probably gene IDs, not symbols "
+    counts = Counter()
+    numCount = 0
+    for s in ids:
+        counts[s[0]]+=1
+        if s.isnumeric():
+            numCount += 1
+
+    cutoff = 0.9* len(ids)
+    if counts.most_common()[0][1] >= cutoff or numCount >= cutoff:
+        logging.debug("GeneIds in matrix are identifiers, not symbols")
+        return True
+    else:
+        logging.debug("GeneIds in matrix are symbols, not identifiers")
+        return False
+
 def readValidGenes(outDir):
-    " the output directory contains an exprMatrix.json file that contains all valid gene symbols. We're reading those here "
+    """ the output directory contains an exprMatrix.json file that contains all valid gene symbols.
+    We're reading those here """
     matrixJsonFname = join(outDir, "exprMatrix.json")
     validGenes = list(readJson(matrixJsonFname))
 
-    if "|" in validGenes[0]:
-        newSyms = []
-        geneToSym = {}
-        for g in validGenes:
-            if "|" in g:
-                parts = g.split("|")
-                geneId = parts[0]
-                sym = parts[1]
+    syms = []
+    geneIds = []
+    geneToSym = {}
+    hasBoth = False
+    for g in validGenes:
+        if "|" in g:
+            parts = g.split("|")
+            geneId = parts[0]
+            sym = parts[1]
+            syms.append( sym )
+            geneIds.append(geneId)
+            hasBoth = True
+        else:
+            syms.append( g )
 
-            newSyms.append( sym )
-            geneToSym[geneId] = sym
+    if not hasBoth and areProbablyGeneIds(syms):
+        geneIds = syms
+        syms = []
 
-        return newSyms, geneToSym
+    if len(geneToSym)==0:
+        geneToSym = None
 
-    return validGenes, None
+    return set(syms), set(geneIds), geneToSym
 
 def readQuickGenes(inConf, geneToSym, outDir, outConf):
     " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
 
-        validGenes, geneToSymFromMatrix = readValidGenes(outDir)
+        matrixSyms, matrixGeneIds, geneToSymFromMatrix = readValidGenes(outDir)
 
+        # prefer the symbols from the matrix over our own symbol tables
         if geneToSymFromMatrix is not None:
             geneToSym = geneToSymFromMatrix
 
         fname = getAbsPath(inConf, "quickGenesFile")
-        quickGenes = parseGeneInfo(geneToSym, fname)
+        quickGenes = parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds)
 
-        validQuickGenes = []
-        for quickGeneInfo in quickGenes:
-            sym = quickGeneInfo[0]
-            if "|" in sym:
-                sym = sym.split("|")[1]
-            if sym not in validGenes:
-                logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
-            else:
-                validQuickGenes.append(quickGeneInfo)
-
-        if len(validQuickGenes)==0:
-            errAbort("No single gene in the quickGenes file is a valid identifier. Did you really use the gene symbol, not the ID? If unsure, please contact us at cells@ucsc.edu")
-
-        outConf["quickGenes"] = validQuickGenes
-        logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
+        outConf["quickGenes"] = quickGenes
+        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
 
 def getFileVersion(fname):
     data = {}
