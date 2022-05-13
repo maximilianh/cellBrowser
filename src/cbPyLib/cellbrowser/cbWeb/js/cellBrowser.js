@@ -4857,7 +4857,8 @@ var cellbrowser = function() {
     function buildMetaFieldCombo(htmls, idOuter, id, left, selectedField) {
         var metaFieldInfo = db.getMetaFields();
         htmls.push('<div id="'+idOuter+'" style="padding-left:2px; display:inline">');
-        var entries = [["_none", ""]];
+        //var entries = [["_none", ""]];
+        var entries = [];
         var selIdx = 0;
         for (var i = 1; i < metaFieldInfo.length; i++) { // starts at 1, skip ID field
             var field = metaFieldInfo[i];
