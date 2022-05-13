@@ -1115,8 +1115,12 @@ var cellbrowser = function() {
         // read the current filter values of the dropboxes
         var categories = ["Body", "Dis", "Org", "Proj"];
         var filtVals = {};
-        for (var category of categories)
-            filtVals[category] = $("#tp"+category+"Combo").val();
+        for (var category of categories) {
+            var vals = $("#tp"+category+"Combo").val();
+            if (vals===undefined)
+                vals = [];
+            filtVals[category] = vals;
+        }
 
         let elList = $(".tpListItem");
         for (let el of elList) {
