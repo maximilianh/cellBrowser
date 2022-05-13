@@ -30,6 +30,10 @@ Lastly, go into the output directory specified in the cbImportSeurat command and
   cd myRdsImport
   cbBuild -o ~/public_html/cb
 
+Or, if you don't have a webserver already, use the built-in one:
+
+  cbBuild -o /myHtmlFiles -p 8888
+
 You should now be able to access your cell browser from the web.
 
 How to use the cell browser export function in Seurat3
@@ -61,6 +65,10 @@ Next, go into the output directory specified in the cbImportSeurat command and r
 
   cd seurat-out
   cbBuild -o ~/public_html/cb
+
+Or, if you don't have a webserver already, start the built-in one:
+
+  cbBuild -o /myHtmlFiles -p 8888
 
 
 How to configue a basic cbSeurat pipeline
@@ -103,11 +111,14 @@ Then, go into the output directory specified in the cbImportSeurat command and r
   cd scanpy-import
   cbBuild -o ~/public_html/cb
 
-You should now be able to access your cell browser from the web.
+Or, if you don't have a webserver already, start the built-in one:
+
+  cbBuild -o /myHtmlFiles -p 8888
+
+You should now be able to access your cell browser from the web or your local computer.
 
 
-
-How to convert a Scanpy object wihthin Python
+How to convert a Scanpy object within Python
 ^^^^
 
 It a few simple commands to build a ``cellbrowser.conf`` and all the files you need for a cell
@@ -162,7 +173,6 @@ Next, go into the output directory specified in the ``cbScanpy`` command and bui
 
   cd scanpy-out
   cbBuild -o ~/public_html/cb
-
 
 How to configue a basic cbScanpy pipeline
 ^^^^
@@ -361,7 +371,12 @@ You will specifically need to edit these lines to point to the flies that you ex
   
 You will still need to set the other `required settings <https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf#L1>`_ in your cellbrowser.conf as well
 
+How to start the webserver without building datasets
+^^^^
 
+If you have stopped the built-in webserver and want to start it again, without rebuilding the entire dataset, use the cbUpgrade tool:
+
+  cbUpgrade -o /myHtmlFiles -p 8888
 
 How to visualize single-cell ATAC-seq data in the Cell Browser
 ^^^^

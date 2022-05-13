@@ -97,10 +97,19 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
         if version is None:
             errAbort("Could not find or install Seurat")
 
-    if version.split(".")[0]=="3":
+    isSeurat2 = False
+    isSeurat3 = False
+    isSeurat4 = False
+
+    verStr = version.split(".")[0]
+    if verStr=="2":
+        isSeurat2 = True
+    elif verStr=="3":
         isSeurat3 = True
+    elif verStr=="4":
+        isSeurat4 = True
     else:
-        isSeurat3 = False
+        assert(False) # unsupported Seurat version
 
     cmds = []
     # try to install Seurat if not already installed
@@ -153,20 +162,22 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('print("Seurat: Setup")')
     if isSeurat3:
         cmds.append('sobj <- CreateSeuratObject(mat)')
+    elif isSeurat4:
+        cmds.append('sobj <- CreateSeuratObject(counts = mat, min.cells=%d, min.genes=%d)' % (minCells, minGenes))
     else:
         cmds.append('sobj <- CreateSeuratObject(raw.data = mat, min.cells=%d, min.genes=%d)' % (minCells, minGenes))
     cmds.append('sobj') # print size of the matrix
 
     # find mito genes, mito-%, and create plots for it
     # XX - ENSG names?
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")')
     else:
         cmds.append('mito.genes <- grep(pattern = "^MT-", x = rownames(x = sobj@data), value = TRUE)')
         cmds.append('percent.mito <- Matrix::colSums(sobj@raw.data[mito.genes, ])/Matrix::colSums(sobj@raw.data)')
         cmds.append('sobj <- AddMetaData(object = sobj, metadata = percent.mito, col.name = "percent.mito")')
 
-    if not isSeurat3:
+    if isSeurat2:
         cmds.append('VlnPlot(object = sobj, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)')
         cmds.append('par(mfrow = c(1, 2))')
         cmds.append('GenePlot(object = sobj, gene1 = "nUMI", gene2 = "percent.mito")')
@@ -181,7 +192,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('print("Removing cells with more than %f percent of mitochondrial genes")' % (100*mitoMax))
     cmds.append('print("Keeping only cells with a geneCount %d-%d")' % (minGenes, maxGenes))
 
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj <- subset(sobj, subset = nFeature_RNA > %(minGenes)d & nFeature_RNA < %(maxGenes)d & percent.mt < %(mitoMax)f)' % locals())
     else:
         cmds.append('sobj <- FilterCells(object = sobj, subset.names = c("nGene", "percent.mito"), low.thresholds = c(%(minGenes)d, -Inf), high.thresholds = c(%(maxGenes)d, %(mitoMax)f))' % locals())
@@ -190,7 +201,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     # do the log
     cmds.append('sobj <- NormalizeData(object = sobj, normalization.method = "LogNormalize", scale.factor = 10000)')
 
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj <- FindVariableFeatures(sobj, selection.method = "vst", nfeatures = 2000)')
     else:
         # find most variable genes and gate on it
@@ -202,7 +213,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     cmds.append('sobj') # print size of the matrix
 
     # scale
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj <- ScaleData(object = sobj)')
     else:
         cmds.append('sobj <- ScaleData(object = sobj, vars.to.regress = c("nUMI", "percent.mito"))')
@@ -218,7 +229,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
         #cmds.append('sobj <- JackStraw(object = sobj, num.replicate = 100, display.progress = FALSE)')
         #cmds.append('JackStrawPlot(object = sobj, PCs = 1:12)')
         #cmds.append('sobj <- RunPCA(object = sobj, pcs.compute = 50, pc.genes = sobj@var.genes, do.print = FALSE, pcs.print = 1:5, genes.print = 5)')
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj <- RunPCA(sobj, npcs = %d)' % pcCountConfig)
         cmds.append('VizDimLoadings(sobj, dims = 1:2, reduction = "pca")')
         cmds.append('VizDimLoadings(sobj, dims = 2:3, reduction = "pca")')
@@ -233,7 +244,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     louvainRes = conf.get("louvainRes", 0.6)
     cmds.append('print("Finding clusters with resolution %f")' % louvainRes)
 
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('sobj <- FindNeighbors(sobj, dims=%d)' % (min(10, pcCountConfig)))
         cmds.append('sobj <- FindClusters(sobj, resolution = %f)' % louvainRes)
     else:
@@ -244,7 +255,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     perplexity = str(conf.get("perplexity", 30))
 
     doUmap = conf.get("doUmap", False)
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append("sobj <- RunTSNE(sobj, perplexity=%s)" % perplexity)
         if doUmap:
             cmds.append("sobj <- RunUMAP(sobj, dims=1:%s)" % str(pcCountConfig))
@@ -255,7 +266,7 @@ def writeCbSeuratScript(conf, inData, tsnePath, clusterPath, markerPath, rdsPath
     minMarkerPerc = conf.get("minMarkerPerc", 0.25)
     cmds.append('print("Finding markers")')
 
-    if isSeurat3:
+    if isSeurat3 or isSeurat4:
         cmds.append('all.markers <- FindAllMarkers(object = sobj)')
         cmds.append('sobj@misc[["markers"]] <- all.markers')
 
@@ -327,7 +338,7 @@ def cbSeuratCli():
 
     writeCellbrowserConf(datasetName, coords, cbConfPath, args=confArgs)
 
-    generateHtmls(datasetName, outDir, desc = {"supplFiles": [{"label":"Seurat RDS", "file":inMatrix}]})
+    generateHtmls(datasetName, outDir, desc = {"supplFiles": [{"label":"Seurat RDS", "file":basename(rdsPath)}]})
     copyPkgFile("sampleConfig/desc.conf", outDir)
 
 def cbImportSeurat_parseArgs(showHelp=False):

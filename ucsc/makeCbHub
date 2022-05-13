@@ -1,0 +1,183 @@
+#! /usr/bin/env python3
+
+import sys,os,subprocess,webcolors,argparse,pathlib
+
+# Set up script arguments
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    # Should probably expand this beyond just bw files in the future?
+    description="Will take a set of bigWig files and turn them into a set of composite tracks,\
+    one per directory. If no subdirs/dataset names provided, then will make a single composite.")
+parser.add_argument('fileDir', type=str, help='name of directory where bw files are')
+parser.add_argument("-d","--datasetList", type=str , help='dataset name or list of datasets. If list,\
+    then dataset names should be enclosed in a set of quotes and space separated, e.g. "H3K27me3 \
+    H3K36me3". These names should match the names of directories in fileDir. Will be used as composite track names.')
+parser.add_argument("-c","--colors", type=str , help='file containing color associations. \
+    Names in file should match those of the file names minus the file extension or match \
+    those provided in -s/--shortLabels.')
+parser.add_argument("-s","--shortLabels", type=str , help="if file names aren't what is desired \
+    for track names, can provided a file containing file names in column 1 and desired track \
+    names in column 2.")
+parser.add_argument("-l","--longLabels", type=str , help="if file names aren't what is desired \
+    for track names, can provided a file containing file names in column 1 and desired track \
+    names in column 2.")
+parser.add_argument("-f","--html", type=str , help="track description html file. Assumes same \
+    one to be used by all.")
+
+args = parser.parse_args()
+
+dsList = list()
+# Handle case where people provide a list of track/dir names
+if args.datasetList:
+    dsList = args.datasetList.strip().split()
+# Otherwise, just assume track names == dir names
+else:
+    for d in os.listdir(args.fileDir):
+        if os.path.isdir(os.path.join(args.fileDir, d)):
+            dsList.append(d)
+# if dir has no subdirs, then just set dsList == input file dir
+if len(dsList) == 0:
+    dsList = [args.fileDir]
+
+colors = dict()
+if args.colors:
+    # get suffix of colors file to know delimeter, i.e. tab-sep vs comma-sep
+    # From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+    cFtype = pathlib.Path(args.colors).suffix
+    if cFtype == ".csv":
+        csep = ","
+    elif cFtype == ".tsv":
+        csep = "\t"
+    else:
+        print("colors file must have tsv or csv file extension")
+        exit(1)
+    #cfh = open(args.colors, "r")
+    for line in open(args.colors, "r"):
+        splitLine = line.strip().split(csep)
+        colors[splitLine[0]] = splitLine[1]
+shortLabels = dict()
+if args.shortLabels:
+    sFtype = pathlib.Path(args.shortLabels).suffix
+    if sFtype == ".csv":
+        ssep = ","
+    elif sFtype == ".tsv":
+        ssep = "\t"
+    else:
+        print("shortLabels file must have tsv or csv file extension")
+        exit(1)
+    #sfh = open(args.shortLabels, "r")
+    for line in open(args.shortLabels, "r"):
+        splitLine = line.strip().split(ssep)
+        shortLabels[splitLine[0]] = splitLine[1]
+
+longLabels = dict()
+if args.longLabels:
+    lFtype = pathlib.Path(args.longLabels).suffix
+    if lFtype == ".csv":
+        lsep = ","
+    elif lFtype == ".tsv":
+        lsep = "\t"
+    else:
+        print("longLabels file must have tsv or csv file extension")
+        exit(1)
+    #lfh = open(args.longLabels, "r")
+    for line in open(args.longLabels, "r"):
+        splitLine = line.strip().split(lsep)
+        longLabels[splitLine[0]] = splitLine[1]
+
+
+for ds in dsList:
+    dirName = ds.lower()
+    #bwDir = dirName + "/bigWig/"
+    # ^^ Could possibily determine this somehow
+    # from walking the directories and finding dirs
+    # w/ big* files?
+
+    # This prints everything for the parent stanza
+    print("track",dirName)
+    print("compositeTrack","on")
+    print("shortLabel", ds)
+    print("longLabel", ds)
+    print("visibility","dense")
+    print("autoScale","group")
+    print("type","bigWig") 
+    # ^^how to determine this from file types below?
+    # Instead of just printing as I go, I guess I could
+    # make a dict or something and fill it up and print
+    # the stanzas at the end. 
+    # Or maybe the type here doesn't even matter? 
+    # Should really double check
+    # Use track html if provided
+    if args.html:
+        print("html", args.html)
+    print()
+    if dsList[0] == args.fileDir:
+        fdir = args.fileDir
+    else:
+        fdir = os.path.join(args.fileDir,dirName)
+
+    # This prints out the stanzas for all of the subtracks
+    for f in os.listdir(fdir):
+        # Basically take everything before final suffix to use as track name since we need something unique
+        cluster = f.rsplit(".",1)[0]
+        ftype = pathlib.Path(f).suffix
+        print("  track", dirName + "_" + cluster)
+        print("  parent", dirName, "on")
+        # If someone specified short labels, use those
+        if len(shortLabels) != 0:
+            try:
+                shortLabel = shortLabels[f]
+            except KeyError:
+                shortLabel = cluster
+        # Otherwise just use the file name
+        else:
+            shortLabel = cluster
+        print("  shortLabel", shortLabel)
+        # Again, if someone specifies long labels, use those
+        if len(longLabels) != 0:
+            # need try/except here in cases where not every short label has a corresponding long label
+            # otherwise you get a KeyError and the script just crashes
+            try:
+                longLabel = shortLabel + " - " + longLabels[shortLabel]
+            except KeyError:
+                longLabel = shortLabel
+        # If no long labels specified, just use the short label
+        else:
+            longLabel = shortLabel
+        if dsList[0] == args.fileDir:
+            print("  longLabel", longLabel)
+        else:
+            print("  longLabel", ds + " - " + longLabel)
+        fpath = os.path.join(fdir,f)
+        # Do a bunch of things specific to bigWig files
+        if ftype in {".bw",".bigWig",".bigwig"}:
+            # Calculate min/max via bigWigInfo since that's required for the type line
+            cmd = ["bigWigInfo", fpath]
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cmdout, cmderr = p.communicate()
+            results = cmdout.decode("ASCII").split("\n")
+            resultsDict = dict()
+            for item in results:
+                splitItem = item.replace(" ","").split(":")
+                if len(splitItem) > 1:
+                    resultsDict[splitItem[0]] = splitItem[1]
+            print("  type","bigWig",resultsDict["min"],resultsDict["max"])
+            # autoScale group: http://genome.ucsc.edu/goldenPath/help/trackDb/trackDbHub.html#autoScale
+            print("  autoScale","group")
+        # An elif where we could do stuff specific to bigBeds
+        elif ftype in {".bb", ".bigBed"}:
+            print("I don't do anything yet")
+        # If someone specifies colors, use those
+        if len(colors) != 0:
+            # Assumes that input colors are in hex format, but GB only takes rgb values
+            # Should probably have it auto-detect that here and not convert if not needed
+            if shortLabel in colors.keys():
+                rgbTuple = webcolors.hex_to_rgb(colors[shortLabel])
+                rgbStr = str(rgbTuple.red) + "," + str(rgbTuple.green) + "," + str(rgbTuple.blue)
+                print("  color", rgbStr)
+        print("  bigDataUrl",fpath)
+        print("  visibility","dense")
+        # Need this empty print here so that a space is printed betwen track stanzas
+        print()
+
+       

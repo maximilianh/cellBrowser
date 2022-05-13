@@ -596,6 +596,8 @@ function MaxPlot(div, top, left, width, height, args) {
      * Canvas origin is top-left, but usually plotting origin is bottom-left,
      * so also flip the Y axis. sets invisible coords to HIDCOORD
      * */
+        if (coords===null)
+            return;
         console.time("scale");
         var minX = zoomRange.minX;
         var maxX = zoomRange.maxX;
@@ -1089,8 +1091,6 @@ function MaxPlot(div, top, left, width, height, args) {
        self.calcRadius();
 
        self.coords.px = scaleCoords(self.coords.orig, borderMargin, self.port.zoomRange, self.canvas.width, self.canvas.height);
-       if (self.coords.labels!==undefined && self.coords.labels!==null)
-           self.coords.pxLabels = scaleLabels(self.coords.labels, self.port.zoomRange, borderMargin, self.canvas.width, self.canvas.height);
        if (self.coords.lines)
            self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
     }
@@ -1222,6 +1222,13 @@ function MaxPlot(div, top, left, width, height, args) {
        self.scaleData();
     };
 
+    this.setLabelCoords = function(labelCoords) {
+        /* set the label coords and return true if there were any labels before */
+        var hadLabelsBefore = self.coords.labels.length > 0;
+        self.coords.labels = labelCoords;
+        return hadLabelsBefore;
+    };
+
     this.setColorArr = function(colorArr) {
     /* set the color array, one array with one index per coordinate */
        self.col.arr = colorArr;
@@ -1306,7 +1313,7 @@ function MaxPlot(div, top, left, width, height, args) {
         console.timeEnd("draw");
 
         if (self.doDrawLabels===true && self.coords.labels!==null) {
-            self.coords.labelBbox = drawLabels(self.ctx, self.coords.pxLabels, self.canvas.width, self.canvas.height, zoomFact);
+            self.redrawLabels();
         }
 
         if (self.coords.pxLines) {
@@ -1317,6 +1324,24 @@ function MaxPlot(div, top, left, width, height, args) {
 
         if (self.childPlot)
             self.childPlot.drawDots();
+    };
+
+    this.redrawLabels = function() {
+        /* draw only the labels */
+        self.coords.pxLabels = scaleLabels(
+            self.coords.labels,
+            self.port.zoomRange,
+            self.port.radius,
+            self.canvas.width,
+            self.canvas.height
+        );
+        self.coords.labelBbox = drawLabels(
+            self.ctx,
+            self.coords.pxLabels,
+            self.canvas.width,
+            self.canvas.height,
+            self.port.zoomFact
+        );
     };
 
     this.cellsAtPixel = function(x, y) {
