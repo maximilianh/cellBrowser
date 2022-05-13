@@ -15,10 +15,7 @@ minify:
 	terser src/cbPyLib/cellbrowser/cbWeb/ext/*.js -o src/cbPyLib/cellbrowser/cbWeb/ext/minified.js
 
 pip:
-	rm -rf build/*
 	rm -rf dist/*
-	rm -rf build/*
 	python3 setup.py sdist
-	#python3 setup.py sdist 
 	twine upload dist/*
 
