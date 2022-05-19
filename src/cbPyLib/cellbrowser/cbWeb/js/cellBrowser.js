@@ -7459,19 +7459,22 @@ var cellbrowser = function() {
         if (datasetName===undefined)
             datasetName = "";
         // hacks for July 2018 and for backwards compatibility with previous version
-        if (datasetName==="autism10X" || datasetName==="autism10x")
+        else if (datasetName==="autism10X" || datasetName==="autism10x")
             datasetName = "autism";
-        if (datasetName==="aparna")
+        else if (datasetName==="aparna")
             datasetName = "cortex-dev";
-
+        else if (datasetName && datasetName.toLowerCase()==="adultpancreas")
+            datasetName = "adultPancreas"
+        else
         // adult pancreas is the only dataset with an uppercase letter
         // make sure that at least at UCSC, dataset names are always lowercased.
-        // The reason is that at UCSC, the datasetname can be part of the URL,
+        // The reason is that at UCSC, the datasetname can be part of the URL as a hostname,
         // e.g. cortex-dev.cells.ucsc.edu, which the user could enter as CoRTex-dev.cells.ucsc.edu
         // On all other servers, this is not an issue
-        // But never do this for subdatasets, because they often include uppercase letters
-        if (datasetName && datasetName!=="adultPancreas" && pageAtUcsc() && datasetName.indexOf("/")===-1 )
-            datasetName = datasetName.toLowerCase();
+        // (But never do this for subdatasets, because they often include uppercase letters and are not
+        // in the URL hostname part)
+            if (datasetName && pageAtUcsc() && datasetName.indexOf("/")===-1 )
+                datasetName = datasetName.toLowerCase();
         return datasetName;
     }
 
