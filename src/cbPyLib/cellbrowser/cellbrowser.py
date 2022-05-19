@@ -3233,6 +3233,9 @@ def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
         # that's a data inference that should not be wrong
         elif geneOrSym in matrixGeneIds:
             geneId = geneOrSym
+            if not geneToSym:
+                errAbort("quick genes file has a geneId but we have no geneId/symbol table. please use "
+                        "the format geneId|symbol in the quick genes file")
             sym = geneToSym[geneId]
             geneStr = geneId+"|"+sym
 
