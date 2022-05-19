@@ -12,11 +12,11 @@ showHelp() {
 cat << EOF
 Rebuilds cell browsers on cells-test for a list of datasets. 
 
-Usage: `basename $0` -h \$dataset_list
+Usage: `basename $0` \$dataset_list
 
     Required arguments:
     dataset_list    a file with a list of datasets as the first column
-                        OR a whitespace-separated list of datasets
+                    OR a whitespace-separated list of datasets
 
 Example usage:
 `basename $0` my.datasets.txt
