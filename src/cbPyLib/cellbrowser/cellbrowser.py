@@ -3220,7 +3220,7 @@ def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
         if "|" in geneOrSym:
             geneId, sym = geneOrSym.split("|")
             if geneId not in matrixGeneIds:
-                errAbort("geneId %s in quickgenes file is not in expression matrix" % geneId)
+                errAbort("geneId %s in quickgenes file is not in expression matrix" % repr(geneId))
             geneStr = geneOrSym
 
         # case 2: matrix has only symbols and user provides symbol. legacy format.
@@ -3235,7 +3235,7 @@ def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
             geneId = geneOrSym
             if not geneToSym:
                 logging.info("quick gene %s has a geneId but we have no geneId/symbol table. You can use "
-                        "the format geneId|symbol in the quick genes file to manually assign a label" % geneId)
+                        "the format geneId|symbol in the quick genes file to manually assign a label" % repr(geneId))
                 sym = geneId
             else:
                 sym = geneToSym[geneId]
@@ -3252,11 +3252,11 @@ def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
                 sym = geneOrSym
                 geneId = symToGene[sym]
             else:
-                errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId" % geneOrSym)
+                errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId" % repr(geneOrSym))
             geneStr = geneId+"|"+sym
 
         else:
-            errAbort("Gene %s in quickgenes file is not in expr matrix and there is no geneId<->symbol mapping to resolve it to a geneId in the expression matrix" % geneOrSym)
+            errAbort("Gene '%s' in quickgenes file is not in expr matrix and there is no geneId<->symbol mapping to resolve it to a geneId in the expression matrix" % repr(geneOrSym))
 
         # if we had no geneToSym, we'll check the symbol later if it's valid
 
