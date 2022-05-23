@@ -3191,6 +3191,10 @@ def readHeaders(fname):
         errAbort("Could not read headers from file %s" % fname)
     return row
 
+def removeBom(line):
+    " strip BOM from line "
+    return line.replace('\ufeff', '')
+
 def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
     """ parse quick genes file with three columns: symbol or geneId, desc (optional), pmid (optional).
     Return as a dict geneId|symbol -> [description, pmid] """
@@ -3208,6 +3212,8 @@ def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
     for line in openFile(fname):
         if line.startswith("#"):
             continue
+        line = removeBom(line)
+
         hasDesc = False
         hasPmid = False
         if line.startswith("symbol"):
