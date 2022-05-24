@@ -984,8 +984,14 @@ var cellbrowser = function() {
                     htmls.push("<br>");
             }
 
-            htmls.push("<p style='padding-top: 15px'><small>Cell Browser dataset ID: "+datasetInfo.name+
+            htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please cite " +
+                    "<a href='https://academic.oup.com/bioinformatics/article/37/23/4578/6318386' target=_blank>" +
+                    "Speir et al. 2021</a>. Thanks! Feature ideas? -> cells@ucsc.edu" +
+                    "</p>");
+
+            htmls.push("<p style='padding-top: 8px'><small>Cell Browser dataset ID: "+datasetInfo.name+
                     "</small></p>");
+
             }
         }
 
