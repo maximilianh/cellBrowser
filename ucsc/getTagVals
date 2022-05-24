@@ -79,12 +79,12 @@ for line in dfh:
             if tag in conf.keys():
                 tagVal = str(conf[tag])
                 # remove all the extra characters from the line
-                tagVal = re.sub('[\[\]\'",]','',tagVal)
+                tagVal = re.sub('[\[\]\'"]','',tagVal)
                 # Case where we're tacking the tag onto the end of our file
                 if n == len(header) - 1:
                     splitLine.append(tagVal)
-                    print(*splitLine, sep=dsep)
+                    print(*splitLine, sep='\t')
                 # Case where we're replacing what's there
                 else:
                     splitLine[n] = tagVal
-                    print(*splitLine, sep=dsep)
+                    print(*splitLine, sep='\t')
