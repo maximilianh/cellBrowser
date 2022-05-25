@@ -930,6 +930,7 @@ var cellbrowser = function() {
         htmlAddLink(htmls, desc, "cirm_dataset");
         htmlAddLink(htmls, desc, "ega_study");
         htmlAddLink(htmls, desc, "ena_project");
+        htmlAddLink(htmls, desc, "hca_dcp");
 
         if (desc.urls) {
             for (let key in desc.urls)
