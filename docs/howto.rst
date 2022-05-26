@@ -395,13 +395,13 @@ You will the following three files:
 Step 2: Determine GENCODE Gene Model version (optional)
 """"
 
-If you don't know the GENCODE version used, cbGenes can determine the most likely version used:
+If you don't know the GENCODE version used, cbGenes can determine the most likely version used from a list of gene identifiers:
 
 ::
 
  cbGenes guess exprMatrix.tsv.gz human
 
-The first column of this file should be gene symbols of GENCODE gene IDs.
+The first column of this file should be the gene symbols of GENCODE gene IDs (e.g. ENSG00000184779).
 
 Step 3: Download the gene model files
 """"
