@@ -4190,7 +4190,7 @@ labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
 #alpha=0.3
-#bodyParts=["embryo", "heart", "brain"]
+#body_parts=["embryo", "heart", "brain"]
 #radius=2
 """ % locals()
 
