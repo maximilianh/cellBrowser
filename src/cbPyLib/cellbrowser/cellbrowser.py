@@ -1952,10 +1952,10 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
 
-        # if an old numpy version is loaded isNumpy is false, but the type may still be a numpy array -> force to a list
+        # if as too-old numpy version is loaded isNumpy is false, but the type may
+        # still be a numpy array if we loaded from MTX -> force to a list
         if str(type(exprArr))=="<type 'numpy.ndarray'>":
             exprArr = exprArr.tolist()[0]
-        exprStr = array.array(arrType, exprArr).tostring()
 
         # Python 3.9 removed tostring()
         if sys.version_info >= (3, 2):
