@@ -320,7 +320,7 @@ var cellbrowser = function() {
 
     function cleanString(s) {
         /* make sure that string only contains normal characters. Good when printing something that may contain
-         * dangerous */
+         * dangerous ones */
         if (s===undefined)
             return undefined;
         return s.replace(/[^0-9a-zA-Z _-]/g, '');
@@ -1061,12 +1061,12 @@ var cellbrowser = function() {
                 lifeStr = dataset.lifeStages.join("|");
             }
 
-            var line = "<a id='tpDatasetButton_"+i+"' "+"data-body='"+bodyPartStr+"' "+
-                "data-dis='"+disStr+"' "+
-                "data-org='"+orgStr+"' "+
-                "data-proj='"+projStr+"' "+
-                "data-dom='"+domStr+"' "+
-                "data-stage='"+lifeStr+"' "+
+            var line = "<a id='tpDatasetButton_"+i+"' "+"data-body='"+cleanString(bodyPartStr)+"' "+
+                "data-dis='"+cleanString(disStr)+"' "+
+                "data-org='"+cleanString(orgStr)+"' "+
+                "data-proj='"+cleanString(projStr)+"' "+
+                "data-dom='"+cleanString(domStr)+"' "+
+                "data-stage='"+cleanString(lifeStr)+"' "+
                 "role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
@@ -1126,10 +1126,18 @@ var cellbrowser = function() {
             var vals = $("#tp"+category+"Combo").val();
             if (vals===undefined)
                 vals = [];
-            filtVals[category] = vals;
+
+            // strip special chars
+            var cleanVals = [];
+            for (var val of vals)
+                cleanVals.push(cleanString(val));
+
+            filtVals[category] = cleanVals;
         }
 
         let elList = $(".tpListItem");
+        var shownCount = 0;
+        var hideCount = 0;
         for (let el of elList) {
             // never touch the first/summary element
             if (el.getAttribute("data-body")==="summary")
@@ -1158,11 +1166,19 @@ var cellbrowser = function() {
                 }
             }
             
-            if (isShown)
+            if (isShown) {
                 el.style.display="";
-            else
+                shownCount++;
+            }
+            else {
                 el.style.display="none";
+                hideCount++;
+            }
         }
+        if (hideCount!==0)
+            $('#tpDatasetCount').text("(filters active, "+shownCount+" datasets shown)");
+        else
+            $('#tpDatasetCount').text("("+shownCount+" dataset collections)");
     }
 
     function openDatasetDialog(openDsInfo, selName) {
@@ -1306,7 +1322,7 @@ var cellbrowser = function() {
                 doFilters = true;
 
             if (doFilters) {
-                noteLines.push("<div style='margin-right: 10px; font-weight: bold'>Filters:</div>");
+                noteLines.push("<div style='margin-right: 10px; font-weight: bold'>Filters: <span id='tpDatasetCount'></span></div>");
 
                 buildFilter(noteLines, bodyParts, "Organ", "body", "tpBodyCombo", "select organs...");
                 buildFilter(noteLines, diseases, "Disease", "dis", "tpDisCombo", "select diseases...");
