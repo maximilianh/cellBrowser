@@ -1,6 +1,24 @@
 #! /usr/bin/env python3
 
-import json, sys, operator, argparse, os, urllib.request, subprocess
+# import sys, os, json, urllib.request, subprocess, operator
+import argparse, requests, threading, time
+from json import load,loads
+from urllib.request import urlopen
+from subprocess import Popen,PIPE
+from operator import eq
+
+
+def fetch_url(url, dname, rr_dict):
+    """
+    Gets content url and saves to given dict where key is the dataset name and
+    value is the json contents
+    """
+    # Combination of top answers on these two threads:
+    # https://stackoverflow.com/questions/16181121/a-very-simple-multithreading-parallel-url-fetching-without-queue
+    # https://stackoverflow.com/questions/2018026/what-are-the-differences-between-the-urllib-urllib2-urllib3-and-requests-modul
+    resp = requests.get(url)
+    djson = resp.json()
+    rr_dict[dname] = djson
 
 def print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val):
     """Print out values for cells-beta and cells-test"""
@@ -18,46 +36,51 @@ def process_dict(mach1_name, mach1_dict, mach2_name, mach2_dict):
             if mach1_val != mach2_val:
                 print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val)
 
-def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name, verbose=False):
+def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name):#, verbose=False):
     """
+    takes a dictionary containing dataset.json for each dataset on two machines
+    prints those that are different between the two machines and highlights if a dataset exists on one machine but not the other
     """
-    print(f'\nDatasets with diffs between {mach1_name} + {mach2_name}:')
+    diffs = list()
     for dataset in mach2_dict:
         # Check if the overall dicts are the same for a dataset on test/beta
-        # If not, we'll go through and print out only those values that are different
+        # If different add dataset name to a list to print later
         try:
-            if not operator.eq(mach1_dict[dataset], mach2_dict[dataset]):
-                # Print dataset name
-                print("\n" + dataset)
+            if not eq(mach1_dict[dataset], mach2_dict[dataset]):
+                diffs.append(dataset)
 
                 # Script has option to print only names of datasets that have diffs
                 # This whole chunk gets skipped if that's the case
-                if verbose:
-                    for key in mach2_dict[dataset].keys():
+                #if verbose:
+                #    for key in mach2_dict[dataset].keys():
                         # Check if current value is a dict and if so, process that a certain way
-                        if isinstance(mach2_dict[dataset][key], dict):
-                            process_dict(mach2_name, mach2_dict[dataset][key], mach1_name, mach1_dict[dataset][key])
+                #        if isinstance(mach2_dict[dataset][key], dict):
+                #            process_dict(mach2_name, mach2_dict[dataset][key], mach1_name, mach1_dict[dataset][key])
                         # Otherwise check to see if values for test/beta are different
                         # and print only the diffs
-                        else:
-                            try:
-                                val1 = mach1_dict[dataset][key]
-                                val2 = mach2_dict[dataset][key]
-                                if val1 != val2:
+                #        else:
+                #            try:
+                #                val1 = mach1_dict[dataset][key]
+                #                val2 = mach2_dict[dataset][key]
+                #                if val1 != val2:
                                     # The value for this keys if often large and bloats the results
                                     # making it difficult to actually see the diffs. Only print a
                                     # message saying this value differs for test/beta.
-                                    if key == "metaFields":
-                                        print(key, mach1_name + " and " + mach2_name + " differ")
+                #                    if key == "metaFields":
+                #                        print(key, mach1_name + " and " + mach2_name + " differ")
                                     # Otherwise print out the field that differs and what the values
                                     # are for test/beta
-                                    else:
-                                        print_diffs(key, mach2_name, val2, mach1_name, val1)
-                            except KeyError:
-                                print(key, f'present on {mach1_name}, but not on {mach2_name} or vice versa')
+                #                    else:
+                #                        print_diffs(key, mach2_name, val2, mach1_name, val1)
+                #            except KeyError:
+                #                print(key, f'present on {mach1_name}, but not on {mach2_name} or vice versa')
         except KeyError:
-            print(dataset, f'present on {mach1_name}, but not on {mach2_name} or vice versa')
-
+            outstr = dataset + f' present on {mach1_name}, but not on {mach2_name} or vice versa'
+            diffs.append(outstr)
+    if len(diffs) != 0:
+        print(f'\nDatasets with diffs between {mach1_name} + {mach2_name}:')
+        print(*sorted(diffs), sep="\n")
+        print()
 
 # Set up script arguments
 parser = argparse.ArgumentParser(
@@ -65,218 +88,139 @@ parser = argparse.ArgumentParser(
     description="Shows diffs between cells-test and cells-beta. By default shows only names ")
 parser.add_argument("-r","--run", action='store_true',
     help='run script to looks for diffs')
-parser.add_argument("-v","--verbose", action='store_true',
-    help='Show fields in dataset.json that are different rather than just those datasets that have differences')
-parser.add_argument("-b","--betarr", action='store_true',
-    help='Print diffs between cells-beta and cells')
 parser.add_argument("-s","--stats", action='store_true',
     help='Print stats about the number of datasets/collections on each machine')
 parser.add_argument("-d","--hidden", action='store_true',
     help='Print datasets that are hidden on each machine')
 args = parser.parse_args()
+#parser.add_argument("-v","--verbose", action='store_true',
+#    help='Show fields in dataset.json that are different rather than just those datasets that have differences')
 
 def main():
     """Main function of datasetDiffs. Runs all of the other functions of the program."""
     # Script only runs if option to run is set via -r/--run
     if args.run == True:
+        t0 = time.time()
         # Open dataset.json on both dev and beta
         # Hard coded since I don't think you'd ever be able to reasonably compare
         # two arbitrary hosts or collections of datasets?
         # Loading them as dictionaries via json.load
-        tdir = "/usr/local/apache/htdocs-cells/"
-        ctfh =  open(tdir + "dataset.json", "r")
-        # Loading as dictionary via json.load
-        cells_test = json.load(ctfh)
-        # Go Look for datasets hidden on cells-test
-        ct_hide = dict()
-        # Go through all dirs in htdocs-cells
-        for dname in os.listdir(tdir):
-            dpath = tdir + dname + "/dataset.json"
-            # Some dirs in htdocs-cells (e.g. js) aren't dataset dirs
-            # so we need to check paths we're building are to valid files
-            # or else python errors outs
-            if os.path.exists(dpath):
-                with open(dpath) as dfh:
-                    # Hidden datasets have "hide" somewhere in their dataset.json file
-                    if 'hide' in dfh.read():
-                        # Save the names/paths of these json files to a dictionary
-                        ct_hide[dname] = json.load(open(dpath, "r"))
-
-        bdir = "/usr/local/apache/htdocs-cells-beta/"
-        cbfh =  open(bdir + "dataset.json", "r")
-        cells_beta = json.load(cbfh)
-        # Look for datasets hidden on cells-test
-        cb_hide = dict()
-        for dname in os.listdir(bdir):
-            dpath = bdir + dname + "/dataset.json"
-            if os.path.exists(dpath):
-                with open(dpath) as dfh:
-                    if 'hide' in dfh.read():
-                        cb_hide[dname] = json.load(open(dpath, "r"))
-
-        rrdir = "https://cells.ucsc.edu/"
-        rr_hide = dict()
-        # Go through all dirs in htdocs-cells
-        bash_cmd = 'grep -l hide /usr/local/apache/htdocs-cells/*/dataset.json | cut -f6 -d "/"'
-        cmd = ['ssh', 'qateam@hgw0', bash_cmd]
-        p = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        cmdout, cmderr = p.communicate()
-        datasets = cmdout.decode().strip().split('\n')
-        for dname in datasets:
-            dpath = rrdir + dname  + "/dataset.json"
-            with urllib.request.urlopen(dpath) as url:
-                djson = json.loads(url.read().decode())
-                rr_hide[dname] = djson
-
-        # Make some vars for cells-test info:
-        #   - a set of datasets and
-        #   - a dictionary with dataset names as the key and the json file
-        #     for that dataset as the value
-        ct_datasets = set()
+        ct_base = "/usr/local/apache/htdocs-cells/"
+        ct_hide = set()
         ct_djson = dict()
-        # Go through datasets on cells-test
-        for dataset in cells_test["datasets"]:
-            dname = dataset["name"]
-            # Save dataset names to a set
-            ct_datasets.add(dname)
-            # Load json for current dataset and save into a dict
-            dpath = tdir + dname + "/dataset.json"
-            dfh = open(dpath, "r")
-            djson = json.load(dfh)
+        bash_cmd = 'find ' + ct_base + ' -name dataset.json | cut -f6- -d "/" | sed "s/\/dataset.json//g" | sort'
+        p = Popen([bash_cmd], shell=True, stdout=PIPE, stderr=PIPE)
+        cmdout, cmderr = p.communicate()
+        ct_datasets = set(cmdout.decode().strip().split('\n'))
+        ct_datasets.remove('dataset.json')
+        for dname in ct_datasets:
+            djson = load(open(ct_base + dname + "/dataset.json","r"))
             ct_djson[dname] = djson
-        # combine public/hidden dictionaries
-        ct_djson.update(ct_hide)
-        ct_datasets = ct_datasets.union(set(ct_hide.keys()))
-
-        # Make some vars for cells-beta info:
-        #   - a set of datasets and
-        #   - a dictionary with dataset names as the key and the json file
-        #     for that dataset as the value
-        cb_datasets = set()
-        cb_djson = dict()
-        for dataset in cells_beta["datasets"]:
-            dname = dataset["name"]
-            cb_datasets.add(dname)
-            dpath = bdir + dname + "/dataset.json"
-            dfh = open(dpath, "r")
-            djson = json.load(dfh)
+            if 'hide' in djson.values():
+                ct_hide.add(dname)
+        # dicts/sets to hold everything
+        cb_hide = set() # hidden cells-beta datasets
+        cb_djson = dict() # holds contents of json for each cells-beta dataset
+        # get list of all datasets on cells-beta
+        cb_base = "/usr/local/apache/htdocs-cells-beta/"
+        bash_cmd = 'find ' + cb_base + ' -name dataset.json | cut -f6- -d "/" | sed "s/\/dataset.json//g" | sort'
+        p = Popen([bash_cmd], shell=True, stdout=PIPE, stderr=PIPE)
+        cmdout, cmderr = p.communicate()
+        cb_datasets = set(cmdout.decode().strip().split('\n'))
+        cb_datasets.remove('dataset.json')
+        for dname in cb_datasets:
+            djson = load(open(cb_base + dname + "/dataset.json","r"))
             cb_djson[dname] = djson
-        # combine public/hidden dictionaries
-        cb_djson.update(cb_hide)
-        cb_datasets = cb_datasets.union(set(cb_hide.keys()))
+            if 'hide' in djson.values():
+                cb_hide.add(dname)
 
-        #from https://stackoverflow.com/questions/12965203/how-to-get-json-from-webpage-into-python-script
-        # download/parse dataset.json on the RR
-        rr = dict()
-        rr_datasets = set()
-        rr_djson = dict()
-        with urllib.request.urlopen("https://cells.ucsc.edu/dataset.json") as url:
-            rr = json.loads(url.read().decode())
-        for dataset in rr["datasets"]:
-            dname = dataset["name"]
-            rr_datasets.add(dname)
-            dpath = "https://cells.ucsc.edu/" + dname  + "/dataset.json"
-            with urllib.request.urlopen(dpath) as url:
-                djson = json.loads(url.read().decode())
-                rr_djson[dname] = djson
-        rr_djson.update(rr_hide)
-        rr_datasets = rr_datasets.union(set(rr_hide.keys()))
+        # dicts/sets to hold everything
+        rr_hide = set() # holds hidden rr datasets
+        rr_djson = dict() # holds contents of json files for each rr dataset
+        rr_datasets = set() # holds names of all datasets on rr
+        rr_urls = dict() # urls to process via multithreading
+        # Get list of dataset.json files for rr
+        cmd = ['ssh', 'qateam@hgw0.soe.ucsc.edu', 'find', ct_base, '-name', 'dataset.json']
+        p = Popen(cmd, shell=False, stdout=PIPE, stderr=PIPE)
+        cmdout, cmderr = p.communicate()
+        rr_files = set(cmdout.decode().rstrip().split('\n'))
+        rr_base = "https://cells.ucsc.edu/"
+        # go through rr_files
+        for fname in rr_files:
+            # turn full path name into a simple dataset name
+            fsplit = fname.strip().split('/')
+            final_index = int(len(fsplit)-2)
+            # Had to do this next part in two lines as I couldn't get slicing to work on one line
+            # This gets rid of the /usr/local/apache/htdocs-cells bit
+            indicies = fsplit[5:]
+            # This gets ride of the /dataset.json at the end
+            indicies = indicies[:-1]
+            # from https://stackoverflow.com/questions/12453580/how-do-i-concatenate-items-in-a-list-to-a-single-string
+            dname = '/'.join(indicies)
+            if dname != '':
+                # now turn dataset name into url
+                dpath = rr_base + dname  + "/dataset.json"
+                # add that url to a dict
+                rr_urls[dname] = dpath
+                rr_datasets.add(dname)
+        # from: https://stackoverflow.com/questions/16181121/a-very-simple-multithreading-parallel-url-fetching-without-queue
+        # use multithreading to grab contents of our rr_urls
+        threads = [threading.Thread(target=fetch_url, args=(rr_urls[d],d,rr_djson)) for d in rr_urls]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        # now go through and find hidden rr datasets
+        for dname in rr_djson:
+            if 'hide' in rr_djson[dname].values():
+                rr_hide.add(dname)
 
         if args.hidden:
-            print("cells-test hidden datasets:")
-            print(sorted(list(ct_hide.keys())),"\n")
-            print("cells-beta hidden datasets:")
-            print(sorted(list(cb_hide.keys())),"\n")
-            print("cells hidden datasets:")
-            print(sorted(list(rr_hide.keys())),"\n")
+            if len(ct_hide) != 0:
+                print("cells-test hidden datasets:")
+                print(sorted(list(ct_hide)),"\n")
+            if len(cb_hide) != 0:
+                print("cells-beta hidden datasets:")
+                print(sorted(list(cb_hide)),"\n")
+            if len(rr_hide) != 0:
+                print("cells hidden datasets:")
+                print(sorted(list(rr_hide)),"\n")
 
         # Print out only datasets on cells-test only
-        dev_only = ct_datasets.difference(cb_datasets)
-        print("Datasets on cells-test only:")
-        print(sorted(list(dev_only)),"\n")
-
-        beta_only = cb_datasets.difference(rr_datasets)
-        print("Datasets on cells-beta, but not on RR:")
-        print(sorted(list(beta_only)),"\n")
-
-
-        # First pass of processing dicts to find collections and add subdatasets to main dict
-        n_cb_collections = 0 # count up number of collections on cells-beta so that we can exclude these from calcs later on
-        cb_subdirs = dict()
-        for dataset in cb_djson:
-            # Collections have "datasets" somewhere in their keys
-            if "datasets" in cb_djson[dataset].keys():
-                subdirs = cb_djson[dataset]["datasets"]
-                n_cb_collections += 1
-                for subdir in subdirs:
-                    subname = subdir["name"]
-                    # Save info about beta version of dataset
-                    #bpath = bdir + dname + "/" + subname+ "/dataset.json"
-                    bpath = bdir + subname + "/dataset.json"
-                    bfh = open(bpath, "r")
-                    bjson = json.load(bfh)
-                    cb_subdirs[subname] = bjson
-
-        n_ct_collections = 0
-        ct_subdirs = dict()
-        for dataset in ct_djson:
-            # Collections have "datasets" somewhere in their keys
-            if "datasets" in ct_djson[dataset].keys():
-                subdirs = ct_djson[dataset]["datasets"]
-                n_ct_collections += 1
-                for subdir in subdirs:
-                    # Save info about test version of dataset
-                    subname = subdir["name"]
-                    tpath = tdir + subname + "/dataset.json"
-                    tfh = open(tpath, "r")
-                    tjson = json.load(tfh)
-                    ct_subdirs[subname] = tjson
-
-        n_rr_collections = 0
-        rr_subdirs = dict()
-        for dataset in rr_djson:
-            # Collections have "datasets" somewhere in their keys
-            if "datasets" in rr_djson[dataset].keys():
-                subdirs = rr_djson[dataset]["datasets"]
-                n_rr_collections += 1
-                for subdir in subdirs:
-                    # Save info about rr version of dataset
-                    subname = subdir["name"]
-                    rrpath = rrdir + subname + "/dataset.json"
-                    with urllib.request.urlopen(rrpath) as url:
-                        rrjson = json.loads(url.read().decode())
-                        rr_subdirs[subname] = rrjson
-
-        # Merge these subdir dicts with the main dicts
-        # Syntax from https://stackoverflow.com/questions/38987/how-do-i-merge-two-dictionaries-in-a-single-expression-in-python-taking-union-o
-        cb_djson = {**cb_djson, **cb_subdirs}
-        ct_djson = {**ct_djson, **ct_subdirs}
-        rr_djson = {**rr_djson, **rr_subdirs}
+        dev_only = sorted(list(x for x in ct_datasets.difference(cb_datasets) if "/" not in x))
+        # Only print something if there are actually datasets on cells-test only
+        if len(dev_only) != 0:
+            print("Datasets on cells-test only:")
+            print(dev_only,"\n")
+        # Now datasets on cells-beta only
+        beta_only = sorted(list(x for x in cb_datasets.difference(rr_datasets) if "/" not in x))
+        if len(beta_only) != 0:
+            print("Datasets on cells-beta, but not on RR:")
+            print(beta_only,"\n")
 
         # Compare cells-test to cells-beta datasets
-        compare_machines(ct_djson, "cells-test", cb_djson, "cells-beta", args.verbose)
-        # This line would do the same for cells and cells-beta, but it seems to show diffs for all datasets?
-        # Not sure what's going on with this, but will need to check with Max
-        if args.betarr:
-            compare_machines(cb_djson, "cells-beta", rr_djson, "cells", args.verbose)
+        compare_machines(ct_djson, "cells-test", cb_djson, "cells-beta")#, args.verbose))
+        # And then cells-beta to cells
+        compare_machines(cb_djson, "cells-beta", rr_djson, "cells")#, args.verbose)
+
+        # make sets of only top-level datasets
+        # from: https://stackoverflow.com/questions/33944647/what-is-the-most-pythonic-way-to-filter-a-set
+        ct_top = set(x for x in ct_datasets if "/" not in x)
+        cb_top = set(x for x in cb_datasets if "/" not in x)
+        rr_top = set(x for x in rr_datasets if "/" not in x)
 
         # Print stats about number of datasets on each machine if arg set
         if args.stats:
+            # top-level datasets, or those w/o a '/' in their name
             print("Num of top-level datasets/collections")
+            print("\tcells-test:", len(ct_top))
+            print("\tcells-beta:", len(cb_top))
+            print("\tcells:", len(rr_top))
+            # Now all datasets
+            print("Num of datasets (including those in collections):")
             print("\tcells-test:", len(ct_datasets))
             print("\tcells-beta:", len(cb_datasets))
             print("\tcells:", len(rr_datasets))
-            # Calculation excludes top-level collection entries in calculation
-            # they're not really 'datasets', rather what's in a collection is the dataset
-            print("Num of datasets (including those in collections):")
-            print("\tcells-test:", len(ct_djson.keys())-n_ct_collections)
-            print("\tcells-beta:", len(cb_djson.keys())-n_cb_collections)
-            print("\tcells:", len(rr_djson.keys())-n_rr_collections)
-            # Calculation includes top-level collection entries
-            #print("Num of datasets (including those in collections):")
-            #print("\tcells-test:", len(ct_djson.keys()))
-            #print("\tcells-beta:", len(cb_djson.keys()))
-            #print("\tcells:", len(rr_djson.keys()))
 
     else:
         print("Script looks for differences between cells-test and cells-beta.\n\nRun script with -r/--run to look for diffs.")
