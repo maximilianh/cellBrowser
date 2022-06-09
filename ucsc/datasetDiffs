@@ -1,42 +1,45 @@
 #! /usr/bin/env python3
 
 # import sys, os, json, urllib.request, subprocess, operator
-import argparse, requests, threading, time
+import argparse, requests, threading
 from json import load,loads
-from urllib.request import urlopen
 from subprocess import Popen,PIPE
 from operator import eq
 
-
-def fetch_url(url, dname, rr_dict):
+def threader(to_fetch, mach_djson, hidden):
     """
-    Gets content url and saves to given dict where key is the dataset name and
+    use multithreading to grab contents of urls or files
+    """
+    # from: https://stackoverflow.com/questions/16181121/a-very-simple-multithreading-parallel-url-fetching-without-queue
+    threads = [threading.Thread(target=fetch_data, args=(to_fetch[d],d,mach_djson, hidden)) for d in to_fetch]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+def fetch_data(loc, dname, out_dict, hidden):
+    """
+    Gets content url or and saves to given dict where key is the dataset name and
     value is the json contents
+
+    also indicates if dataset is hidden on one of the various machines
     """
     # Combination of top answers on these two threads:
     # https://stackoverflow.com/questions/16181121/a-very-simple-multithreading-parallel-url-fetching-without-queue
     # https://stackoverflow.com/questions/2018026/what-are-the-differences-between-the-urllib-urllib2-urllib3-and-requests-modul
-    resp = requests.get(url)
-    djson = resp.json()
-    rr_dict[dname] = djson
+    # handle urls differently than regular files
+    if loc.startswith('https'):
+        resp = requests.get(loc)
+        djson = resp.json()
+        out_dict[dname] = djson
+    else:
+        djson = load(open(loc,"r"))
+        out_dict[dname] = djson
 
-def print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val):
-    """Print out values for cells-beta and cells-test"""
-    print(key, "\n", mach1_name + ": ", mach1_val, "\n", mach2_name + ": ", mach2_val)
+    if 'hide' in djson.values():
+        hidden.add(dname)
 
-def process_dict(mach1_name, mach1_dict, mach2_name, mach2_dict):
-    """Processes a dictionary, printing out differenting values if needed.
-       Or continuing to process if it finds another dictionary."""
-    for key in mach1_dict.keys():
-        mach1_val = mach1_dict[key]
-        mach2_val = mach2_dict[key]
-        if isinstance(mach1_val, dict):
-            process_dict(mach1_name, mach1_val, mach2_name, mach2_val)
-        else:
-            if mach1_val != mach2_val:
-                print_diffs(key, mach1_name, mach1_val, mach2_name, mach2_val)
-
-def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name):#, verbose=False):
+def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name):
     """
     takes a dictionary containing dataset.json for each dataset on two machines
     prints those that are different between the two machines and highlights if a dataset exists on one machine but not the other
@@ -48,32 +51,6 @@ def compare_machines(mach1_dict, mach1_name, mach2_dict, mach2_name):#, verbose=
         try:
             if not eq(mach1_dict[dataset], mach2_dict[dataset]):
                 diffs.append(dataset)
-
-                # Script has option to print only names of datasets that have diffs
-                # This whole chunk gets skipped if that's the case
-                #if verbose:
-                #    for key in mach2_dict[dataset].keys():
-                        # Check if current value is a dict and if so, process that a certain way
-                #        if isinstance(mach2_dict[dataset][key], dict):
-                #            process_dict(mach2_name, mach2_dict[dataset][key], mach1_name, mach1_dict[dataset][key])
-                        # Otherwise check to see if values for test/beta are different
-                        # and print only the diffs
-                #        else:
-                #            try:
-                #                val1 = mach1_dict[dataset][key]
-                #                val2 = mach2_dict[dataset][key]
-                #                if val1 != val2:
-                                    # The value for this keys if often large and bloats the results
-                                    # making it difficult to actually see the diffs. Only print a
-                                    # message saying this value differs for test/beta.
-                #                    if key == "metaFields":
-                #                        print(key, mach1_name + " and " + mach2_name + " differ")
-                                    # Otherwise print out the field that differs and what the values
-                                    # are for test/beta
-                #                    else:
-                #                        print_diffs(key, mach2_name, val2, mach1_name, val1)
-                #            except KeyError:
-                #                print(key, f'present on {mach1_name}, but not on {mach2_name} or vice versa')
         except KeyError:
             outstr = dataset + f' present on {mach1_name}, but not on {mach2_name} or vice versa'
             diffs.append(outstr)
@@ -93,34 +70,32 @@ parser.add_argument("-s","--stats", action='store_true',
 parser.add_argument("-d","--hidden", action='store_true',
     help='Print datasets that are hidden on each machine')
 args = parser.parse_args()
-#parser.add_argument("-v","--verbose", action='store_true',
-#    help='Show fields in dataset.json that are different rather than just those datasets that have differences')
 
 def main():
     """Main function of datasetDiffs. Runs all of the other functions of the program."""
     # Script only runs if option to run is set via -r/--run
     if args.run == True:
-        t0 = time.time()
         # Open dataset.json on both dev and beta
         # Hard coded since I don't think you'd ever be able to reasonably compare
         # two arbitrary hosts or collections of datasets?
         # Loading them as dictionaries via json.load
-        ct_base = "/usr/local/apache/htdocs-cells/"
         ct_hide = set()
         ct_djson = dict()
+        ct_loc = dict()
+        ct_base = "/usr/local/apache/htdocs-cells/"
         bash_cmd = 'find ' + ct_base + ' -name dataset.json | cut -f6- -d "/" | sed "s/\/dataset.json//g" | sort'
         p = Popen([bash_cmd], shell=True, stdout=PIPE, stderr=PIPE)
         cmdout, cmderr = p.communicate()
         ct_datasets = set(cmdout.decode().strip().split('\n'))
         ct_datasets.remove('dataset.json')
         for dname in ct_datasets:
-            djson = load(open(ct_base + dname + "/dataset.json","r"))
-            ct_djson[dname] = djson
-            if 'hide' in djson.values():
-                ct_hide.add(dname)
+            ct_loc[dname] = ct_base + dname + "/dataset.json"
+        threader(ct_loc, ct_djson, ct_hide)
+
         # dicts/sets to hold everything
         cb_hide = set() # hidden cells-beta datasets
         cb_djson = dict() # holds contents of json for each cells-beta dataset
+        cb_loc = dict()
         # get list of all datasets on cells-beta
         cb_base = "/usr/local/apache/htdocs-cells-beta/"
         bash_cmd = 'find ' + cb_base + ' -name dataset.json | cut -f6- -d "/" | sed "s/\/dataset.json//g" | sort'
@@ -129,10 +104,8 @@ def main():
         cb_datasets = set(cmdout.decode().strip().split('\n'))
         cb_datasets.remove('dataset.json')
         for dname in cb_datasets:
-            djson = load(open(cb_base + dname + "/dataset.json","r"))
-            cb_djson[dname] = djson
-            if 'hide' in djson.values():
-                cb_hide.add(dname)
+            cb_loc[dname] = cb_base + dname + "/dataset.json"
+        threader(cb_loc, cb_djson, cb_hide)
 
         # dicts/sets to hold everything
         rr_hide = set() # holds hidden rr datasets
@@ -163,17 +136,7 @@ def main():
                 # add that url to a dict
                 rr_urls[dname] = dpath
                 rr_datasets.add(dname)
-        # from: https://stackoverflow.com/questions/16181121/a-very-simple-multithreading-parallel-url-fetching-without-queue
-        # use multithreading to grab contents of our rr_urls
-        threads = [threading.Thread(target=fetch_url, args=(rr_urls[d],d,rr_djson)) for d in rr_urls]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        # now go through and find hidden rr datasets
-        for dname in rr_djson:
-            if 'hide' in rr_djson[dname].values():
-                rr_hide.add(dname)
+        threader(rr_urls, rr_djson, rr_hide)
 
         if args.hidden:
             if len(ct_hide) != 0:
@@ -199,9 +162,9 @@ def main():
             print(beta_only,"\n")
 
         # Compare cells-test to cells-beta datasets
-        compare_machines(ct_djson, "cells-test", cb_djson, "cells-beta")#, args.verbose))
+        compare_machines(ct_djson, "cells-test", cb_djson, "cells-beta")
         # And then cells-beta to cells
-        compare_machines(cb_djson, "cells-beta", rr_djson, "cells")#, args.verbose)
+        compare_machines(cb_djson, "cells-beta", rr_djson, "cells")
 
         # make sets of only top-level datasets
         # from: https://stackoverflow.com/questions/33944647/what-is-the-most-pythonic-way-to-filter-a-set
