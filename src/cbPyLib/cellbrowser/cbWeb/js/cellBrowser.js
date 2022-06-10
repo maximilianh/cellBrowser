@@ -326,6 +326,16 @@ var cellbrowser = function() {
         return s.replace(/[^0-9a-zA-Z _-]/g, '');
     }
 
+    function cleanStrings(inArr) {
+        /* cleanString on arrays */
+        var outArr = [];
+        for (var i = 0; i < inArr.length; i++) {
+            var s = inArr[i];
+            outArr.push(cleanString(s));
+        }
+        return outArr;
+    }
+
     function findMetaValIndex(metaInfo, value) {
         /* return the index of the value of an enum meta field */
         var valCounts = metaInfo.valCounts;
@@ -853,6 +863,14 @@ var cellbrowser = function() {
         return (window.location.hostname.endsWith("ucsc.edu"));
     }
 
+    function buildClassification(htmls, datasetInfo, attrName, label, addSep) {
+        if ( datasetInfo[attrName] ) {
+                htmls.push(label+"=" + datasetInfo[attrName].join(","));
+                if (addSep)
+                    htmls.push("; ");
+        }
+    }
+
     function datasetDescToHtml(datasetInfo, desc) {
         /* given an object with keys title, abstract, pmid, etc, fill the dataset description tabs with html */
         if (!desc) // http errors call this with undefined
@@ -985,9 +1003,17 @@ var cellbrowser = function() {
                     htmls.push("<br>");
             }
 
-            htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please cite " +
+            htmls.push("<b>Dataset classification: </b>");
+
+            buildClassification(htmls, datasetInfo, "body_parts", "Organs", true);
+            buildClassification(htmls, datasetInfo, "diseases", "Diseases", true);
+            buildClassification(htmls, datasetInfo, "organisms", "Organism", true);
+            buildClassification(htmls, datasetInfo, "life_stages", "Life Stage", true);
+            buildClassification(htmls, datasetInfo, "domains", "Scientific Domain", false);
+
+            htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please also cite " +
                     "<a href='https://academic.oup.com/bioinformatics/article/37/23/4578/6318386' target=_blank>" +
-                    "Speir et al. 2021</a>. Thanks! Feature ideas? -> cells@ucsc.edu" +
+                    "Speir et al. 2021</a>. Email for feedback: cells@ucsc.edu" +
                     "</p>");
 
             htmls.push("<p style='padding-top: 8px'><small>Cell Browser dataset ID: "+datasetInfo.name+
@@ -1043,30 +1069,31 @@ var cellbrowser = function() {
             var lifeStr = "";
 
             if (dataset.body_parts) {
-                bodyPartStr = dataset.body_parts.join("|");
+                bodyPartStr = cleanStrings(dataset.body_parts).join("|");
             }
             if (dataset.diseases) {
-                disStr = dataset.diseases.join("|");
+                disStr = cleanStrings(dataset.diseases).join("|");
             }
             if (dataset.organisms) {
-                orgStr = dataset.organisms.join("|");
+                orgStr = cleanStrings(dataset.organisms).join("|");
             }
             if (dataset.projects) {
-                projStr = dataset.projects.join("|");
+                projStr = cleanStrings(dataset.projects).join("|");
             }
             if (dataset.domains) {
-                domStr = dataset.domains.join("|");
+                domStr = cleanStrings(dataset.domains).join("|");
             }
             if (dataset.life_stages) {
-                lifeStr = dataset.lifeStages.join("|");
+                lifeStr = cleanStrings(dataset.life_stages).join("|");
             }
 
-            var line = "<a id='tpDatasetButton_"+i+"' "+"data-body='"+cleanString(bodyPartStr)+"' "+
-                "data-dis='"+cleanString(disStr)+"' "+
-                "data-org='"+cleanString(orgStr)+"' "+
-                "data-proj='"+cleanString(projStr)+"' "+
-                "data-dom='"+cleanString(domStr)+"' "+
-                "data-stage='"+cleanString(lifeStr)+"' "+
+            var line = "<a id='tpDatasetButton_"+i+"' "+
+                "data-body='"+bodyPartStr+"' "+
+                "data-dis='"+disStr+"' "+
+                "data-org='"+orgStr+"' "+
+                "data-proj='"+projStr+"' "+
+                "data-dom='"+domStr+"' "+
+                "data-stage='"+lifeStr+"' "+
                 "role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
 
@@ -1086,14 +1113,14 @@ var cellbrowser = function() {
                 htmls.push("<span class='badge' style='background-color: #188725'>"+dataset.collectionCount+" collections</span>");
             }
 
-            if (dataset.tags!==undefined) {
-                for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
-                    var tag = dataset.tags[tagI];
-                    if (tag==="smartseq2" || tag==="ATAC" || tag==="10x")
-                        continue
-                    htmls.push("<span class='badge'>"+tag+"</span>");
-                }
-            }
+            //if (dataset.tags!==undefined) {
+                //for (var tagI = 0; tagI < dataset.tags.length; tagI++) {
+                    //var tag = dataset.tags[tagI];
+                    //if (tag==="smartseq2" || tag==="ATAC" || tag==="10x")
+                        //continue
+                    //htmls.push("<span class='badge'>"+tag+"</span>");
+                //}
+            //}
             htmls.push(dataset.shortLabel+"</a>");
         }
         htmls.push("</div>"); // list-group
@@ -1101,26 +1128,40 @@ var cellbrowser = function() {
     }
 
     function getDatasetAttrs(datasets, attrName) {
-        /* return list of body_parts given a dataset array */
-        var bpObj = {};
+        /* return an array of (attrName, "attrName (count)") of all attrNames (e.g. body_parts) in a dataset array */
+        var valCounts = {};
         for (let i=0; i < datasets.length; i++) {
             let ds = datasets[i];
             if (ds[attrName]===undefined)
                 continue
             for (let bp of ds[attrName])
-                bpObj[bp] = true;
+                if (bp in valCounts)
+                    valCounts[bp]++;
+                else
+                    valCounts[bp] = 1;
         }
 
-        let allValues = keys(bpObj);
+        let allValues = keys(valCounts);
         allValues.sort();
-        return allValues;
+
+        var valLabels = {};
+        for (let i=0; i < allValues.length; i++) {
+            var key = allValues[i];
+            var count = valCounts[key];
+            var labelKey = key;
+            if (labelKey==="")
+                labelKey = "-empty-"
+            var label = labelKey+" ("+count+")"
+            valLabels[key] = label;
+        }
+        return Object.entries(valLabels);
     }
 
     function filterDatasetsDom() {
         /* keep only datasets that fulfill the filters */
 
         // read the current filter values of the dropboxes
-        var categories = ["Body", "Dis", "Org", "Proj"];
+        var categories = ["Body", "Dis", "Org", "Proj", "Stage", "Dom"];
         var filtVals = {};
         for (var category of categories) {
             var vals = $("#tp"+category+"Combo").val();
@@ -1267,6 +1308,10 @@ var cellbrowser = function() {
                 param = "org";
             else if (this.id=="tpProjCombo")
                 param = "proj";
+            else if (this.id=="tpDomCombo")
+                param = "dom";
+            else if (this.id=="tpStageCombo")
+                param = "stage";
 
             // change the URL
             var filtArg = filtNames.join("~");
@@ -1307,17 +1352,17 @@ var cellbrowser = function() {
         let diseases = null;
         let organisms = null;
         let projects = null;
-        let domains = null
         let lifeStages = null;
+        let domains = null
         if (openDsInfo.parents === undefined && openDsInfo.datasets !== undefined) {
             bodyParts = getDatasetAttrs(openDsInfo.datasets, "body_parts");
             diseases = getDatasetAttrs(openDsInfo.datasets, "diseases");
             organisms = getDatasetAttrs(openDsInfo.datasets, "organisms");
             projects = getDatasetAttrs(openDsInfo.datasets, "projects");
-            domains = getDatasetAttrs(openDsInfo.datasets, "domains");
             lifeStages = getDatasetAttrs(openDsInfo.datasets, "life_stages");
+            domains = getDatasetAttrs(openDsInfo.datasets, "domains");
 
-            // mirror websites are not using the filters at all. So switch off the entire UI for it then.
+            // mirror websites are not using the filters at all. So switch off the entire filter UI if they're not used
             if (bodyParts.length!==0 || disease.length!==0 || organisms.length!==0 || projects.length!==0 || domains.length!==0 || lifeStages.length!==0)
                 doFilters = true;
 
@@ -1328,8 +1373,9 @@ var cellbrowser = function() {
                 buildFilter(noteLines, diseases, "Disease", "dis", "tpDisCombo", "select diseases...");
                 buildFilter(noteLines, organisms, "Species", "org", "tpOrgCombo", "select species...");
                 buildFilter(noteLines, projects, "Project", "proj", "tpProjCombo", "select project...");
-                buildFilter(noteLines, domains, "Scient. Domain", "dom", "tpProjCombo", "select domain...");
-                buildFilter(noteLines, lifeStages, "Life Stages", "stage", "tpProjCombo", "select stage...");
+                noteLines.push("<div style='height:4px'></div>");
+                buildFilter(noteLines, lifeStages, "Life Stages", "stage", "tpStageCombo", "select stage...");
+                buildFilter(noteLines, domains, "Scient. Domain", "dom", "tpDomCombo", "select domain...");
             }
         }
 
@@ -1440,23 +1486,21 @@ var cellbrowser = function() {
 
         $("#tpOpenDialogTabs").tabs();
 
+        // little helper function
+        function activateFilterCombo(valList, comboId) {
+            if (valList) {
+                activateCombobox(comboId, 200);
+                $("#"+comboId).change( onFilterChange );
+            }
+        }
+
         if (doFilters) {
-            if (bodyParts) {
-                activateCombobox("tpBodyCombo", 200);
-                $("#tpBodyCombo").change( onFilterChange );
-            }
-            if (diseases) {
-                activateCombobox("tpDisCombo", 200);
-                $("#tpDisCombo").change( onFilterChange );
-            }
-            if (organisms) {
-                activateCombobox("tpOrgCombo", 200);
-                $("#tpOrgCombo").change( onFilterChange );
-            }
-            if (projects) {
-                activateCombobox("tpProjCombo", 200);
-                $("#tpProjCombo").change( onFilterChange );
-            }
+            activateFilterCombo(bodyParts, "tpBodyCombo");
+            activateFilterCombo(diseases, "tpDisCombo");
+            activateFilterCombo(organisms, "tpOrgCombo");
+            activateFilterCombo(projects, "tpProjCombo");
+            activateFilterCombo(lifeStages, "tpStageCombo");
+            activateFilterCombo(domains, "tpDomCombo");
         }
 
         $('.tpBackLink').click( function(ev) {
