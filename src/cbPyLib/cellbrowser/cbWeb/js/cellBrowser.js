@@ -3939,19 +3939,20 @@ var cellbrowser = function() {
 
     function onGeneClick (event) {
     /* user clicked on a gene in the gene table */
-        var saneSym = event.target.id.split("_")[1]; // the symbol of the gene, as only-alphaNum chars
+        var geneId = event.target.getAttribute("data-geneId"); // the symbol of the gene, as only-alphaNum chars
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass("tpGeneBarCellSelected");
         // XX TODO: How find all the elements with this ID?
-        $('#tpGeneBarCell_'+saneSym).addClass("tpGeneBarCellSelected");
+        var saneId = onlyAlphaNum(geneId)
+        $('#tpGeneBarCell_'+saneId).addClass("tpGeneBarCellSelected");
 
         // search through both quick and recent gene lists to find the real gene symbol
-        var geneSym = null;
-        var quickGenes = db.conf.quickGenes;
-        if (quickGenes)
-            geneSym = alphaNumSearch(quickGenes, saneSym);
-        if (geneSym===null)
-            geneSym = alphaNumSearch(gRecentGenes, saneSym);
+        //var geneSym = null;
+        //var quickGenes = db.conf.quickGenes;
+        //if (quickGenes)
+            //geneSym = alphaNumSearch(quickGenes, geneId);
+        //if (geneSym===null)
+            //geneSym = alphaNumSearch(gRecentGenes, geneId);
 
         // if the gene symbol was actually a gene identifier, than no search will have succeeded
         // This is the more "modern" way of doing things: the ID will have a gene identifier
@@ -3959,10 +3960,10 @@ var cellbrowser = function() {
         // gene ID and symbol and the index will also have both and so the user can search for both.
         // (in the old days, see code above, there were only symbols)
         // So in this case, fall back to the identifier
-        if (geneSym===null)
-            geneSym = saneSym;
+        //if (geneSym===null)
+            //geneSym = geneId;
 
-        colorByLocus(geneSym);
+        colorByLocus(geneId);
         event.stopPropagation();
     }
 
@@ -4267,7 +4268,7 @@ var cellbrowser = function() {
             }
 
             //if (geneId in db.geneOffsets)
-            htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+sym+'</span>');
+            htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" data-geneId="'+geneId+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+sym+'</span>');
             i++;
         }
         htmls.push("</div>"); // divId
