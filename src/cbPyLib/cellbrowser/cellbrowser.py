@@ -3600,8 +3600,10 @@ def readValidGenes(outDir):
             syms.append( sym )
             geneIds.append(geneId)
             hasBoth = True
+            geneToSym[geneId] = sym
         else:
             syms.append( g )
+
 
     if not hasBoth and areProbablyGeneIds(syms):
         geneIds = syms
@@ -4120,7 +4122,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
-        "body_parts", "organisms", "diseases", "projects" ]:
+        "body_parts", "organisms", "diseases", "projects", "life_stages", "domains", "sources" ]:
         copyConf(inConf, outConf, tag)
 
     # for the news generator and for future logging, note when this dataset was built for the first time into this directory
@@ -4162,6 +4164,8 @@ def writeAnndataCoords(anndata, coordFields, outDir, desc):
 
         coordDf.to_csv(fname,sep='\t')
         desc.append( {'file':fileBase, 'shortLabel': fullName} )
+
+    return coordFields
 
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     checkDsName(name)
@@ -4214,8 +4218,10 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
+def geneSeriesToStrings(var, geneKey, indexFirst=False, sep="|"):
     " convert a pandas data series to a list of |-separated strings "
+    geneIdSeries = var[geneKey]
+    logging.info("To get the gene names, using the field %s of the .var attribute" % geneKey)
     if indexFirst:
         geneIdAndSyms = list(zip(geneIdSeries.index, geneIdSeries.values))
     else:
@@ -4226,11 +4232,11 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
 def geneStringsFromVar(var, sep="|"):
     " return a list of strings in format geneId<sep>geneSymbol "
     if "gene_ids" in var:
-        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False, sep=sep)
+        genes = geneSeriesToStrings(var, "gene_ids", indexFirst=False, sep=sep)
     elif "gene_symbols" in var:
-        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True, sep=sep)
+        genes = geneSeriesToStrings(var, "gene_symbols", indexFirst=True, sep=sep)
     elif "Accession" in var:  # only seen this in the ABA Loom files
-        genes = geneSeriesToStrings(var["Accession"], indexFirst=False, sep=sep)
+        genes = geneSeriesToStrings(var, "Accession", indexFirst=False, sep=sep)
     else:
         genes = var.index.tolist()
     return genes
@@ -4473,10 +4479,10 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     coordDescs = []
 
-    writeAnndataCoords(adata, coordFields, path, coordDescs)
+    coordFields = writeAnndataCoords(adata, coordFields, path, coordDescs)
 
     if len(coordDescs)==0:
-        raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
+        raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys  obsm: %s" % (coordFields))
 
     ##Check for cluster markers
     if markerField not in adata.uns and not skipMarkers:
@@ -5326,7 +5332,7 @@ def summarizeDatasets(datasets):
                 #summDs[t] = ds[t]
 
         # these are copied and checked for the correct type
-        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects"]:
+        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects", "life_stages", "domains", "sources"]:
             if optListTag in ds:
                 if (type(ds[optListTag])==type([])): # has to be a list
                     summDs[optListTag] = ds[optListTag]

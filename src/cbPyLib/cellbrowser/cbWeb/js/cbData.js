@@ -939,7 +939,7 @@ function CbDbFile(url) {
         var start = 0;
         var lineLen = 0;
 
-        if (self.conf.atacSearch) {
+        if (self.isAtacMode()) {
             let r = cbUtil.parseRange(geneSym);
             if (r===null) {
                 alert("Cannot color on "+geneSym+". This is an ATAC dataset, but the input does not look like a chromosome region in a format like chr1:1-1000.")
@@ -1013,12 +1013,15 @@ function CbDbFile(url) {
         return self.conf;
     };
 
+    this.isAtacMode = function() {
+        return (self.conf.atacSearch!==undefined)
+    }
     this.getMatrixIndex = function() {
-    /* return an object with the geneSymbols */
-        if (self.geneOffsets)
-            return self.geneOffsets;
-        else
+    /* return an object with the geneSymbols or peak locations */
+        if (self.isAtacMode())
             return self.peakOffsets;
+        else
+            return self.geneOffsets;
     };
 
     this.getGeneInfo = function(geneId) {
