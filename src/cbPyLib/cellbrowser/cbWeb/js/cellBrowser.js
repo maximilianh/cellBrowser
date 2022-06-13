@@ -1009,7 +1009,8 @@ var cellbrowser = function() {
             buildClassification(htmls, datasetInfo, "diseases", "Diseases", true);
             buildClassification(htmls, datasetInfo, "organisms", "Organism", true);
             buildClassification(htmls, datasetInfo, "life_stages", "Life Stage", true);
-            buildClassification(htmls, datasetInfo, "domains", "Scientific Domain", false);
+            buildClassification(htmls, datasetInfo, "domains", "Scientific Domain", true);
+            buildClassification(htmls, datasetInfo, "sources", "Source Database", false);
 
             htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please also cite " +
                     "<a href='https://academic.oup.com/bioinformatics/article/37/23/4578/6318386' target=_blank>" +
@@ -1085,6 +1086,9 @@ var cellbrowser = function() {
             }
             if (dataset.life_stages) {
                 lifeStr = cleanStrings(dataset.life_stages).join("|");
+            }
+            if (dataset.sources) {
+                sourceStr = cleanStrings(dataset.sources).join("|");
             }
 
             var line = "<a id='tpDatasetButton_"+i+"' "+
@@ -1353,7 +1357,9 @@ var cellbrowser = function() {
         let organisms = null;
         let projects = null;
         let lifeStages = null;
-        let domains = null
+        let domains = null;
+        let sources = null;
+
         if (openDsInfo.parents === undefined && openDsInfo.datasets !== undefined) {
             bodyParts = getDatasetAttrs(openDsInfo.datasets, "body_parts");
             diseases = getDatasetAttrs(openDsInfo.datasets, "diseases");
@@ -1361,9 +1367,10 @@ var cellbrowser = function() {
             projects = getDatasetAttrs(openDsInfo.datasets, "projects");
             lifeStages = getDatasetAttrs(openDsInfo.datasets, "life_stages");
             domains = getDatasetAttrs(openDsInfo.datasets, "domains");
+            sources = getDatasetAttrs(openDsInfo.datasets, "sources");
 
             // mirror websites are not using the filters at all. So switch off the entire filter UI if they're not used
-            if (bodyParts.length!==0 || disease.length!==0 || organisms.length!==0 || projects.length!==0 || domains.length!==0 || lifeStages.length!==0)
+            if (bodyParts.length!==0 || disease.length!==0 || organisms.length!==0 || projects.length!==0 || domains.length!==0 || lifeStages.length!==0 || sources.length!==0)
                 doFilters = true;
 
             if (doFilters) {
@@ -1376,6 +1383,7 @@ var cellbrowser = function() {
                 noteLines.push("<div style='height:4px'></div>");
                 buildFilter(noteLines, lifeStages, "Life Stages", "stage", "tpStageCombo", "select stage...");
                 buildFilter(noteLines, domains, "Scient. Domain", "dom", "tpDomCombo", "select domain...");
+                buildFilter(noteLines, sources, "Source DB", "source", "tpSourceCombo", "select db...");
             }
         }
 
@@ -1501,6 +1509,7 @@ var cellbrowser = function() {
             activateFilterCombo(projects, "tpProjCombo");
             activateFilterCombo(lifeStages, "tpStageCombo");
             activateFilterCombo(domains, "tpDomCombo");
+            activateFilterCombo(sources, "tpSourceCombo");
         }
 
         $('.tpBackLink').click( function(ev) {
