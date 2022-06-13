@@ -1068,6 +1068,7 @@ var cellbrowser = function() {
             var projStr = "";
             var domStr = "";
             var lifeStr = "";
+            var sourceStr = "";
 
             if (dataset.body_parts) {
                 bodyPartStr = cleanStrings(dataset.body_parts).join("|");
@@ -1097,6 +1098,7 @@ var cellbrowser = function() {
                 "data-org='"+orgStr+"' "+
                 "data-proj='"+projStr+"' "+
                 "data-dom='"+domStr+"' "+
+                "data-source='"+sourceStr+"' "+
                 "data-stage='"+lifeStr+"' "+
                 "role='button' class='tpListItem list-group-item "+clickClass+"' data-datasetid='"+i+"'>"; // bootstrap seems to remove the id
             htmls.push(line);
@@ -1165,7 +1167,7 @@ var cellbrowser = function() {
         /* keep only datasets that fulfill the filters */
 
         // read the current filter values of the dropboxes
-        var categories = ["Body", "Dis", "Org", "Proj", "Stage", "Dom"];
+        var categories = ["Body", "Dis", "Org", "Proj", "Stage", "Dom", "Source"];
         var filtVals = {};
         for (var category of categories) {
             var vals = $("#tp"+category+"Combo").val();
@@ -3178,12 +3180,12 @@ var cellbrowser = function() {
         sel.setValue(name, 1); // 1 = do not fire change
     }
 
-    function colorByLocus(locusStr, onDone) {
+    function colorByLocus(locusStr, onDone, locusLabel) {
         /* color by a gene or peak, load the array into the renderer and call onDone or just redraw 
          * peak can be in format: +chr1:1-1000
          * gene can be in format: geneSym or geneSym=geneId
          * */
-        if (onDone===undefined)
+        if (onDone===undefined || onDone===null)
             onDone = function() { renderer.drawDots(); };
 
         function gotGeneVec(exprArr, decArr, locusStr, geneDesc, binInfo) {
@@ -3200,6 +3202,7 @@ var cellbrowser = function() {
                 changeUrl({"gene":locusStr, "meta":null});
             }
 
+
             makeLegendExpr(fullLocusStr, geneDesc, binInfo, exprArr, decArr);
             renderer.setColors(legendGetColors(gLegend.rows));
             renderer.setColorArr(decArr);
@@ -3209,16 +3212,25 @@ var cellbrowser = function() {
             // update the "recent genes" div
             for (var i = 0; i < gRecentGenes.length; i++) {
                 // remove previous gene entry with the same symbol
-                if (gRecentGenes[i][0]===locusStr) {
+                if (gRecentGenes[i][0]===locusStr || gRecentGenes[i][1]===locusStr) { // match symbol or ID
                     gRecentGenes.splice(i, 1);
                     break;
                 }
             }
 
-            gRecentGenes.unshift([locusStr, geneDesc]); // insert at position 0
+            var locusWithSym = locusStr;
+            var geneInfo = db.getGeneInfo(locusStr);
+            if (!db.isAtacMode() && (geneInfo.sym!==geneInfo.geneId))
+                locusWithSym = geneInfo.id+"|"+geneInfo.sym;
+
+            var geneInfo = db.getGeneInfo(locusStr);
+            if (locusLabel!==undefined && locusLabel!==locusStr)
+                locusWithSym = locusStr+"|"+locusLabel
+            gRecentGenes.unshift([locusWithSym, geneDesc]); // insert at position 0
             gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
             buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
             $('#tpRecentGenes .tpGeneBarCell').click( onGeneClick );
+            resizeGeneTableDivs("tpRecentGenes");
         }
 
         // clear the meta combo
@@ -3992,31 +4004,15 @@ var cellbrowser = function() {
 
     function onGeneClick (event) {
     /* user clicked on a gene in the gene table */
-        var geneId = event.target.getAttribute("data-geneId"); // the symbol of the gene, as only-alphaNum chars
+        var locusId = event.target.getAttribute("data-geneId"); // the geneId of the gene
+        var locusLabel = event.target.textContent;
         $('.tpMetaBox').removeClass('tpMetaSelect');
         $('.tpGeneBarCell').removeClass("tpGeneBarCellSelected");
         // XX TODO: How find all the elements with this ID?
-        var saneId = onlyAlphaNum(geneId)
+        var saneId = onlyAlphaNum(locusId)
         $('#tpGeneBarCell_'+saneId).addClass("tpGeneBarCellSelected");
 
-        // search through both quick and recent gene lists to find the real gene symbol
-        //var geneSym = null;
-        //var quickGenes = db.conf.quickGenes;
-        //if (quickGenes)
-            //geneSym = alphaNumSearch(quickGenes, geneId);
-        //if (geneSym===null)
-            //geneSym = alphaNumSearch(gRecentGenes, geneId);
-
-        // if the gene symbol was actually a gene identifier, than no search will have succeeded
-        // This is the more "modern" way of doing things: the ID will have a gene identifier
-        // and the tag will have been the symbol. This is because most modern matrices have both
-        // gene ID and symbol and the index will also have both and so the user can search for both.
-        // (in the old days, see code above, there were only symbols)
-        // So in this case, fall back to the identifier
-        //if (geneSym===null)
-            //geneSym = geneId;
-
-        colorByLocus(geneId);
+        colorByLocus(locusId, null, locusLabel);
         event.stopPropagation();
     }
 
@@ -4265,7 +4261,9 @@ var cellbrowser = function() {
     }
 
     function buildGeneTable(htmls, divId, title, subtitle, geneInfos, noteStr) {
-    /* create gene expression info table. if htmls is null, update DIV with divId in-place. */
+    /* create gene expression info table. if htmls is null, update DIV with divId in-place. 
+     * geneInfos is array of [gene, mouseover]. gene can be geneId+"|"+symbol. 
+     * */
         var doUpdate = false;
         if (htmls===null) {
             htmls = [];
@@ -4298,8 +4296,6 @@ var cellbrowser = function() {
             return;
         }
 
-        // need max length of gene names to make number of columns
-        //var currWidth = 1;
         var i = 0;
         while (i < geneInfos.length) {
             var geneInfo = geneInfos[i];
@@ -4320,7 +4316,6 @@ var cellbrowser = function() {
                 sym = geneId;
             }
 
-            //if (geneId in db.geneOffsets)
             htmls.push('<span title="'+geneDesc+'" style="width: fit-content;" data-geneId="'+geneId+'" id="tpGeneBarCell_'+onlyAlphaNum(geneId)+'" class="tpGeneBarCell">'+sym+'</span>');
             i++;
         }
@@ -4331,13 +4326,20 @@ var cellbrowser = function() {
         }
     }
 
-    function resizeGeneTableDivs() {
+    function resizeGeneTableDivs(tableId) {
         /* the size of the DIVs in the gene table depends on the size of the longest DIV in pixels and we know that only once the table is shown. so resize here now */
-        var tdEls = document.getElementById("tpGenes").querySelectorAll("span");
+        var tdEls = document.getElementById(tableId).querySelectorAll("span");
         var maxWidth = 0;
+        var totalWidth = 0;
         for (var el of tdEls) {
-            maxWidth = Math.max(maxWidth, el.offsetWidth);
+            maxWidth = Math.max ( maxWidth, el.offsetWidth+2 ); // 2 pixel borders
+            totalWidth = totalWidth + el.offsetWidth;
         }
+
+        // if we have less than one row, make the cells cover the whole row, but limit the total size a little
+        if (totalWidth < (metaBarWidth-(tdEls.length*6))) // 6 pixels for the borders = 2 + 2 + 2 for the selection border.
+            maxWidth = Math.min(70, Math.floor(metaBarWidth/tdEls.length)-6);
+
         for (var el of tdEls) {
             el.style.minWidth = maxWidth+"px";
         }
@@ -4778,10 +4780,6 @@ var cellbrowser = function() {
             // in the normal, gene-matrix mode.
             var locusStr = null;
             var geneInfo = db.getGeneInfo(geneId);
-            //if (geneInfo.id!==geneInfo.sym)
-                //locusStr = geneInfo.id;
-            //else
-                //locusStr = geneInfo.sym
             colorByLocus(geneInfo.id);
         }
     }
@@ -5699,7 +5697,8 @@ var cellbrowser = function() {
 
         $(document.body).append(htmls.join(""));
 
-        resizeGeneTableDivs();
+        resizeGeneTableDivs("tpRecentGenes");
+        resizeGeneTableDivs("tpGenes");
 
         $("#tpLeftTabs").tabs();
         $('#tpLeftTabs').tabs("option", "active", 0); // open the first tab
