@@ -1408,14 +1408,21 @@ def findMtxFiles(fname):
         logging.debug("Basename-prefix of mtx is: %s")
 
     genesFname = join(matDir, prefix+"genes.tsv.gz")
+    if not isfile(genesFname):
+        genesFname = join(matDir, prefix+"genes.tsv")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
         genesFname = join(matDir, prefix+"features.tsv.gz")
+    if not isfile(genesFname):
+        genesFname = join(matDir, prefix+"features.tsv")
+
     barcodeFname = join(matDir, prefix+"barcodes.tsv.gz")
+    if not isfile(barcodeFname):
+        barcodeFname = join(matDir, prefix+"barcodes.tsv")
 
     if not isfile(genesFname):
-        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, genesFname))
+        errAbort("Found file %s, so expected genes file %s (or with .gz) to exist but could not find it. " % (mtxFname, genesFname))
     if not isfile(barcodeFname):
-        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, barcodeFname))
+        errAbort("Found file %s, so expected genes file %s (or with .gz) to exist but could not find it. " % (mtxFname, barcodeFname))
 
     logging.debug("mtx filename: %s, %s and %s" % (mtxFname, genesFname, barcodeFname))
     return mtxFname, genesFname, barcodeFname
@@ -5776,6 +5783,9 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         adata.obs['n_counts'] = np.sum(adata.X, axis=1)
 
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
+
+    logging.info("Making gene names unique")
+    adata.var_names_make_unique()
 
     if conf["doFilterMito"]:
         geneIdType = conf["geneIdType"]
