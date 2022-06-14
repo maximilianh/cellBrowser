@@ -4122,7 +4122,6 @@ var cellbrowser = function() {
         gCurrentDataset.preloadExpr.cellExpr = newExprData;
         gCurrentDataset.preloadExpr.deciles = newDeciles;
 
-        //tpGeneTable();
     }
 
     //function onReceiveExprLineProgress(line) {
@@ -4260,7 +4259,7 @@ var cellbrowser = function() {
 
     }
 
-    function buildGeneTable(htmls, divId, title, subtitle, geneInfos, noteStr) {
+    function buildGeneTable(htmls, divId, title, subtitle, geneInfos, noteStr, helpText) {
     /* create gene expression info table. if htmls is null, update DIV with divId in-place. 
      * geneInfos is array of [gene, mouseover]. gene can be geneId+"|"+symbol. 
      * */
@@ -4281,6 +4280,7 @@ var cellbrowser = function() {
                 htmls.push('</div>');
             }
             htmls.push("</div>"); // divId_title
+            htmls.push("<span title='"+helpText+"'>&#x24D8;</span>");
         }
 
         if (doUpdate) {
@@ -5683,7 +5683,7 @@ var cellbrowser = function() {
 
         var geneLabel = getGeneLabel();
         buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s",
-            "Hover or select cells to update colors", gRecentGenes);
+            "Hover or select cells to update colors here<br>Click to color by gene", gRecentGenes);
 
         // var myGenes = loadMyGenes();
 
