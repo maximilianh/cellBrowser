@@ -1012,9 +1012,11 @@ var cellbrowser = function() {
             buildClassification(htmls, datasetInfo, "domains", "Scientific Domain", true);
             buildClassification(htmls, datasetInfo, "sources", "Source Database", false);
 
-            htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please also cite " +
+            htmls.push("<p style='padding-top: 8px'>If you use the Cell Browser of this dataset, please cite the " +
+                    "original publication and " +
                     "<a href='https://academic.oup.com/bioinformatics/article/37/23/4578/6318386' target=_blank>" +
-                    "Speir et al. 2021</a>. Email for feedback: cells@ucsc.edu" +
+                    "Speir et al. 2021</a>. Feedback? Email us at <a href='cells@ucsc.edu' " +
+                    "target='_blank'>cells@ucsc.edu</a>."+
                     "</p>");
 
             htmls.push("<p style='padding-top: 8px'><small>Cell Browser dataset ID: "+datasetInfo.name+
