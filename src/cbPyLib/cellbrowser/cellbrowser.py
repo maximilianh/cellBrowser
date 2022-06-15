@@ -3321,7 +3321,7 @@ def guessGeneIdType(inputObj):
             matIter.close()
             geneIds = [geneId] # only use the first geneId for the guessing
 
-    geneId = geneIds[0]
+    geneId = str(geneIds[0]) # when reading from h5ad, sometimes the geneId is a byte string
 
     if geneId.startswith("ENSG"):
         geneType = "gencode-human"
@@ -3951,7 +3951,7 @@ def readJson(fname, keepOrder=False):
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         inStr = readFile(fname)
         if not isPy3:
-            inStr = inStr.decode("utf8")
+            inStr = inStr.encode("utf8")
         data = customdecoder.decode(inStr)
     else:
         data = json.load(open(fname))
@@ -4308,7 +4308,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
         f.write("\n".join(geneLines))
 
     bc_file = join(path, 'barcodes.tsv.gz')
-    sampleNames = ad.obs.index.tolist()
+    sampleNames = [str(x) for x in ad.obs.index.tolist()]
     with gzip.open(bc_file, 'wt') as f:
         f.write("\n".join(sampleNames))
 
@@ -4416,6 +4416,10 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
 
 def saveMarkers(adata, markerField, nb_marker, fname):
     " save nb_marker marker genes from adata object to fname , in a reasonable file format "
+    symToId = None
+    if "gene_ids" in adata.var:
+        symToId = dict((zip(adata.var.index, adata.var["gene_ids"])))
+
     import pandas as pd
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
     top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
@@ -4437,7 +4441,28 @@ def saveMarkers(adata, markerField, nb_marker, fname):
     marker_df=marker_df[cols]
     #Export
     logging.info("Writing %s" % fname)
-    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+    #pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+
+    # want to keep gene IDs, so replaced pandas with manual code
+    clusterCol = marker_df["cluster_name"]
+    scoreCol = marker_df["z_score"]
+    geneCol = marker_df["gene"]
+    assert(len(clusterCol)==len(scoreCol)==len(geneCol))
+
+    sep = "\t"
+    with open(fname, "w") as ofh:
+        ofh.write(sep.join(["cluster_name", "z_score", "gene"]))
+        ofh.write("\n")
+        for cluster, score, gene in zip(clusterCol, scoreCol, geneCol):
+            if isinstance(gene, (bytes, bytearray)):
+                gene = gene.decode("utf8")
+            if symToId:
+                sym = symToId.get(gene)
+                if sym!=None:
+                    gene = sym+"|"+gene
+            ofh.write( sep.join( (cluster, gene, str(score)) ) )
+            ofh.write("\n")
+
 
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
@@ -5072,6 +5097,16 @@ def importLoom(inFname, reqCoords=False):
 
     return ad
 
+def adataStringFix(adata):
+    " some h5ad files read from 10X MTX have bytestrings in them instread of normal strings "
+    if str(adata.var.index.dtype)=="object" :
+        logging.debug("Fixing up byte strings in adata.var.index")
+        adata.var.index = adata.var.index.str.decode("utf-8")
+    if "gene_ids" in adata.var and str(adata.var["gene_ids"].dtype)=="object":
+        logging.debug("Fixing up byte strings in adata.var['gene_ids']")
+        adata.var["gene_ids"] = adata.var["gene_ids"].str.decode("utf-8")
+    return adata
+
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38", reqCoords=False):
     """ read an expression matrix and return an adata object. Supports .mtx.h5 and .tsv (not .tsv.gz)
     If reqCoords is True, will try to find and convert dim. reduc. coordinates in a file (loom).
@@ -5126,6 +5161,8 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38", reqCoords
         if not samplesOnRows:
             logging.info("Scanpy defaults to samples on lines, so transposing the expression matrix, use --samplesOnRows to change this")
             adata = adata.T
+
+    adata = adataStringFix(adata)
 
     return adata
 
@@ -5752,6 +5789,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
 
     pipeLog("Data has %d samples/observations" % len(adata.obs))
     pipeLog("Data has %d genes/variables" % len(adata.var))
+
 
     if conf["doTrimCells"]:
         minGenes = conf["minGenes"]
