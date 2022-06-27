@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
-# import sys, os, json, urllib.request, subprocess, operator
-import argparse, requests, threading
+import argparse, requests, threading, sys
 from json import load,loads
 from subprocess import Popen,PIPE
 from operator import eq
@@ -186,7 +185,7 @@ def main():
             print("\tcells:", len(rr_datasets))
 
     else:
-        print("Script looks for differences between cells-test and cells-beta.\n\nRun script with -r/--run to look for diffs.")
+        parser.print_help(sys.stderr)
         exit(1)
 
 if __name__ == "__main__":
