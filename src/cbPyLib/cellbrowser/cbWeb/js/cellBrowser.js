@@ -3220,14 +3220,12 @@ var cellbrowser = function() {
                 }
             }
 
+            // make sure that recent genes table has symbol and Id
             var locusWithSym = locusStr;
             var geneInfo = db.getGeneInfo(locusStr);
             if (!db.isAtacMode() && (geneInfo.sym!==geneInfo.geneId))
                 locusWithSym = geneInfo.id+"|"+geneInfo.sym;
 
-            var geneInfo = db.getGeneInfo(locusStr);
-            if (locusLabel!==undefined && locusLabel!==locusStr)
-                locusWithSym = locusStr+"|"+locusLabel
             gRecentGenes.unshift([locusWithSym, geneDesc]); // insert at position 0
             gRecentGenes = gRecentGenes.slice(0, 9); // keep only nine last
             buildGeneTable(null, "tpRecentGenes", null, null, gRecentGenes);
@@ -3239,6 +3237,7 @@ var cellbrowser = function() {
         $('#tpMetaCombo').val(0).trigger('chosen:updated');
 
         console.log("Loading gene expression vector for "+locusStr);
+
         db.loadExprAndDiscretize(locusStr, gotGeneVec, onProgress);
 
     }
@@ -4264,6 +4263,7 @@ var cellbrowser = function() {
     function buildGeneTable(htmls, divId, title, subtitle, geneInfos, noteStr, helpText) {
     /* create gene expression info table. if htmls is null, update DIV with divId in-place. 
      * geneInfos is array of [gene, mouseover]. gene can be geneId+"|"+symbol. 
+     * You must run activateTooltip(".hasTooltip") after adding the htmls.
      * */
         var doUpdate = false;
         if (htmls===null) {
@@ -4275,14 +4275,19 @@ var cellbrowser = function() {
 
         if (title) {
             htmls.push("<div style='margin-top:8px' id='"+divId+"_title'>");
-            htmls.push("<div style='padding-left:3px; font-weight:bold'>"+title+"</div>");
+            htmls.push("<div style='display: inline; padding-left:3px; font-weight:bold'>"+title+"</div>");
+            if (helpText) {
+                // https://fontawesome.com/icons/circle-info?s=solid
+                var iconHtml = '<svg style="width:0.9em" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Pro 6.1.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M256 0C114.6 0 0 114.6 0 256s114.6 256 256 256s256-114.6 256-256S397.4 0 256 0zM256 128c17.67 0 32 14.33 32 32c0 17.67-14.33 32-32 32S224 177.7 224 160C224 142.3 238.3 128 256 128zM296 384h-80C202.8 384 192 373.3 192 360s10.75-24 24-24h16v-64H224c-13.25 0-24-10.75-24-24S210.8 224 224 224h32c13.25 0 24 10.75 24 24v88h16c13.25 0 24 10.75 24 24S309.3 384 296 384z"/></svg>';
+                htmls.push("<span class='hasTooltip' title='"+helpText+"'>&nbsp;"+iconHtml+"</span>");
+            }
             if (subtitle) {
                 htmls.push('<div style="margin-top:6px" class="tpHint">');
                 htmls.push(subtitle);
                 htmls.push('</div>');
             }
             htmls.push("</div>"); // divId_title
-            htmls.push("<span title='"+helpText+"'>&#x24D8;</span>");
+
         }
 
         if (doUpdate) {
@@ -5684,20 +5689,26 @@ var cellbrowser = function() {
             buildPeakList(htmls);
 
         var geneLabel = getGeneLabel();
+        var recentHelp = "Shown below are the 10 most recently searched genes. Click any gene to color the plot on the right-hand side by the gene.";
+
         buildGeneTable(htmls, "tpRecentGenes", "Recent "+geneLabel+"s",
-            "Hover or select cells to update colors here<br>Click to color by gene", gRecentGenes);
+            "Hover or select cells to update colors here<br>Click to color by gene", gRecentGenes, null, recentHelp);
 
         // var myGenes = loadMyGenes();
 
         var noteStr = "No genes or peaks defined. Use the setting quickGenesFile in "
             "cellbrowser.conf to add a file with gene symbols or peaks that will be shown here";
-        buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr);
+        var geneHelp = "The dataset genes were defined by the dataset submitter, publication author or data wrangler at UCSC. " +
+            "Click any of them to color the plot on the right hand side by the gene.";
+        buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr, geneHelp);
 
         htmls.push("</div>"); // tpGeneTab
 
         htmls.push("</div>"); // tpLeftSidebar
 
         $(document.body).append(htmls.join(""));
+
+        activateTooltip('.hasTooltip');
 
         resizeGeneTableDivs("tpRecentGenes");
         resizeGeneTableDivs("tpGenes");
@@ -6690,6 +6701,7 @@ var cellbrowser = function() {
             return;
 
         $('#tpMeta_custom').html("");
+        $(".tpMetaValue").html("");
 
         var fieldCount = db.getMetaFields();
         for (let metaInfo of db.getMetaFields()) {
@@ -7321,7 +7333,16 @@ var cellbrowser = function() {
         // sub function ----
         function onMarkerGeneClick(ev) {
             /* user clicks onto a gene in the table of the marker gene dialog window */
-            var geneSym = ev.target.getAttribute("data-gene");
+            var geneIdOrSym = ev.target.getAttribute("data-gene");
+
+            // old marker tables do not contain the geneIds. For these we need to resolve the symbol to an ID
+            if (!db.isAtacMode() && db.geneOffsets[geneIdOrSym]===undefined) {
+                var geneIds = db.findGenesExact(geneIdOrSym);
+                if (geneIds.length!==1)
+                    alert("symbol "+geneIdOrSym+" resolves to more than one geneId. Internal error? Please contact us at cells@ucsc.edu");
+                geneIdOrSym = geneIds[0];
+            }
+
             $(".ui-dialog").remove(); // close marker dialog box
             if (selectOnClick) {
                 clusterField = db.conf.labelField;
@@ -7331,7 +7352,10 @@ var cellbrowser = function() {
                         //changeUrl({'select':JSON.stringify(queryList)});
                 });
             }
-            colorByLocus(geneSym);
+
+            // the marker table historically only contains symbols (this was a mistake)
+            // colorByLocus will automatically resolve them to IDs.
+            colorByLocus(geneIdOrSym);
         }
         // ----
 
