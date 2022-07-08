@@ -3293,20 +3293,8 @@ var cellbrowser = function() {
             // console.log(metaInfo);
 
             console.time("cluster centers");
-            var calc = {};
-            for (var i = 0, I = values.length; i < I; i++) {
-                if (names) {
-                    var label = names[values[i]];
-                } else {
-                    var label = metaInfo.origVals[i].toFixed(2);
-                }
-                if (calc[label] === undefined) {
-                    calc[label] = [[], [], 0]; // all X, all Y, count
-                }
-                calc[label][0].push(coords[i * 2]);
-                calc[label][1].push(coords[i * 2 + 1]);
-                calc[label][2] += 1;
-            }
+            var calc = renderer.calcMedian(coords, values, names, metaInfo.origVals);
+
             labelCoords = [];
             for (label in calc) {
                 var midX = selectMedian(calc[label][0]);
