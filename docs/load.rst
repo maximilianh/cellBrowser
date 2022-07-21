@@ -30,7 +30,7 @@ Run these commands if you have downloaded the file as above::
     meta <- read.table("meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
     genes = mat[,1][[1]]
     genes = gsub(".+[|]", "", genes)
-    mat = data.frame(mat[,-1], row.names=genes)
+    mat = data.frame(mat[,-1], row.names=genes, check.names=FALSE)
     so <- CreateSeuratObject(counts = mat, project = "adultPancreas", meta.data=meta)
 
 Or you can download directly into R, without wget, by replacing the fread and read.table commands above in line 4 and 5 with these::
