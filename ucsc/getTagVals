@@ -41,6 +41,7 @@ def main():
         description="Get all values for a list of datasets for specified cellbrowser.conf tag")
     parser.add_argument('datasetFile', type=str, help='file containing list of datasets in first column')
     parser.add_argument('tag', type=str, help='cellbrowser.conf tag you want values for, e.g. body_parts')
+    parser.add_argument('-d', '--descConf', action='store_true', help='search for tag in desc.conf instead of cellbrowser.conf')
     args = parser.parse_args()
 
     # From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
@@ -80,7 +81,10 @@ def main():
         if not line.startswith('#'):
             splitLine = line.rstrip().split(dsep)
             dname = splitLine[0]
-            confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
+            if args.descConf:
+                confName = join("/hive/data/inside/cells/datasets",dname,"desc.conf")
+            else:
+                confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
             conf = loadConfig(confName)
             for tag in tagIndex:
                 n = tagIndex[tag]
