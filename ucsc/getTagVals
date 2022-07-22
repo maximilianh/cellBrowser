@@ -1,0 +1,105 @@
+#! /usr/bin/env python3
+
+import sys,argparse,re
+from collections import OrderedDict
+from os.path import join, basename, dirname
+from pathlib import Path
+
+# These two functions copied and modified from cellbrowser.py
+def readLines(lines, fname):
+    " recursively read lines from fname, understands lines like #include 'filename.conf' "
+    for line in open(fname):
+        line = line.rstrip("\r\n")
+        if line.startswith("#include"):
+            newFname = splitOnce(line, " ")[1]
+            newFname = newFname.strip('"').strip("'")
+            lines.extend(readLines(lines, newFname))
+        else:
+            lines.append(line)
+    return lines
+
+def loadConfig(fname):
+    """ parse python in fname and return variables as dictionary.
+    add the directory of fname to the dict as 'inDir'.
+    """
+
+    conf = OrderedDict()
+
+    g = {}
+    g["fileBase"] = basename(fname).split('.')[0]
+    g["dirName"] = basename(dirname(fname))
+
+    lines = readLines([], fname)
+    exec("\n".join(lines), g, conf)
+
+    return conf
+
+def main():
+    # Set up script arguments
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Get all values for a list of datasets for specified cellbrowser.conf tag")
+    parser.add_argument('datasetFile', type=str, help='file containing list of datasets in first column')
+    parser.add_argument('tag', type=str, help='cellbrowser.conf tag you want values for, e.g. body_parts')
+    parser.add_argument('-d', '--descConf', action='store_true', help='search for tag in desc.conf instead of cellbrowser.conf')
+    args = parser.parse_args()
+
+    # From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+    dFtype = Path(args.datasetFile).suffix
+
+    if dFtype == ".csv":
+        dsep = ","
+    elif dFtype == ".tsv":
+        dsep = "\t"
+    else:
+        print("datasetFile must have tsv or csv file extension")
+        exit(1)
+
+    # Turn input tags into a list
+    tags = args.tag.split()
+    tagIndex = dict()
+
+    dfh = open(args.datasetFile)
+    # If datasets file has info for the tag already
+    # get column num so we can replace it
+    header = dfh.readline().rstrip().split(dsep)
+    # Want to get index for each input tag
+    for tag in tags:
+        try:
+            n = header.index(tag)
+            tagIndex[tag] = n
+        # If it's not there, we'll just tack it on to the end
+        except ValueError:
+            header.append(tag)
+            n = header.index(tag)
+            tagIndex[tag] = n
+    # Want the header in the output file so print that here
+    print(*header, sep=dsep)
+
+    # Now process rest of datasetFile
+    for line in dfh:
+        if not line.startswith('#'):
+            splitLine = line.rstrip().split(dsep)
+            dname = splitLine[0]
+            if args.descConf:
+                confName = join("/hive/data/inside/cells/datasets",dname,"desc.conf")
+            else:
+                confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
+            conf = loadConfig(confName)
+            for tag in tagIndex:
+                n = tagIndex[tag]
+                if tag in conf.keys():
+                    tagVal = str(conf[tag])
+                    # remove all the extra characters from the line
+                    tagVal = re.sub('[\[\]\'"]','',tagVal)
+                    # Case where we're replacing what's there
+                    if n <= len(splitLine) - 1:
+                        splitLine[n] = tagVal
+                    # Case where we're tacking the tag onto the end of our file
+                    else:
+                        splitLine.append(tagVal)
+
+        print(*splitLine, sep='\t')
+
+if __name__ == "__main__":
+    main()

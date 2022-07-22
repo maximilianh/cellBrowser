@@ -419,9 +419,14 @@ def readExportScript(cmds):
     # we want to have only a single source code file, and seurat-wrappers code 
     # cannot use require, so we add the require commands here
     cmds.insert(0, "message(R.version$version.string)")
-    cmds.insert(0, "library(Matrix, warn.conflicts=FALSE)")
-    cmds.insert(0, "library(R.utils, warn.conflicts=FALSE)")
-    cmds.insert(0, "library(R.oo, warn.conflicts=FALSE)")
+    cmds.insert(0, """if(!require(R.utils)){
+            install.packages("R.utils")
+            library(R.utils, warn.conflicts=FALSE)
+        }\n""")
+    cmds.insert(0, """if(!require(Matrix)){
+            install.packages("Matrix")
+            library(Matrix, warn.conflicts=FALSE)
+        }\n""")
 
     assert(len(cmds)!=0)
     return cmds

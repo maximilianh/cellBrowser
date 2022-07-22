@@ -41,6 +41,9 @@ function MaxPlot(div, top, left, width, height, args) {
       // In rare instances, coordinates are saved but should not be shown. This way of implementing hiding
       // may look hacky, but it simplifies the logic and improves performance.
 
+    // export this special value so other part of the code can use it
+    this.hiddenCoord = HIDCOORD;
+
     var self = this; // 'this' has two conflicting meanings in javascript.
     // I use 'self' to refer to object variables, so I can use 'this' to refer to the caller context
 
@@ -1223,9 +1226,10 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.setLabelCoords = function(labelCoords) {
-        var prevLabels = self.coords.labels.length > 0;
+        /* set the label coords and return true if there were any labels before */
+        var hadLabelsBefore = self.coords.labels.length > 0;
         self.coords.labels = labelCoords;
-        return prevLabels;
+        return hadLabelsBefore;
     };
 
     this.setColorArr = function(colorArr) {
@@ -1326,6 +1330,7 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.redrawLabels = function() {
+        /* draw only the labels */
         self.coords.pxLabels = scaleLabels(
             self.coords.labels,
             self.port.zoomRange,
@@ -2230,6 +2235,34 @@ function MaxPlot(div, top, left, width, height, args) {
             return self.width + self.childPlot.width;
         else
             return self.width;
+    }
+
+    this.calcMedian = function(coords, values, names, numNames) {
+        /* given an array of coordinates (x at even positions, y at odd positions) and an array of names for each of them
+         * return the median for each name as an object name -> array of [x, y, count]
+         * if names is undefined, will use numNames and convert to two decimals 
+         * */
+        var calc = {};
+        for (var i = 0, I = values.length; i < I; i++) {
+            var label = null;
+            if (names) {
+                label = names[values[i]];
+            } else {
+                label = numNames[i].toFixed(2);
+            }
+            if (calc[label] === undefined) {
+                calc[label] = [[], [], 0]; // all X, all Y, count
+            }
+            var x = coords[i * 2];
+            var y = coords[i * 2 + 1];
+
+            if (isHidden(x, y))
+                continue;
+
+            calc[label][0].push(x);
+            calc[label][1].push(y);
+            calc[label][2] += 1;
+        }
     }
 
     // object constructor code

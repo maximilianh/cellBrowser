@@ -1,0 +1,109 @@
+#! /usr/bin/env python3
+
+import sys,argparse
+from collections import OrderedDict
+from os.path import join, basename, dirname
+from pathlib import Path
+
+# These two functions copied and modified from cellbrowser.py
+def readLines(lines, fname):
+    " recursively read lines from fname, understands lines like #include 'filename.conf' "
+    for line in open(fname):
+        line = line.rstrip("\r\n")
+        if line.startswith("#include"):
+            newFname = splitOnce(line, " ")[1]
+            newFname = newFname.strip('"').strip("'")
+            lines.extend(readLines(lines, newFname))
+        else:
+            lines.append(line)
+    return lines
+
+def loadConfig(fname):
+    """ parse python in fname and return variables as dictionary.
+    add the directory of fname to the dict as 'inDir'.
+    """
+
+    conf = OrderedDict()
+
+    g = {}
+    g["fileBase"] = basename(fname).split('.')[0]
+    g["dirName"] = basename(dirname(fname))
+
+    lines = readLines([], fname)
+    exec("\n".join(lines), g, conf)
+
+    return conf
+
+# Set up script arguments
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Add/update tag values for a list of datasets")
+parser.add_argument('datasetFile', type=str, help='file containing list of datasets in first column \
+and any tags to add/update in subsequent columns. Header should contain tag names that should match \
+those in the example cellbrowser.conf, e.g. body_parts.')
+parser.add_argument("-u","--update", action='store_true',
+    help='if a tag already exists in the cellbrowser.conf, update it with value from datasetsFile')
+args = parser.parse_args()
+
+# From https://stackoverflow.com/questions/541390/extracting-extension-from-filename-in-python
+dFtype = Path(args.datasetFile).suffix
+
+if dFtype == ".csv":
+    print("datasetFile must be tsv")
+    exit(1)
+
+dfh = open(args.datasetFile)
+
+# Peel off header so we can know which tags we're working with
+header = dfh.readline().rstrip().split('\t')
+
+# Now process rest of datasetFile
+for line in dfh:
+    splitLine = line.rstrip('\n').split('\t')
+    dname = splitLine[0]
+    print("adding tag/values for:",dname)
+    confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
+    # Turn conf into dict
+    conf = loadConfig(confName)
+
+    # go through each tag in the header
+    for tag in header:
+        # Skip first column
+        if tag != "dataset":
+            # Get index of tag in the header so that we can use position to get values
+            # for the current tag of our current dataset later
+            n = header.index(tag)
+
+            # Case where we're dealing with a new tag
+            if tag not in conf.keys():
+                # need to handle case where value is empty for a particular tag
+                # no need to add an empty tag to cellbrowser.conf
+                if splitLine[n] != '':
+                    # Turn vals into a list
+                    vals = splitLine[n].strip().split(',')
+                    # code adapated from https://stackoverflow.com/questions/4071396/split-by-comma-and-strip-whitespace-in-python
+                    vals = [x.strip() for x in splitLine[n].split(',')]
+                    # Append to file
+                    with open(confName,"a") as f:
+                        f.write(tag + "=" + str(vals) + "\n")
+            # Case where tag already exists in conf file, so we're updating it
+            if args.update:
+                # empty string to hold outConf if we're dealing with updates to current tags
+                # doing it this way should keep the formatting of the lines we're not changing intact
+                outConf = ""
+                # go through line by line
+                for tagLine in open(confName):
+                    splitTag = tagLine.strip().split("=",1)
+                    confTag = splitTag[0]
+                    # find those tags we've referenced in the header
+                    if confTag == tag:
+                        # take the values from datasetFile and add to output string
+                        # code adapated from https://stackoverflow.com/questions/4071396/split-by-comma-and-strip-whitespace-in-python
+                        vals = [x.strip() for x in splitLine[n].split(',')]
+                        outConf += tag + "=" + str(vals) + "\n"
+                    # Just add other lines to the output string
+                    else:
+                        outConf += tagLine
+                # Write output string to our conf file
+                with open(confName,"w") as f:
+                    f.write(outConf)

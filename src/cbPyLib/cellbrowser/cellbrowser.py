@@ -1408,14 +1408,21 @@ def findMtxFiles(fname):
         logging.debug("Basename-prefix of mtx is: %s")
 
     genesFname = join(matDir, prefix+"genes.tsv.gz")
+    if not isfile(genesFname):
+        genesFname = join(matDir, prefix+"genes.tsv")
     if not isfile(genesFname): # zealous cellranger 3 engineers renamed the genes file. Argh.
         genesFname = join(matDir, prefix+"features.tsv.gz")
+    if not isfile(genesFname):
+        genesFname = join(matDir, prefix+"features.tsv")
+
     barcodeFname = join(matDir, prefix+"barcodes.tsv.gz")
+    if not isfile(barcodeFname):
+        barcodeFname = join(matDir, prefix+"barcodes.tsv")
 
     if not isfile(genesFname):
-        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, genesFname))
+        errAbort("Found file %s, so expected genes file %s (or with .gz) to exist but could not find it. " % (mtxFname, genesFname))
     if not isfile(barcodeFname):
-        errAbort("Found file %s, so expected genes file %s to exist but could not find it. " % (mtxFname, barcodeFname))
+        errAbort("Found file %s, so expected genes file %s (or with .gz) to exist but could not find it. " % (mtxFname, barcodeFname))
 
     logging.debug("mtx filename: %s, %s and %s" % (mtxFname, genesFname, barcodeFname))
     return mtxFname, genesFname, barcodeFname
@@ -1952,10 +1959,10 @@ def exprEncode(geneDesc, exprArr, matType):
         else:
             assert(False) # internal error
 
-        # if an old numpy version is loaded isNumpy is false, but the type may still be a numpy array -> force to a list
+        # if as too-old numpy version is loaded isNumpy is false, but the type may
+        # still be a numpy array if we loaded from MTX -> force to a list
         if str(type(exprArr))=="<type 'numpy.ndarray'>":
             exprArr = exprArr.tolist()[0]
-        exprStr = array.array(arrType, exprArr).tostring()
 
         # Python 3.9 removed tostring()
         if sys.version_info >= (3, 2):
@@ -2656,7 +2663,8 @@ def sanitizeName(name):
     newName = nonAscii.sub("", name)
     if newName!=name:
         logging.debug("Sanitized %s -> %s" % (repr(name), newName))
-    assert(len(newName)!=0)
+    if (len(newName)==0):
+        errAbort("Field name %s has only special chars?" % name)
     return newName
 
 def nonAlphaToUnderscores(name):
@@ -2727,6 +2735,10 @@ def parseMarkerTable(filename, geneToSym):
     otherColumns = defaultdict(list)
     for row in reader:
         clusterName = row[clusterIdx]
+
+        if clusterName=="":
+            errAbort("Found empty string as cluster name in cluster marker file. Please fix the marker file.")
+
         geneId = row[geneIdx]
 
         scoreVal = float(row[scoreIdx])
@@ -3186,42 +3198,89 @@ def readHeaders(fname):
         errAbort("Could not read headers from file %s" % fname)
     return row
 
-def parseGeneInfo(geneToSym, fname):
-    """ parse a file with three columns: symbol, desc (optional), pmid (optional).
-    Return as a dict symbol -> [description, pmid] """
+def removeBom(line):
+    " strip BOM from line "
+    return line.replace('\ufeff', '')
+
+def parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds):
+    """ parse quick genes file with three columns: symbol or geneId, desc (optional), pmid (optional).
+    Return as a dict geneId|symbol -> [description, pmid] """
     if fname is None:
         return {}
     logging.debug("Parsing %s" % fname)
-    validSyms = None
+    symToGene = None
     if geneToSym is not None:
-        validSyms = set()
+        symToGene = dict()
         for gene, sym in iterItems(geneToSym):
-            validSyms.add(sym)
+            symToGene[sym] = gene
 
     sep = sepForFile(fname)
     geneInfo = []
     for line in openFile(fname):
         if line.startswith("#"):
             continue
+        line = removeBom(line)
+
         hasDesc = False
         hasPmid = False
         if line.startswith("symbol"):
             continue
         row = line.rstrip("\r\n").split(sep)
-        sym = row[0]
+        geneOrSym = row[0]
 
-        if validSyms is not None and sym not in validSyms:
-            sym = geneToSym.get(sym)
-            if sym is None:
-                logging.error("'%s' is not a valid gene symbol, skipping it" % sym)
-                continue
+        # case 1: user provides both geneId and symbol. Rare.
+        # Necessary when symbol <-> geneId is not unique
+        if "|" in geneOrSym:
+            geneId, sym = geneOrSym.split("|")
+            if geneId not in matrixGeneIds:
+                errAbort("geneId %s in quickgenes file is not in expression matrix" % repr(geneId))
+            geneStr = geneOrSym
 
-        info = [sym]
+        # case 2: matrix has only symbols and user provides symbol. legacy format.
+        # store only the symbol. We could look up the geneId but that's data inference, 
+        # which we try not to do. The lookup could be wrong.
+        elif geneOrSym in matrixSyms and len(matrixGeneIds)==0:
+            geneStr = geneOrSym
+
+        # case 3: matrix has geneIds and user provides a geneId. add the symbol from our mapping
+        # that's a data inference that should not be wrong
+        elif geneOrSym in matrixGeneIds:
+            geneId = geneOrSym
+            if not geneToSym:
+                logging.info("quick gene %s has a geneId but we have no geneId/symbol table. You can use "
+                        "the format geneId|symbol in the quick genes file to manually assign a label" % repr(geneId))
+                sym = geneId
+            else:
+                sym = geneToSym[geneId]
+            geneStr = geneId+"|"+sym
+
+        # case 4: matrix has geneIds and user provides geneId or symbol. Store both.
+        elif geneToSym:
+            # if we have a gene symbol mapping, we can resolve the symbols to geneIds
+            # one can provide either geneIDs or symbols in the quick genes file
+            if geneOrSym in geneToSym:
+                geneId = geneOrSym
+                sym = geneToSym[geneId]
+            elif geneOrSym in symToGene:
+                sym = geneOrSym
+                geneId = symToGene[sym]
+            else:
+                errAbort("Gene %s in quickgenes file is neither a symbol nor a geneId" % repr(geneOrSym))
+            geneStr = geneId+"|"+sym
+
+        else:
+            errAbort("Gene '%s' in quickgenes file is not in expr matrix and there is no geneId<->symbol mapping to resolve it to a geneId in the expression matrix" % repr(geneOrSym))
+
+        # if we had no geneToSym, we'll check the symbol later if it's valid
+
+        info = [geneStr]
+
         if len(row)>1:
             info.append(row[1])
         if len(row)>2:
             info.append(row[2])
         geneInfo.append(info)
+
     return geneInfo
 
 def readSampleNames(fname):
@@ -3262,7 +3321,7 @@ def guessGeneIdType(inputObj):
             matIter.close()
             geneIds = [geneId] # only use the first geneId for the guessing
 
-    geneId = geneIds[0]
+    geneId = str(geneIds[0]) # when reading from h5ad, sometimes the geneId is a byte string
 
     if geneId.startswith("ENSG"):
         geneType = "gencode-human"
@@ -3513,55 +3572,71 @@ def convertMarkers(inConf, outConf, geneToSym, clusterLabels, outDir):
 
     outConf["markers"] = newMarkers
 
+def areProbablyGeneIds(ids):
+    " if 90% of the identifiers start with the same letter, they are probably gene IDs, not symbols "
+    counts = Counter()
+    numCount = 0
+    for s in ids:
+        counts[s[0]]+=1
+        if s.isnumeric():
+            numCount += 1
+
+    cutoff = 0.9* len(ids)
+    if counts.most_common()[0][1] >= cutoff or numCount >= cutoff:
+        logging.debug("GeneIds in matrix are identifiers, not symbols")
+        return True
+    else:
+        logging.debug("GeneIds in matrix are symbols, not identifiers")
+        return False
+
 def readValidGenes(outDir):
-    " the output directory contains an exprMatrix.json file that contains all valid gene symbols. We're reading those here "
+    """ the output directory contains an exprMatrix.json file that contains all valid gene symbols.
+    We're reading those here """
     matrixJsonFname = join(outDir, "exprMatrix.json")
     validGenes = list(readJson(matrixJsonFname))
 
-    if "|" in validGenes[0]:
-        newSyms = []
-        geneToSym = {}
-        for g in validGenes:
-            if "|" in g:
-                parts = g.split("|")
-                geneId = parts[0]
-                sym = parts[1]
-
-            newSyms.append( sym )
+    syms = []
+    geneIds = []
+    geneToSym = {}
+    hasBoth = False
+    for g in validGenes:
+        if "|" in g:
+            parts = g.split("|")
+            geneId = parts[0]
+            sym = parts[1]
+            syms.append( sym )
+            geneIds.append(geneId)
+            hasBoth = True
             geneToSym[geneId] = sym
+        else:
+            syms.append( g )
 
-        return newSyms, geneToSym
 
-    return validGenes, None
+    if not hasBoth and areProbablyGeneIds(syms):
+        geneIds = syms
+        syms = []
+
+    if len(geneToSym)==0:
+        geneToSym = None
+
+    return set(syms), set(geneIds), geneToSym
 
 def readQuickGenes(inConf, geneToSym, outDir, outConf):
     " read quick genes file and make sure that the genes in it are in the matrix "
     quickGeneFname = inConf.get("quickGenesFile")
     if quickGeneFname:
 
-        validGenes, geneToSymFromMatrix = readValidGenes(outDir)
+        matrixSyms, matrixGeneIds, geneToSymFromMatrix = readValidGenes(outDir)
 
+        # prefer the symbols from the matrix over our own symbol tables
         if geneToSymFromMatrix is not None:
             geneToSym = geneToSymFromMatrix
 
         fname = getAbsPath(inConf, "quickGenesFile")
-        quickGenes = parseGeneInfo(geneToSym, fname)
+        quickGenes = parseGeneInfo(geneToSym, fname, matrixSyms, matrixGeneIds)
 
-        validQuickGenes = []
-        for quickGeneInfo in quickGenes:
-            sym = quickGeneInfo[0]
-            if "|" in sym:
-                sym = sym.split("|")[1]
-            if sym not in validGenes:
-                logging.warning("Gene %s from quickGenesFile is not in the expression matrix, skipping", sym)
-            else:
-                validQuickGenes.append(quickGeneInfo)
-
-        if len(validQuickGenes)==0:
-            errAbort("No single gene in the quickGenes file is a valid identifier. Did you really use the gene symbol, not the ID? If unsure, please contact us at cells@ucsc.edu")
-
-        outConf["quickGenes"] = validQuickGenes
-        logging.info("Read %d quick genes from %s, kept %d" % (len(quickGenes), fname, len(validQuickGenes)))
+        outConf["quickGenes"] = quickGenes
+        logging.info("Read %d quick genes from %s" % (len(quickGenes), fname))
 
 def getFileVersion(fname):
     data = {}
@@ -3876,7 +3951,7 @@ def readJson(fname, keepOrder=False):
         customdecoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         inStr = readFile(fname)
         if not isPy3:
-            inStr = inStr.decode("utf8")
+            inStr = inStr.encode("utf8")
         data = customdecoder.decode(inStr)
     else:
         data = json.load(open(fname))
@@ -4054,7 +4129,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
         "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
-        "body_parts", "organisms", "diseases", "projects" ]:
+        "body_parts", "organisms", "diseases", "projects", "life_stages", "domains", "sources" ]:
         copyConf(inConf, outConf, tag)
 
     # for the news generator and for future logging, note when this dataset was built for the first time into this directory
@@ -4097,6 +4172,8 @@ def writeAnndataCoords(anndata, coordFields, outDir, desc):
         coordDf.to_csv(fname,sep='\t')
         desc.append( {'file':fileBase, 'shortLabel': fullName} )
 
+    return coordFields
+
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     checkDsName(name)
     #kddfor c in name:
@@ -4124,7 +4201,7 @@ labelField='%(clusterField)s'
 enumFields=['%(clusterField)s']
 coords=%(coordStr)s
 #alpha=0.3
-#bodyParts=["embryo", "heart", "brain"]
+#body_parts=["embryo", "heart", "brain"]
 #radius=2
 """ % locals()
 
@@ -4148,8 +4225,10 @@ coords=%(coordStr)s
     ofh.close()
     logging.info("Wrote %s" % ofh.name)
 
-def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
+def geneSeriesToStrings(var, geneKey, indexFirst=False, sep="|"):
     " convert a pandas data series to a list of |-separated strings "
+    geneIdSeries = var[geneKey]
+    logging.info("To get the gene names, using the field %s of the .var attribute" % geneKey)
     if indexFirst:
         geneIdAndSyms = list(zip(geneIdSeries.index, geneIdSeries.values))
     else:
@@ -4160,11 +4239,11 @@ def geneSeriesToStrings(geneIdSeries, indexFirst=False, sep="|"):
 def geneStringsFromVar(var, sep="|"):
     " return a list of strings in format geneId<sep>geneSymbol "
     if "gene_ids" in var:
-        genes = geneSeriesToStrings(var["gene_ids"], indexFirst=False, sep=sep)
+        genes = geneSeriesToStrings(var, "gene_ids", indexFirst=False, sep=sep)
     elif "gene_symbols" in var:
-        genes = geneSeriesToStrings(var["gene_symbols"], indexFirst=True, sep=sep)
+        genes = geneSeriesToStrings(var, "gene_symbols", indexFirst=True, sep=sep)
     elif "Accession" in var:  # only seen this in the ABA Loom files
-        genes = geneSeriesToStrings(var["Accession"], indexFirst=False, sep=sep)
+        genes = geneSeriesToStrings(var, "Accession", indexFirst=False, sep=sep)
     else:
         genes = var.index.tolist()
     return genes
@@ -4229,7 +4308,7 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
         f.write("\n".join(geneLines))
 
     bc_file = join(path, 'barcodes.tsv.gz')
-    sampleNames = ad.obs.index.tolist()
+    sampleNames = [str(x) for x in ad.obs.index.tolist()]
     with gzip.open(bc_file, 'wt') as f:
         f.write("\n".join(sampleNames))
 
@@ -4337,6 +4416,10 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
 
 def saveMarkers(adata, markerField, nb_marker, fname):
     " save nb_marker marker genes from adata object to fname , in a reasonable file format "
+    symToId = None
+    if "gene_ids" in adata.var:
+        symToId = dict((zip(adata.var.index, adata.var["gene_ids"])))
+
     import pandas as pd
     top_score=pd.DataFrame(adata.uns[markerField]['scores']).loc[:nb_marker]
     top_gene=pd.DataFrame(adata.uns[markerField]['names']).loc[:nb_marker]
@@ -4358,7 +4441,28 @@ def saveMarkers(adata, markerField, nb_marker, fname):
     marker_df=marker_df[cols]
     #Export
     logging.info("Writing %s" % fname)
-    pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+    #pd.DataFrame.to_csv(marker_df,fname,sep='\t',index=False)
+
+    # want to keep gene IDs, so replaced pandas with manual code
+    clusterCol = marker_df["cluster_name"]
+    scoreCol = marker_df["z_score"]
+    geneCol = marker_df["gene"]
+    assert(len(clusterCol)==len(scoreCol)==len(geneCol))
+
+    sep = "\t"
+    with open(fname, "w") as ofh:
+        ofh.write(sep.join(["cluster_name", "z_score", "gene"]))
+        ofh.write("\n")
+        for cluster, score, gene in zip(clusterCol, scoreCol, geneCol):
+            if isinstance(gene, (bytes, bytearray)):
+                gene = gene.decode("utf8")
+            if symToId:
+                sym = symToId.get(gene)
+                if sym!=None:
+                    gene = sym+"|"+gene
+            ofh.write( sep.join( (cluster, gene, str(score)) ) )
+            ofh.write("\n")
+
 
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
@@ -4407,10 +4511,10 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
     coordDescs = []
 
-    writeAnndataCoords(adata, coordFields, path, coordDescs)
+    coordFields = writeAnndataCoords(adata, coordFields, path, coordDescs)
 
     if len(coordDescs)==0:
-        raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys that were tried: %s" % (coordFields))
+        raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys  obsm: %s" % (coordFields))
 
     ##Check for cluster markers
     if markerField not in adata.uns and not skipMarkers:
@@ -4993,6 +5097,16 @@ def importLoom(inFname, reqCoords=False):
 
     return ad
 
+def adataStringFix(adata):
+    " some h5ad files read from 10X MTX have bytestrings in them instread of normal strings "
+    if str(adata.var.index.dtype)=="object" :
+        logging.debug("Fixing up byte strings in adata.var.index")
+        adata.var.index = adata.var.index.str.decode("utf-8")
+    if "gene_ids" in adata.var and str(adata.var["gene_ids"].dtype)=="object":
+        logging.debug("Fixing up byte strings in adata.var['gene_ids']")
+        adata.var["gene_ids"] = adata.var["gene_ids"].str.decode("utf-8")
+    return adata
+
 def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38", reqCoords=False):
     """ read an expression matrix and return an adata object. Supports .mtx.h5 and .tsv (not .tsv.gz)
     If reqCoords is True, will try to find and convert dim. reduc. coordinates in a file (loom).
@@ -5047,6 +5161,8 @@ def readMatrixAnndata(matrixFname, samplesOnRows=False, genome="hg38", reqCoords
         if not samplesOnRows:
             logging.info("Scanpy defaults to samples on lines, so transposing the expression matrix, use --samplesOnRows to change this")
             adata = adata.T
+
+    adata = adataStringFix(adata)
 
     return adata
 
@@ -5260,7 +5376,7 @@ def summarizeDatasets(datasets):
                 #summDs[t] = ds[t]
 
         # these are copied and checked for the correct type
-        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects"]:
+        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects", "life_stages", "domains", "sources"]:
             if optListTag in ds:
                 if (type(ds[optListTag])==type([])): # has to be a list
                     summDs[optListTag] = ds[optListTag]
@@ -5674,6 +5790,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     pipeLog("Data has %d samples/observations" % len(adata.obs))
     pipeLog("Data has %d genes/variables" % len(adata.var))
 
+
     if conf["doTrimCells"]:
         minGenes = conf["minGenes"]
         pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
@@ -5704,6 +5821,9 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         adata.obs['n_counts'] = np.sum(adata.X, axis=1)
 
     #### PARAMETERS FOR GATING CELLS (must be changed) #####
+
+    logging.info("Making gene names unique")
+    adata.var_names_make_unique()
 
     if conf["doFilterMito"]:
         geneIdType = conf["geneIdType"]
