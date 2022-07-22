@@ -3815,9 +3815,18 @@ var cellbrowser = function() {
         var usePredefined = false;
 
         pal = makeColorPalette(palName, n);
-        // if this is a field for which colors were defined manually, use them
+        // if this is a field for which colors were defined manually during the cbBuild, use them
         if (legend.metaInfo!==undefined && legend.metaInfo.colors!==undefined && origPalName==="default") {
-            copyNonNull(legend.metaInfo.colors, pal);
+            // the order of the color values in the metaInfo object is the same as the order of the order of the values in the
+            // JSON file. But the legend has been sorted now, so we cannot just copy over the array as it is
+            var rows = legend.rows;
+            var predefColors = legend.metaInfo.colors;
+            for (var i=0; i < rows.length; i++) {
+                var origIndex = rows[i].intKey;
+                var col = predefColors[origIndex];
+                if (col !== null)
+                    pal[i] = col;
+            }
             usePredefined = true;
         } else
             pal = makeColorPalette(palName, n);
@@ -4430,11 +4439,8 @@ var cellbrowser = function() {
     /* Build a new legend object and return it */
         var legend = {};
         legend.type = "meta";
-        //legend.metaFieldIdx = metaIndex;
         legend.titleHover = null;
 
-        //var metaInfo = db.getMetaFields()[metaIndex];
-        //legend.fieldLabel = metaInfo.label;
         legend.title = metaInfo.label.replace(/_/g, " ");
         legend.metaInfo = metaInfo;
 
@@ -4453,7 +4459,7 @@ var cellbrowser = function() {
             return null;
         }
 
-        var metaCounts = metaInfo.valCounts;
+        var metaCounts = metaInfo.valCounts; // array of [count, value]
 
         // we are going to sort this list later, so we need to keep track of what the original
         // index in the list was, as every meta data value is stored by its index, not
