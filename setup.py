@@ -20,9 +20,12 @@ setuptools.setup(
     select cells, color by genes or meta annotations and make many other
     changes. The main site runs at https://cells.ucsc.edu, but using this
     package you can also convert data yourself and build a Cell Browser HTML
-    directory that can be served through any University webserver. You can try
-    the Cell Browser at https://cells.ucsc.edu or read about how to convert
-    data with this package on https://cellbrowser.rtfd.org.""",
+    directory that can be served through any University or any other webserver
+    for static webpages. You can try the Cell Browser at https://cells.ucsc.edu
+    or read about how to convert data with this package on
+    https://cellbrowser.rtfd.org.
+
+    We strongly recommend that to use Python3, but we make an effort to remain compatible with Python2.""",
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages("src/cbPyLib"),
     package_dir={'':'src/cbPyLib'},   # tell distutils packages are under src
