@@ -120,7 +120,10 @@ var cbUtil = (function () {
 
         oReq.onload = cbUtil.onDoneBinaryData;
         oReq.onprogress = onProgress;
-        oReq.onerror = function(e) { alert("Could not load file "+url); };
+        oReq.onerror = function(e) { 
+            // Github rejects accept-encoding: headers coming from Firefox at the moment.
+            alert("Could not load file "+url+". If this is Firefox and running on Github, please contact us."); 
+        };
         oReq._onDone = onDone; // keep this for the callback
         oReq._otherInfo = otherInfo; // keep this for the callback
         oReq._arrType = arrType; // keep this for the callback casting
@@ -405,9 +408,13 @@ function CbDbFile(url) {
            dsUrl = dsUrl+"?"+md5;
         cbUtil.loadJson(dsUrl, function(data) { self.conf = data; gotOneFile();});
 
-        // start loading gene offsets in background, because this takes a while
-        var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
-        cbUtil.loadJson(osUrl, function(data) { matrixIndex = data; gotOneFile();}, true);
+        if (self.name!='') {
+            // start loading gene offsets in the background now, because this takes a while
+            var osUrl = cbUtil.joinPaths([this.url, "exprMatrix.json"]);
+            cbUtil.loadJson(osUrl, function(data) { matrixIndex = data; gotOneFile();}, true);
+        } else {
+            gotOneFile();
+        }
     };
 
     this.loadCoords = function(coordIdx, onDone, onProgress) {
@@ -721,7 +728,8 @@ function CbDbFile(url) {
         /* for both gene and ATAC mode: */
         /* return an array [start, end, name] given a locus description (=a string: gene symbol or chr|start|end) */
         var off = null;
-        if (name.includes("|")) { // atac mode: name is chrom|start|end
+        //if (name.includes("|")) { // atac mode: name is chrom|start|end
+        if (self.peakOffsets !== null) { // atac mode: name is chrom|start|end
             let pos = name.split("|");
             off = self.findAtacOffsets(pos[0], parseInt(pos[1]), parseInt(pos[2]));
         }
@@ -1457,14 +1465,16 @@ function CbDbFile(url) {
        var loadCounter = 0;
        if (geneSyms) {
            for (var i=0; i<geneSyms.length; i++) {
-               var sym = geneSyms[i][0];
-               if (! (sym in validGenes)) {
-                  alert("Error: "+sym+" is in quick genes list but is not a valid gene");
-                  continue;
-               }
+               var geneId = geneSyms[i][0];
+               //if (! (sym in validGenes)) {
+                  //alert("Error: "+sym+" is in quick genes list but is not a valid gene");
+                  //continue;
+               //}
+               if (geneId.indexOf("|")!==-1)
+                   geneId = geneId.split("|")[0];
 
                 self.loadExprAndDiscretize(
-                   sym,
+                   geneId,
                    function(exprVec, discExprVec, geneSym, geneDesc, binInfo) {
                        self.quickExpr[geneSym] = [discExprVec, geneDesc, binInfo];
                        loadCounter++;

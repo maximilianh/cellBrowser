@@ -51,7 +51,7 @@ Dataset description
 """"
 
 Alongside your submission, it would be great if you filled out a 
-`desc.conf <https://cellbrowser.readthedocs.io/dataDesc.html>`_ file. At
+`desc.conf <https://cellbrowser.readthedocs.io/en/master/dataDesc.html>`_ file. At
 the very least, it should have the abstract, methods, and title filled out. 
 However, you are welcome to fill out more fields and make it as complete as 
 you would like. You can run ``cbBuild --init`` to copy an example desc.conf

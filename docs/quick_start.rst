@@ -15,7 +15,7 @@ Step 1: Download the example dataset
 
 Download the data using curl::
 
-  curl -ks https://cells.ucsc.edu/downloads/samples/mini.tgz 
+  curl -kO https://cells.ucsc.edu/downloads/samples/mini.tgz 
 
 This file contains all the pieces necessary to create a simple cell browser. 
 
@@ -24,7 +24,7 @@ Step 2: Unpack the dataset
 
 Next, we need to take this file and unpack it's contents::
 
-  tar xvz mini.tgz
+  tar -xvzf mini.tgz
 
 This will create a new ``mini`` directory contain the cell browser files. 
 
