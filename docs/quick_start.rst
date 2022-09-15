@@ -15,7 +15,7 @@ Step 1: Download the example dataset
 
 Download the data using curl::
 
-  curl -ks -O https://cells.ucsc.edu/downloads/samples/mini.tgz 
+  curl -kO https://cells.ucsc.edu/downloads/samples/mini.tgz 
 
 This file contains all the pieces necessary to create a simple cell browser. 
 
