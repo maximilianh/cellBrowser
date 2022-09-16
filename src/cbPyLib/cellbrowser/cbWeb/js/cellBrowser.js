@@ -1374,7 +1374,7 @@ var cellbrowser = function() {
             sources = getDatasetAttrs(openDsInfo.datasets, "sources");
 
             // mirror websites are not using the filters at all. So switch off the entire filter UI if they're not used
-            if (bodyParts.length!==0 || disease.length!==0 || organisms.length!==0 || projects.length!==0 || domains.length!==0 || lifeStages.length!==0 || sources.length!==0)
+            if (bodyParts.length!==0 || diseases.length!==0 || organisms.length!==0 || projects.length!==0 || domains.length!==0 || lifeStages.length!==0 || sources.length!==0)
                 doFilters = true;
 
             if (doFilters) {
