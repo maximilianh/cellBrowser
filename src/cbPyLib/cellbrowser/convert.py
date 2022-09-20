@@ -5,7 +5,7 @@ import logging, optparse, io, sys, os, shutil, operator, glob, re, json
 from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
-from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
+from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata, adataStringFix
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
 from .cellbrowser import generateHtmls, getObsKeys, renameFile, getMatrixFormat
 

@@ -1294,6 +1294,21 @@ function CbDbFile(url) {
         return geneNameObjs;
     };
 
+    this.findGenesExact = function(geneSyns, geneSym) {
+        /* search the geneSyns (arr of [syn, geneId]) for matches. Return arr of geneIds 
+         * Used to resolve symbol to geneId (symToGene)*/
+        geneSym = geneSyns.toLowerCase();
+        var geneSyns = self.geneSyns;
+        var foundIds = [];
+        for (var i=0; i<geneSyns.length; i++) {
+            var synRow = geneSyns[i];
+            var syn = synRow[0];
+            if (syn===geneSym)
+                foundIds.push(synRow[1]);
+        }
+        return foundIds;
+    }
+
     function pickTssForGene(loc) {
         /* given a chromLoc tuple (start, end, strand, sym), return the TSS of the gene (start or end )*/
         var start = loc[0];

@@ -515,7 +515,7 @@ def cbBuild_parseArgs(showHelp=False):
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
 
     parser.add_option("-r", "--recursive", dest="recursive", action="store_true",
-        help="run in all subdirectories of the current directory. Useful when rebuilding a full hierarchy.")
+        help="run in all subdirectories of the current directory. Useful when rebuilding a full hierarchy. Cannot be used with -p.")
 
     parser.add_option("", "--redo", dest="redo", action="store", default="meta",
             help="do not use cached old data. Can be: 'meta' or 'matrix' (matrix includes meta).")
@@ -4786,6 +4786,7 @@ def findRoot(inDir=None):
     """
     
     if 'CBDATAROOT' in os.environ:
+        logging.debug("Using CBDATAROOT env variable")
         dataRoot = os.environ['CBDATAROOT']
     else:
         dataRoot = getConfig("dataRoot")
@@ -4800,6 +4801,7 @@ def findRoot(inDir=None):
         logging.info("input directory %s is not located under dataRoot %s. Deactivating hierarchies." % (inDir, dataRoot))
         return None
 
+    logging.debug("Data root is %s" % dataRoot)
     return dataRoot
 
 def resolveOutDir(outDir):

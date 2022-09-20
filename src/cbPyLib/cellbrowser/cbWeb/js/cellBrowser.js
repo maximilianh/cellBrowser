@@ -4930,7 +4930,7 @@ var cellbrowser = function() {
 
     function buildCollectionCombo(htmls, id, width, left, top) {
         /* build combobox with shortLabels of all datasets that are part of same collection */
-        htmls.push('<div class="tpToolBarItem" style="position:absolute;width:'+width+'px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Collection</label>');
+        htmls.push('<div class="tpToolBarItem" style="position:absolute;width:'+width+'px;left:'+left+'px;top:'+top+'px"><label for="'+id+'">Jump to...</label>');
 
         var entries = [];
         //var linkedDatasets = parentConf.datasets;
@@ -4953,7 +4953,7 @@ var cellbrowser = function() {
             var field = metaFieldInfo[i];
             var fieldName = field.label;
             // cannot label on something that is a number or has a ton of values
-            var hasTooManyVals = (field.diffValCount>100 || field.type==="int" || field.type==="float");
+            var hasTooManyVals = (field.diffValCount>MAXCOLORCOUNT || field.type==="int" || field.type==="float");
             if (hasTooManyVals)
                 continue;
 
