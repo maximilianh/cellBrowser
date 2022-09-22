@@ -5796,6 +5796,10 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     if conf["doTrimCells"]:
         minGenes = conf["minGenes"]
         pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
+        # Work around "Don’t call _normalize_index with non-categorical/string names"
+        # see: https://github.com/scverse/scanpy/issues/747
+        adata.obs.index = adata.obs.index.astype(str)
+        adata.var.index = adata.var.index.astype(str)
         sc.pp.filter_cells(adata, min_genes=minGenes) # adds n_genes to adata
 
     if conf["doTrimGenes"]:
