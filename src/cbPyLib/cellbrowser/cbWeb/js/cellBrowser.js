@@ -3296,9 +3296,10 @@ var cellbrowser = function() {
             var calc = renderer.calcMedian(coords, values, names, metaInfo.origVals);
 
             labelCoords = [];
-            for (label in calc) {
-                var midX = selectMedian(calc[label][0]);
-                var midY = selectMedian(calc[label][1]);
+            for (var label in calc) {
+                var labelInfo = calc[label];
+                var midX = selectMedian(labelInfo[0]);
+                var midY = selectMedian(labelInfo[1]);
                 labelCoords.push([midX, midY, label]);
             }
             console.timeEnd("cluster centers");
@@ -5650,13 +5651,14 @@ var cellbrowser = function() {
         htmls.push("<div id='tpMetaTip' style='display:none'></div>");
         htmls.push("<div id='tpLeftSidebar' style='position:absolute;left:0px;top:"+menuBarHeight+"px;width:"+metaBarWidth+"px'>");
 
-        htmls.push("<div class='tpSidebarHeader'>Color By</div>");
+        //htmls.push("<div class='tpSidebarHeader'>Color By</div>");
 
         // a bar with the tabs
         htmls.push("<div id='tpLeftTabs'>");
         htmls.push("<ul>");
         htmls.push("<li><a href='#tpAnnotTab'>Annotation</a></li>");
         htmls.push("<li><a href='#tpGeneTab'>"+getGeneLabel()+"</a></li>");
+        //htmls.push("<li><a href='#tpLayoutTab'>Layout</a></li>");
         htmls.push("</ul>");
 
         htmls.push("<div id='tpAnnotTab'>");
@@ -5697,6 +5699,10 @@ var cellbrowser = function() {
         buildGeneTable(htmls, "tpGenes", "Dataset "+geneLabel+"s", null, db.conf.quickGenes, noteStr, geneHelp);
 
         htmls.push("</div>"); // tpGeneTab
+
+        //htmls.push("<div id='tpLayoutTab'>");
+        //buildLayoutCombo(dataset.coordLabel, htmls, coordInfo, "tpLayoutCombo", layoutComboWidth, nextLeft, 2);
+        //htmls.push("</div>");
 
         htmls.push("</div>"); // tpLeftSidebar
 

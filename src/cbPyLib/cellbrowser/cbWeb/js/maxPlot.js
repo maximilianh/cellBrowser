@@ -2263,6 +2263,7 @@ function MaxPlot(div, top, left, width, height, args) {
             calc[label][1].push(y);
             calc[label][2] += 1;
         }
+        return calc;
     }
 
     // object constructor code
