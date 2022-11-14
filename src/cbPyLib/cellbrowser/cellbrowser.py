@@ -693,7 +693,7 @@ def textFileRows(inFile):
     " iterate over lines from tsv or csv file and yield lists "
     if isinstance(inFile, str):
         # input file is a string = file name
-        fh = openFile(inFile, mode="rtU")
+        fh = openFile(inFile, mode="rt")
         sep = sepForFile(inFile)
     else:
         fh = inFile
@@ -1997,7 +1997,7 @@ def indexByChrom(exprIndex):
         elif "_" in chromRange:
             chrom, start, end = chromRange.split("_")
         else:
-            chrom, start, end = chromRange.split("-")
+            chrom, start, end = chromRange.split("-") # chrom names must be in format chrom:start-end or chrom_start_end or chrom-start-end. Not sure? Email cells@ucsc.edu
 
         start = int(start)
         end = int(end)
@@ -2344,7 +2344,6 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
         sys.exit(1)
 
     if len(mat.intersection(meta))==0:
-        print(matrixSampleNames)
         logging.error("Meta data and expression matrix have no single sample name in common. Sure that the expression matrix has one gene per row? Example Meta ID: %s, Example matrix ID: %s" % (list(sorted(metaSampleNames))[0], list(sorted(matrixSampleNames))[0]))
         sys.exit(1)
 
@@ -3188,7 +3187,7 @@ def makeMids(xVals, yVals, labelVec, labelVals, coordInfo):
 def readHeaders(fname):
     " return headers of a file "
     logging.info("Reading headers from file %s" % fname)
-    ifh = openFile(fname, "rtU")
+    ifh = openFile(fname, "rt")
     line1 = ifh.readline().rstrip("\r\n")
     sep = sepForFile(fname)
     row = line1.split(sep)
