@@ -30,6 +30,10 @@ function copyObj(src, trg) {
   }
 }
 
+function debug(msg) {
+    if (window.doDebug)
+        console.log(msg);
+}
 
 function MaxPlot(div, top, left, width, height, args) {
     // a class that draws circles onto a canvas, like a scatter plot
@@ -85,7 +89,7 @@ function MaxPlot(div, top, left, width, height, args) {
             addZoomButtons(height-gZoomFromBottom, gZoomFromLeft, self);
             addModeButtons(10, 10, self);
             addStatusLine(height-gStatusHeight, left, width, gStatusHeight);
-            addTitleDiv(height-gTitleSize-gStatusHeight, left+5);
+            addTitleDiv(height-gTitleSize-gStatusHeight-4, 8);
 
             /* add the div used for the mouse selection/zoom rectangle to the DOM */
             var selectDiv = document.createElement('div');
@@ -115,28 +119,8 @@ function MaxPlot(div, top, left, width, height, args) {
 
         addProgressBars(top+Math.round(height*0.3), left+30);
 
-
-
         // timer that is reset on every mouse move
         self.timer = null;
-
-        // all other object variables are added by the "initPlot(args)" function below
-
-        // when the user starts to select but lifts the mouse button outside
-        // the canvas, the current selection must be reset
-        //self.canvas.addEventListener("mouseleave", function() {self.;});
-
-        //document.body.addEventListener("mouseup", function(evt) {
-            //var targetId = evt.target.id;
-            //console.log("mouseup on body");
-            //if(targetId !== "mpCanvas" && targetId!=="mpSelectBox") {  // do nothing on the canvas
-                //console.log("mouseup outside of canvas, resetting marquee");
-                //self.resetMarquee();
-                //evt.stopPropagation();
-            //}
-        //});
-        // for this to work, the body has to really cover the whole page
-        //document.body.style.height = "100vh";
     }
 
     function isHidden(x, y) {
@@ -147,7 +131,7 @@ function MaxPlot(div, top, left, width, height, args) {
     this.initPort = function(args) {
         /* init all viewport related state (zoom, radius, alpha) */
         self.port = {};
-        self.port.zoomRange = {}; // object with keys minX, , maxX, minY, maxY
+        self.port.zoomRange = {}; // object with keys minX, , maxX, minY, maxY, in data units
         self.port.radius     = getAttr(args, "radius", null);    // current radius of the circles, 0=one pixel dots
 
         // we keep a copy of the 'initial' arguments at 100% zoom
@@ -161,10 +145,11 @@ function MaxPlot(div, top, left, width, height, args) {
         if (args===undefined)
             args = {};
 
+        self.scalingDone = false;
+
         self.globalOpts = args;
 
         self.mode = 1;   // drawing mode
-
 
         // everything related to circle coordinates
         self.coords = {};
@@ -196,6 +181,9 @@ function MaxPlot(div, top, left, width, height, args) {
         self.dotClickX = null;
         self.dotClickY = null;
 
+        // the background image for spatial mode
+        self.background = null;
+
         self.activateMode(getAttr(args, "mode", "move"));
     };
 
@@ -217,6 +205,20 @@ function MaxPlot(div, top, left, width, height, args) {
         self.titleDiv.innerHTML = text;
     };
 
+    this.setWatermark = function (text) {
+        if (text==="") {
+            //var elem = gebi("tpWatermark");
+            self.watermark.parentNode.removeChild(self.watermark);
+            self.watermark = undefined;
+        } else {
+            var elem = document.createElement('div');
+            elem.id = "tpWatermark";
+            elem.style.cssText = 'pointer-events: none;position: absolute; width: 1000px; opacity: 0.3; z-index: 1000; top: 100px; left: 100px; text-align: left; vertical-align: top; color: black; font-size: xx-large;';
+            elem.textContent = text;
+            gebi("tpMaxPlot").appendChild(elem);
+            self.watermark = elem;
+        }
+    }
 
     // -- (private) helper functions
     // -- these are normal functions, not methods, they do not access "self"
@@ -349,15 +351,11 @@ function MaxPlot(div, top, left, width, height, args) {
 
     function addTitleDiv(top, left) {
         var div = document.createElement('div');
-        div.style.cursor = "default";
-        div.style.left = "4px";
-        div.style.width = "max-content"; // not in MS Edge
+        div.className = "tpTitle";
         div.style.top = top+"px";
-        div.style.display = "block";
-        div.style.position = "absolute";
+        div.style.left = left+"px";
         div.style.fontSize = gTitleSize;
         div.id = 'mpTitle';
-        div.style['color'] = "#B0B0B0";
         self.div.appendChild(div);
         self.titleDiv = div;
     }
@@ -620,14 +618,15 @@ function MaxPlot(div, top, left, width, height, args) {
         for (var i = 0; i < coords.length/2; i++) {
             var x = coords[i*2];
             var y = coords[i*2+1];
-            // set everything outside of current zoom range as hidden
+            // set everything outside of current zoom range to hidden
             if ((x < minX) || (x > maxX) || (y < minY) || (y > maxY)) {
                 pixelCoords[2*i] = HIDCOORD; // see isHidden()
                 pixelCoords[2*i+1] = HIDCOORD;
             }
             else {
                 var xPx = Math.round((x-minX)*xMult)+borderSize;
-                // flipY: y-axis is flipped, so we do winHeight - pixel value
+                // our y-axis is flipped compared to matplotlib/R, so we do winHeight - pixel value
+                // to make sure that our plot looks like the figures in the papers
                 var yPx = winHeight - Math.round((y-minY)*yMult)+borderSize;
                 pixelCoords[2*i] = xPx;
                 pixelCoords[2*i+1] = yPx;
@@ -640,7 +639,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     function drawRect(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
         /* draw not circles but tiny rectangles. Maybe good enough for 2pixels sizes */
-       console.log("Drawing "+coordColors.length+" rectangles, with fillRect");
+       debug("Drawing "+coordColors.length+" rectangles, with fillRect");
        ctx.save();
        ctx.globalAlpha = alpha;
        var dblSize = 2*radius;
@@ -665,14 +664,14 @@ function MaxPlot(div, top, left, width, height, args) {
            ctx.fillRect(pxX-radius, pxY-radius, dblSize, dblSize);
            count += 1;
         })
-       console.log(count+" rectangles drawn (including selection)");
+       debug(count+" rectangles drawn (including selection)");
        ctx.restore();
        return count;
     }
 
     function drawCirclesStupid(ctx, pxCoords, coordColors, colors, radius, alpha, selCells) {
     /* draw little circles onto canvas. pxCoords are the centers.  */
-       console.log("Drawing "+coordColors.length+" circles with stupid renderer");
+       debug("Drawing "+coordColors.length+" circles with stupid renderer");
        ctx.globalAlpha = alpha;
        var dblSize = 2*radius;
        var count = 0;
@@ -853,7 +852,7 @@ function MaxPlot(div, top, left, width, height, args) {
        // create an off-screen canvas
 
        ctx.save();
-       console.log("Drawing "+coordColors.length+" coords with drawImg renderer, radius="+radius);
+       debug("Drawing "+coordColors.length+" coords with drawImg renderer, radius="+radius);
        var off = document.createElement('canvas'); // not added to DOM, will be gc'ed
        var diam = Math.round(2 * radius);
        var tileWidth = diam + 2; // must add one pixel on each side, space for antialising
@@ -925,7 +924,7 @@ function MaxPlot(div, top, left, width, height, args) {
            ctx.drawImage(off, selImgId * tileWidth, 0, tileWidth, tileHeight, pxX - radius -1, pxY - radius-1, tileWidth, tileHeight);
         })
 
-       console.log(count +" circles drawn");
+       debug(count +" circles drawn");
        ctx.restore();
        return count;
     }
@@ -981,6 +980,30 @@ function MaxPlot(div, top, left, width, height, args) {
            cData[p+3] = 255; // no transparency... ever?
        }
     }
+
+    function drawBackground(ctx, back) {
+        /* draw the background image onto the canvas ctx */
+        if (!back)
+            return;
+        console.time("image");
+        //var ctxWidth = ctx.canvas.width; // size of the canvas on the screen in pixels
+        //var ctxHeight = ctx.canvas.height;
+
+        //var clipWidth = backuwidth;
+        //var clipHeight = back.height;
+
+        // arguments are: (imgObject, x/y coord on image for clipping, width / height of clipped image, where to place the image, width/height of image)
+        //var a = getSafeRect(back.image.width, back.image.height, back.clipX, back.clipY, back.image.width, back.image.height, 0, 0, ctxWidth, ctxHeight);
+        //console.log("drawing fixed coords", a.sx, a.sy, a.sw, a.sh, a.dx, a.dy, a.dw, a.dh);
+        //self.ctx.drawImage(back.image, a.sx, a.sy, a.sw, a.sh, a.dx, a.dy, a.dw, a.dh);
+        //self.ctx.drawImage(back.image, a.sx, a.sy, back.width, back.height, a.dx, a.dy, a.dw, a.dh);
+        console.log("drawImage sx, sy, sw, sh, dx, dy, dw, dh", back.sx, back.sy, back.sw, back.sh, back.dx,back.dy, back.dw, back.dh);
+        //self.ctx.drawImage(back.image, back.sx, back.sy, back.width, back.height, 0, 0, ctxWidth, ctxHeight);
+        self.ctx.drawImage(back.image, back.sx, back.sy, back.sw, back.sh, back.dx, back.dy, back.dw, back.dh);
+
+        console.timeEnd("image");
+    }
+
 
     function drawPixels(ctx, width, height, pxCoords, colorArr, colors, alpha, selCells) {
         /* draw single pixels into a pixel buffer and copy the buffer into a canvas */
@@ -1085,6 +1108,106 @@ function MaxPlot(div, top, left, width, height, args) {
         self.drawDots();
     };
 
+    this.setBackground = function(img) {
+        /* */
+        if (self.background===undefined || self.background===null)
+            self.background = {};
+        self.background.image = img;
+        self.scaleBackground(self.background, self.port.initZoom, self.port.zoomRange);
+        if (self.childPlot)
+            self.childPlot.setBackground(img);
+    };
+
+    function getSafeRect(width, height, sx, sy, sw, sh, dx, dy, dw, dh)  {
+        if( sw < 0 ) {
+          sx += sw;
+          sw = Math.abs( sw );
+        }
+        if( sh < 0 ) {
+          sy += sh;
+          sh = Math.abs( sh );
+        }
+        if( dw < 0 ) {
+          dx += dw;
+          dw = Math.abs( dw );
+        }
+        if( dh < 0 ) {
+          dy += dh;
+          dh = Math.abs( dh );
+        }
+        const x1 = Math.max( sx, 0 );
+        const x2 = Math.min( sx + sw, width );
+        const y1 = Math.max( sy, 0 );
+        const y2 = Math.min( sy + sh, height );
+        const w_ratio = dw / sw;
+        const h_ratio = dh / sh;
+
+    }
+
+    this.scaleBackground = function(background, dataRange, zoomRange) {
+        /* determine the (x,y,width,height) in pixels of the current rectangle of the background bitmap on the canvas */
+        if (!background) 
+            return;
+
+        var width = background.image.width; // source image width
+        var height = background.image.height; // source image height
+ 
+        var ctxWidth  = self.canvas.width;
+        var ctxHeight = self.canvas.height;
+
+        var coordHeight = dataRange.maxX-dataRange.minX;
+        var coordWidth = dataRange.maxY-dataRange.minY;
+
+        var scaleX = width / coordHeight; // this is px/dataUnit to convert background image pixels to canvas pixels
+        var scaleY = height / coordHeight;
+
+        var sx1 = zoomRange.minX * scaleX; // sx = x position on source image
+        var sx2 = zoomRange.maxX * scaleX;
+
+        var sy1 = (coordHeight - zoomRange.maxY) * scaleY; // Y-positions must be subtracted from coordHeight - y axis is flipped!
+        var sy2 = (coordHeight - zoomRange.minY) * scaleY; // Our y-axis is always flipped!
+
+        var sw = sx2 - sx1; // size of slice of background image that is currently shown, in source pixels
+        var sh = sy2 - sy1;
+
+        var ctxWidth  = self.canvas.width;
+        var ctxHeight = self.canvas.height;
+        
+        // lame: since I wasn't able to figure out how to transform negative sx, sy to corrected dx, dy, coords - safari doesn't understand negative sx/sy - I simply use the scaleData function
+        // somehow https://gist.github.com/Kaiido/ca9c837382d89b9d0061e96181d1d862 didn't work for me
+        //var coords = [0.0, 0.0, dataRange.maxX, dataRange.maxY];
+        //var newCoords = scaleCoords(coords, 0, zoomRange, ctxWidth, ctxHeight, [])
+
+        var dx = 0;
+        var dy = 0;
+        var dw = ctxWidth;
+        var dh = ctxHeight;
+
+        //if (sx1 < 0) {
+            //sx1 = 0;
+            //sw = width;
+            //dx = newCoords[0];
+            //dw = newCoords[2] - dx;
+        //}
+
+        //if (sy1 < 0) {
+            //sy1 = 0;
+            //sh = height;
+            //dy = newCoords[1];
+            //dh = newCoords[3] - dy;
+        //}
+
+        background.sx = sx1;
+        background.sy = sy1;
+        background.sw = sw;
+        background.sh = sh;
+
+        background.dx = dx;
+        background.dy = dy;
+        background.dw = dw;
+        background.dh = dh;
+    }
+
     this.scaleData = function() {
        /* scale coords and labels to current zoom range, write results to pxCoords and pxLabels */
        if (!self.coords) // window resize can call this before coordinates are loaded.
@@ -1096,6 +1219,12 @@ function MaxPlot(div, top, left, width, height, args) {
        self.coords.px = scaleCoords(self.coords.orig, borderMargin, self.port.zoomRange, self.canvas.width, self.canvas.height);
        if (self.coords.lines)
            self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+       self.scaleBackground(self.background, self.port.initZoom, self.port.zoomRange);
+       self.scalingDone = true;
+    }
+
+    this.readyToDraw = function() {
+        return (self.scalingDone)
     }
 
     this.setTopLeft = function(top, left) {
@@ -1167,23 +1296,30 @@ function MaxPlot(div, top, left, width, height, args) {
 
        if (self.coords)
            self.scaleData();
-       //clearCanvas(self.ctx, width, height);
+
        if (doRedraw===undefined || doRedraw===true)
            self.drawDots();
     };
 
-    this.setCoords = function(coords, clusterLabels, minX, maxX, minY, maxY, opts) {
+    this.setCoords = function(coords, clusterLabels, coordInfo, opts) {
        /* specify new coordinates of circles to draw, an array of (x,y) coordinates */
        /* Scale data to current screen dimensions */
        /* clusterLabels is optional: array of [x, y, labelString]*/
        /* minX, maxX, etc are optional
         * opts are optional arguments like radius, alpha etc, see initPlot/args */
+       self.scalingDone = false;
        if (coords.length === 0)
            alert("cbDraw-setCoords called with no coordinates");
 
+       var minX = coordInfo.minX;
+       var maxX = coordInfo.maxX;
+       var minY = coordInfo.minY;
+       var maxY = coordInfo.maxY;
+       var useRaw = coordInfo.useRaw;
+
        var coordOpts = cloneObj(self.globalOpts);
        copyObj(opts, coordOpts);
-       // XX
+
        var oldRadius = self.port.initRadius;
        var oldAlpha = self.port.initAlpha;
        var oldLabels = self.coords.pxLabels;
@@ -1194,8 +1330,6 @@ function MaxPlot(div, top, left, width, height, args) {
        if (oldAlpha)
            self.port.initAlpha = oldAlpha;
        self.coords = {};
-       // XX
-
 
        var newZr = {};
        if (minX===undefined || maxX===undefined || minY===undefined || maxY===undefined)
@@ -1203,7 +1337,16 @@ function MaxPlot(div, top, left, width, height, args) {
        else {
            newZr = {minX:minX, maxX:maxX, minY:minY, maxY:maxY};
        }
+
+       // switch off any moving of the spots to the minimum position
+       if (useRaw) {
+           newZr.minX = 0.0;
+           newZr.minY = 0.0;
+       }
+
+       // we need the maximal min-max ranges of the original coordinates for later
        copyObj(newZr, self.port.initZoom);
+       // the current min-max ranges of the values are the maximal values, so copy them = zoom 100%
        copyObj(newZr, self.port.zoomRange);
 
        self.coords.orig = coords;
@@ -1217,7 +1360,6 @@ function MaxPlot(div, top, left, width, height, args) {
                count++;
        }
 
-       //setStatus((coords.length/2)+" "+self.gSampleDescription+"s loaded");
        setStatus(count+ " visible " + self.gSampleDescription+"s loaded");
 
        if (opts.lines)
@@ -1262,7 +1404,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var zoomFrac = Math.min(1.0, zoomFact/100.0); // zoom as fraction, max is 1.0
         var alpha = initAlpha + 3.0*zoomFrac*(1.0 - initAlpha);
         alpha = Math.min(0.8, alpha);
-        console.log("Zoom factor: ", zoomFact, ", Radius: "+radius+", alpha: "+alpha);
+        debug("Zoom factor: ", zoomFact, ", Radius: "+radius+", alpha: "+alpha);
 
         self.port.zoomFact = zoomFact;
         self.port.alpha = alpha;
@@ -1289,6 +1431,8 @@ function MaxPlot(div, top, left, width, height, args) {
              alert("internal error: cannot draw if coordinates are not set yet");
         if (colArr.length !== (coords.length>>1))
             alert("internal error: cbDraw.drawDots - colorArr is not 1/2 of coords array. Got "+pal.length+" color values but coordinates for "+(coords.length/2)+" cells.");
+
+        drawBackground(self.ctx, self.background)
 
         if (radius===0) {
             count = drawPixels(self.ctx, self.canvas.width, self.canvas.height, coords,
@@ -1377,28 +1521,18 @@ function MaxPlot(div, top, left, width, height, args) {
        /* zoom to 100% and redraw */
        copyObj(self.port.initZoom, self.port.zoomRange);
        self.scaleData();
-       //self.radius = self.initRadius;
-       self.drawDots();
+       //self.drawDots();
     };
 
     this.zoomTo = function(x1, y1, x2, y2) {
        /* zoom to rectangle defined by two points */
        // make sure that x1<x2 and y1<y2 - can happen if mouse movement was upwards
-       console.log("Zooming to pixels: ", x1, y1, x2, y2);
+       debug("Zooming to pixels: ", x1, y1, x2, y2);
        var pxMinX = Math.min(x1, x2);
        var pxMaxX = Math.max(x1, x2);
 
        var pxMinY = Math.min(y1, y2);
        var pxMaxY = Math.max(y1, y2);
-
-       // force the zoom rectangle to have the same aspect ratio as our canvas
-       // by adapting the height. This is what Microsoft software does
-       // It may be better to fix the aspect ratio of the zoom rectangle while zooming?
-       // We probably do not want to distort the ratio.
-       //var aspectRatio = self.width / self.height;
-       //var rectWidth  = (pxMaxX-pxMinX);
-       //var newHeight = rectWidth/aspectRatio;
-       //pxMaxY = pxMinY + newHeight;
 
        var zoomRange = self.port.zoomRange;
        // window size in data coordinates
@@ -1419,7 +1553,7 @@ function MaxPlot(div, top, left, width, height, args) {
        zoomRange.maxY = oldMinY + (pxMaxY * yMult);
 
        self.port.zoomRange = zoomRange;
-       console.log("Marquee zoom window: "+JSON.stringify(self.port.zoomRange));
+       debug("Marquee zoom window: "+JSON.stringify(self.port.zoomRange));
 
        self.scaleData();
     };
@@ -1432,7 +1566,7 @@ function MaxPlot(div, top, left, width, height, args) {
         var zr = self.port.zoomRange;
         var iz = self.port.initZoom;
 
-        console.log("old zoomfact "+self.port.zoomFact);
+        debug("old zoomfact "+self.port.zoomFact);
 
         var xRange = Math.abs(zr.maxX-zr.minX);
         var yRange = Math.abs(zr.maxY-zr.minY);
@@ -1459,8 +1593,8 @@ function MaxPlot(div, top, left, width, height, args) {
         if (newZoom < 0.01 || newZoom > 1500)
             return zr;
 
-        console.log("x min max "+zr.minX+" "+zr.maxX);
-        console.log("y min max "+zr.minY+" "+zr.maxY);
+        debug("x min max "+zr.minX+" "+zr.maxX);
+        debug("y min max "+zr.minY+" "+zr.maxY);
 
         self.port.zoomRange = newRange;
 
@@ -1504,7 +1638,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
     this.panBy = function(xDiff, yDiff) {
         /* pan current image by x/y pixels */
-        console.log('panning by '+xDiff+' '+yDiff);
+        debug('panning by '+xDiff+' '+yDiff);
 
        //var srcCtx = self.panCopy.getContext("2d", { alpha: false });
        clearCanvas(self.ctx, self.canvas.width, self.canvas.height);
@@ -1591,7 +1725,7 @@ function MaxPlot(div, top, left, width, height, args) {
             }
         }
         self.selCells = selCells;
-        console.log(cnt + " cells appended to selection, by color");
+        debug(cnt + " cells appended to selection, by color");
         self._selUpdate();
     };
 
@@ -1608,7 +1742,7 @@ function MaxPlot(div, top, left, width, height, args) {
         }
 
         self.selCells = selCells;
-        console.log(cnt + " cells removed from selection, by color");
+        debug(cnt + " cells removed from selection, by color");
         self._selUpdate();
     };
 
@@ -1894,11 +2028,11 @@ function MaxPlot(div, top, left, width, height, args) {
     /* user clicks onto canvas */
        if (self.activatePlot())
            return; // ignore the first click into the plot, if it was the activating click
-       console.log("background mouse down");
+       debug("background mouse down");
        var clientX = ev.clientX;
        var clientY = ev.clientY;
        if ((ev.altKey || self.dragMode==="move") && !ev.shiftKey && !ev.metaKey) {
-           console.log("alt key or move mode: starting panning");
+           debug("alt key or move mode: starting panning");
            self.panStart();
        }
        self.mouseDownX = clientX;
@@ -1906,14 +2040,14 @@ function MaxPlot(div, top, left, width, height, args) {
     };
 
     this.onMouseUp = function(ev) {
-       console.log("background mouse up");
+       debug("background mouse up");
        // these are screen coordinates
        var clientX = ev.clientX;
        var clientY = ev.clientY;
        var mouseDidNotMove = (self.mouseDownX === clientX && self.mouseDownY === clientY);
 
        if (self.panCopy!==null && !mouseDidNotMove) {
-           console.log("ending panning operation");
+           debug("ending panning operation");
            self.panEnd();
            self.mouseDownX = null;
            self.mouseDownY = null;
@@ -1926,7 +2060,7 @@ function MaxPlot(div, top, left, width, height, args) {
 
        if (self.mouseDownX === null && self.lastPanX === null)  {
            // user started the click outside of the canvas: do nothing
-           console.log("first click must have been outside of canvas");
+           debug("first click must have been outside of canvas");
            return;
        }
 
@@ -1966,7 +2100,7 @@ function MaxPlot(div, top, left, width, height, args) {
                 else {
                 // user clicked onto background:
                 // reset selection and redraw
-                    console.log("not moved at all: reset "+clientX+" "+self.mouseDownX+" "+self.mouseDownY+" "+clientY);
+                    debug("not moved at all: reset "+clientX+" "+self.mouseDownX+" "+self.mouseDownY+" "+clientY);
                     self.selectClear();
 
                     self.drawDots();
@@ -1979,7 +2113,7 @@ function MaxPlot(div, top, left, width, height, args) {
             self.mouseDownY = null;
             return;
        }
-       //console.log("moved: reset "+x+" "+mouseDownX+" "+mouseDownY+" "+y);
+       //debug("moved: reset "+x+" "+mouseDownX+" "+mouseDownY+" "+y);
 
        // it wasn't a click, so it was a drag
        var anyKey = (ev.metaKey || ev.altKey || ev.shiftKey);
@@ -2010,7 +2144,7 @@ function MaxPlot(div, top, left, width, height, args) {
            self.selectInRect(x1, y1, x2, y2);
        }
        else {
-           console.log("Internal error: no mode?");
+           debug("Internal error: no mode?");
        }
 
        self.resetMarquee();
@@ -2022,16 +2156,16 @@ function MaxPlot(div, top, left, width, height, args) {
         /* called when the user moves the mouse wheel */
         if (self.parentPlot!==null)
             return;
-        console.log(ev);
+        debug(ev);
         var normWheel = normalizeWheel(ev);
-        console.log(normWheel);
+        debug(normWheel);
         var pxX = ev.clientX - self.left;
         var pxY = ev.clientY - self.top;
         var spinFact = 0.1;
         if (ev.ctrlKey) // = OSX pinch and zoom gesture (and no other OS/mouse combination?)
             spinFact = 0.08;  // is too fast, so slow it down a little
         var zoomFact = 1-(spinFact*normWheel.spinY);
-        console.log("Wheel Zoom by "+zoomFact);
+        debug("Wheel Zoom by "+zoomFact);
         self.zoomBy(zoomFact, pxX, pxY);
         self.drawDots();
         ev.preventDefault();
@@ -2066,7 +2200,7 @@ function MaxPlot(div, top, left, width, height, args) {
     this.setLabels = function(newLabels) {
         /* set new label text */
         if (newLabels.length!==self.coords.labels.length) {
-            console.log("maxPlot:setLabels error: new labels have wrong length.");
+            debug("maxPlot:setLabels error: new labels have wrong length.");
             return;
         }
 
@@ -2086,7 +2220,7 @@ function MaxPlot(div, top, left, width, height, args) {
         if (lines===undefined)
             return;
         self.coords.lines = lines;
-        //self.coords.pxLines = scaleLines(self.coords.lines, self.port.zoomRange, self.canvas.width, self.canvas.height);
+
         if (!attrs)
             self.coords.lineAttrs = {};
         else
@@ -2178,12 +2312,14 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.port = self.port;
         plot2.selCells = self.selCells;
 
-        //plot2.coords = Object.assign({}, self.coords); // = shallow copy
         plot2.coords = self.coords;
 
         plot2.col = {};
         plot2.col.pal = self.col.pal;
         plot2.col.arr = self.col.arr;
+
+        if (self.background)
+            plot2.setBackground (self.background.img);
 
         self.setSize(newWidth, newHeight, false); // will call scaleData(), but not redraw.
 
@@ -2195,9 +2331,6 @@ function MaxPlot(div, top, left, width, height, args) {
         plot2.onLabelHover = self.onLabelHover;
         plot2.onNoLabelHover = self.onNoLabelHover;
         plot2.onActiveChange = self.onActiveChange;
-
-        //var closeButton = gebi('mpCloseButton');
-        //closeButton.addEventListener('click', self.unsplit);
 
         plot2.drawDots();
 
