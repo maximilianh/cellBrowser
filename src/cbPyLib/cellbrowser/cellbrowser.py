@@ -167,8 +167,8 @@ def renameFile(oldName, newName):
     os.rename(oldName, newName)
 
 def errAbort(msg):
-        logging.error(msg)
-        sys.exit(1)
+    logging.error(msg)
+    sys.exit(1)
 
 def iterItems(d):
     " wrapper for iteritems for all python versions "
@@ -385,17 +385,25 @@ def execfile(filepath, globals=None, locals=None):
     with open(filepath, 'rb') as file:
         exec(compile(file.read(), filepath, 'exec'), globals, locals)
 
-def readLines(lines, fname):
+def readLines(lines, fname, encoding):
     " recursively read lines from fname, understands lines like #include 'filename.conf' "
-    for line in open(fname):
+    for line in io.open(fname, encoding=encoding):
         line = line.rstrip("\r\n")
         if line.startswith("#include"):
             newFname = splitOnce(line, " ")[1]
             newFname = newFname.strip('"').strip("'")
-            lines.extend(readLines(lines, newFname))
+            lines.extend(readLines(lines, newFname, encoding))
         else:
             lines.append(line)
     return lines
+
+def readLinesAnyEncoding(lines, fname):
+    " read lines from fname, auto-detect utf8 / latin1 encoding "
+    try:
+        return readLines(lines, fname, "utf8")
+    except UnicodeDecodeError:
+        logging.error("Could not open file %s with utf8 encoding. Falling back to latin1" % fname)
+        return readLines(lines, fname, "latin1")
 
 def loadConfig(fname, ignoreName=False, reqTags=[], addTo=None, addName=False):
     """ parse python in fname and return variables as dictionary.
@@ -412,8 +420,12 @@ def loadConfig(fname, ignoreName=False, reqTags=[], addTo=None, addName=False):
     g["fileBase"] = basename(fname).split('.')[0]
     g["dirName"] = basename(dirname(fname))
 
-    lines = readLines([], fname)
-    exec("\n".join(lines), g, conf)
+    lines = readLinesAnyEncoding([], fname)
+    try:
+        exec("\n".join(lines), g, conf)
+    except:
+        logging.error("Error parsing file %s" % fname)
+        raise
 
     for rt in reqTags:
         if not rt in conf:
@@ -451,10 +463,13 @@ def maybeLoadConfig(confFname):
 
 cbConf = None
 def getConfig(tag, defValue=None):
-    " get a global cellbrowser config value from ~/.cellbrowser.conf "
+    " get a global cellbrowser config value from ~/.cbDefaults.conf (old value ~/.cellbrowser.conf still accepted, but that filename was too confusing for people)"
     global cbConf
     if cbConf is None:
-        confPath = expanduser("~/.cellbrowser.conf")
+        confPath = expanduser("~/.cbDefaults.conf")
+        if not isfile(confPath):
+            confPath = expanduser("~/.cellbrowser.conf")
+
         cbConf = maybeLoadConfig(confPath)
 
     ret = cbConf.get(tag, defValue)
@@ -509,7 +524,7 @@ def cbBuild_parseArgs(showHelp=False):
     parser.add_option("-i", "--inConf", dest="inConf", action="append",
         help="a cellbrowser.conf file that specifies labels and all input files, default is ./cellbrowser.conf, can be specified multiple times")
 
-    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT or ~/.cellbrowser.conf, current value: %default", default=defOutDir)
+    parser.add_option("-o", "--outDir", dest="outDir", action="store", help="output directory, default can be set through the env. variable CBOUT or ~/.cbDefaults.conf, current value: %default", default=defOutDir)
 
     parser.add_option("-p", "--port", dest="port", action="store",
         help="if build is successful, start an http server on this port and serve the result via http://localhost:port", type="int")
@@ -774,7 +789,7 @@ def parseOneColumn(fname, colName):
     for row in textFileRows(fname):
         if colIdx is None:
             try:
-                row = [x.split("|")[0] for x in row]
+                #row = [x.split("|")[0] for x in row] # we do not remember why this was added so allowing | as a valid character in values again
                 colIdx = row.index(colName)
                 continue
             except ValueError:
@@ -1087,7 +1102,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
     - if int or float: replace 0 or NaN with the FLOATNAN global (-inf)
     - if uniqueString: 'maxLen' is the length of the longest string
     - if enum: 'values' is a list of all possible values
-    - if colors is not None: 'colors' is a list of the default colors
+    - if colors is not None: 'colors' is a dict of value -> color
     """
     unknownCount = 0
     intCount = 0
@@ -1122,9 +1137,11 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
     if len(valCounts)==1:
         logging.warn("Field %s contains only a single value" % fieldMeta["name"])
 
+    logging.debug("Total number of different values: %d. - by type: int %d, float %d, unknown %d. Forced type: %s" % (len(valList), intCount, floatCount, unknownCount, forceType))
 
     if intCount+unknownCount==len(valList) and not forceType:
         # JS supports only 32bit signed ints so we store integers as floats
+        logging.debug("Field type is integer")
         newVals = [float(x) for x in newVals]
         fieldMeta["arrType"] = "float32"
         fieldMeta["_fmt"] = "<f"
@@ -1132,6 +1149,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 
     elif floatCount+unknownCount==len(valList) and not forceType and not unknownCount==len(newVals):
         # field is a floating point number and not all values are "nan"
+        logging.debug("Field type is float")
         newVals = [float(x) for x in newVals]
         fieldMeta["arrType"] = "float32"
         fieldMeta["_fmt"] = "<f"
@@ -1139,6 +1157,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 
     elif (len(valCounts)==len(valList) and not forceType) or forceType=="unique":
         # field is a unique string
+        logging.debug("Field type is unique string")
         fieldMeta["type"] = "uniqueString"
         maxLen = max([len(x) for x in valList])
         fieldMeta["maxSize"] = maxLen
@@ -1147,6 +1166,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
 
     else:
         # field is an enum - convert to enum index
+        logging.debug("Field type is enum")
         fieldMeta["type"] = "enum"
         valArr = list(valCounts.keys())
 
@@ -1185,6 +1205,7 @@ def guessFieldMeta(valList, fieldMeta, colors, forceType, enumOrder):
         newVals = [valToInt[x] for x in valList] #
 
     fieldMeta["diffValCount"] = len(valCounts)
+    #logging.debug("Full meta info: %s" % repr(fieldMeta))
 
     return fieldMeta, newVals
 
@@ -1206,13 +1227,17 @@ def runGzip(fname, finalFname=None):
             finalFname = fname+".gz"
         ifh = open(fname, "rb")
         ofh = gzip.open(finalFname, "wb")
-        logging.debug("Compressing %s to %s" % (fname, finalFname))
+        logging.debug("Compressing %s to %s with built-in gzip" % (fname, finalFname))
         ofh.write(ifh.read())
         ifh.close()
         ofh.close()
     else:
-        logging.debug("Compressing %s" % fname)
-        cmd = "gzip -f %s" % fname
+        if which("pigz") is not None:
+            logging.debug("Compressing %s with pigz" % fname)
+            cmd = "pigz -f %s" % fname
+        else:
+            logging.debug("Compressing %s with gzip" % fname)
+            cmd = "gzip -f %s" % fname
         runCommand(cmd)
         gzipFname = fname+".gz"
 
@@ -1393,10 +1418,6 @@ def findMtxFiles(fname):
     else:
         matDir = dirname(fname)
 
-    #mtxFname = join(matDir, "matrix.mtx.gz")
-    #if not isfile(mtxFname):
-        #errAbort("Sorry, right now, for .mtx support, the input matrix name must be matrix.mtx.gz. "
-                #"Please rename the file, adapt cellbrowser.conf and rerun the command.")
     mtxFname = fname
 
     if not isfile(mtxFname):
@@ -1510,7 +1531,8 @@ class MatrixTsvReader:
 
         headLine = self.ifh.readline()
         headLine = headLine.rstrip("\r\n")
-        self.sampleNames = headLine.split(self.sep)[1:]
+        self.headers = headLine.split(self.sep)
+        self.sampleNames = self.headers[1:]
         self.sampleNames = [x.strip('"') for x in self.sampleNames]
         assert(len(self.sampleNames)!=0)
         logging.debug("Read %d sampleNames, e.g. %s" % (len(self.sampleNames), self.sampleNames[0]))
@@ -1601,14 +1623,9 @@ class MatrixTsvReader:
                 arr = np.fromstring(rest, dtype=npType, sep=sep, count=sampleCount)
             else:
                 if self.matType=="int":
-                    #try:
-                        arr = [int(x) for x in rest.split(sep)]
-                    #except ValueError as ex:
-                    #logging.warn("Cannot parse expression matrix. This may be due to the numbers incorrectly auto-detected as integers even if they are floating point numbers. Set matrixType='float' in cellbrowser.conf to fix this and re-run cbBuild. The exact error message was: %s" % ex)
-                    #arr = map(int, rest.split(sep)) # this doesn't work in python3, requires list(), so slower
+                    arr = [int(x) for x in rest.split(sep)]
                 elif self.matType=="forceInt":
-                    #try:
-                        arr = [int(float(x)) for x in rest.split(sep)]
+                    arr = [int(float(x)) for x in rest.split(sep)]
                 else:
                     arr = []
                     for x in rest.split(sep):
@@ -1616,8 +1633,11 @@ class MatrixTsvReader:
                             arr.append(0.0)
                         else:
                             arr.append(float(x))
-                    #arr = [float(x) for x in rest.split(sep)]
-                    #arr = map(float, rest.split(sep))
+
+            geneCount = len(arr)
+            if geneCount+1 != len(self.headers):
+                errAbort("The first header line of the matrix file has %d columns. "\
+                    "However, line %d has %d columns. All lines must have the same number of columns." % (len(self.headers), lineNo+1, geneCount+1))
 
             if "|" in gene:
                 gene, symbol = gene.split("|")
@@ -1636,7 +1656,9 @@ class MatrixTsvReader:
                         symbol = gene
 
                     if symbol.isdigit():
-                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. An other possibility is that your geneIds are entrez gene IDs, but this is rare." % (lineNo, symbol))
+                        logging.warn("line %d in gene matrix: gene identifier %s is a number. If this is indeed a gene identifier, you can " \
+                        "ignore this warning. Otherwise, your matrix may have no gene ID in the first column and you will have to fix the matrix. " \
+                        "Another possibility is that your geneIds are entrez gene IDs, but this is very rare." % (lineNo, symbol))
 
             if symbol in doneGenes:
                 logging.warn("line %d: Gene %s/%s is duplicated in matrix, using only first occurrence for symbol, kept second occurrence with original geneId" % (lineNo, gene, symbol))
@@ -2062,11 +2084,14 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     symCounts = defaultdict(int)
     geneCount = 0
     allMin = 99999999
+    noSymFound = 0
     for geneId, sym, exprArr in matReader.iterRows():
         geneCount += 1
 
         key = sym
-        if geneId!=sym:
+        if sym is None:
+            noSymFound +=1
+        if geneId!=sym and sym is not None:
             key = geneId+"|"+sym
 
         symCounts[key]+=1
@@ -2099,8 +2124,11 @@ def matrixToBin(fname, geneToSym, binFname, jsonFname, discretBinFname, discretJ
     discretOfh.close()
     ofh.close()
 
+    if noSymFound!=0:
+        logging.warn("No symbol found for %d genes" % noSymFound)
+
     if genesAreRanges:
-        logging.info("ATAC-mode is one. Assuming that genes are in format chrom:start-end or chrom_start_end")
+        logging.info("ATAC-mode is one. Assuming that genes are in format chrom:start-end or chrom_start_end or chrom-start-end")
         exprIndex = indexByChrom(exprIndex)
 
     if highCount==0:
@@ -2219,44 +2247,52 @@ def parseColors(fname):
     return newDict
 
 def scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y):
+    " scale a point to the new coordinate system. used for either lines or points "
     if useTwoBytes:
         x = int(scaleX * (x - minX))
         y = int(scaleY * (y - minY))
-        if flipY:
-            y = 65535 - y
-    else:
-        if flipY:
-            y = maxY - y
+    if flipY:
+        y = maxY - y
     return x,y
 
 def scaleCoords(coords, limits):
-    " scale coords to be between minX-maxX, return as a dict cellId -> point "
+    " scale a list of named 2D-coords to be between min-max limits, return as a dict cellId -> point "
+    logging.debug("scaling coords, limits are: %s" % repr(limits))
     minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY = limits
     newCoords = {}
     for cellId, x, y in coords:
         x, y = scalePoint(scaleX, scaleY, minX, maxX, minY, maxY, flipY, useTwoBytes, x, y)
         newCoords[cellId] = (x, y)
+
     return newCoords
 
 def calcScaleFact(minX, maxX, minY, maxY, useTwoBytes):
-    scaleX = 1
-    scaleY = 1
+    logging.debug("making scale factors from limits: %f, %f, %f, %f" % (minX, maxX, minY, maxY))
+    scaleX = 1.0
+    scaleY = 1.0
     if useTwoBytes:
-        scaleX = 65535/(maxX-minX)
-        scaleY = 65535/(maxY-minY)
-    return scaleX, scaleY
+        aspect = float(maxX-minX)/float(maxY-minY)
+        # the usual case: wider than high
+        if (aspect > 1.0):
+            scaleX = 65535/(maxX-minX)
+            scaleY = (1/aspect)*65535/(maxY-minY)
+        else:
+            # higher than wide
+            scaleX = aspect*65535/(maxX-minX)
+            scaleY = 65535/(maxY-minY)
 
-def parseCoordsAsDict(fname, useTwoBytes, flipY):
-    """ parse tsv file in format cellId, x, y and return as dict (cellId, x, y)
-    Optionally flip the y coordinates to make it more look like plots in R, for people transitioning from R.
+        minX = scaleX * minX
+        maxX = scaleX * maxX
+        minY = scaleY * minY
+        maxY = scaleY * maxY
+        logging.debug("2-byte mode: aspect ratio %.12f, scaleX %.12f, scaleY %.12f" % (aspect, scaleX, scaleY))
+    return scaleX, scaleY, minX, maxX, minY, maxY
+
+def parseCoordsAsDict(fname):
+    """ parse tsv file in format cellId, x, y and return as list of (cellId, x, y)
     """
-    logging.debug("Parsing coordinates from %s. FlipY=%s, useTwoBytes=%s" % (fname, flipY, useTwoBytes))
+    logging.debug("Parsing coordinates from %s." % (fname))
     coords = []
-    maxY = 0
-    minX = 2^32
-    minY = 2^32
-    maxX = -2^32
-    maxY = -2^32
     skipCount = 0
 
     # parse and find the max values
@@ -2284,25 +2320,7 @@ def parseCoordsAsDict(fname, useTwoBytes, flipY):
 
         coords.append( (cellId, x, y) )
 
-        # special values (12345,12345) mean "unknown cellId"
-        if x!=HIDDENCOORD and y!=HIDDENCOORD:
-            minX = min(x, minX)
-            minY = min(y, minY)
-            maxX = max(x, maxX)
-            maxY = max(y, maxY)
-
-    if useTwoBytes is None:
-        if len(coords)>100000:
-            useTwoBytes = True
-            logging.info("More than 100k cells, so automatically enabling two-byte encoding for coordinates")
-        else:
-            useTwoBytes = False
-
-    scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
-    limits = (minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY)
-
-    logging.debug("Coords parsed, limits are: %s" % repr(limits))
-    return coords, limits
+    return coords
 
 def sliceRow(row, skipFields):
     " yield all fields, except the ones with an index in skipFields "
@@ -2402,19 +2420,21 @@ def metaReorder(matrixFname, metaFname, fixedMetaFname):
 
     return matrixSampleNames, mustFilterMatrix
 
-def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwoBytes, coordInfo, textOutName):
-    """ write coordinates given as a dictionary to coordBin and coordJson, in the order of sampleNames
+def writeCoords(coordName, coords, sampleNames, coordBinFname, coordInfo, textOutName, limits):
+    """ write coordinates given as a dictionary to coordBin, in the order of sampleNames
     Also return as a list.
     """
     tmpFname = coordBinFname+".tmp"
+
     logging.info("Writing coordinates for %s" % (coordName))
-    logging.debug("Writing coordinates to %s and %s" % (coordBinFname, coordJson))
     binFh = open(tmpFname, "wb")
 
-    minX = 2^32
-    minY = 2^32
-    maxX = -2^32
-    maxY = -2^32
+    debugFh = None
+    if debugMode:
+        debugFname = coordBinFname+".txt"
+        debugFh = open(debugFname, "w")
+
+    minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY = limits
     xVals = []
     yVals = []
 
@@ -2426,7 +2446,6 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
     for sampleName in sampleNames:
         coordTuple = coords.get(sampleName)
         if coordTuple is None:
-            #logging.warn("sample name %s is in meta file but not in coordinate file %s, setting to (12345,12345)" % (sampleName, coordName))
             missNames.append(sampleName)
             x = HIDDENCOORD
             y = HIDDENCOORD
@@ -2434,20 +2453,21 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
             x, y = coordTuple
             textOfh.write("%s\t%f\t%f\n" % (sampleName, x, y))
 
-        # special values (12345,12345) mean "unknown cellId"
-        if x!=HIDDENCOORD and y!=HIDDENCOORD:
-            minX = min(x, minX)
-            minY = min(y, minY)
-            maxX = max(x, maxX)
-            maxY = max(y, maxY)
-
         # all little endian
         if useTwoBytes:
+            x = int(x)
+            y = int(y)
             binFh.write(struct.pack("<H", x))
             binFh.write(struct.pack("<H", y))
         else:
             binFh.write(struct.pack("<f", x))
             binFh.write(struct.pack("<f", y))
+
+        if debugFh:
+            debugFh.write(str(x))
+            debugFh.write("\t")
+            debugFh.write(str(y))
+            debugFh.write("\n")
 
         xVals.append(x)
         yVals.append(y)
@@ -2459,8 +2479,11 @@ def writeCoords(coordName, coords, sampleNames, coordBinFname, coordJson, useTwo
             errAbort("No coordinates that are also in meta. Check coord and meta cell identifiers.")
 
     binFh.close()
+    if debugFh:
+        debugFh.close()
+        logging.info("DEBUG: wrote %s" % debugFh.name)
     renameFile(tmpFname, coordBinFname)
-
+    
     md5 = md5WithPython(coordBinFname)
     coordInfo["md5"] = md5[:MD5LEN]
 
@@ -2857,12 +2880,8 @@ def copyDatasetHtmls(inDir, outConf, datasetDir):
             shutil.copyfile(inFname, outPath)
             outConf["descMd5s"][fileBase.split(".")[0]] = md5ForFile(inFname)[:MD5LEN]
 
-def copyImage(inDir, summInfo, datasetDir):
-    """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
-    inFname = join(inDir, summInfo["image"])
-    logging.debug("Copying %s to %s" % (inFname, datasetDir))
-    shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
-
+def getImageSize(inFname):
+    " return width, height of image file "
     cmd = ["file", inFname]
     proc, stdout = popen(cmd)
     imgLine = stdout.readline()
@@ -2877,6 +2896,15 @@ def copyImage(inDir, summInfo, datasetDir):
         # thumb.jpg JPEG 400x566 400x566+0+0 8-bit DirectClass 39.1KB 0.000u 0:00.010
         sizeStr = imgLine.split(" ")[2]
         width, height = sizeStr.split("x")
+    return int(width), int(height)
+
+def copyImage(inDir, summInfo, datasetDir):
+    """ copy image to datasetDir and write size to summInfo["imageWidth"] and "imageHeight" """
+    inFname = join(inDir, summInfo["image"])
+    logging.debug("Copying %s to %s" % (inFname, datasetDir))
+    shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
+
+    width, height = getImageSize(inFname)
 
     summInfo["image"] = (summInfo["image"], width, height)
     summInfo["imageMd5"] = md5ForFile(inFname)
@@ -2942,6 +2970,24 @@ def copyImageFile(inDir, data, outDir, doneNames, imageSetFnames):
             logging.debug("Not copying %s again, already in output directory" % rawInPath)
         doneNames.add(base)
         imageSetFnames.add(base)
+
+def copyBackgroundImages(inDir, inConf, outConf, datasetDir):
+    " copy over spatial images and get their dimensions "
+    if not "images" in inConf:
+        return
+
+    newImages = []
+    for imageInfo in inConf["images"]:
+        inFname = join(inDir, imageInfo["file"])
+        #outConf["fileVersions"]["spatial_"+imageInfo["label"]] = getFileVersion(inFname)
+        logging.info("Copying %s to %s" % (inFname, datasetDir))
+        shutil.copyfile(inFname, join(datasetDir, basename(inFname)))
+        #width, height = getImageSize(inFname)
+        #imageInfo["width"] = width
+        #imageInfo["height"] = height
+        addMd5(imageInfo, inFname)
+        newImages.append(imageInfo)
+    outConf["images"] = newImages
 
 def writeDatasetDesc(inDir, outConf, datasetDir, coordFiles=None, matrixFname=None):
     " write a json file that describes the dataset abstract/methods/downloads "
@@ -3328,6 +3374,8 @@ def guessGeneIdType(inputObj):
         geneType =  "gencode-mouse"
     elif geneId.startswith("KH2013:"):
         geneType = "ciona-kh2013"
+    elif geneId.startswith("ENS"):
+        errAbort("geneID starts with ENS but is neither mouse nor human. Auto-detection doesn't work. Please specify the geneIdType in cellbrowser.conf")
     elif geneId.isdigit():
         geneType = "entrez" # currently contains human and mouse symbols
     else:
@@ -3349,26 +3397,17 @@ def scaleLines(lines, limits, flipY):
 
 def parseLineInfo(inFname, limits):
     " parse a tsv or csv file and use the first four columns as x1,y1,x2,y2 for straight lines "
-    coords = []
-    for row in lineFileNextRow(inFname):
-        coords.append( (float(row.x1), float(row.y1), float(row.x2), float(row.y2)) )
-
-    minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY = limits
-
     lines = []
-    for x1, y1, x2, y2 in coords:
-        minX = min(minX, x1, x2)
-        minY = min(minY, y1, y2)
-        maxX = max(maxX, x1, x2)
-        maxY = max(maxY, y1, y2)
+    for row in lineFileNextRow(inFname):
+        lines.append( (float(row.x1), float(row.y1), float(row.x2), float(row.y2)) )
 
-        lines.append( (x1, y1, x2, y2) )
+    endPoints = []
+    for x1, y1, x2, y2 in lines:
+        endPoints.append( (x1, y1) )
+        endPoints.append( (x2, y2) )
     logging.info("Read lines from %s, got %d lines" % (inFname, len(lines)))
 
-    scaleX, scaleY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
-    limits = minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY
-    logging.debug("Lines read, new limits are: %s" % repr(limits))
-    return lines, limits
+    return lines, endPoints
 
 def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSym, outDir, needFilterMatrix):
     """ trim a copy of the expression matrix for downloads, also create an indexed
@@ -3379,7 +3418,8 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
         matType = None
 
     if isMtx(outMatrixFname) and needFilterMatrix:
-            errAbort("Some cell identifiers are in the matrix but not in the meta. trimming .mtx files is not supported, only for the tsv.gz format. Consider using cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy from the expression matrix.")
+        #errAbort("Some cell identifiers are in the matrix but not in the meta. trimming .mtx files is not supported, only for the tsv.gz format. Consider using cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy from the expression matrix.Or manually add the missing cells to the meta.tsv. Usually 'cbTool mtx2tsv' is the easiest way forward.")
+        logging.warn("Some cell identifiers are in the matrix but not in the meta. trimming .mtx files is not supported, only for the tsv.gz format. This means that the matrix.mtx.gz file that the user can download has more data than the meta file, but that may not be a problem for most users. You can use cbTool mtx2tsv and edit cellbrowser.conf or remove unannotated cells with Seurat or Scanpy from the expression matrix. Or manually add the missing cells to the meta.tsv. In most cases, this is fine to leave as it is.")
 
     # step1: copy expression matrix, so people can download it, potentially
     # removing those sample names that are not in the meta data
@@ -3398,7 +3438,8 @@ def convertExprMatrix(inConf, outMatrixFname, outConf, metaSampleNames, geneToSy
 
     genesAreRanges = inConf.get("atacSearch")
 
-    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
+    matType = matrixToBin(outMatrixFname, geneToSym, binMat, binMatIndex, discretBinMat, \
+            discretMatrixIndex, metaSampleNames, matType=matType, genesAreRanges=genesAreRanges)
 
     # these are the Javascript type names, not the python ones (they are also better to read than the Python ones)
     if matType=="int" or matType=="forceInt":
@@ -3415,13 +3456,48 @@ def copyConf(inConf, outConf, keyName):
     if keyName in inConf:
         outConf[keyName] = inConf[keyName]
 
-def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
+def getLimits(coordsList, extLimits):
+    " get x-y-limits, either from data or from externally provided dictionary "
+    minX = 2^32
+    minY = 2^32
+    maxX = -2^32
+    maxY = -2^32
+
+    for coords in coordsList:
+        for x, y in coords:
+            # special values (12345,12345) mean "unknown cellId"
+            if x!=HIDDENCOORD and y!=HIDDENCOORD:
+                minX = min(x, minX)
+                minY = min(y, minY)
+                maxX = max(x, maxX)
+                maxY = max(y, maxY)
+
+    if "minX" in extLimits:
+        minX = extLimits["minX"]
+    if "maxX" in extLimits:
+        maxX = extLimits["maxX"]
+    if "minY" in extLimits:
+        minY = extLimits["minY"]
+    if "maxY" in extLimits:
+        maxY = extLimits["maxY"]
+
+    logging.debug("Coordinate limits are: minX=%s, maxX=%s, minY=%s, maxY=%s" % (str(minX), str(maxX), str(minY), str(maxY)))
+    return (minX, maxX, minY, maxY)
+
+def justPoints(coords):
+    " given id -> (x,y) only return the list of (x,y)"
+    points = []
+    for cellId, x, y, in coords:
+        points.append( (x,y) )
+    return points
+
+def convertCoords(inDir, inConf, outConf, sampleNames, outMeta, outDir):
     " convert the coordinates "
     coordFnames = makeAbsDict(inConf, "coords")
     coordFnames = makeAbsDict(inConf, "coords", fnameKey="lineFile")
 
     flipY = inConf.get("flipY", False) # R has a bottom screen 0 different than most drawing libraries
-    useTwoBytes = True # to save space, coordinates are reduced to the range 0-65535
+    useTwoBytes = False # to save space, coordinates are reduced to the range 0-65535
 
     hasLabels = False
     if "labelField" in inConf and inConf["labelField"] is not None:
@@ -3437,25 +3513,39 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         coordFname = inCoordInfo["file"]
 
         coordLabel = inCoordInfo["shortLabel"]
-        logging.info("Parsing coordinates for "+coordLabel)
+        logging.info("Parsing coordinates for "+coordLabel+" from "+coordFname)
         # 'limits' is everything needed to transform coordinates to the final 0-1.0  or 0-65535 coord system
-        flipY = inCoordInfo.get("flipY", flipY)
-        coords, limits = parseCoordsAsDict(coordFname, useTwoBytes, flipY)
+        flipY = bool(inCoordInfo.get("flipY", flipY))
+
+        coords = parseCoordsAsDict(coordFname)
+
+        if useTwoBytes is None:
+            if len(coords)>100000:
+                useTwoBytes = True
+                logging.info("More than 100k cells, so automatically enabling two-byte encoding for coordinates")
+            else:
+                logging.debug("Not using 2byte mode")
+                useTwoBytes = False
 
         hasLines = False
+        allPoints = [justPoints(coords)]
         # parse lines, updating the min-max ranges
         if "lineFile" in inCoordInfo:
-            lineCoords, limits = parseLineInfo(inCoordInfo["lineFile"], limits)
+            lineCoords, linePoints = parseLineInfo(inCoordInfo["lineFile"], limits)
+            allPoints.append(linePoints)
             hasLines = True
 
+        minX, maxX, minY, maxY = getLimits(allPoints, inCoordInfo)
         # now that we have the global limits, scale everything
+        scaleX, scaleY, minX, maxX, minY, maxY = calcScaleFact(minX, maxX, minY, maxY, useTwoBytes)
+        limits = (minX, maxX, minY, maxY, scaleX, scaleY, useTwoBytes, flipY)
+
         coordDict = scaleCoords(coords, limits)
 
         coordName = "coords_%d" % coordIdx
         coordDir = join(outDir, "coords", coordName)
         makeDir(coordDir)
         coordBin = join(coordDir, "coords.bin")
-        coordJson = join(coordDir, "coords.json")
 
         coordInfo = OrderedDict()
         coordInfo["name"] = coordName
@@ -3465,11 +3555,14 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
         if "colorOnMeta" in inCoordInfo:
             coordInfo["colorOnMeta"] = inCoordInfo["colorOnMeta"]
 
+        copyBackgroundImages(inDir, inCoordInfo, coordInfo, outDir)
+
         cleanName = sanitizeName(coordLabel.replace(" ", "_"))
         textOutBase = cleanName+".coords.tsv.gz"
         textOutName = join(outDir, textOutBase)
         outFnames.append(textOutBase)
-        coordInfo, xVals, yVals = writeCoords(coordLabel, coordDict, sampleNames, coordBin, coordJson, useTwoBytes, coordInfo, textOutName)
+        coordInfo, xVals, yVals = writeCoords(coordLabel, coordDict, sampleNames, coordBin, \
+                coordInfo, textOutName, limits)
 
         clusterInfo = {}
         if hasLines:
@@ -3492,11 +3585,13 @@ def convertCoords(inConf, outConf, sampleNames, outMeta, outDir):
             logging.debug("Wrote cluster labels, midpoints and order to %s" % clusterLabelFname)
             addMd5(coordInfo, clusterLabelFname, keyName="labelMd5")
 
+
         coordConf.append( coordInfo )
 
     outConf["coords"] = coordConf
     copyConf(inConf, outConf, "labelField")
     copyConf(inConf, outConf, "useTwoBytes")
+    copyConf(inConf, outConf, "useRaw")
     return outFnames, labelVals
 
 def readAcronyms(inConf, outConf):
@@ -4009,7 +4104,29 @@ def metaHasChanged(datasetDir, metaOutFname):
     logging.info("%s has the same md5 as in %s, no need to rebuild meta data" % (metaOutFname, oldJsonFname))
     return False
 
-def checkConfig(inConf):
+def checkConfig(inConf, isTopLevel):
+    # at UCSC, we enforce some required dataset tags
+    global reqTagsDataset
+    reqTags = getConfig("reqTags")
+
+    if reqTags:
+        reqTagsDataset.extend(reqTags)
+
+    if isTopLevel:
+        if not "facets" in inConf:
+            # tolerate if there are no facets in the dataset at all - third party installs may use collections but not facets.
+            logging.warn("No 'facets' declared in cellbrowser.conf, but is a top-level dataset and using dataset hierarchies. If this is an old dataset, consider moving facets into their own object.")
+        else:
+            facets = inConf["facets"]
+            reqFacets = ["body_parts", "diseases", "domains", "life_stages", "organisms", "assays", "sources"]
+
+            missFacets = []
+            for rf in reqFacets:
+                if rf not in facets:
+                    missFacets.append(rf)
+            if len(missFacets)!=0:
+                errAbort("The following facets were not defined: %s" % ",".join(missFacets))
+
     for tag in reqTagsDataset:
         if tag not in inConf:
             errAbort("tag '%s' must be defined in cellbrowser.conf" % tag)
@@ -4059,12 +4176,21 @@ def makeFilesTxt(outConf, datasetDir):
         for coords in outConf["coords"]:
             ofh.write(coords["textFname"]+"\n")
 
-def convertDataset(inDir, inConf, outConf, datasetDir, redo):
+def copyFacets(inConf, outConf):
+    """ for backwards compatibility with old Javascript UI, we copy the inConf["facets"] directly into outConf """
+    if "facets" in inConf:
+        for key, val in inConf["facets"].items():
+            assert(type(val)==type([])) # facets must be lists
+            outConf[key] = val
+        outConf["facets"] = inConf["facets"]
+    return outConf
+
+def convertDataset(inDir, inConf, outConf, datasetDir, redo, isTopLevel):
     """ convert everything needed for a dataset to datasetDir, write config to outConf.
     If the expression matrix has not changed since the last run, and the sampleNames are the same,
     the matrix won't be converted again, which saves a lot of time.
     """
-    checkConfig(inConf)
+    checkConfig(inConf, isTopLevel)
     inMatrixFname = getAbsPath(inConf, "exprMatrix")
     # outMetaFname/outMatrixFname are reordered & trimmed tsv versions of the matrix/meta data
     if isMtx(inMatrixFname):
@@ -4112,7 +4238,7 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
     else:
         logging.info("Matrix and meta sample names have not changed, not indexing matrix again")
 
-    coordFiles, clusterLabels = convertCoords(inConf, outConf, sampleNames, outMetaFname, datasetDir)
+    coordFiles, clusterLabels = convertCoords(inDir, inConf, outConf, sampleNames, outMetaFname, datasetDir)
 
     foundConf = writeDatasetDesc(inConf["inDir"], outConf, datasetDir, coordFiles, outMatrixFname)
 
@@ -4123,13 +4249,20 @@ def convertDataset(inDir, inConf, outConf, datasetDir, redo):
 
     readQuickGenes(inConf, geneToSym, datasetDir, outConf)
 
+    copyBackgroundImages(inDir, inConf, outConf, datasetDir)
+
     # a few settings are passed through to the Javascript as they are
-    for tag in ["name", "shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc", "geneLabel",
+    for tag in ["shortLabel", "radius", "alpha", "priority", "tags", "sampleDesc", "geneLabel",
         "clusterField", "defColorField", "xenaPhenoId", "xenaId", "hubUrl", "showLabels", "ucscDb",
         "unit", "violinField", "visibility", "coordLabel", "lineWidth", "hideDataset", "hideDownload",
-        "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir",
-        "body_parts", "organisms", "diseases", "projects", "life_stages", "domains", "sources" ]:
+        "metaBarWidth", "supplFiles", "defQuantPal", "defCatPal", "clusterPngDir", "wrangler", "shepherd"
+        # the following are there only for old datasets, they are now nested under "facets"
+        "body_parts", "organisms", "diseases", "projects", "life_stages", "domains", "sources", "assays", # these are just here for backwards-compatibility and will eventually get removed
+        "facets", "multiModal"]:
         copyConf(inConf, outConf, tag)
+
+    if "name" not in outConf:
+        copyConf(inConf, outConf, "name")
 
     # for the news generator and for future logging, note when this dataset was built for the first time into this directory
     # and also when it was built most recently
@@ -4175,9 +4308,6 @@ def writeAnndataCoords(anndata, coordFields, outDir, desc):
 
 def writeCellbrowserConf(name, coordsList, fname, addMarkers=True, args={}):
     checkDsName(name)
-    #kddfor c in name:
-        #if not (c.isalnum() or c in ["-", "_"]):
-            # only digits and letters are allowed in dataset names
 
     metaFname = args.get("meta", "meta.tsv")
     clusterField = args.get("clusterField", "Louvain Cluster")
@@ -4215,6 +4345,12 @@ coords=%(coordStr)s
     if "geneToSym" in args:
         conf += "geneToSym='%s'\n" % args["geneToSym"]
 
+    if "spatial" in args:
+        conf += "spatial=%s\n" % json.dumps(args["spatial"], indent=4)
+
+    if "spatialMeta" in args:
+        conf += "spatialMeta=%s\n" % json.dumps(args["spatialMeta"], indent=4)
+
     if isfile(fname):
         logging.info("Not overwriting %s, file already exists." % fname)
         return
@@ -4238,12 +4374,16 @@ def geneSeriesToStrings(var, geneKey, indexFirst=False, sep="|"):
 def geneStringsFromVar(var, sep="|"):
     " return a list of strings in format geneId<sep>geneSymbol "
     if "gene_ids" in var:
+        logging.debug("Found 'gene_ids' attribute in var")
         genes = geneSeriesToStrings(var, "gene_ids", indexFirst=False, sep=sep)
     elif "gene_symbols" in var:
+        logging.debug("Found 'gene_symbols' attribute in var")
         genes = geneSeriesToStrings(var, "gene_symbols", indexFirst=True, sep=sep)
     elif "Accession" in var:  # only seen this in the ABA Loom files
+        logging.debug("Found 'Accession' attribute in var")
         genes = geneSeriesToStrings(var, "Accession", indexFirst=False, sep=sep)
     else:
+        logging.debug("Using index of var")
         genes = var.index.tolist()
     return genes
 
@@ -4291,6 +4431,18 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
     if ~scipy.sparse.issparse(mat):
         mat = scipy.sparse.csr_matrix(mat)
 
+    geneLines = geneStringsFromVar(var, sep="\t")
+    genes_file = join(path, 'features.tsv.gz')
+    logging.info("Writing %s" % genes_file)
+    with gzip.open(genes_file, 'wt') as f:
+        f.write("\n".join(geneLines))
+
+    bc_file = join(path, 'barcodes.tsv.gz')
+    sampleNames = [str(x) for x in ad.obs.index.tolist()]
+    logging.info("Writing %s" % bc_file)
+    with gzip.open(bc_file, 'wt') as f:
+        f.write("\n".join(sampleNames))
+
     logging.info("Writing matrix to %s, type=%s" % (mtxfile, dataType)) # scanpy has the samples on the rows
     scipy.io.mmwrite(mtxfile, mat, precision=7)
 
@@ -4300,16 +4452,6 @@ def anndataMatrixToMtx(ad, path, useRaw=False):
         with gzip.open(mtxfile + '.gz','wb') as mtx_gz:
             shutil.copyfileobj(mtx_in, mtx_gz)
     os.remove(mtxfile)
-
-    geneLines = geneStringsFromVar(var, sep="\t")
-    genes_file = join(path, 'features.tsv.gz')
-    with gzip.open(genes_file, 'wt') as f:
-        f.write("\n".join(geneLines))
-
-    bc_file = join(path, 'barcodes.tsv.gz')
-    sampleNames = [str(x) for x in ad.obs.index.tolist()]
-    with gzip.open(bc_file, 'wt') as f:
-        f.write("\n".join(sampleNames))
 
 def anndataMatrixToTsv(ad, matFname, usePandas=False, useRaw=False):
     " write ad expression matrix to .tsv file and gzip it "
@@ -4399,6 +4541,10 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
     " run scanpy's rank_genes_groups in a way that hopefully doesn't crash "
     sc = importScanpy()
 
+    # see: https://github.com/scverse/scanpy/issues/747
+    adata.obs.index = adata.obs.index.astype(str)
+    adata.var.index = adata.var.index.astype(str)
+
     adata.obs[clusterField] = adata.obs[clusterField].astype("category") # if not category, rank_genes will crash
     sc.pp.filter_genes(adata, min_cells=minCells) # rank_genes_groups crashes on zero-value genes
 
@@ -4410,6 +4556,10 @@ def runSafeRankGenesGroups(adata, clusterField, minCells=5):
         adata = adata[~adata.obs[clusterField].isin(filterOutClusters)]
 
     logging.info("Calculating 100 marker genes for each cluster")
+    # working around bug in scanpy 1.9.1, see https://github.com/scverse/scanpy/issues/2181
+    if "log1p" in adata.uns and not "base" in adata.uns['log1p']:
+        adata.uns['log1p']["base"] = None
+
     sc.tl.rank_genes_groups(adata, groupby=clusterField)
     return adata
 
@@ -4462,6 +4612,94 @@ def saveMarkers(adata, markerField, nb_marker, fname):
             ofh.write( sep.join( (cluster, gene, str(score)) ) )
             ofh.write("\n")
 
+def exportScanpySpatial(adata, outDir, configData, coordDescs):
+    """ Export Scanpy image to JPEG files in outDir and add arguments to configData """
+    from scanpy.plotting._tools.scatterplots import _check_spatial_data, _check_img, _empty, _check_spot_size, \
+        _check_scale_factor, _check_crop_coord, _check_na_color
+
+    imgConfigs = []
+
+    # copied from https://github.com/scverse/scanpy/blob/034ca2823804645e0d4874c9b16ba2eb8c13ac0f/scanpy/plotting/_tools/scatterplots.py#L988
+    library_id = _empty
+    coordsDone = False
+    for img_key in ["hires", "lowres"]:
+        crop_coord = None
+        na_color = None
+        size = 1.0
+        spot_size = None
+        scale_factor = None
+        bw = False
+        img = None
+
+        library_id, spatial_data = _check_spatial_data(adata.uns, library_id)
+        img, img_key = _check_img(spatial_data, img, img_key, bw=bw)
+        spot_size = _check_spot_size(spatial_data, spot_size)
+        assert(spot_size!=None)
+        scale_factor = _check_scale_factor(
+            spatial_data, img_key=img_key, scale_factor=scale_factor
+        )
+        crop_coord = _check_crop_coord(crop_coord, scale_factor)
+        na_color = _check_na_color(na_color, img=img)
+        circle_radius = size * scale_factor * spot_size * 0.5
+        # end copy
+
+        import matplotlib
+        imgFname = img_key+".jpg"
+        matplotlib.image.imsave(join(outDir, imgFname), img)
+        imgConfigs.append({"file":imgFname, "label":img_key, "radius":circle_radius, \
+                "scale_factor":scale_factor})
+
+        if not coordsDone:
+            # the 10X scale_factor indicates the relationship between pixels in the lowres/hires
+            # images and the original TIFFs. 
+            # https://support.10xgenomics.com/spatial-gene-expression/software/pipelines/latest/output/spatial
+            # Here, we use it to derive the min/max limits which the javascript needs to make sure
+            # that the bitmap is really under the spots
+            width, height = img.shape[:2]
+            invScale = 1.0 / scale_factor
+            yMax = round(width * invScale)
+            xMax = round(height * invScale)
+            coordsDone = True
+            #coordInfo = outConf["coords"][0]
+
+    # the origin of the image is top-left, for the spots it's bottom-left. Fixing this for now by flipping the spots on the y.
+    for c in coordDescs:
+        c["flipY"] = 1
+        # by default, cbBuild moves the circles to the minX/minY of the coords. Must switch this off here to align the image with 
+        # the spots
+        c["useRaw"] = 1 # switch off: moving the minX/minY and scaling of data to uint16
+        c["minX"] = 0
+        c["minY"] = 0
+        c["maxX"] = xMax
+        c["maxY"] = yMax
+
+    configData["spatial"] = imgConfigs
+
+    meta = dict(spatial_data["metadata"])
+    meta["py_spot_size"] = spot_size
+    meta["py_radius"] = circle_radius
+    meta["py_size"] = size
+    meta["scalefactors"] = spatial_data["scalefactors"]
+    configData["spatialMeta"] = meta
+    return configData, coordDescs
+
+# copied from https://github.com/scverse/scanpy/blob/d7e13025b931ad4afd03b4344ef5ff4a46f78b2b/scanpy/_utils/__init__.py#L487
+def check_nonnegative_integers(X):
+    """Checks values of X to ensure it is count data"""
+    from numbers import Integral
+
+    data = X if isinstance(X, np.ndarray) else X.data
+    # Check no negatives
+    if np.signbit(data).any():
+        return False
+    # Check all are integers
+    elif issubclass(data.dtype.type, Integral):
+        return True
+    elif np.any(~np.equal(np.mod(data, 1), 0)):
+        return False
+    else:
+        return True
+# copy end
 
 def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=None,
         nb_marker=50, doDebug=False, coordFields=None, skipMatrix=False, useRaw=False,
@@ -4485,13 +4723,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     :param nb_marker: number of cluster markers to store. Default: 50
 
     """
+    outDir = path
+
     if doDebug is not None:
         setDebug(doDebug)
 
-    if not isdir(path):
-        makeDir(path)
+    if not isdir(outDir):
+        makeDir(outDir)
 
-    confName = join(path, "cellbrowser.conf")
+    confName = join(outDir, "cellbrowser.conf")
     if isfile(confName):
         logging.warn("%s already exists. Overwriting existing files." % confName)
 
@@ -4499,18 +4739,22 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
     import pandas as pd
     import anndata
 
-    if not skipMatrix:
-        if matrixFormat=="tsv" or matrixFormat is None:
-            matFname = join(path, 'exprMatrix.tsv.gz')
+    configData = {} # dict that can override the default arguments in the generated cellbrowser.conf file
+
+    if matrixFormat=="tsv" or matrixFormat is None:
+        matFname = join(outDir, 'exprMatrix.tsv.gz')
+        if not skipMatrix:
             anndataMatrixToTsv(adata, matFname, useRaw=useRaw)
-        elif matrixFormat=="mtx":
-            anndataMatrixToMtx(adata, path, useRaw=useRaw)
-        else:
-            assert(False) # invalid value for 'matrixFormat'
+    elif matrixFormat=="mtx":
+        if not skipMatrix:
+            anndataMatrixToMtx(adata, outDir, useRaw=useRaw)
+        configData["exprMatrix"] = "matrix.mtx.gz"
+    else:
+        assert(False) # invalid value for 'matrixFormat'
 
     coordDescs = []
 
-    coordFields = writeAnndataCoords(adata, coordFields, path, coordDescs)
+    coordFields = writeAnndataCoords(adata, coordFields, outDir, coordDescs)
 
     if len(coordDescs)==0:
         raise ValueError("No valid embeddings were found in anndata.obsm but at least one array of coordinates is required. Keys  obsm: %s" % (coordFields))
@@ -4531,11 +4775,15 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
                         logging.info("Found field '%s', using it as the cell cluster field." % fieldName)
                         foundField = fieldName
                 if foundField is None:
-                    logging.info("No exact match found, searching for first field that contains 'luste' or 'ype'")
-                    for fieldName in adata.obs.columns:
-                        if "luste" in fieldName or "ype" in fieldName:
-                            logging.info("Found field %s" % fieldName)
-                            foundField = fieldName
+                    logging.info("No exact match found. To find a default cluster label field, "
+                        "searching for first field that contains 'eiden', 'luste' or 'ype'")
+                    for searchTerm in ['eiden', 'luste', 'ype']:
+                        for fieldName in adata.obs.columns:
+                            if searchTerm in fieldName:
+                                logging.info("Found field %s" % fieldName)
+                                foundField = fieldName
+                                break
+                        if foundField:
                             break
 
                 if foundField is None:
@@ -4550,11 +4798,17 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
 
                 clusterField = foundField
 
-            adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
+        if check_nonnegative_integers(adata.X):
+            logging.info("Looks like expression matrix has no negatives and is all integers: taking log2 of data before running rank_groups")
+            sc.pp.log1p(adata)
+        else:
+            logging.info("Looks like expression matrix has already been log2-ed before")
+
+        adata = runSafeRankGenesGroups(adata, clusterField, minCells=5)
 
     markersExported = False # the quickgenes step later needs to know if a markers.tsv file was created.
     if not skipMarkers:
-        fname = join(path, "markers.tsv")
+        fname = join(outDir, "markers.tsv")
         saveMarkers(adata, markerField, nb_marker, fname)
         markersExported = True
 
@@ -4586,25 +4840,27 @@ def scanpyToCellbrowser(adata, path, datasetName, metaFields=None, clusterField=
             meta_df=pd.concat([meta_df,temp],axis=1)
 
     meta_df.rename(metaFields, axis=1, inplace=True)
-    fname = join(path, "meta.tsv")
+    fname = join(outDir, "meta.tsv")
     meta_df.to_csv(fname,sep='\t', index_label="cellId")
+
+    if "spatial" in adata.uns:
+        configData, coordDescs = exportScanpySpatial(adata, outDir, configData, coordDescs)
 
     if clusterField is None:
         clusterField = 'louvain'
 
-    argDict = {}
     if clusterField:
         clusterFieldLabel = metaFields.get(clusterField, clusterField)
-        argDict['clusterField'] = clusterFieldLabel
+        configData['clusterField'] = clusterFieldLabel
 
     if markersExported:
-        generateQuickGenes(path)
-        argDict['quickGenesFile'] = "quickGenes.tsv"
+        generateQuickGenes(outDir)
+        configData['quickGenesFile'] = "quickGenes.tsv"
 
     if isfile(confName):
         logging.info("%s already exists, not overwriting. Remove and re-run command to recreate." % confName)
     else:
-        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=markersExported, args=argDict)
+        writeCellbrowserConf(datasetName, coordDescs, confName, addMarkers=markersExported, args=configData)
 
 def writeJson(data, outFname, ignoreKeys=None):
     """ https://stackoverflow.com/a/37795053/233871 """
@@ -4705,8 +4961,6 @@ def findParentConfigs(inFname, dataRoot, currentName):
     while path!="/" and path!=dataRoot:
         path = dirname(path)
         confFname = join(path, "cellbrowser.conf")
-        #if not isfile(confFname):
-            #break
 
         fnameList.append(confFname)
         logging.debug("Found parent config at %s" % confFname)
@@ -4722,9 +4976,6 @@ def findParentConfigs(inFname, dataRoot, currentName):
         else:
             c = confCache[confFname]
 
-        #if path==dataRoot:
-            #c["name"] = ""
-        #else:
         baseName = c["name"].split("/")[-1]
         pathParts.append(c["name"])
         parentInfo = (c["name"], c["shortLabel"])
@@ -4791,7 +5042,7 @@ def findRoot(inDir=None):
         dataRoot = getConfig("dataRoot")
     
     if dataRoot is None:
-        logging.info("dataRoot is not set in ~/.cellbrowser.conf or via $CBDATAROOT. Dataset hierarchies are not supported.")
+        logging.info("dataRoot is not set in ~/.cbDefaults.conf or via $CBDATAROOT. Dataset hierarchies are not supported.")
         return None
 
     dataRoot = abspath(expanduser(dataRoot).rstrip("/"))
@@ -4804,12 +5055,67 @@ def findRoot(inDir=None):
     return dataRoot
 
 def resolveOutDir(outDir):
-    """ user can define mapping e.g. {"alpha" : "/usr/local/apache/htdocs-cells"} in ~/.cellbrowser.conf """
+    """ user can define mapping e.g. {"alpha" : "/usr/local/apache/htdocs-cells"} in ~/.cbDefaults.conf """
     confDirs = getConfig("outDirs")
     if confDirs:
         if outDir in confDirs:
             outDir = confDirs[outDir]
     return outDir
+
+def fixupName(inConfFname, inConf):
+    " detect hierarchical mode and construct the output path "
+    dataRoot = findRoot(inConfFname)
+    if dataRoot:
+        if "name" in inConf:
+            logging.debug("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
+        logging.debug("Deriving dataset name from path")
+        inConf["name"] = basename(dirname(abspath(inConfFname)))
+
+        relPath = relpath(dirname(abspath(inConfFname)), dataRoot)
+    else:
+        relPath = inConf["name"]
+
+    dsName = inConf["name"]
+
+    return dataRoot, relPath, inConf, dsName
+
+def addParents(inConfFname, dataRoot, dsName, outConf, todoConfigs):
+    # find all parent cellbrowser.conf-files and fixup the dataset's "name"
+    # keep a list of parent config files in todoConfigs (they will need to be updated later)
+    if dataRoot is None:
+        logging.info("dataRoot not set in ~/.cbDefaults.conf, no need to rebuild hierarchy")
+        dataRoot = None
+    else:
+        if not "fileVersions" in outConf:
+            outConf = loadConfig(inConfFname, ignoreName=True)
+            outConf["fileVersions"] = {}
+        parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, dsName)
+        todoConfigs.update(parentFnames)
+        outConf["parents"] = parentInfos
+        outConf["name"] = fullPath
+
+    return outConf
+
+def rebuildFlatIndex(outDir):
+    " rebuild the flat list, for legacy installs not using dataset hierarchies "
+    logging.info("Rebuilding flat list of datasets, without hierarchies")
+    datasets = subdirDatasetJsonData(outDir)
+
+    collInfo = {}
+    collInfo["name"] = ""
+    collInfo["shortLabel"] = "All Datasets"
+    collInfo["abstract"] = """This is a local Cell Browser installation, without dataset hierarchies.
+        Please select a dataset from the list on the left.<p>
+        <p>
+        See the documentation on <a target=_blank href="https://cellbrowser.readthedocs.io/collections.html">
+        dataset hierarchies</a>.
+
+    """
+    summInfo = summarizeDatasets(datasets)
+    collInfo["datasets"] = summInfo
+    outFname = join(outDir, "dataset.json")
+    writeJson(collInfo, outFname)
+
 
 def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None):
     " build browser from config files confFnames into directory outDir and serve on port "
@@ -4828,15 +5134,10 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         logging.debug("got a string, converting to a list")
         confFnames = [confFnames]
 
-    # at UCSC, we enforce some required dataset tags
-    global reqTagsDataset
-    reqTags = getConfig("reqTags")
-    if reqTags:
-        reqTagsDataset.extend(reqTags)
 
     datasets = []
     dataRoot = None
-    todoConfigs = set() # list of collections we need to update once we're done
+    todoConfigs = set() # list of filenames of parent collections that we need to update once we're done
     for inConfFname in confFnames:
         # load cellbrowser.conf
         if isdir(inConfFname):
@@ -4846,53 +5147,31 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
         inConf = loadConfig(inConfFname)
         inDir = dirname(abspath(inConfFname))
 
-        # detect hierarchical mode and construct the output path
-        dataRoot = findRoot(inConfFname)
-        if dataRoot:
-            if "name" in inConf:
-                logging.debug("using dataset hierarchies: 'name' in %s is ignored" % inConfFname)
-            logging.debug("Deriving dataset name from path")
-            inConf["name"] = basename(dirname(abspath(inConfFname)))
+        outConf = OrderedDict()
+        outConf["fileVersions"] = dict()
 
-            relPath = relpath(dirname(abspath(inConfFname)), dataRoot)
-        else:
-            relPath = inConf["name"]
+        dataRoot, relPath, inConf, dsName = fixupName(inConfFname, inConf)
+        outConf = addParents(inConfFname, dataRoot, dsName, outConf, todoConfigs)
+
+        datasets.append(dsName)
 
         datasetDir = join(outDir, relPath)
         makeDir(datasetDir)
 
-        dsName = inConf["name"]
-
-        datasets.append(dsName)
-
-        outConf = OrderedDict()
-        outConf["fileVersions"] = dict()
-
-        todoConfigs = set()
-
         if not "meta" in inConf:
-            # convert the dataset itself only if we run in a directory where there is a dataset
-            logging.info("There is no meta data in cellbrowser.conf, so just rebuilding the hierarchy")
+            # this is a collection: just rebuild the hierarchy of us and the parents
+            logging.info("This is a collection: just rebuilding the hierarchy")
             inPath = abspath(inConfFname)
             logging.debug("Adding %s" % inPath)
             todoConfigs.add(inPath)
+            outConf["shortLabel"] = inConf["shortLabel"]
         else:
+            # This is an actual dataset - the main function that does all the work is convertDataset()
             copyGenes(inConf, outConf, outDir)
-            convertDataset(inDir, inConf, outConf, datasetDir, redo)
+            isTopLevel = ("parents" in outConf and len(outConf["parents"])==1) # important for facet checking
+            convertDataset(inDir, inConf, outConf, datasetDir, redo, isTopLevel)
 
-        # find all parent cellbrowser.conf-files
-        if dataRoot is None:
-            logging.info("dataRoot not set in ~/.cellbrowser.conf, no need to rebuild hierarchy")
-            dataRoot = None
-        else:
-            if not "fileVersions" in outConf:
-                outConf = loadConfig(inConfFname, ignoreName=True)
-                outConf["fileVersions"] = {}
-            parentFnames, fullPath, parentInfos = findParentConfigs(inConfFname, dataRoot, dsName)
-            todoConfigs.update(parentFnames)
-            outConf["parents"] = parentInfos
-            if "name" in outConf:
-                outConf["name"] = fullPath
+        outConf = copyFacets(inConf, outConf)
 
         outConf["fileVersions"]["conf"] = getFileVersion(abspath(inConfFname))
         outConf["md5"] = calcMd5ForDataset(outConf)
@@ -4902,24 +5181,7 @@ def build(confFnames, outDir, port=None, doDebug=False, devMode=False, redo=None
     if dataRoot is not None and len(todoConfigs)!=0:
         rebuildCollections(dataRoot, outDir, todoConfigs)
     else:
-        # rebuild the flat list, for legacy installs not using dataset hierarchies
-        logging.info("Rebuilding flat list of datasets, without hierarchies")
-        datasets = subdirDatasetJsonData(outDir)
-
-        collInfo = {}
-        collInfo["name"] = ""
-        collInfo["shortLabel"] = "All Datasets"
-        collInfo["abstract"] = """This is a local Cell Browser installation, without dataset hierarchies.
-            Please select a dataset from the list on the left.<p>
-            <p>
-            See the documentation on <a target=_blank href="https://cellbrowser.readthedocs.io/collections.html">
-            dataset hierarchies</a>.
-
-        """
-        summInfo = summarizeDatasets(datasets)
-        collInfo["datasets"] = summInfo
-        outFname = join(outDir, "dataset.json")
-        writeJson(collInfo, outFname)
+        rebuildFlatIndex(outDir)
 
     cbUpgrade(outDir, doData=False)
 
@@ -5047,7 +5309,7 @@ def cbBuildCli():
             cbBuild_parseArgs(showHelp=True)
 
     if options.outDir is None:
-        logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cellbrowser.conf.")
+        logging.error("You have to specify at least the output directory via -o or set the env. variable CBOUT or set htmlDir in ~/.cbDefaults.conf.")
         cbBuild_parseArgs(showHelp=True)
 
 
@@ -5065,6 +5327,9 @@ def cbBuildCli():
             build(confFnames, outDir, port, redo=options.redo)
     except:
         exc_info = sys.exc_info()
+        print(exc_info)
+        print(type(exc_info[0]))
+        print(type(exc_info[1]))
         logging.error("Unexpected error: %s" % str(exc_info))
         import traceback
         traceback.print_exception(*exc_info)
@@ -5100,11 +5365,11 @@ def importLoom(inFname, reqCoords=False):
 
 def adataStringFix(adata):
     " some h5ad files read from 10X MTX have bytestrings in them instread of normal strings "
-    if str(adata.var.index.dtype)=="object" :
-        logging.debug("Fixing up byte strings in adata.var.index")
+    if not type(adata.var.index[0])==str:
+        logging.warn("Workaround: Converting byte strings in adata.var.index to normal strings")
         adata.var.index = adata.var.index.str.decode("utf-8")
-    if "gene_ids" in adata.var and str(adata.var["gene_ids"].dtype)=="object":
-        logging.debug("Fixing up byte strings in adata.var['gene_ids']")
+    if "gene_ids" in adata.var and not type(adata.var["gene_ids"][0])==str:
+        logging.warn("Workaround: Converting byte strings in adata.var['gene_ids'] to normal strings")
         adata.var["gene_ids"] = adata.var["gene_ids"].str.decode("utf-8")
     return adata
 
@@ -5212,8 +5477,13 @@ def subdirDatasetJsonData(searchDir, skipDir=None):
             datasetDesc["md5"] = calcMd5ForDataset(datasetDesc)
 
         if not "name" in datasetDesc:
-            errAbort("The file dataset.json for the subdirectory %s is not valid. Please rebuild it, then "
+            errAbort("The file dataset.json for the subdirectory %s is not valid: There is no 'name' attribute. Please rebuild it, or remove it, then "
                     "come back here and retry the cbBuild command" % subDir)
+
+        if not "shortLabel" in datasetDesc:
+            errAbort("The file dataset.json for the subdirectory %s is not valid: There is no 'shortLabel' attribute. Please rebuild it, or remove it, then "
+                    "come back here and retry the cbBuild command" % subDir)
+
 
         dsName = datasetDesc["name"]
         if dsName in dsNames:
@@ -5364,6 +5634,9 @@ def summarizeDatasets(datasets):
             continue
 
         # these must always be present
+        if not "shortLabel" in ds:
+            errAbort("Dataset '%s' has no shortLabel attribute. Internal error." % repr(ds["name"]))
+
         summDs = {
             "shortLabel" : ds["shortLabel"],
             "name" : ds["name"],
@@ -5377,7 +5650,8 @@ def summarizeDatasets(datasets):
                 #summDs[t] = ds[t]
 
         # these are copied and checked for the correct type
-        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects", "life_stages", "domains", "sources"]:
+        for optListTag in ["tags", "hasFiles", "body_parts", "diseases", "organisms", "projects", "life_stages", \
+                "domains", "sources", "assays"]:
             if optListTag in ds:
                 if (type(ds[optListTag])==type([])): # has to be a list
                     summDs[optListTag] = ds[optListTag]
@@ -5411,6 +5685,14 @@ def summarizeDatasets(datasets):
         dsList.append(summDs)
 
     return dsList
+
+def mergeJsFiles(extJsFnames, baseDir, libFname):
+    # we are starting to have way too many .js files. Reduce all external ones to a single file
+    jsOfh = open(libFname, "w")
+    for fn in extJsFnames:
+        jsOfh.write(open(join(baseDir, fn)).read())
+        jsOfh.write(";\n/* ---------- FILE END ------------ */\n")
+    jsOfh.close()
 
 def makeIndexHtml(baseDir, outDir, devMode=False):
     " make the index.html, copy over all .js and related files and add their md5s "
@@ -5446,7 +5728,7 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
     for cssFname in cssFnames:
         writeVersionedLink(ofh, '<link rel="stylesheet" href="%s">', baseDir, cssFname, addVersion=addVersion)
 
-    jsFnames = ["ext/FileSaver.1.1.20151003.min.js", "ext/jquery.3.1.1.min.js",
+    extJsFnames = ["ext/FileSaver.1.1.20151003.min.js", "ext/jquery.3.1.1.min.js",
         "ext/palette.js", "ext/spectrum.min.js", "ext/jsurl2.js",
         "ext/chosen.jquery.min.js", "ext/mousetrap.min.js",
         "ext/jquery.contextMenu.js", "ext/jquery.ui.position.min.js",
@@ -5466,14 +5748,28 @@ def makeIndexHtml(baseDir, outDir, devMode=False):
         "ext/slick.editors.js", "ext/slick.formatters.js", "ext/slick.grid.js",
         "ext/tiny-queue.js", "ext/science.v1.js", "ext/reorder.v1.js",  # commit d51dda9ad5cfb987b9e7f2d7bd81bb9bbea82dfe
         "ext/scaleColorPerceptual.js",  # https://github.com/politiken-journalism/scale-color-perceptual tag 1.1.2
+        "ext/drawImage-clipper.js", # Safari Monkeypatch https://gist.github.com/Kaiido/ca9c837382d89b9d0061e96181d1d862
+        ]
+
+    # we are starting to have way too many .js files. Reduce all external ones to a single file
+    libFname = join(outDir, "ext", "cbLib.js")
+    #mergeJsFiles(extJsFnames, baseDir, libFname)
+
+    #md5 = md5WithPython(join(outDir, "ext/cbLibs.js"))
+    #ofh.write('<script src="ext/cbLibs.js?%s"></script>\n' % md5[:MD5LEN])
+
+    ourJsFnames = [
         "js/cellBrowser.js", "js/cbData.js", "js/maxPlot.js", "js/maxHeat.js",
         ]
 
+    for jsFname in ourJsFnames:
+        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname, addVersion=addVersion)
+
+    for jsFname in extJsFnames:
+        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname, addVersion=addVersion)
+
     # at UCSC, for grant reports, we need to get some idea how many people are using the cell browser
     ofh.write('<script async defer src="https://cells.ucsc.edu/js/cbTrackUsage.js"></script>\n')
-
-    for jsFname in jsFnames:
-        writeVersionedLink(ofh, '<script src="%s"></script>', baseDir, jsFname, addVersion=addVersion)
 
     if getConfig("gaTag") is not None:
         gaTag = getConfig("gaTag")
@@ -5667,17 +5963,6 @@ def addMetaToAnnData(adata, fname):
         logging.warn("Could not merge h5ad and meta data, skipping h5ad meta and using only provided meta. Most likly this happens when the field names in the h5ad and the meta file overlap")
         adata.obs = df2
 
-    #if len(adata.obs)!=len(df):
-        #errAbort("The number of cells in the expression matrix does not match the number of lines in '%s'" % fname)
-
-    # re-order meta data to be in the same order as the matrix
-    #df = df.reindex(adata.obs.index)
-
-    #for colName in list(df.columns):
-        #logging.debug("Adding column %s to adata.obs" % colName)
-        #adata.obs[colName] = df[colName].astype("category")
-    #adata.obs["Cluster"] = df["Cluster"].astype("category")
-    #adata.obs["Cluster"] = pd.Categorical(df["Cluster"], ordered=True)
     return adata
 
 def getObsKeys(adata):
@@ -5784,7 +6069,7 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
         #bigDataset = True
         #logging.info("Big dataset: not keeping a .raw copy of the data to save memory during analysis")
 
-    if conf["doExp"]:
+    if "doExp" in conf and conf["doExp"]:
         pipeLog("Undoing log2 of data, by running np.expm1 on the matrix")
         adata.X = np.expm1(adata.X)
 
@@ -5795,7 +6080,6 @@ def cbScanpy(matrixFname, inMeta, inCluster, confFname, figDir, logFname):
     if conf["doTrimCells"]:
         minGenes = conf["minGenes"]
         pipeLog("Basic filtering: keep only cells with min %d genes" % (minGenes))
-        # Work around "Don’t call _normalize_index with non-categorical/string names"
         # see: https://github.com/scverse/scanpy/issues/747
         adata.obs.index = adata.obs.index.astype(str)
         adata.var.index = adata.var.index.astype(str)
@@ -6106,20 +6390,24 @@ def generateDataDesc(datasetName, outDir, algParams=None, other=None):
 
     ofh.close()
 
+def copyFileIfDiffSize(inFname, outFname):
+    if not isfile(outFname):
+        logging.info("File doesn't exist, copying %s to %s" % (inFname, outFname))
+        shutil.copyfile(inFname, outFname)
+    elif getsize(inFname)!=getsize(outFname):
+        logging.info("File size difference, copying %s to %s" % (inFname, outFname))
+        shutil.copyfile(inFname, outFname)
+    else:
+        logging.info("identical and same size, not copying %s to %s" % (inFname, outFname))
+
+
 def copyTsvMatrix(matrixFname, outMatrixFname):
     " copy one file to another, but only if both look like valid input formats for cbBuild "
     if isMtx(matrixFname) or ".h5" in matrixFname:
         logging.error("Cannot copy %s to %s, as not a text-based file like tsv or csv. You will need to do the conversion yourself manually or with cbTool.")
         return
 
-    if not isfile(outMatrixFname):
-        logging.info("File doesn't exist, copying %s to %s" % (matrixFname, outMatrixFname))
-        shutil.copyfile(matrixFname, outMatrixFname)
-    elif getsize(matrixFname)!=getsize(outMatrixFname):
-        logging.info("File size difference, copying %s to %s" % (matrixFname, outMatrixFname))
-        shutil.copyfile(matrixFname, outMatrixFname)
-    else:
-        logging.info("identical and same size, not copying %s to %s" % (matrixFname, outMatrixFname))
+    copyFileIfDiffSize(matrixFname, outMatrixFname)
 
 def generateQuickGenes(outDir):
     " make a quickGenes.tsv in outDir from markers.tsv "
@@ -6247,7 +6535,8 @@ def cbScanpyCli():
         outMatrixFname = join(outDir, "exprMatrix.tsv.gz")
         copyTsvMatrix(matrixFname, outMatrixFname)
 
-    generateDataDesc(datasetName, outDir, params)
+    generateDataDesc(datasetName, outDir, other = {"supplFiles": [{"label":"Scanpy H5AD", "file":basename(matrixFname)}]})
+    copyFileIfDiffSize(matrixFname, join(outDir, basename(matrixFname)))
 
 def readGenesBarcodes(geneFname, barcodeFname):
     " return two lists "
@@ -6346,16 +6635,22 @@ def mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname, translateIds=False):
 
     logging.info("Created %s" % outFname)
 
-def getAllFields(ifhs, sep):
+def getAllFields(ifhs, sep=None):
     " give a list of file handles, get all non-gene headers and return as a list of names "
     fieldToFname = {}
     allFields = []
     colCounts = []
     for ifh in ifhs:
-        fields = ifh.readline().rstrip('\r\n').split(sep)
+        if sep is None:
+            if ".csv" in ifh.name:
+                fileSep = ","
+            else:
+                fileSep = "\t"
+        else:
+            fileSep = sep
+        fields = ifh.readline().rstrip('\r\n').split(fileSep)
         fields = [f.strip('"') for f in fields] # R sometimes adds quotes
         colCounts.append(len(fields))
-        #assert(fields[0]=="#gene")
         for i, field in enumerate(fields):
             # make sure we have no field name overlaps
             if field in fieldToFname and i!=0:
@@ -6372,6 +6667,7 @@ def getAllFields(ifhs, sep):
     return allFields, colCounts
 
 def generateDownloads(datasetName, outDir):
+    " generate downloads.html and desc.conf "
     htmlFname = join(outDir, "downloads.html")
     if isfile(htmlFname):
         logging.info("%s exists, not overwriting" % htmlFname)
