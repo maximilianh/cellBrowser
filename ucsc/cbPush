@@ -2,21 +2,26 @@
 
 dsName=$1
 
-if [ -z "$dsName" ] ; then
-        echo You need to specify at least one of the dataset directory names in /usr/local/apache/htdocs-cells/
-        echo example: cbPush bobJonesPancreas
-        exit 1
-fi
+for name in $dsName
+do
+    echo $name
+    if [ -z "$name" ] ; then
+            echo You need to specify at least one of the dataset directory names in /usr/local/apache/htdocs-cells/
+            echo single dataset example: cbPush bobJonesPancreas
+            echo multi dataset example:  cbPush "cortex-dev liver-macrophages"
+            exit 1
+    fi
 
-inDir=/usr/local/apache/htdocs-cells/$1
+    inDir=/usr/local/apache/htdocs-cells/$name
 
-if [ ! -e $inDir ] ; then
-        echo $inDir does not exist
-        exit 1
-fi
+    if [ ! -e $inDir ] ; then
+            echo $inDir does not exist
+            exit 1
+    fi
 
-outDir=/usr/local/apache/htdocs-cells-beta/$1
+    outDir=/usr/local/apache/htdocs-cells-beta/$name
 
-rsync --delete -avp $inDir/ $outDir/
+    rsync --delete -avp $inDir/ $outDir/
+done
 rsync --delete -avp /usr/local/apache/htdocs-cells/genes/ /usr/local/apache/htdocs-cells-beta/genes/
 cbUpgrade -o /usr/local/apache/htdocs-cells-beta/

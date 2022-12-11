@@ -38,6 +38,22 @@ section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
         line-height: 120%; 
 }
 
+#mpTitle {
+    cursor : default;
+    left : 8px;
+    width : max-content;
+    display : block;
+    position : absolute;
+    font-size : 16px;
+    color: white;
+    text-shadow:
+       1px 1px 0 #000,
+     -1px -1px 0 #000,  
+      1px -1px 0 #000,
+      -1px 1px 0 #000,
+       1px 1px 0 #000;
+}
+
 .tpLegend { font-size:13px; /* border: 2px solid transparent; */ cursor:default; word-wrap: break-word; clear:both}
 .tpHint { font-weight:normal; line-height:1.4; font-size: 80%}
 #tpLegendHeader { background-color:#eee; color: #777 }

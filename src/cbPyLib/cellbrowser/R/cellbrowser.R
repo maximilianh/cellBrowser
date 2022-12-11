@@ -202,7 +202,7 @@ ExportToCellbrowser <- function(
 
   # make sure that we have a cluster field
   if (is.null(x = cluster.field))
-      stop("There was no cluster field provided and the auto-detection to find one based on Idents() did not work. Please provide a cluster field with cluster.field='xxx' from R or --clusterField=xxx if using cbImportSeurat")
+      stop("There was no cluster field provided and the auto-detection to find one based on Idents() did not work. Please provide a cluster field with cluster.field='xxx' from R or --clusterField=xxx if using cbImportSeurat. Possible meta annotation fields are: ", toString(colnames(x = meta)))
 
   if (is.null(x = meta.fields)) {
     meta.fields <- colnames(x = meta)
