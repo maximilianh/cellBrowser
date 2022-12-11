@@ -6,6 +6,24 @@ canvas { user-select: none }
 
 section { font-weight: bold; padding-top: 5px; padding-bottom: 5px }
 
+#tpExprViewTitle { 
+        background-color: #eee;
+        padding: 3px;
+        /*border-bottom: 1px solid black; */
+}
+
+#tpExprView { 
+        position: absolute;
+        z-index: 100;
+        top: 1%;
+        left: 1%;
+        display: block;
+        background-color: white;
+        height: 98%;
+        width: 98%;
+        border: 1px solid grey;
+}
+
 #tpLegendBar { 
         cursor:default; 
         padding-left: 2px; 
