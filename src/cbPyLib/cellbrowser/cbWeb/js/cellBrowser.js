@@ -592,7 +592,7 @@ var cellbrowser = function() {
         "pmcid" : "PubMed Fulltext",
         "sra_study" : "NCBI Short-Read Archive",
         "ega_study" : "European Genotype-Phenot. Archive",
-	"ega_dataset"  "European Genotype-Phenot. Archive",
+	"ega_dataset" : "European Genotype-Phenot. Archive",
         "bioproject" : "NCBI Bioproject",
         "dbgap" : "NCBI DbGaP",
         "biorxiv_url" : "BioRxiv preprint",
