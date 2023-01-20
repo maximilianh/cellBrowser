@@ -1,0 +1,49 @@
+#! /usr/bin/env python3
+
+import sys,argparse,pathlib,webcolors
+
+
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Convert between rgb<->hex colors")
+parser.add_argument('colorFile', type=str, help='file with colors you want to convert in column 2 and labels,etc in column 1')
+parser.add_argument("-c","--csvRgb", action='store_true',
+    help='separate RGB output via commas rather than spaces')
+args = parser.parse_args()
+
+cFtype = pathlib.Path(args.colorFile).suffix
+if cFtype == ".csv":
+    csep = ","
+elif cFtype == ".tsv":
+    csep = "\t"
+else:
+    print("colorFile must have tsv or csv file extension")
+    exit(1)
+
+for line in open(args.colorFile):
+    splitLine = line.strip().split(csep)
+    label = splitLine[0]
+    color = splitLine[1].split()
+    # If our color starts with a #, then it is a hex color
+    if splitLine[1].startswith('#'):
+        rgbTuple = webcolors.hex_to_rgb(color[0])
+        if args.csvRgb:
+            rgbColor = str(rgbTuple.red) + "," + str(rgbTuple.green) + "," + str(rgbTuple.blue)
+        else:
+            rgbColor = str(rgbTuple.red) + " " + str(rgbTuple.green) + " " + str(rgbTuple.blue)
+        output = [label, rgbColor]
+        if args.csvRgb:
+            # since we're separating rgb color output with commas, output as tsv
+            print(*output, sep="\t")
+        else:
+            print(*output, sep=csep)
+    # Otherwise assume it's rgb
+    else:
+        if len(color) < 3:
+            color = color[0].split(",")
+        # from https://www.geeksforgeeks.org/python-convert-tuple-string-to-integer-tuple/
+        rgbColor = tuple(int(num) for num in str(color).replace('[', '').replace(']', '').replace("'", '').split(', '))
+
+        hexColor = webcolors.rgb_to_hex(rgbColor)
+        output = [label, hexColor]
+        print(*output, sep=csep)

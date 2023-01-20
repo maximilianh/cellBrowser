@@ -28,14 +28,21 @@ Many labs host their data at cells.ucsc.edu by sending it to us, but some groups
 
 * Alexander Misharin Lab, Northwester University, https://www.nupulmonary.org/resources/
 * Accelerating Medicine Partnership Consortium, https://immunogenomics.io/cellbrowser/, used in `Zhang et al. 2018 <https://www.biorxiv.org/content/10.1101/351130v1>`_ and `Der et al 2018 <https://www.biorxiv.org/content/10.1101/382846v1>`_
-* Sansom Lab, Oxford, https://sansomlab.github.io for `Croft et al, Nature 2019 <https://www.nature.com/articles/s41586-019-1263-7>`_
-* http://caire.ipmc.cnrs.fr/cellbrowser/Differentiation/ (URL has changed, contacted authors, no reply, new URL seems to be https://www.genomique.eu/cellbrowser/HCA/) Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
+* Ovarian Cancer Cell Laboratory, Nuffield Department of Women's & Reproductive Health, University of Oxford, https://ovariancancercell.github.io/
+* Zemans Lab, Ann Arbor, https://rnabioco.github.io/lung-scrna/
+* Unpublished work, unknown lab?, http://covid19ocularsurface.org/
+* Chinese University of Hong Kong, Testis cis-element atlas, http://testisatlas.s3-website-us-west-2.amazonaws.com/CB.html
+* Sansom Lab, Oxford, https://sansomlab.github.io (they use an older version of the Cell Browser source code, reached out to update with our bugfix but did not get reply), for `Croft et al, Nature 2019 <https://www.nature.com/articles/s41586-019-1263-7>`_ 
+* https://www.genomique.eu/cellbrowser/HCA/ Zaragosi group at IPMC CNRS Nice, for the manuscript https://dev.biologists.org/content/early/2019/09/25/dev.177428.abstract
+* Same group seems to host a COVID-19 dataset: https://www.genomique.eu/cellbrowser/COVID/
 * Bin Ren lab, CAAtlas http://catlas.org/mousebrain/#!/home
 * Conrad lab at Charite Berlin: http://singlecell.charite.de/
 * `STAB: a spatio-temporal cell atlas of the human brain <https://stab.comp-sysbio.org/tool/cellbrowser/index.html>`_ from  `Song et al NAR 2021 <https://academic.oup.com/nar/article/49/D1/D1029/5911746>`_.
 * UCLA: http://mergeomics.research.idre.ucla.edu/PVDSingleCell/
 * Lako Lab at Newcastle University, UK: http://retinalstemcellresearch.co.uk/CorneaCellAtlas/ from `Collins et al. 2021. The Ocular Surface. <https://www.sciencedirect.com/science/article/pii/S1542012421000215>`_
 * RNA Bioscience Initiative: https://www.pneuroonccellatlas.org/ and https://github.com/rnabioco/lung-scrna
+* Paul Gontarz, WUSTL, http://regmedsrv1.wustl.edu/Public_SPACE/pgontarz/Public_html/cellbrower/Exp1/
+
 
 These papers have cell browsers made at UCSC:
 

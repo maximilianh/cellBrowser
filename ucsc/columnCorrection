@@ -37,30 +37,27 @@ else:
 rfh=open(args.replaceFile, "r")
 replacements = dict()
 for line in rfh:
-    #splitLine = line.rstrip().split("\t")
-    splitLine = line.rstrip().split(rsep)
-    replacements[splitLine[0]]=splitLine[1]
+    if not line.startswith('#'):
+        splitLine = line.rstrip().split(rsep)
+        replacements[splitLine[0]]=splitLine[1]
+
 
 mfh=open(args.metaFile, "r")
 
 # Get index of field that we want to replace values in
-#header = mfh.readline().rstrip().split("\t")
 header = mfh.readline().rstrip().split(msep)
 n = header.index(args.fieldToReplace)
-#print(*header, sep="\t")
 print(*header, sep=msep)
 
 # Go through input files and replace metadata values as needed
 for line in mfh:
-    #splitLine = line.rstrip().split("\t")
-    splitLine = line.rstrip().split(msep)
-    toReplace = splitLine[n]
-    if toReplace in replacements.keys():
-        splitLine[n] = replacements[toReplace]
-        # From https://stackoverflow.com/questions/4048964/printing-tab-separated-values-of-a-list
-        #print(*splitLine, sep="\t")
-        print(*splitLine, sep=msep)
-    else:
-        #print(*splitLine, sep="\t")
-        print(*splitLine, sep=msep)
+    if not line.startswith('#'):
+        splitLine = line.rstrip().split(msep)
+        toReplace = splitLine[n]
+        if toReplace in replacements.keys():
+            splitLine[n] = replacements[toReplace]
+            # From https://stackoverflow.com/questions/4048964/printing-tab-separated-values-of-a-list
+            print(*splitLine, sep=msep)
+        else:
+            print(*splitLine, sep=msep)
 

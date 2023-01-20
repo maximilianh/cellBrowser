@@ -2,8 +2,7 @@
 # tested on python3 and python2
 import logging, sys, optparse, string, glob, gzip, json
 from io import StringIO
-#from urllib.request import urlopen
-from urllib.request import Request, urlopen
+
 from collections import defaultdict
 from os.path import join, basename, dirname, isfile
 

@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 import anndata, sys, argparse
-    
+
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -19,18 +19,14 @@ def main():
     # Loop goes through each field in obs and prints out at least 5 values
     for annot in ad.obs_keys():
         # Get list of unique vals in obs annotation
-        annot_vals = sorted(list(set(ad.obs[annot])))
+        # value_counts from here: https://stackoverflow.com/questions/45759966/counting-unique-values-in-a-column-in-pandas-dataframe-like-in-qlik
+        annot_vals = ad.obs[annot].value_counts().to_frame()
         val_count = len(annot_vals)
         # Can't color on annots with >500 vals, so no need to display them here
         if val_count < 500:
             print(annot, "-", val_count, "unique values")
-            for i in range(0,args.fields):
-                # try/except here is because some annots have less than the 
-                # amount we want to print, without this it crashes on these fields
-                try:
-                    print(annot_vals[i])
-                except:
-                    continue
+            # to_string from https://python.tutorialink.com/printing-pandas-df-without-column-name/
+            print(annot_vals.head(args.fields).to_string(header=False))
             print()
 
 if __name__ == "__main__":

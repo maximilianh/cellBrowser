@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+dlist=$1
+
+buildDataset() {
+    echo $dname
+    cd /hive/data/inside/cells/datasets/$dname
+    cbBuild -o /usr/local/apache/htdocs-cells
+}
+
+showHelp() {
+cat << EOF
+Rebuilds cell browsers on cells-test for a list of datasets. 
+
+Usage: `basename $0` \$dataset_list
+
+    Required arguments:
+    dataset_list    a file with a list of datasets as the first column
+                    OR a whitespace-separated list of datasets
+
+Example usage:
+`basename $0` my.datasets.txt
+`basename $0` "adultPancreas aging-human-skin"
+`basename $0` "adultPancreas"
+
+EOF
+}
+
+# Check number of required arguments
+if [ $# -ne 1 ]
+then
+    # Output usage message if number of required arguments is wrong
+    showHelp >&2
+    exit 1
+fi 
+
+# First check if input is a file
+if [[ -f "$dlist" ]]
+then
+    IFS=$'\n'
+    # Loop through our dataset list file
+    for l in $(cat "$dlist")
+    do
+        # Assumes that first column is dataset name 
+        dname=$(echo $l | cut -f1)
+        if [ $dname != "dataset" ]
+        then
+            buildDataset "$dname"
+        fi
+    done
+else
+    for l in $dlist
+    do
+        dname=$(echo $l | cut -f1 )
+        if [[ $dname != "dataset" ]]
+        then
+            buildDataset "$dname"
+        fi
+    done
+fi

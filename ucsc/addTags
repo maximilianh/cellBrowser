@@ -49,22 +49,19 @@ args = parser.parse_args()
 dFtype = Path(args.datasetFile).suffix
 
 if dFtype == ".csv":
-    dsep = ","
-elif dFtype == ".tsv":
-    dsep = "\t"
-else:
-    print("datasetFile must have tsv or csv file extension")
+    print("datasetFile must be tsv")
     exit(1)
 
 dfh = open(args.datasetFile)
 
 # Peel off header so we can know which tags we're working with
-header = dfh.readline().rstrip().split(dsep)
+header = dfh.readline().rstrip().split('\t')
 
 # Now process rest of datasetFile
 for line in dfh:
-    splitLine = line.rstrip().split(dsep)
+    splitLine = line.rstrip('\n').split('\t')
     dname = splitLine[0]
+    print("adding tag/values for:",dname)
     confName = join("/hive/data/inside/cells/datasets",dname,"cellbrowser.conf")
     # Turn conf into dict
     conf = loadConfig(confName)
@@ -79,11 +76,16 @@ for line in dfh:
 
             # Case where we're dealing with a new tag
             if tag not in conf.keys():
-                # Turn vals into a list
-                vals = splitLine[n].strip().split(' ')
-                # Append to file
-                with open(confName,"a") as f:
-                    f.write(tag + "=" + str(vals) + "\n")
+                # need to handle case where value is empty for a particular tag
+                # no need to add an empty tag to cellbrowser.conf
+                if splitLine[n] != '':
+                    # Turn vals into a list
+                    vals = splitLine[n].strip().split(',')
+                    # code adapated from https://stackoverflow.com/questions/4071396/split-by-comma-and-strip-whitespace-in-python
+                    vals = [x.strip() for x in splitLine[n].split(',')]
+                    # Append to file
+                    with open(confName,"a") as f:
+                        f.write(tag + "=" + str(vals) + "\n")
             # Case where tag already exists in conf file, so we're updating it
             if args.update:
                 # empty string to hold outConf if we're dealing with updates to current tags
@@ -91,12 +93,13 @@ for line in dfh:
                 outConf = ""
                 # go through line by line
                 for tagLine in open(confName):
-                    splitTag = tagLine.strip().split("=")
+                    splitTag = tagLine.strip().split("=",1)
                     confTag = splitTag[0]
                     # find those tags we've referenced in the header
                     if confTag == tag:
                         # take the values from datasetFile and add to output string
-                        vals = splitLine[n].strip().split(' ')
+                        # code adapated from https://stackoverflow.com/questions/4071396/split-by-comma-and-strip-whitespace-in-python
+                        vals = [x.strip() for x in splitLine[n].split(',')]
                         outConf += tag + "=" + str(vals) + "\n"
                     # Just add other lines to the output string
                     else:

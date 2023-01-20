@@ -1,0 +1,43 @@
+#! /usr/bin/env python3
+
+import os, sys, argparse, subprocess
+    
+#def main():
+parser = argparse.ArgumentParser(
+formatter_class=argparse.RawDescriptionHelpFormatter,
+description="Print out info about metadata in a Seurat RDS file")
+parser.add_argument('rds', type=str, help='Seurat RDS file')
+parser.add_argument('-f', '--fields', type=int, default=5, \
+help='number of values to print for a field')
+args = parser.parse_args()
+
+r_file = """ 
+library(Seurat)
+library(dplyr)
+library(magrittr)
+
+d=readRDS("%s")
+d
+for (meta_field in names(d@meta.data))
+{
+v = sort(table(FetchData(d,meta_field)), decreasing=TRUE)
+if (length(v) > 1) {
+if (length(v) < 200) {
+
+print(meta_field)
+n<-glimpse(as.data.frame(v))
+print(n)
+}}}
+
+""" %(args.rds)
+
+with open("tmp.R","w") as f:
+    f.write(r_file)
+
+cmd=["Rscript","--vanilla","tmp.R"]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+cmdout, cmderr = p.communicate()
+stdout = cmdout.decode("utf-8")
+#stdout = cmdout.decode("ASCII")
+print(stdout)
+os.remove("tmp.R")

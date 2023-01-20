@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import sys,os,subprocess,webcolors,argparse,pathlib
+from collections import OrderedDict
 
 # Set up script arguments
 parser = argparse.ArgumentParser(
@@ -23,6 +24,8 @@ parser.add_argument("-l","--longLabels", type=str , help="if file names aren't w
     names in column 2.")
 parser.add_argument("-f","--html", type=str , help="track description html file. Assumes same \
     one to be used by all.")
+parser.add_argument("-b","--bbType", type=str , help="Indicates type (e.g. bigBed 12 +, bigBed 9, \
+    etc) if hub contains bigBed tracks.")
 
 args = parser.parse_args()
 
@@ -51,7 +54,6 @@ if args.colors:
     else:
         print("colors file must have tsv or csv file extension")
         exit(1)
-    #cfh = open(args.colors, "r")
     for line in open(args.colors, "r"):
         splitLine = line.strip().split(csep)
         colors[splitLine[0]] = splitLine[1]
@@ -65,7 +67,6 @@ if args.shortLabels:
     else:
         print("shortLabels file must have tsv or csv file extension")
         exit(1)
-    #sfh = open(args.shortLabels, "r")
     for line in open(args.shortLabels, "r"):
         splitLine = line.strip().split(ssep)
         shortLabels[splitLine[0]] = splitLine[1]
@@ -85,54 +86,57 @@ if args.longLabels:
         splitLine = line.strip().split(lsep)
         longLabels[splitLine[0]] = splitLine[1]
 
-
+# Store everything in an ordered dict
+output=OrderedDict()
 for ds in dsList:
     dirName = ds.lower()
-    #bwDir = dirName + "/bigWig/"
-    # ^^ Could possibily determine this somehow
-    # from walking the directories and finding dirs
-    # w/ big* files?
 
-    # This prints everything for the parent stanza
-    print("track",dirName)
-    print("compositeTrack","on")
-    print("shortLabel", ds)
-    print("longLabel", ds)
-    print("visibility","dense")
-    print("autoScale","group")
-    print("type","bigWig") 
-    # ^^how to determine this from file types below?
-    # Instead of just printing as I go, I guess I could
-    # make a dict or something and fill it up and print
-    # the stanzas at the end. 
-    # Or maybe the type here doesn't even matter? 
-    # Should really double check
+    # Store everything in a OrderedDict, because output order matters
+    # I think 'track' always needs to be first
+    output[dirName] = OrderedDict()
+    output[dirName]["track"] = dirName
+    output[dirName]["compositeTrack"] = "on"
+    output[dirName]["shortLabel"] = ds
+    output[dirName]["longLabel"] = ds
+    output[dirName]["visibility"] = "dense"
+    output[dirName]["autoScale"] = "group"
+    # type is empty for now, will be filled in later by the step that checks types of child tracks
+    output[dirName]["type"] = ""
     # Use track html if provided
     if args.html:
-        print("html", args.html)
-    print()
+        output[dirName]["html"] = args.html
+
     if dsList[0] == args.fileDir:
+        # Case where the current dir is the only dataset/composite
         fdir = args.fileDir
     else:
+        # Otherwise, we make file paths out of the fileDir and dirName
         fdir = os.path.join(args.fileDir,dirName)
 
-    # This prints out the stanzas for all of the subtracks
+    #Store stanzas for child tracks in an ordered dict
+    children = OrderedDict()
     for f in os.listdir(fdir):
         # Basically take everything before final suffix to use as track name since we need something unique
         cluster = f.rsplit(".",1)[0]
         ftype = pathlib.Path(f).suffix
-        print("  track", dirName + "_" + cluster)
-        print("  parent", dirName, "on")
-        # If someone specified short labels, use those
+        tname = dirName + "_" + cluster
+        children[tname] = OrderedDict()
+        children[tname]["track"] = tname
+        children[tname]["parent"] = dirName + " on"
+
+        # If short labels are specified, use those
         if len(shortLabels) != 0:
+            # need try/except here in cases where not every track has a specified short label
+            # otherwise you get a KeyError and the script just crashes
             try:
                 shortLabel = shortLabels[f]
             except KeyError:
                 shortLabel = cluster
-        # Otherwise just use the file name
+        # If no shortLabel provided just use the file name
         else:
             shortLabel = cluster
-        print("  shortLabel", shortLabel)
+
+        children[tname]["shortLabel"] = shortLabel
         # Again, if someone specifies long labels, use those
         if len(longLabels) != 0:
             # need try/except here in cases where not every short label has a corresponding long label
@@ -145,12 +149,13 @@ for ds in dsList:
         else:
             longLabel = shortLabel
         if dsList[0] == args.fileDir:
-            print("  longLabel", longLabel)
+            children[tname]["longLabel"] = longLabel
         else:
-            print("  longLabel", ds + " - " + longLabel)
+            children[tname]["longLabel"] = ds + " - " + longLabel
         fpath = os.path.join(fdir,f)
         # Do a bunch of things specific to bigWig files
         if ftype in {".bw",".bigWig",".bigwig"}:
+            output[dirName]["type"] = "bigWig"
             # Calculate min/max via bigWigInfo since that's required for the type line
             cmd = ["bigWigInfo", fpath]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -161,23 +166,45 @@ for ds in dsList:
                 splitItem = item.replace(" ","").split(":")
                 if len(splitItem) > 1:
                     resultsDict[splitItem[0]] = splitItem[1]
-            print("  type","bigWig",resultsDict["min"],resultsDict["max"])
+            children[tname]["type"] = "bigWig" + " " + resultsDict["min"] + " " + resultsDict["max"]
             # autoScale group: http://genome.ucsc.edu/goldenPath/help/trackDb/trackDbHub.html#autoScale
-            print("  autoScale","group")
-        # An elif where we could do stuff specific to bigBeds
-        elif ftype in {".bb", ".bigBed"}:
-            print("I don't do anything yet")
+            children[tname]["autoScale"] = "group"
+        # Set type to args.bbType, otherwise error
+        elif ftype in {".bb", ".bigBed", ".bigbed"}:
+            output[dirName]["type"] = "bigBed"
+            if args.bbType:
+                children[tname]["type"] = args.bbType
+            else:
+                print("Your hub contains bigBed tracks, please specify -b/-bbType\n")
+                #parser.print_help(sys.stderr)
+                exit(1)
+        else:
+            print("makeCbHub supports bigWig, bigBed and other big* tracks at the moment.\nEnsure that your files end with one of the following extentsions:\n\nbw, bigWig, bigwig, bb, bigBed, bigbed\n")
+            exit(1)
         # If someone specifies colors, use those
         if len(colors) != 0:
-            # Assumes that input colors are in hex format, but GB only takes rgb values
-            # Should probably have it auto-detect that here and not convert if not needed
             if shortLabel in colors.keys():
-                rgbTuple = webcolors.hex_to_rgb(colors[shortLabel])
-                rgbStr = str(rgbTuple.red) + "," + str(rgbTuple.green) + "," + str(rgbTuple.blue)
-                print("  color", rgbStr)
-        print("  bigDataUrl",fpath)
-        print("  visibility","dense")
-        # Need this empty print here so that a space is printed betwen track stanzas
-        print()
+                # Assumes hexcolors that start with '#'
+                if colors[shortLabel].startswith("#"):
+                    rgbTuple = webcolors.hex_to_rgb(colors[shortLabel])
+                    rgbStr = str(rgbTuple.red) + "," + str(rgbTuple.green) + "," + str(rgbTuple.blue)
+                    children[tname]["color"] = rgbStr
+                # otherwise, assume they're rgb
+                else:
+                    children[tname]["color"] = colors[shortLabel]
+        children[tname]["bigDataUrl"] = fpath
+        children[tname]["visibility"] = "dense"
+    # After processing all child tracks, add it to original dict for that dataset
+    output[dirName]["children"] = children
 
-       
+for parent in output:
+    for setting in output[parent]:
+        if setting != "children":
+            print(setting, output[parent][setting])
+    print("")
+    # Need to have space between parent stanza and child stanzas
+    # So process parent settings first, then move on to printing child tracks
+    for child in output[parent]["children"]:
+        for child_setting in output[parent]["children"][child]:
+            print("    ", child_setting, output[parent]["children"][child][child_setting])
+        print("")

@@ -5,9 +5,10 @@ import logging, optparse, io, sys, os, shutil, operator, glob, re, json
 from collections import defaultdict
 
 from .cellbrowser import runGzip, openFile, errAbort, setDebug, moveOrGzip, makeDir, iterItems
-from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata
+from .cellbrowser import mtxToTsvGz, writeCellbrowserConf, getAllFields, readMatrixAnndata, adataStringFix
 from .cellbrowser import anndataMatrixToTsv, loadConfig, sanitizeName, lineFileNextRow, scanpyToCellbrowser, build
-from .cellbrowser import generateHtmls, getObsKeys, renameFile, getMatrixFormat
+from .cellbrowser import generateHtmls, getObsKeys, renameFile, getMatrixFormat, generateDataDesc
+from .cellbrowser import copyFileIfDiffSize
 
 from os.path import join, basename, dirname, isfile, isdir, relpath, abspath, getsize, getmtime, expanduser
 
@@ -17,15 +18,21 @@ def cbToolCli_parseArgs(showHelp=False):
 
 Command is one of:
     mtx2tsv   - convert matrix market to .tsv.gz
-    matCat - merge expression matrices with one line per gene into a big matrix.
+    matCatCells - merge expression matrices into a big tsv.gz matrix.
+        If you have files from different cells, same assay, same genes, this
+        allows to merge them into a bigger matrix. Format is one-line-per-gene.
         Matrices must have identical genes in the same order and the same number of
         lines. Handles .csv files, otherwise defaults to tab-sep input. gzip OK.
+    matCatGenes - concatenate expression matrices. If you have data from the same cells but with different
+        assays (multi-modal), this allows to merge them and add a prefix to every gene.
     metaCat - concat/join meta tables on the first (cell ID) field or reorder their fields
     reorder - reorder the meta fields
 
 Examples:
     - %prog mtx2tsv matrix.mtx genes.tsv barcodes.tsv exprMatrix.tsv.gz - convert .mtx to .tsv.gz file
-    - %prog matCat mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - concatenate expression matrices
+    - %prog matCatCells mat1.tsv.gz mat2.tsv.gz exprMatrix.tsv.gz - merge expression matrices
+    - %prog matCatGenes mat1.csv.gz mat2.tsv.gz=atac- exprMatrix.tsv.gz - concatenate expression matrices
+           and prefix all genes in the second file with 'atac-'
     - %prog metaCat meta.tsv seurat/meta.tsv scanpy/meta.tsv newMeta.tsv - merge meta matrices
     - %prog reorder meta.tsv meta.newOrder.tsv --delete samId --order=cluster,cellType,age - reorder meta fields
     """)
@@ -59,7 +66,7 @@ def cbToolCli():
 
     cmd = args[0]
 
-    cmds = ["mtx2tsv", "matCat", "metaCat", "reorder"]
+    cmds = ["mtx2tsv", "matCatCells", "matCatGenes" "metaCat", "reorder"]
 
     if cmd=="mtx2tsv":
         mtxFname = args[1]
@@ -67,10 +74,14 @@ def cbToolCli():
         barcodeFname = args[3]
         outFname = args[4]
         mtxToTsvGz(mtxFname, geneFname, barcodeFname, outFname)
-    elif cmd=="matCat":
+    elif cmd=="matCatCells":
         inFnames = args[1:-1]
         outFname = args[-1]
         matCat(inFnames, outFname)
+    elif cmd=="matCatGenes":
+        inFnames = args[1:-1]
+        outFname = args[-1]
+        matCatGenes(inFnames, outFname)
     elif cmd=="metaCat" or cmd=="reorder":
         inFnames = args[1:-1]
         outFname = args[-1]
@@ -160,6 +171,70 @@ def matCat(inFnames, outFname):
     ofh.close()
     moveOrGzip(tmpFname, outFname)
     logging.info("Wrote %d lines (not counting header)" % lineCount)
+
+def matCatGenes(inFnames, outFname):
+    " cat the lines several tab-sep or csv files, check headers and skip the header lines "
+    tmpFname = outFname+".tmp"
+    ofh = openFile(tmpFname, "w")
+
+    otherHeaders = None
+    lineCount = 0
+    for fn in inFnames:
+        prefix = ""
+        if "=" in fn:
+            fn, prefix = fn.split("=")
+
+        sep = "\t"
+        if ".csv" in fn:
+            sep = ","
+
+        headers = None
+        logging.info("Reading %s" % fn)
+
+        doReorder = False
+        fieldOrder = None
+
+        for line in openFile(fn):
+            row = line.rstrip("\n\r").split(sep)
+            row = [x.strip('"') for x in row]
+
+            if otherHeaders is None:
+                otherHeaders = row
+                ofh.write("\t".join(otherHeaders))
+                ofh.write("\n")
+            if headers is None:
+                headers = row
+                if (headers != otherHeaders): # all files must have identical columns = identical header line
+                    #logging.error("first file column headers were (only first ten fields shown): %s" % otherHeaders[:10])
+                    #logging.error("This file has the column headers (only first ten fields): %s" % headers[:10])
+                    #logging.error("The header lines of all files to be concatenated must be identical. Consider editing them manually or reorder them manually with AWK or pandas.")
+                    logging.warn("Headers are not identical, need to re-order columns, this will be pretty slow")
+                    doReorder = True
+
+                    fields = headers[1:]
+                    fieldOrder = []
+                    for h in otherHeaders[1:]:
+                        fieldOrder.append( fields.index(h) ) # if this fails, then one file has a column that the other one doesn't have. Not clear what should happen then -> just fail.
+                continue
+
+            if prefix!="":
+                row[0] = prefix+row[0]
+
+            if doReorder:
+                ofh.write(row[0])
+                ofh.write("\t")
+                ofh.write("\t".join([row[i] for i in fieldOrder]))
+            else:
+                ofh.write("\t".join(row))
+
+            ofh.write("\n")
+            lineCount += 1
+
+        logging.info("Wrote %d lines to output file (not counting header)" % lineCount)
+
+    ofh.close()
+    logging.info("Compressing %s", outFname)
+    moveOrGzip(tmpFname, outFname)
 
 def reorderFields(row, firstFields, skipFields):
     " reorder the row to have firstFields first "
@@ -532,8 +607,8 @@ def cbImportScanpy_parseArgs(showHelp=False):
     parser.add_option("", "--clusterField", dest="clusterField", action="store",
             help="if no marker genes are present, use this field to calculate them. Default is to try a list of common field names, like 'Cluster' or 'louvain' and a few others")
 
-    parser.add_option("-f", "--matrixFormat", dest="matrixFormat", action="store",
-            help="Output matrix file format. 'mtx' or 'tsv'. default: tsv",)
+    parser.add_option("-f", "--matrixFormat", dest="matrixFormat", action="store", default="mtx",
+            help="Output matrix file format. 'mtx' or 'tsv'. default: mtx",)
 
     parser.add_option("-m", "--skipMatrix", dest="skipMatrix", action="store_true",
         help="do not convert the matrix, saves time if the same one has been exported before to the "
@@ -577,7 +652,9 @@ def cbImportScanpyCli():
 
     scanpyToCellbrowser(ad, outDir, datasetName, skipMatrix=options.skipMatrix, useRaw=(not options.useProc),
             markerField=markerField, clusterField=clusterField, skipMarkers=skipMarkers, matrixFormat=matrixFormat)
-    generateHtmls(datasetName, outDir)
+
+    copyFileIfDiffSize(inFname, join(outDir, basename(inFname)))
+    generateDataDesc(datasetName, outDir, other={"supplFiles": [{"label":"Scanpy H5AD", "file":basename(inFname)}]})
 
     if options.port and not options.htmlDir:
         errAbort("--port requires --htmlDir")

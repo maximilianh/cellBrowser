@@ -1,54 +1,6 @@
 # Build a UCSC cell browser website from a \code{Seurat} object
 #
 NULL
-#' Used by \code{ExportToCellbrowser}:
-#' Write a big sparse matrix to a .tsv.gz file by writing chunks, concating them with the Unix cat command,
-#' then gziping the result. This does not work on Windows, we'd have to use the copy /b command there.
-#'
-#' @param inMat input matrix
-#' @param outFname output file name, has to end with .gz
-#' @param sliceSize=1000, size of each chunk in number of lines
-#'
-#' @return Invisibly returns \code{NULL}
-#'
-#' @importFrom data.table setDTthreads data.table fwrite
-#'
-#' @examples
-#' \dontrun{
-#' writeSparseTsvChunks( pbmc_small@data, "exprMatrix.tsv.gz")
-#' }
-#'
-writeSparseTsvChunks = function (inMat, outFname, sliceSize=1000) { 
-    fnames = c() 
-    setDTthreads(threads = 8)  # otherwise this would use dozens of CPUs on a fat server
-    mat = inMat 
-    geneCount = nrow(mat)
-    message("Writing expression matrix to ", outFname)
-    startIdx = 1
-    while (startIdx < geneCount) { 
-        endIdx <- min(startIdx+sliceSize-1, geneCount) 
-        matSlice <- mat[startIdx:endIdx,] 
-        denseSlice <- as.matrix(x = matSlice)
-        dt <- data.table(denseSlice) 
-        dt <- cbind(gene = rownames(x = matSlice), dt) 
-        writeHeader <- startIdx == 1 
-        sliceFname <- paste0("temp", startIdx,".txt")
-        fwrite(dt, sep="\t", file=sliceFname, quote = FALSE, col.names = writeHeader)
-        fnames <- append(x = fnames, values = sliceFname);
-        startIdx <- startIdx + sliceSize
-    } 
-    message("Concatenating chunks")
-    system(command = paste(
-       "cat", 
-       paste(fnames, collapse=" "),
-       "| gzip >",
-       outFname,
-       sep = " "
-    )) 
-    unlink(x = fnames)
-    return(invisible(x = NULL))
-}
-
 #' used by ExportToCellbrowser:
 #' Return a matrix object from a Seurat object or show an error message
 #'
@@ -83,14 +35,12 @@ findMatrices = function(object, slotNames ) {
 saveMatrix <- function(counts, dir, prefix, use.mtx) {
   # Export expression matrix
   message("Writing matrix with prefix ",prefix," to directory ",dir, "(use.mtx is ", use.mtx, ")")
-  too.big = ((((ncol(counts)/1000)*(nrow(counts)/1000))>2000) && is(counts, 'sparseMatrix'))
   if (prefix=="###")
       prefix <- ""
   else if (prefix!="" && !endsWith(prefix, "_"))
       prefix <- paste0(prefix, "_")
 
-
-  if (use.mtx || too.big) {
+  if (use.mtx) {
         # we have to write the matrix to an mtx file
         matrixPath <- file.path(dir, paste(prefix, "matrix.mtx", sep=""))
         genesPath <- file.path(dir, paste(prefix, "features.tsv", sep=""))
@@ -108,20 +58,14 @@ saveMatrix <- function(counts, dir, prefix, use.mtx) {
   } else {
       # we can write the matrix as a tsv file
       gzPath <- file.path(dir, paste(prefix, "exprMatrix.tsv.gz", sep=""))
-      if (too.big) {
-          if (.Platform$OS.type=="windows")
-              error("Cannot write very big matrices to a text file on Windows. Please use the --useMtx (R: use.mtx) option")
-          writeSparseTsvChunks(counts, gzPath);
-      } else {
-          mat = as.matrix(counts)
-          genes <- rownames(counts)
-          df <- as.data.frame(mat, check.names=FALSE)
-          df <- data.frame(gene=genes, df, check.names = FALSE)
-          z <- gzfile(gzPath, "w")
-          message("Writing expression matrix to ", gzPath)
-          write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
-          close(con = z)
-      }
+      mat = as.matrix(counts)
+      genes <- rownames(counts)
+      df <- as.data.frame(mat, check.names=FALSE)
+      df <- data.frame(gene=genes, df, check.names = FALSE)
+      z <- gzfile(gzPath, "w")
+      message("Writing expression matrix to ", gzPath)
+      write.table(x = df, sep="\t", file=z, quote = FALSE, row.names = FALSE)
+      close(con = z)
   }
 }
 
@@ -258,7 +202,7 @@ ExportToCellbrowser <- function(
 
   # make sure that we have a cluster field
   if (is.null(x = cluster.field))
-      error("There was no cluster field provided and the auto-detection to find one based on Idents() did not work. Please provide a cluster field with cluster.field='xxx' from R or --clusterField=xxx if using cbImportSeurat")
+      stop("There was no cluster field provided and the auto-detection to find one based on Idents() did not work. Please provide a cluster field with cluster.field='xxx' from R or --clusterField=xxx if using cbImportSeurat. Possible meta annotation fields are: ", toString(colnames(x = meta)))
 
   if (is.null(x = meta.fields)) {
     meta.fields <- colnames(x = meta)
@@ -279,6 +223,17 @@ ExportToCellbrowser <- function(
     warning("Using default project name means that you may overwrite project with the same name in the cellbrowser html output folder")
   }
   enum.fields <- c()
+
+  if (! use.mtx) {
+      # detect if we must use MTX
+      mat1 <- slotMatrices[[1]]
+      # R cannot load matrices bigger than 2^32 elements, sparse mode gets us beyond that,
+      # so use MTX if the matrix is very big (the exact cutoff is an educated guess)
+      use.mtx <- ((((ncol(mat1)/1000)*(nrow(mat1)/1000))>2000) && is(mat1, 'sparseMatrix'))
+      if (use.mtx) {
+          message("Matrix too big: forcing MTX mode")
+      }
+  }
 
   # save the matrices 
   if (! skip.expr.matrix) {
@@ -420,12 +375,14 @@ ExportToCellbrowser <- function(
   else
       matSep = "_"
 
-  # we assume that any slotname is possible. (in the wild, only 'counts' and 'scale.data' seem to occur, but we tolerate others)
+  # we assume that any slotname is possible. (in the wild, only 'counts' and 
+  # 'scale.data' seem to occur, but we tolerate others)
   matrixNames <- names(slotMatrices)
   matrixLabels <- matrixNames
   matrixLabels[matrixLabels=="counts"] <- "read counts"
   matrixLabels[matrixLabels=="scale.data"] <- "scaled"
-  matrices.conf <- sprintf(" {'label':'%s','fileName':'%s_exprMatrix.tsv.gz'}", names(slotMatrices), names(slotMatrices))
+  matrices.conf <- sprintf(" {'label':'%s','fileName':'%s_exprMatrix.tsv.gz'}", 
+                           names(slotMatrices), names(slotMatrices))
 
   matrices.string <- paste0("matrices=[", paste(matrices.conf, collapse = ",\n"), "]" )
 
@@ -433,7 +390,6 @@ ExportToCellbrowser <- function(
   if (use.mtx) {
     matrixOutPath <- sprintf("%s%smatrix.mtx.gz", firstPrefix, matSep)
   }
-
 
   config <- '# This is a bare-bones cellbrowser config file auto-generated by the command-line tool cbImportSeurat 
 # or directly from R with SeuratWrappers::ExportToCellbrowser().
@@ -445,7 +401,7 @@ exprMatrix="%s"
 %s
 #tags = ["10x", "smartseq2"]
 meta="meta.tsv"
-# possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
+# how to find gene symbols. Possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
 geneIdType="auto"
 # file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
 # quickGenesFile="quickGenes.csv"
